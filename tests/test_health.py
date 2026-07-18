@@ -18,4 +18,4 @@ async def test_healthz(settings: Settings) -> None:
 
     assert resp.status_code == 200
     body = resp.json()
-    assert body == {"status": "ok", "env": "dev", "version": __version__}
+    assert body == {"status": "ok", "env": settings.env.value, "version": __version__}

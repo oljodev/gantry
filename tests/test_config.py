@@ -1,12 +1,18 @@
 from __future__ import annotations
 
+import os
+
 import pytest
 from pydantic import ValidationError
 
 from gantry.config import Environment, LogFormat, Settings
 
 
-def test_defaults() -> None:
+def test_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Strip ambient GANTRY_* vars (CI sets GANTRY_ENV=test) to test true defaults.
+    for key in list(os.environ):
+        if key.startswith("GANTRY_"):
+            monkeypatch.delenv(key)
     s = Settings(_env_file=None)
     assert s.env is Environment.DEV
     assert s.log_format is LogFormat.CONSOLE
