@@ -1,0 +1,26 @@
+name: gantry
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: gantry
+      POSTGRES_PASSWORD: gantry
+      POSTGRES_DB: gantry
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gantry -d gantry"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+    command:
+      # Queue workloads at high worker counts need headroom over PG defaults.
+      - "postgres"
+      - "-c"
+      - "max_connections=200"
+
+volumes:
+  pgdata:
