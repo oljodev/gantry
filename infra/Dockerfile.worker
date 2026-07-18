@@ -1,0 +1,23 @@
+# Gantry worker image: one container = one sandboxed worker process.
+# Scale with: docker compose -f infra/docker-compose.yml up -d --scale worker=N
+
+FROM ghcr.io/astral-sh/uv:python3.13-bookworm-slim
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --create-home --uid 1000 gantry
+
+WORKDIR /app
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-install-project --no-dev
+
+COPY src ./src
+COPY README.md ./
+RUN uv sync --frozen --no-dev && chown -R gantry:gantry /app
+
+USER gantry
+ENV GANTRY_WORKSPACE_ROOT=/workspaces
+RUN mkdir -p /workspaces || true
+
+CMD ["uv", "run", "--no-sync", "python", "-m", "gantry.worker"]

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from enum import StrEnum
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic import Field, PostgresDsn, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -42,6 +43,10 @@ class Settings(BaseSettings):
     log_format: LogFormat = LogFormat.CONSOLE
     #: LiteLLM model string (provider-prefixed), overridable per task payload.
     default_model: str = "anthropic/claude-opus-4-8"
+    #: Root directory for per-task worker workspaces.
+    workspace_root: Path = Path("/tmp/gantry-workspaces")
+    #: GitHub token for workers' git operations (vault-managed from Phase 9).
+    github_token: str | None = None
 
     @field_validator("database_url")
     @classmethod

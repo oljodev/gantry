@@ -23,6 +23,12 @@ revision:
 server:
 	uv run uvicorn --factory gantry.server.app:create_app --reload
 
+worker:
+	uv run python -m gantry.worker
+
+workers-up:  # N containerized workers: make workers-up n=4
+	$(COMPOSE) --profile workers up -d --build --scale worker=$(or $(n),2)
+
 test:
 	uv run pytest
 

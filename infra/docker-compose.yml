@@ -22,5 +22,21 @@ services:
       - "-c"
       - "max_connections=200"
 
+  worker:
+    profiles: ["workers"]
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.worker
+    environment:
+      GANTRY_DATABASE_URL: postgresql+asyncpg://gantry:gantry@postgres:5432/gantry
+      GANTRY_DEFAULT_MODEL: ${GANTRY_DEFAULT_MODEL:-anthropic/claude-opus-4-8}
+      GANTRY_GITHUB_TOKEN: ${GANTRY_GITHUB_TOKEN:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    tmpfs:
+      - /workspaces  # ephemeral by design: durability lives in the event log
+
 volumes:
   pgdata:

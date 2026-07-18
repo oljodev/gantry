@@ -17,12 +17,17 @@ from __future__ import annotations
 import enum
 import uuid
 from abc import ABC, abstractmethod
-from collections.abc import Iterable
+from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, ClassVar
 
+from gantry.core.models import EventType
 from gantry.runtime.llm import ToolSchema
+
+#: Appends an event to the task's log (bound to the loop's checkpoint writer).
+#: Lets tools stream durable side-channel data — e.g. bash terminal chunks.
+EventEmitter = Callable[[EventType, dict[str, Any]], Awaitable[int]]
 
 
 class ToolIdempotency(enum.StrEnum):
@@ -40,6 +45,7 @@ class ToolResult:
 class ToolContext:
     task_id: uuid.UUID
     workspace: Path | None = None
+    emit_event: EventEmitter | None = None
 
 
 INTERRUPTED_RESULT = ToolResult(

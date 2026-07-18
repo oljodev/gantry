@@ -22,6 +22,8 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from functools import partial
+from pathlib import Path
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -76,13 +78,18 @@ async def run_agent_task(
     llm: LLMClient,
     tools: ToolRegistry,
     *,
+    workspace: Path | None = None,
     compaction: CompactionConfig | None = None,
     on_step: StepCallback | None = None,
 ) -> AgentOutcome:
     payload: dict[str, Any] = task.payload
     model = payload.get("model") or get_settings().default_model
     max_steps = int(payload.get("max_steps") or DEFAULT_MAX_STEPS)
-    ctx = ToolContext(task_id=task.id)
+    ctx = ToolContext(
+        task_id=task.id,
+        workspace=workspace,
+        emit_event=partial(_checkpoint, sessions, task),
+    )
 
     async with session_scope(sessions) as session:
         events = await read_events(session, task.id)
