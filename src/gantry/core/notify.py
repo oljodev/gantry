@@ -1,0 +1,84 @@
+"""Postgres LISTEN/NOTIFY wakeups for idle workers.
+
+NOTIFY issued inside a transaction is delivered only on commit — exactly the
+semantics we want (workers must not wake for tasks that were rolled back).
+Notifications are best-effort (a disconnected listener misses them), so
+workers always keep a jittered poll as fallback; NOTIFY only shortcuts the
+latency between enqueue and pickup.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import contextlib
+import uuid
+from types import TracebackType
+from typing import Self
+
+import asyncpg
+import sqlalchemy as sa
+from sqlalchemy.ext.asyncio import AsyncSession
+
+TASK_READY_CHANNEL = "gantry_task_ready"
+
+
+def asyncpg_dsn(database_url: str) -> str:
+    """SQLAlchemy URLs carry a '+asyncpg' driver marker that asyncpg itself rejects."""
+    return database_url.replace("postgresql+asyncpg://", "postgresql://", 1)
+
+
+async def notify_task_ready(session: AsyncSession, task_id: uuid.UUID) -> None:
+    await session.execute(sa.select(sa.func.pg_notify(TASK_READY_CHANNEL, str(task_id))))
+
+
+class QueueListener:
+    """LISTENs on the task-ready channel; workers await wakeups with a timeout.
+
+    Uses a dedicated asyncpg connection: LISTEN is connection-scoped state,
+    which pooled sessions can't provide reliably.
+    """
+
+    def __init__(self, database_url: str, channel: str = TASK_READY_CHANNEL) -> None:
+        self._dsn = asyncpg_dsn(database_url)
+        self._channel = channel
+        self._conn: asyncpg.Connection | None = None
+        self._wakeup = asyncio.Event()
+
+    async def __aenter__(self) -> Self:
+        self._conn = await asyncpg.connect(self._dsn)
+        await self._conn.add_listener(self._channel, self._on_notify)
+        return self
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
+        if self._conn is not None:
+            with contextlib.suppress(Exception):
+                await self._conn.remove_listener(self._channel, self._on_notify)
+                await self._conn.close(timeout=5)
+            self._conn = None
+
+    def _on_notify(
+        self,
+        connection: asyncpg.Connection,
+        pid: int,
+        channel: str,
+        payload: object,
+    ) -> None:
+        self._wakeup.set()
+
+    async def wait(self, timeout_seconds: float) -> bool:
+        """Wait for a wakeup or timeout. True if a notification arrived.
+
+        Coalesces bursts: N notifications while idle yield one wakeup, which
+        is fine — a woken worker claims in a loop until the queue is empty.
+        """
+        try:
+            await asyncio.wait_for(self._wakeup.wait(), timeout_seconds)
+        except TimeoutError:
+            return False
+        self._wakeup.clear()
+        return True

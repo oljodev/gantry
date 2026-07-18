@@ -70,6 +70,10 @@ files = ["src/gantry", "tests"]
 module = "tests.*"
 disallow_untyped_decorators = false
 
+[[tool.mypy.overrides]]
+module = "asyncpg.*"
+ignore_missing_imports = true
+
 # --- Pytest -------------------------------------------------------------
 
 [tool.pytest.ini_options]
@@ -77,3 +81,6 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 addopts = "-q --strict-markers"
+markers = [
+    "slow: long-running concurrency/torture tests",
+]
