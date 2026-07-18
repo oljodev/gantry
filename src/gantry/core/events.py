@@ -19,6 +19,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from gantry.core.models import EventType, TaskEvent
+from gantry.core.notify import notify_task_event
 
 # A burst of N racing writers can force the unluckiest one through N-1
 # collisions (one winner per round), so this bounds burst size, not luck.
@@ -62,6 +63,10 @@ async def append_event(
             continue
         if seq is None:  # pragma: no cover - from_select over WHERE always yields one row
             raise EventSeqConflictError(f"event insert produced no row for task {task_id}")
+        # Realtime fanout hint, delivered on commit (never for rolled-back
+        # events). Listeners re-read the log from their cursor, so a missed
+        # notification degrades to poll latency, never to a missed event.
+        await notify_task_event(session, task_id, seq)
         return seq
     raise EventSeqConflictError(f"could not allocate event seq for task {task_id}")
 
@@ -70,11 +75,15 @@ async def read_events(
     session: AsyncSession,
     task_id: uuid.UUID,
     after_seq: int = 0,
+    limit: int | None = None,
 ) -> list[TaskEvent]:
     """Read a task's events in replay order, optionally after a known seq."""
-    result = await session.scalars(
+    stmt = (
         sa.select(TaskEvent)
         .where(TaskEvent.task_id == task_id, TaskEvent.seq > after_seq)
         .order_by(TaskEvent.seq)
     )
+    if limit is not None:
+        stmt = stmt.limit(limit)
+    result = await session.scalars(stmt)
     return list(result)

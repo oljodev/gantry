@@ -9,8 +9,10 @@ from collections.abc import AsyncIterator
 from pathlib import Path
 
 import asyncpg
+import httpx
 import pytest
 import sqlalchemy as sa
+from fastapi import FastAPI
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -109,3 +111,50 @@ async def engine(database_url: str) -> AsyncIterator[AsyncEngine]:
 @pytest.fixture
 def db(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
     return async_sessionmaker(engine, expire_on_commit=False)
+
+
+# --- Control plane fixtures ----------------------------------------------
+#
+# The app runs with its full lifespan (own engine, event broker, reaper) in
+# the test's event loop. One httpx client speaks both HTTP and WebSocket
+# through the ASGI transport — no sockets, no uvicorn.
+
+
+@pytest.fixture
+async def app(engine: AsyncEngine, database_url: str) -> AsyncIterator[FastAPI]:
+    from gantry.server.app import create_app
+
+    settings = Settings(
+        _env_file=None,
+        database_url=database_url,
+        reaper_interval_seconds=0.2,
+    )
+    application = create_app(settings)
+    # Drive the lifespan directly (it is a plain asynccontextmanager, safe to
+    # exit from a different task — which pytest-asyncio fixture teardown does;
+    # asgi-lifespan's anyio cancel scopes are not).
+    async with application.router.lifespan_context(application):
+        yield application
+
+
+@pytest.fixture
+async def client(app: FastAPI) -> AsyncIterator[httpx.AsyncClient]:
+    # ASGIWebSocketTransport holds an anyio task group, whose cancel scope must
+    # enter and exit in the SAME task. pytest-asyncio tears fixtures down in a
+    # different task, so a plain `async with` here would blow up — instead the
+    # client's whole lifecycle runs inside one dedicated task.
+    from httpx_ws.transport import ASGIWebSocketTransport
+
+    started: asyncio.Future[httpx.AsyncClient] = asyncio.get_running_loop().create_future()
+    closing = asyncio.Event()
+
+    async def lifecycle() -> None:
+        transport = ASGIWebSocketTransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://gantry.test") as c:
+            started.set_result(c)
+            await closing.wait()
+
+    runner = asyncio.ensure_future(lifecycle())
+    yield await started
+    closing.set()
+    await runner

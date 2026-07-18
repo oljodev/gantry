@@ -1,17 +1,46 @@
-"""FastAPI application factory for the Gantry control plane."""
+"""FastAPI application factory for the Gantry control plane.
+
+The server is also the operational home of the **reaper**: the background
+loop that re-queues tasks whose worker died mid-lease. Workers deliberately
+don't reap (they'd race at scale and it entangles their failure domain);
+one control-plane loop with SKIP LOCKED semantics is enough for the fleet.
+"""
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
+import random
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from gantry import __version__
 from gantry.config import Settings, get_settings
+from gantry.core import queue
+from gantry.core.db import create_engine, create_session_factory, session_scope
 from gantry.logging import configure_logging, get_logger
+from gantry.server import api, ws
+from gantry.server.broker import EventBroker
 
 logger = get_logger(__name__)
+
+
+async def reaper_loop(sessions: async_sessionmaker[AsyncSession], interval_seconds: float) -> None:
+    while True:
+        await asyncio.sleep(interval_seconds * random.uniform(0.8, 1.2))
+        try:
+            async with session_scope(sessions) as session:
+                reaped = await queue.reap_expired(session)
+            if reaped:
+                logger.info("server.reaped_expired_leases", count=len(reaped))
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # keep reaping; a blip must not kill the loop
+            logger.warning("server.reaper_error", error=repr(exc))
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -19,13 +48,33 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     configure_logging(settings)
 
     @asynccontextmanager
-    async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         logger.info("server.starting", env=settings.env, version=__version__)
-        yield
+        engine = create_engine(settings)
+        sessions = create_session_factory(engine)
+        app.state.sessions = sessions
+        async with EventBroker(settings.database_url_str) as broker:
+            app.state.broker = broker
+            reaper = asyncio.create_task(reaper_loop(sessions, settings.reaper_interval_seconds))
+            try:
+                yield
+            finally:
+                reaper.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await reaper
+                await engine.dispose()
         logger.info("server.stopped")
 
     app = FastAPI(title="Gantry", version=__version__, lifespan=lifespan)
     app.state.settings = settings
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_origins,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+    app.include_router(api.router)
+    app.include_router(ws.router)
 
     @app.get("/healthz")
     async def healthz() -> dict[str, str]:

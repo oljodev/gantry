@@ -296,6 +296,31 @@ async def fail(
     return TaskStatus.FAILED
 
 
+async def cancel(session: AsyncSession, *, task_id: uuid.UUID) -> Task | None:
+    """Cancel a task that has not started yet (compare-and-set on PENDING).
+
+    Running tasks are owned by a lease-holding worker; cancelling those needs
+    worker cooperation (checked at heartbeat) and lands with HITL in Phase 7.
+    Returns the cancelled task, or None if it wasn't pending.
+    """
+    stmt = (
+        sa.update(Task)
+        .where(Task.id == task_id, Task.status == TaskStatus.PENDING)
+        .values(
+            status=TaskStatus.CANCELLED,
+            claimed_by=None,
+            lease_expires_at=None,
+            updated_at=sa.func.now(),
+        )
+        .returning(Task)
+    )
+    task = (await session.scalars(stmt)).first()
+    if task is None:
+        return None
+    await append_event(session, task.id, EventType.TASK_CANCELLED, {})
+    return task
+
+
 async def reap_expired(session: AsyncSession, *, limit: int = 100) -> list[ReapedTask]:
     """Re-queue (or terminally fail) tasks whose lease expired.
 

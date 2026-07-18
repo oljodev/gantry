@@ -47,6 +47,12 @@ class Settings(BaseSettings):
     workspace_root: Path = Path("/tmp/gantry-workspaces")
     #: GitHub token for workers' git operations (vault-managed from Phase 9).
     github_token: str | None = None
+    #: How often the control plane re-queues tasks whose lease expired.
+    reaper_interval_seconds: float = 10.0
+    #: Origins allowed to call the API from a browser (the Phase 5 frontend).
+    cors_origins: list[str] = Field(
+        default=["http://localhost:5173", "http://127.0.0.1:5173"],
+    )
 
     @field_validator("database_url")
     @classmethod

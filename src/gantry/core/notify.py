@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import uuid
 from types import TracebackType
 from typing import Self
@@ -20,6 +21,10 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 TASK_READY_CHANNEL = "gantry_task_ready"
+#: Fires once per appended task event — the control plane LISTENs here and
+#: fans out to WebSocket subscribers. The payload is a hint, not the data:
+#: subscribers always re-read the event log from their cursor.
+TASK_EVENTS_CHANNEL = "gantry_task_events"
 
 
 def asyncpg_dsn(database_url: str) -> str:
@@ -29,6 +34,11 @@ def asyncpg_dsn(database_url: str) -> str:
 
 async def notify_task_ready(session: AsyncSession, task_id: uuid.UUID) -> None:
     await session.execute(sa.select(sa.func.pg_notify(TASK_READY_CHANNEL, str(task_id))))
+
+
+async def notify_task_event(session: AsyncSession, task_id: uuid.UUID, seq: int) -> None:
+    payload = json.dumps({"task_id": str(task_id), "seq": seq})
+    await session.execute(sa.select(sa.func.pg_notify(TASK_EVENTS_CHANNEL, payload)))
 
 
 class QueueListener:
