@@ -40,6 +40,8 @@ class Settings(BaseSettings):
     )
     log_level: str = "INFO"
     log_format: LogFormat = LogFormat.CONSOLE
+    #: LiteLLM model string (provider-prefixed), overridable per task payload.
+    default_model: str = "anthropic/claude-opus-4-8"
 
     @field_validator("database_url")
     @classmethod

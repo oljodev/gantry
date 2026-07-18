@@ -1,0 +1,101 @@
+"""Tool framework: definitions, registry, and crash-recovery policy.
+
+Every tool declares an :class:`ToolIdempotency` policy. It governs what the
+loop does when it resumes a task whose log shows a ``tool_call`` checkpoint
+with no ``tool_result`` (the worker died somewhere between starting the tool
+and recording its outcome):
+
+- ``IDEMPOTENT``     → safe to simply run again (reads, searches, test runs).
+- ``NON_IDEMPOTENT`` → the loop calls :meth:`Tool.recover`, which may inspect
+  external state (e.g. "did that git push land?") and return the real result;
+  if it can't tell, the LLM receives an explicit "interrupted, effect
+  unknown" error and decides how to proceed.
+"""
+
+from __future__ import annotations
+
+import enum
+import uuid
+from abc import ABC, abstractmethod
+from collections.abc import Iterable
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, ClassVar
+
+from gantry.runtime.llm import ToolSchema
+
+
+class ToolIdempotency(enum.StrEnum):
+    IDEMPOTENT = "idempotent"
+    NON_IDEMPOTENT = "non_idempotent"
+
+
+@dataclass(frozen=True)
+class ToolResult:
+    content: str
+    is_error: bool = False
+
+
+@dataclass(frozen=True)
+class ToolContext:
+    task_id: uuid.UUID
+    workspace: Path | None = None
+
+
+INTERRUPTED_RESULT = ToolResult(
+    content=(
+        "This tool call was interrupted by a crash and its effects are unknown. "
+        "Verify the current state before assuming it ran or retrying it."
+    ),
+    is_error=True,
+)
+
+
+class Tool(ABC):
+    name: str
+    description: str
+    #: JSON Schema for the tool's arguments (object schema).
+    parameters: ClassVar[dict[str, Any]]
+    idempotency: ToolIdempotency = ToolIdempotency.IDEMPOTENT
+
+    @abstractmethod
+    async def execute(self, arguments: dict[str, Any], ctx: ToolContext) -> ToolResult: ...
+
+    async def recover(self, arguments: dict[str, Any], ctx: ToolContext) -> ToolResult | None:
+        """Determine the outcome of a possibly-executed prior call, if possible.
+
+        Only consulted for NON_IDEMPOTENT tools on resume. Return None when
+        the outcome can't be determined; the LLM then gets INTERRUPTED_RESULT.
+        """
+        return None
+
+    def schema(self) -> ToolSchema:
+        return {
+            "type": "function",
+            "function": {
+                "name": self.name,
+                "description": self.description,
+                "parameters": self.parameters,
+            },
+        }
+
+
+class ToolRegistry:
+    def __init__(self, tools: Iterable[Tool] = ()) -> None:
+        self._tools: dict[str, Tool] = {}
+        for tool in tools:
+            self.register(tool)
+
+    def register(self, tool: Tool) -> None:
+        if tool.name in self._tools:
+            raise ValueError(f"duplicate tool name: {tool.name}")
+        self._tools[tool.name] = tool
+
+    def get(self, name: str) -> Tool | None:
+        return self._tools.get(name)
+
+    def schemas(self) -> list[ToolSchema]:
+        return [tool.schema() for tool in self._tools.values()]
+
+    def __len__(self) -> int:
+        return len(self._tools)
