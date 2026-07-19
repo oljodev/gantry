@@ -82,6 +82,18 @@ class TaskEventsResponse(BaseModel):
     events: list[TaskEventOut]
 
 
+class StatsResponse(BaseModel):
+    """Fleet-level counters for the dashboard header."""
+
+    total: int
+    statuses: dict[str, int]
+    active_workers: int
+    recent_workers: int
+    prompt_tokens: int
+    completion_tokens: int
+    events_last_hour: int
+
+
 class SkillOut(BaseModel):
     name: str
     description: str

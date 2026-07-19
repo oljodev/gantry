@@ -106,6 +106,59 @@ async def test_cancel_is_pending_only(client: httpx.AsyncClient, db: Sessions) -
     assert (await client.post(f"/api/tasks/{claimed.id}/cancel")).status_code == 409
 
 
+async def test_stats_reflect_fleet_state(client: httpx.AsyncClient, db: Sessions) -> None:
+    await create_task(client)
+    second = await create_task(client)
+    async with session_scope(db) as session:
+        claimed = await queue.claim(session, worker_id="stats-w", lease_seconds=30)
+    assert claimed is not None
+    async with session_scope(db) as session:
+        assert await queue.complete(
+            session,
+            task_id=claimed.id,
+            worker_id="stats-w",
+            attempt=claimed.attempt,
+            result={"final_text": "ok", "prompt_tokens": 120, "completion_tokens": 45},
+        )
+
+    stats = (await client.get("/api/stats")).json()
+    assert stats["total"] == 2
+    assert stats["statuses"] == {"pending": 1, "succeeded": 1}
+    assert stats["recent_workers"] == 1  # stats-w claimed within the window
+    assert stats["prompt_tokens"] == 120 and stats["completion_tokens"] == 45
+    assert stats["events_last_hour"] >= 4
+    del second
+
+
+async def test_retry_requeues_failed_task_with_headroom(
+    client: httpx.AsyncClient, db: Sessions
+) -> None:
+    task = await create_task(client)
+    async with session_scope(db) as session:
+        claimed = await queue.claim(session, worker_id="w1", lease_seconds=30)
+    assert claimed is not None
+    async with session_scope(db) as session:
+        status = await queue.fail(
+            session,
+            task_id=claimed.id,
+            worker_id="w1",
+            attempt=claimed.attempt,
+            error="boom",
+            retryable=False,
+        )
+    assert status is not None and status.value == "failed"
+
+    retried = await client.post(f"/api/tasks/{task['id']}/retry")
+    assert retried.status_code == 200
+    body = retried.json()
+    assert body["status"] == "pending"
+    assert body["max_attempts"] >= body["attempt"] + 3  # real headroom for the retry
+
+    # Only failed/cancelled tasks are retryable.
+    assert (await client.post(f"/api/tasks/{task['id']}/retry")).status_code == 409
+    assert (await client.post(f"/api/tasks/{uuid.uuid4()}/retry")).status_code == 404
+
+
 async def test_server_reaper_requeues_expired_leases(
     client: httpx.AsyncClient, db: Sessions
 ) -> None:

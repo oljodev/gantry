@@ -1,4 +1,4 @@
-import type { Skill, Task, TaskCreate, TaskEvent, TaskStatus } from './types'
+import type { Skill, Stats, Task, TaskCreate, TaskEvent, TaskStatus } from './types'
 
 export interface ApprovalItem {
   task: Task
@@ -17,12 +17,27 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>
 }
 
-export function listTasks(params?: { status?: TaskStatus; rootTaskId?: string }): Promise<Task[]> {
+export function listTasks(params?: {
+  status?: TaskStatus
+  rootTaskId?: string
+  limit?: number
+  offset?: number
+}): Promise<Task[]> {
   const query = new URLSearchParams()
   if (params?.status) query.set('status', params.status)
   if (params?.rootTaskId) query.set('root_task_id', params.rootTaskId)
+  if (params?.limit) query.set('limit', String(params.limit))
+  if (params?.offset) query.set('offset', String(params.offset))
   const suffix = query.size ? `?${query}` : ''
   return request<{ tasks: Task[] }>(`/api/tasks${suffix}`).then((body) => body.tasks)
+}
+
+export function getStats(): Promise<Stats> {
+  return request<Stats>('/api/stats')
+}
+
+export function retryTask(taskId: string): Promise<Task> {
+  return request<Task>(`/api/tasks/${taskId}/retry`, { method: 'POST' })
 }
 
 export function getTask(taskId: string): Promise<Task> {

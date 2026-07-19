@@ -1,6 +1,7 @@
+import { useState } from 'react'
 import type { TaskEvent } from '../api/types'
 import type { LlmStep, MarkerStep, ToolStep, TraceStep } from '../lib/trace'
-import { clockTime, compactJson } from '../lib/format'
+import { clockTime, compactJson, duration } from '../lib/format'
 import { DiffViewer } from './DiffViewer'
 
 export function TraceTimeline({ steps }: { steps: TraceStep[] }) {
@@ -88,6 +89,12 @@ function Compaction({ step }: { step: MarkerStep }) {
   )
 }
 
+function StepDuration({ from, to }: { from?: TaskEvent; to?: TaskEvent }) {
+  if (!from || !to) return null
+  const text = duration(from.created_at, to.created_at)
+  return text ? <span className="font-mono text-zinc-600">{text}</span> : null
+}
+
 function Llm({ step }: { step: LlmStep }) {
   const response = step.response
   const content = (response?.payload.content as string | null) ?? null
@@ -108,11 +115,36 @@ function Llm({ step }: { step: LlmStep }) {
             {usage.prompt_tokens}→{usage.completion_tokens} tok
           </span>
         )}
+        <StepDuration from={step.request} to={step.response} />
         <span className="grow" />
         {(response ?? step.request) && <Timestamp event={(response ?? step.request)!} />}
       </div>
       {content && (
         <p className="px-3 py-2 text-sm whitespace-pre-wrap text-zinc-200">{content}</p>
+      )}
+    </div>
+  )
+}
+
+function Expandable({ text, tone }: { text: string; tone: string }) {
+  const [expanded, setExpanded] = useState(false)
+  const long = text.length > 1500 || text.split('\n').length > 18
+  return (
+    <div className="relative">
+      <pre
+        className={`overflow-auto border-t border-zinc-800/60 bg-black/60 px-3 py-2 font-mono text-xs leading-relaxed whitespace-pre-wrap ${tone} ${
+          expanded ? 'max-h-none' : 'max-h-64'
+        }`}
+      >
+        {text}
+      </pre>
+      {long && (
+        <button
+          onClick={() => setExpanded(!expanded)}
+          className="absolute right-2 bottom-1.5 rounded border border-zinc-700 bg-zinc-900/90 px-1.5 py-0.5 text-[10px] text-zinc-400 transition hover:text-zinc-200"
+        >
+          {expanded ? 'collapse' : 'expand'}
+        </button>
       )}
     </div>
   )
@@ -134,23 +166,17 @@ function ToolCard({ step }: { step: ToolStep }) {
         </span>
         <span className="truncate font-mono text-zinc-500">{compactJson(args)}</span>
         {!result && <span className="animate-pulse text-amber-400">running…</span>}
+        <StepDuration from={step.call} to={step.result} />
         <span className="grow" />
         <Timestamp event={step.call} />
       </div>
-      {terminalText && (
-        <pre className="max-h-64 overflow-auto border-t border-zinc-800/60 bg-black/60 px-3 py-2 font-mono text-xs leading-relaxed whitespace-pre-wrap text-zinc-300">
-          {terminalText}
-        </pre>
-      )}
+      {terminalText && <Expandable text={terminalText} tone="text-zinc-300" />}
       {step.diff && <DiffViewer events={[step.diff]} embedded />}
       {result && !terminalText && (
-        <pre
-          className={`max-h-48 overflow-auto border-t border-zinc-800/60 px-3 py-2 font-mono text-xs whitespace-pre-wrap ${
-            isError ? 'text-red-300' : 'text-zinc-400'
-          }`}
-        >
-          {String(result.payload.content ?? '')}
-        </pre>
+        <Expandable
+          text={String(result.payload.content ?? '')}
+          tone={isError ? 'text-red-300' : 'text-zinc-400'}
+        />
       )}
     </div>
   )

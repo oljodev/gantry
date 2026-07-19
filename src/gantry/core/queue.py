@@ -514,6 +514,39 @@ async def _unresolved_approval_ids(session: AsyncSession, task_id: uuid.UUID) ->
     return requested - resolved
 
 
+async def retry(session: AsyncSession, *, task_id: uuid.UUID) -> Task | None:
+    """Manually re-queue a terminally failed or cancelled task.
+
+    The event log survives, so the retried task resumes from its last
+    checkpoint rather than starting over. ``max_attempts`` is raised to give
+    the retry real headroom (a terminal failure means attempts were already
+    exhausted). Returns None if the task isn't in a retryable state.
+    """
+    stmt = (
+        sa.update(Task)
+        .where(Task.id == task_id, Task.status.in_([TaskStatus.FAILED, TaskStatus.CANCELLED]))
+        .values(
+            status=TaskStatus.PENDING,
+            scheduled_at=sa.func.now(),
+            max_attempts=sa.func.greatest(Task.max_attempts, Task.attempt + 3),
+            updated_at=sa.func.now(),
+        )
+        .returning(Task)
+    )
+    task = (await session.scalars(stmt)).first()
+    if task is None:
+        return None
+    await append_event(
+        session,
+        task.id,
+        EventType.TASK_RETRY_SCHEDULED,
+        {"manual": True, "attempt": task.attempt, "delay_seconds": 0},
+    )
+    await notify_task_ready(session, task.id)
+    logger.info("queue.task_retried", task_id=str(task_id))
+    return task
+
+
 async def cancel(session: AsyncSession, *, task_id: uuid.UUID) -> Task | None:
     """Cancel a task that has not started yet (compare-and-set on PENDING).
 

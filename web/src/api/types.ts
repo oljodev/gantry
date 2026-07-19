@@ -58,3 +58,13 @@ export interface Skill {
   description: string
   match: string[]
 }
+
+export interface Stats {
+  total: number
+  statuses: Partial<Record<TaskStatus, number>>
+  active_workers: number
+  recent_workers: number
+  prompt_tokens: number
+  completion_tokens: number
+  events_last_hour: number
+}

@@ -33,6 +33,7 @@ from gantry.server.schemas import (
     ApprovalsResponse,
     SkillOut,
     SkillsResponse,
+    StatsResponse,
     TaskCreateRequest,
     TaskEventOut,
     TaskEventsResponse,
@@ -121,6 +122,88 @@ async def get_task_events(
             raise HTTPException(status_code=404, detail="task not found")
         events = await read_events(session, task_id, after_seq=after_seq, limit=limit)
     return TaskEventsResponse(events=[TaskEventOut.model_validate(e) for e in events])
+
+
+@router.get("/stats", response_model=StatsResponse)
+async def get_stats(request: Request) -> StatsResponse:
+    sessions = get_sessions(request)
+    async with sessions() as session:
+        status_rows = (
+            await session.execute(
+                sa.select(Task.status, sa.func.count())
+                .where(Task.workspace_id == DEFAULT_WORKSPACE_ID)
+                .group_by(Task.status)
+            )
+        ).all()
+        active_workers = (
+            await session.scalar(
+                sa.select(sa.func.count(sa.func.distinct(Task.claimed_by))).where(
+                    Task.claimed_by.isnot(None)
+                )
+            )
+            or 0
+        )
+        recent_workers = (
+            await session.scalar(
+                sa.select(
+                    sa.func.count(sa.func.distinct(TaskEvent.payload["worker_id"].astext))
+                ).where(
+                    TaskEvent.event_type == EventType.TASK_CLAIMED.value,
+                    TaskEvent.created_at > sa.func.now() - sa.text("interval '15 minutes'"),
+                )
+            )
+            or 0
+        )
+        token_rows = (
+            await session.execute(
+                sa.select(
+                    sa.func.coalesce(
+                        sa.func.sum(sa.cast(Task.result["prompt_tokens"].astext, sa.BigInteger)), 0
+                    ),
+                    sa.func.coalesce(
+                        sa.func.sum(
+                            sa.cast(Task.result["completion_tokens"].astext, sa.BigInteger)
+                        ),
+                        0,
+                    ),
+                ).where(Task.result.isnot(None))
+            )
+        ).one()
+        events_last_hour = (
+            await session.scalar(
+                sa.select(sa.func.count())
+                .select_from(TaskEvent)
+                .where(TaskEvent.created_at > sa.func.now() - sa.text("interval '1 hour'"))
+            )
+            or 0
+        )
+    statuses = {TaskStatus(row[0]).value: row[1] for row in status_rows}
+    return StatsResponse(
+        total=sum(statuses.values()),
+        statuses=statuses,
+        active_workers=active_workers,
+        recent_workers=recent_workers,
+        prompt_tokens=int(token_rows[0]),
+        completion_tokens=int(token_rows[1]),
+        events_last_hour=events_last_hour,
+    )
+
+
+@router.post("/tasks/{task_id}/retry", response_model=TaskOut)
+async def retry_task(request: Request, task_id: uuid.UUID) -> TaskOut:
+    """Re-queue a failed/cancelled task; it resumes from its event log."""
+    sessions = get_sessions(request)
+    async with session_scope(sessions) as session:
+        retried = await queue.retry(session, task_id=task_id)
+        if retried is not None:
+            return TaskOut.model_validate(retried)
+        task = await session.get(Task, task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="task not found")
+    raise HTTPException(
+        status_code=409,
+        detail=f"task is {task.status.value}; only failed or cancelled tasks can be retried",
+    )
 
 
 @router.get("/skills", response_model=SkillsResponse)

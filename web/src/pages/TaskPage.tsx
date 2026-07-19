@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { cancelTask, listTasks } from '../api/client'
+import { cancelTask, listTasks, retryTask } from '../api/client'
 import { openTaskStream, type ConnectionState } from '../api/stream'
 import type { Task, TaskEvent } from '../api/types'
 import { DiffViewer } from '../components/DiffViewer'
@@ -21,6 +21,8 @@ export function TaskPage() {
   const [connection, setConnection] = useState<ConnectionState>('connecting')
   const [tree, setTree] = useState<Task[]>([])
   const [tab, setTab] = useState<Tab>('trace')
+  const [follow, setFollow] = useState(true)
+  const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (!taskId) return
@@ -32,6 +34,19 @@ export function TaskPage() {
       onConnection: setConnection,
     })
   }, [taskId])
+
+  useEffect(() => {
+    document.title = task ? `${String(task.payload.goal ?? shortId(task.id))} — Gantry` : 'Gantry'
+    return () => {
+      document.title = 'Gantry'
+    }
+  }, [task?.id, task?.payload.goal])
+
+  useEffect(() => {
+    if (follow && events.length > 0) {
+      bottomRef.current?.scrollIntoView({ block: 'end', behavior: 'smooth' })
+    }
+  }, [events.length, follow])
 
   // The tree changes only on lifecycle transitions (and, in Phase 6, when a
   // planner spawns children) — count lifecycle events as the refresh signal.
@@ -84,10 +99,21 @@ export function TaskPage() {
                 )}
               </button>
             ))}
+            <span className="grow" />
+            <button
+              onClick={() => setFollow(!follow)}
+              title="Auto-scroll to new events"
+              className={`-mb-px px-3 py-1.5 text-xs transition ${
+                follow ? 'text-emerald-400' : 'text-zinc-600 hover:text-zinc-400'
+              }`}
+            >
+              {follow ? '▾ following' : '▾ follow'}
+            </button>
           </div>
           {tab === 'trace' && <TraceTimeline steps={steps} />}
           {tab === 'terminal' && <TerminalPane events={chunkEvents} />}
           {tab === 'diff' && <DiffViewer events={events} />}
+          <div ref={bottomRef} />
         </section>
       </div>
     </div>
@@ -104,6 +130,7 @@ const CONNECTION_LABEL: Record<ConnectionState, [string, string]> = {
 function Header({ task, connection }: { task: Task | null; connection: ConnectionState }) {
   const [label, tone] = CONNECTION_LABEL[connection]
   const [cancelError, setCancelError] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
   if (!task) return <p className="text-sm text-zinc-500">Loading task…</p>
 
   const result = task.result ?? {}
@@ -126,6 +153,19 @@ function Header({ task, connection }: { task: Task | null; connection: Connectio
         <h1 className="text-lg font-semibold">{String(task.payload.goal ?? shortId(task.id))}</h1>
         <span className={`text-xs ${tone}`}>{label}</span>
         <span className="grow" />
+        <button
+          onClick={() => {
+            navigator.clipboard?.writeText(task.id).then(
+              () => setCopied(true),
+              () => setCopied(false),
+            )
+            setTimeout(() => setCopied(false), 1500)
+          }}
+          title={task.id}
+          className="rounded-md border border-zinc-800 px-2.5 py-1 font-mono text-xs text-zinc-400 transition hover:bg-zinc-900 hover:text-zinc-200"
+        >
+          {copied ? 'copied ✓' : 'copy id'}
+        </button>
         {task.status === 'pending' && (
           <button
             onClick={() =>
@@ -136,6 +176,18 @@ function Header({ task, connection }: { task: Task | null; connection: Connectio
             className="rounded-md border border-red-900 px-3 py-1 text-xs text-red-300 transition hover:bg-red-950"
           >
             Cancel
+          </button>
+        )}
+        {(task.status === 'failed' || task.status === 'cancelled') && (
+          <button
+            onClick={() =>
+              retryTask(task.id)
+                .then(() => setCancelError(null))
+                .catch((err) => setCancelError(String(err)))
+            }
+            className="rounded-md border border-amber-900 px-3 py-1 text-xs text-amber-300 transition hover:bg-amber-950"
+          >
+            Retry
           </button>
         )}
       </div>
