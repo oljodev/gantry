@@ -35,6 +35,8 @@ const MARKER_TONES: Record<string, string> = {
   task_retry_scheduled: 'text-amber-400',
   task_lease_expired: 'text-amber-400',
   task_cancelled: 'text-zinc-500',
+  task_parked: 'text-indigo-300',
+  task_resumed: 'text-sky-300',
 }
 
 function Marker({ step }: { step: MarkerStep }) {

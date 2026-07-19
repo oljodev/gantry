@@ -1,0 +1,326 @@
+"""Phase 6 orchestration: spawn fan-out, event-driven dormancy, and wakeups.
+
+The flagship test runs a planner and a fleet of workers against real Postgres:
+the planner spawns three subtasks, parks at zero compute, is woken by the last
+child's completion, and integrates the children's results — with every park,
+wake, and hand-off durable in the event log.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import uuid
+from typing import Any
+
+import pytest
+import sqlalchemy as sa
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+from gantry.core import queue
+from gantry.core.db import session_scope
+from gantry.core.models import DEFAULT_WORKSPACE_ID, Task, TaskEvent, TaskKind, TaskStatus
+from gantry.runtime.tools import TaskParked, ToolContext
+from gantry.worker.service import Worker, WorkerConfig
+from gantry.worker.tools.orchestration import (
+    SpawnSubtaskTool,
+    WaitForChildrenTool,
+    child_task_id,
+)
+
+from .fakes import OrchestratorLLM
+
+Sessions = async_sessionmaker[AsyncSession]
+
+
+async def make_planner(db: Sessions, *, claim: bool = True) -> Task:
+    async with session_scope(db) as session:
+        task = await queue.enqueue(
+            session,
+            workspace_id=DEFAULT_WORKSPACE_ID,
+            kind=TaskKind.PLAN,
+            payload={"goal": "PLAN: orchestrate"},
+            max_attempts=20,
+        )
+    if claim:
+        async with session_scope(db) as session:
+            claimed = await queue.claim(session, worker_id="planner-w", lease_seconds=30)
+        assert claimed is not None and claimed.id == task.id
+        return claimed
+    return task
+
+
+def ctx_for(task: Task, db: Sessions, call_id: str) -> ToolContext:
+    return ToolContext(task_id=task.id, sessions=db, tool_call_id=call_id)
+
+
+async def spawn(db: Sessions, parent: Task, call_id: str, **args: Any) -> Task:
+    result = await SpawnSubtaskTool().execute(
+        {"goal": f"child for {call_id}", **args}, ctx_for(parent, db, call_id)
+    )
+    assert not result.is_error, result.content
+    async with db() as session:
+        child = await session.get(Task, child_task_id(parent.id, call_id))
+    assert child is not None
+    return child
+
+
+async def get_status(db: Sessions, task_id: uuid.UUID) -> TaskStatus:
+    async with db() as session:
+        status = await session.scalar(sa.select(Task.status).where(Task.id == task_id))
+    assert status is not None
+    return TaskStatus(status)
+
+
+async def event_types_of(db: Sessions, task_id: uuid.UUID) -> list[str]:
+    async with db() as session:
+        rows = await session.scalars(
+            sa.select(TaskEvent.event_type)
+            .where(TaskEvent.task_id == task_id)
+            .order_by(TaskEvent.seq)
+        )
+    return [str(r) for r in rows]
+
+
+async def test_spawn_subtask_is_exactly_once(db: Sessions) -> None:
+    planner = await make_planner(db)
+    child = await spawn(db, planner, "call_A", priority=7)
+
+    assert child.parent_task_id == planner.id
+    assert child.root_task_id == planner.id  # one tree, one indexed query
+    assert child.workspace_id == planner.workspace_id
+    assert child.kind is TaskKind.EXECUTE
+    assert child.priority == 7
+    assert child.payload["goal"] == "child for call_A"
+
+    # Crash-recovery re-run of the SAME call converges on the SAME child.
+    rerun = await SpawnSubtaskTool().execute(
+        {"goal": "child for call_A"}, ctx_for(planner, db, "call_A")
+    )
+    assert not rerun.is_error and "already spawned" in rerun.content
+    async with db() as session:
+        count = await session.scalar(
+            sa.select(sa.func.count()).select_from(Task).where(Task.parent_task_id == planner.id)
+        )
+    assert count == 1
+
+
+async def test_spawn_respects_subtask_cap(db: Sessions) -> None:
+    planner = await make_planner(db)
+    await spawn(db, planner, "call_A")
+    capped = await SpawnSubtaskTool(max_subtasks=1).execute(
+        {"goal": "one too many"}, ctx_for(planner, db, "call_B")
+    )
+    assert capped.is_error and "cap" in capped.content
+
+
+async def test_wait_without_children_does_not_park(db: Sessions) -> None:
+    planner = await make_planner(db)
+    result = await WaitForChildrenTool().execute({}, ctx_for(planner, db, "wait_1"))
+    assert not result.is_error and "no subtasks" in result.content
+
+
+async def test_wait_parks_while_children_run_and_reports_when_settled(db: Sessions) -> None:
+    planner = await make_planner(db)
+    child = await spawn(db, planner, "call_A")
+
+    with pytest.raises(TaskParked):
+        await WaitForChildrenTool().execute({}, ctx_for(planner, db, "wait_1"))
+
+    async with session_scope(db) as session:
+        claimed = await queue.claim(session, worker_id="child-w", lease_seconds=30)
+    assert claimed is not None and claimed.id == child.id
+    async with session_scope(db) as session:
+        assert await queue.complete(
+            session,
+            task_id=child.id,
+            worker_id="child-w",
+            attempt=claimed.attempt,
+            result={"final_text": "child says hi", "branch": "gantry/task-x"},
+        )
+
+    result = await WaitForChildrenTool().execute({}, ctx_for(planner, db, "wait_1"))
+    assert not result.is_error
+    report = json.loads(result.content)
+    assert report["summary"] == {"succeeded": 1}
+    assert report["children"][0]["final_text"] == "child says hi"
+    assert report["children"][0]["branch"] == "gantry/task-x"
+
+
+async def test_last_finishing_child_wakes_the_parked_parent(db: Sessions) -> None:
+    planner = await make_planner(db)
+    child_a = await spawn(db, planner, "call_A")
+    child_b = await spawn(db, planner, "call_B")
+
+    async with session_scope(db) as session:
+        status = await queue.park_for_children(
+            session, task_id=planner.id, worker_id="planner-w", attempt=planner.attempt
+        )
+    assert status is TaskStatus.WAITING_CHILDREN
+
+    for i, child in enumerate([child_a, child_b]):
+        async with session_scope(db) as session:
+            claimed = await queue.claim(session, worker_id=f"w{i}", lease_seconds=30)
+        assert claimed is not None
+        async with session_scope(db) as session:
+            assert await queue.complete(
+                session, task_id=claimed.id, worker_id=f"w{i}", attempt=claimed.attempt
+            )
+        expected = TaskStatus.WAITING_CHILDREN if child is child_a else TaskStatus.PENDING
+        assert await get_status(db, planner.id) is expected, f"after finishing {i + 1} children"
+
+    types = await event_types_of(db, planner.id)
+    assert "task_parked" in types and "task_resumed" in types
+
+
+async def test_simultaneous_final_children_still_wake_parent(db: Sessions) -> None:
+    """Write-skew regression (caught live in the Phase 6 demo): two siblings
+    completing in OVERLAPPING transactions must not each see the other as
+    unfinished and both skip the wake. The parent-row lock serializes them."""
+    planner = await make_planner(db)
+    child_a = await spawn(db, planner, "call_A")
+    child_b = await spawn(db, planner, "call_B")
+    async with session_scope(db) as session:
+        assert (
+            await queue.park_for_children(
+                session, task_id=planner.id, worker_id="planner-w", attempt=planner.attempt
+            )
+            is TaskStatus.WAITING_CHILDREN
+        )
+
+    claims: dict[uuid.UUID, tuple[str, int]] = {}
+    for i in range(2):
+        async with session_scope(db) as session:
+            claimed = await queue.claim(session, worker_id=f"cw{i}", lease_seconds=30)
+        assert claimed is not None
+        claims[claimed.id] = (f"cw{i}", claimed.attempt)
+
+    async def complete_holding_txn_open(child_id: uuid.UUID) -> None:
+        worker_id, attempt = claims[child_id]
+        async with db() as session:
+            assert await queue.complete(
+                session, task_id=child_id, worker_id=worker_id, attempt=attempt
+            )
+            await asyncio.sleep(0.3)  # keep the transaction open so both overlap
+            await session.commit()
+
+    await asyncio.wait_for(
+        asyncio.gather(
+            complete_holding_txn_open(child_a.id),
+            complete_holding_txn_open(child_b.id),
+        ),
+        timeout=10,
+    )
+    assert await get_status(db, planner.id) is TaskStatus.PENDING, "wakeup was lost to write skew"
+
+
+async def test_lost_wakeup_guard_unparks_immediately(db: Sessions) -> None:
+    """Children all finished between the wait-check and the park commit."""
+    planner = await make_planner(db)
+    child = await spawn(db, planner, "call_A")
+
+    # The child settles while the planner is still nominally running (no wake).
+    async with session_scope(db) as session:
+        claimed = await queue.claim(session, worker_id="fast-child", lease_seconds=30)
+    assert claimed is not None and claimed.id == child.id
+    async with session_scope(db) as session:
+        assert await queue.complete(
+            session, task_id=child.id, worker_id="fast-child", attempt=claimed.attempt
+        )
+    # Parking now must detect the settled children and immediately re-queue.
+    async with session_scope(db) as session:
+        status = await queue.park_for_children(
+            session, task_id=planner.id, worker_id="planner-w", attempt=planner.attempt
+        )
+    assert status is TaskStatus.PENDING
+
+
+async def test_reaped_terminal_child_wakes_parent(db: Sessions) -> None:
+    planner = await make_planner(db)
+    await spawn(db, planner, "call_A", max_attempts=1)
+
+    async with session_scope(db) as session:
+        child = await queue.claim(session, worker_id="doomed", lease_seconds=0.05)
+    assert child is not None
+    async with session_scope(db) as session:
+        status = await queue.park_for_children(
+            session, task_id=planner.id, worker_id="planner-w", attempt=planner.attempt
+        )
+    assert status is TaskStatus.WAITING_CHILDREN
+
+    await asyncio.sleep(0.2)  # let the child's lease lapse
+    async with session_scope(db) as session:
+        reaped = await queue.reap_expired(session)
+    assert [r.status for r in reaped] == [TaskStatus.FAILED]  # max_attempts=1 → terminal
+    assert await get_status(db, planner.id) is TaskStatus.PENDING
+
+
+async def test_cancelled_child_wakes_parent(db: Sessions) -> None:
+    planner = await make_planner(db)
+    child = await spawn(db, planner, "call_A")
+    async with session_scope(db) as session:
+        status = await queue.park_for_children(
+            session, task_id=planner.id, worker_id="planner-w", attempt=planner.attempt
+        )
+    assert status is TaskStatus.WAITING_CHILDREN
+    async with session_scope(db) as session:
+        assert await queue.cancel(session, task_id=child.id) is not None
+    assert await get_status(db, planner.id) is TaskStatus.PENDING
+
+
+async def test_planner_fleet_end_to_end(db: Sessions, tmp_path: Any) -> None:
+    """Goal in → plan → parallel workers → park → wake → integrated result."""
+    goals = ["alpha", "beta", "gamma"]
+    llm = OrchestratorLLM(subtask_goals=goals, child_delay_seconds=0.1)
+    planner_task = await make_planner(db, claim=False)
+
+    workers = [
+        Worker(
+            db,
+            WorkerConfig(
+                worker_id=f"fleet-{i}",
+                workspace_root=tmp_path / f"ws{i}",
+                lease_seconds=30,
+                poll_interval_seconds=0.05,
+            ),
+            llm,
+        )
+        for i in range(3)
+    ]
+    shutdown = asyncio.Event()
+    runs = [asyncio.create_task(w.run(shutdown)) for w in workers]
+    try:
+        deadline = asyncio.get_running_loop().time() + 30
+        while await get_status(db, planner_task.id) is not TaskStatus.SUCCEEDED:
+            assert asyncio.get_running_loop().time() < deadline, "planner never finished"
+            await asyncio.sleep(0.1)
+    finally:
+        shutdown.set()
+        await asyncio.gather(*runs)
+
+    async with db() as session:
+        planner = await session.get(Task, planner_task.id)
+        assert planner is not None
+        children = (
+            await session.scalars(
+                sa.select(Task).where(Task.parent_task_id == planner.id).order_by(Task.created_at)
+            )
+        ).all()
+
+    # Exactly one child per spawn call — no duplicates from any re-run.
+    assert len(children) == 3
+    assert all(c.status is TaskStatus.SUCCEEDED for c in children)
+    assert all(c.root_task_id == planner.id for c in children)
+    assert {c.payload["goal"] for c in children} == set(goals)
+
+    # The planner's final answer integrates every child's result.
+    assert planner.result is not None
+    final_text = planner.result["final_text"]
+    assert final_text.startswith("INTEGRATED:")
+    for goal in goals:
+        assert f"answer[{goal}]" in final_text
+
+    # The dormancy cycle is durable in the log.
+    types = await event_types_of(db, planner.id)
+    parked_at = types.index("task_parked")
+    assert "task_resumed" in types[parked_at:]  # woken after parking, durably logged

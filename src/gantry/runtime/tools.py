@@ -46,6 +46,26 @@ class ToolContext:
     task_id: uuid.UUID
     workspace: Path | None = None
     emit_event: EventEmitter | None = None
+    #: DB session factory for orchestration tools (spawn/wait). Typed as Any
+    #: to keep the runtime layer free of a SQLAlchemy dependency.
+    sessions: Any | None = None
+    #: The current tool call's id — set per call by the loop. Lets a tool
+    #: derive deterministic identifiers (e.g. exactly-once child task ids).
+    tool_call_id: str | None = None
+
+
+class TaskParked(Exception):
+    """Raised by a tool to park the task (release compute, keep the log).
+
+    The tool's ``tool_call`` checkpoint stays dangling in the event log; when
+    the task is woken and re-claimed, normal crash-recovery re-executes the
+    call — which either returns a real result now or parks again. The reason
+    becomes the task's parked status (e.g. ``waiting_children``).
+    """
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
 
 
 INTERRUPTED_RESULT = ToolResult(

@@ -18,14 +18,15 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from gantry.config import Settings
 from gantry.core import queue
 from gantry.core.db import session_scope
-from gantry.core.models import Task
+from gantry.core.models import Task, TaskKind
 from gantry.core.notify import QueueListener
 from gantry.logging import get_logger
 from gantry.runtime.compaction import CompactionConfig
 from gantry.runtime.llm import LLMClient
 from gantry.runtime.loop import AgentLoopError, run_agent_task
+from gantry.runtime.tools import TaskParked
 from gantry.worker import workspace as ws
-from gantry.worker.tools import build_coding_registry
+from gantry.worker.tools import build_coding_registry, build_planner_registry
 
 logger = get_logger(__name__)
 
@@ -45,6 +46,7 @@ class WorkerConfig:
     github_token: str | None = None
     keep_failed_workspaces: bool = False
     compaction: CompactionConfig | None = field(default_factory=CompactionConfig)
+    max_subtasks: int = 32
 
     @classmethod
     def from_settings(cls, settings: Settings, worker_id: str | None = None) -> WorkerConfig:
@@ -52,6 +54,7 @@ class WorkerConfig:
             worker_id=worker_id or f"worker-{uuid.uuid4().hex[:8]}",
             workspace_root=settings.workspace_root,
             github_token=settings.github_token,
+            max_subtasks=settings.max_subtasks_per_task,
         )
 
 
@@ -107,14 +110,19 @@ class Worker:
                 await queue.mark_running(
                     session, task_id=task.id, worker_id=cfg.worker_id, attempt=task.attempt
                 )
-            workspace = await ws.prepare_workspace(
-                cfg.workspace_root,
-                task.id,
-                task.attempt,
-                task.payload,
-                github_token=cfg.github_token,
-            )
-            registry = build_coding_registry(workspace.auth)
+            if task.kind is TaskKind.PLAN:
+                # Planners coordinate; they get orchestration tools and no
+                # sandbox checkout of their own.
+                registry = build_planner_registry(cfg.max_subtasks)
+            else:
+                workspace = await ws.prepare_workspace(
+                    cfg.workspace_root,
+                    task.id,
+                    task.attempt,
+                    task.payload,
+                    github_token=cfg.github_token,
+                )
+                registry = build_coding_registry(workspace.auth)
 
             async def on_step() -> None:
                 if lease_lost.is_set():
@@ -125,7 +133,7 @@ class Worker:
                 task,
                 self._llm,
                 registry,
-                workspace=workspace.path,
+                workspace=workspace.path if workspace else None,
                 compaction=cfg.compaction,
                 on_step=on_step,
             )
@@ -139,12 +147,24 @@ class Worker:
                         "final_text": outcome.final_text,
                         "steps": outcome.steps,
                         "resumed": outcome.resumed,
-                        "branch": workspace.branch,
+                        "branch": workspace.branch if workspace else None,
                         "prompt_tokens": outcome.prompt_tokens,
                         "completion_tokens": outcome.completion_tokens,
                     },
                 )
             logger.info("worker.task_succeeded", task_id=str(task.id), steps=outcome.steps)
+        except TaskParked as parked:
+            async with session_scope(self._sessions) as session:
+                status = await queue.park_for_children(
+                    session, task_id=task.id, worker_id=cfg.worker_id, attempt=task.attempt
+                )
+            succeeded = True  # the workspace (if any) is not needed while parked
+            logger.info(
+                "worker.task_parked",
+                task_id=str(task.id),
+                reason=parked.reason,
+                status=str(status),
+            )
         except LeaseLostError:
             logger.warning("worker.lease_lost", task_id=str(task.id))
         except AgentLoopError as exc:

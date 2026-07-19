@@ -51,6 +51,8 @@ class Settings(BaseSettings):
     reaper_interval_seconds: float = 10.0
     #: Built frontend to serve as the SPA (skipped if index.html is absent).
     frontend_dist: Path = Path("web/dist")
+    #: Runaway-planner guard: max children one task may spawn.
+    max_subtasks_per_task: int = 32
     #: Origins allowed to call the API from a browser (the Phase 5 frontend).
     cors_origins: list[str] = Field(
         default=["http://localhost:5173", "http://127.0.0.1:5173"],

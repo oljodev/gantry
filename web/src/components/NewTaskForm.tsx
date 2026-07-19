@@ -11,6 +11,7 @@ export function NewTaskForm() {
   const [goal, setGoal] = useState('')
   const [repoUrl, setRepoUrl] = useState('')
   const [model, setModel] = useState('')
+  const [kind, setKind] = useState<'execute' | 'plan'>('execute')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -22,6 +23,7 @@ export function NewTaskForm() {
     try {
       const task = await createTask({
         goal: goal.trim(),
+        kind,
         repo_url: repoUrl.trim() || undefined,
         model: model.trim() || undefined,
       })
@@ -69,6 +71,17 @@ export function NewTaskForm() {
           >
             {busy ? 'Enqueuing…' : 'Enqueue'}
           </button>
+          <label className="flex items-center gap-1.5 text-xs text-zinc-400">
+            kind
+            <select
+              value={kind}
+              onChange={(e) => setKind(e.target.value as 'execute' | 'plan')}
+              className="rounded-md border border-zinc-800 bg-zinc-900 px-2 py-1 font-mono"
+            >
+              <option value="execute">execute — one worker</option>
+              <option value="plan">plan — fan out subtasks</option>
+            </select>
+          </label>
           {error && <span className="text-xs text-red-400">{error}</span>}
         </div>
       </div>

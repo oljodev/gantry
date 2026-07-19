@@ -18,7 +18,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from gantry.core import queue
 from gantry.core.db import session_scope
 from gantry.core.events import read_events
-from gantry.core.models import DEFAULT_WORKSPACE_ID, Task, TaskStatus
+from gantry.core.models import DEFAULT_WORKSPACE_ID, Task, TaskKind, TaskStatus
+from gantry.runtime.state import PLANNER_SYSTEM_PROMPT
 from gantry.server.schemas import (
     TaskCreateRequest,
     TaskEventOut,
@@ -26,6 +27,7 @@ from gantry.server.schemas import (
     TaskListResponse,
     TaskOut,
 )
+from gantry.worker.tools.orchestration import DEFAULT_PLANNER_MAX_ATTEMPTS
 
 router = APIRouter(prefix="/api", tags=["tasks"])
 
@@ -39,14 +41,21 @@ def get_sessions(request: Request) -> Sessions:
 @router.post("/tasks", response_model=TaskOut, status_code=201)
 async def create_task(request: Request, body: TaskCreateRequest) -> TaskOut:
     sessions = get_sessions(request)
+    payload = body.build_payload()
+    max_attempts = body.max_attempts
+    if body.kind is TaskKind.PLAN:
+        payload.setdefault("system_prompt", PLANNER_SYSTEM_PROMPT)
+        if "max_attempts" not in body.model_fields_set:
+            # Every park/wake cycle consumes an attempt (the fencing token).
+            max_attempts = DEFAULT_PLANNER_MAX_ATTEMPTS
     async with session_scope(sessions) as session:
         task = await queue.enqueue(
             session,
             workspace_id=DEFAULT_WORKSPACE_ID,
             kind=body.kind,
-            payload=body.build_payload(),
+            payload=payload,
             priority=body.priority,
-            max_attempts=body.max_attempts,
+            max_attempts=max_attempts,
         )
     return TaskOut.model_validate(task)
 

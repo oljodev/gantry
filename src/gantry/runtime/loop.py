@@ -21,7 +21,7 @@ cheap — nothing already checkpointed is redone.
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import partial
 from pathlib import Path
 from typing import Any
@@ -45,6 +45,7 @@ from gantry.runtime.state import (
 )
 from gantry.runtime.tools import (
     INTERRUPTED_RESULT,
+    TaskParked,
     ToolContext,
     ToolIdempotency,
     ToolRegistry,
@@ -89,6 +90,7 @@ async def run_agent_task(
         task_id=task.id,
         workspace=workspace,
         emit_event=partial(_checkpoint, sessions, task),
+        sessions=sessions,
     )
 
     async with session_scope(sessions) as session:
@@ -181,7 +183,7 @@ async def _resolve_pending_tool_calls(
                 logger.info("agent.rerun_interrupted_tool", task_id=str(task.id), tool=tc.name)
                 result = await _execute_tool(tools, tc, ctx)
             else:
-                recovered = await tool.recover(tc.arguments, ctx)
+                recovered = await tool.recover(tc.arguments, replace(ctx, tool_call_id=tc.id))
                 result = recovered if recovered is not None else INTERRUPTED_RESULT
                 logger.info(
                     "agent.recovered_interrupted_tool",
@@ -219,7 +221,12 @@ async def _execute_tool(tools: ToolRegistry, tc: ToolCallRequest, ctx: ToolConte
     if tool is None:
         return ToolResult(f"Unknown tool: {tc.name}", is_error=True)
     try:
-        return await tool.execute(tc.arguments, ctx)
+        return await tool.execute(tc.arguments, replace(ctx, tool_call_id=tc.id))
+    except TaskParked:
+        # Control flow, not a tool failure: propagate to the worker, which
+        # parks the task. The dangling tool_call checkpoint is the resume
+        # point — re-execution on wake produces the real result.
+        raise
     except Exception as exc:
         logger.warning("agent.tool_failed", tool=tc.name, error=repr(exc))
         return ToolResult(f"Tool '{tc.name}' failed: {exc!r}", is_error=True)

@@ -44,6 +44,7 @@ export type StreamMessage = { type: 'task'; data: Task } | { type: 'event'; data
 
 export interface TaskCreate {
   goal: string
+  kind?: 'execute' | 'plan'
   repo_url?: string
   base_branch?: string
   model?: string

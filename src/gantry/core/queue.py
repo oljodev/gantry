@@ -28,6 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from gantry.core.events import append_event
 from gantry.core.models import (
     LEASED_STATUSES,
+    TERMINAL_STATUSES,
     EventType,
     Task,
     TaskKind,
@@ -78,9 +79,14 @@ async def enqueue(
     priority: int = 0,
     max_attempts: int = 3,
     scheduled_at: datetime | None = None,
+    task_id: uuid.UUID | None = None,
 ) -> Task:
-    """Insert a pending task, log it, and notify idle workers (on commit)."""
-    task_id = uuid.uuid4()
+    """Insert a pending task, log it, and notify idle workers (on commit).
+
+    ``task_id`` may be supplied for deterministic (exactly-once) enqueueing —
+    e.g. ``spawn_subtask`` derives it from the spawning tool call's identity.
+    """
+    task_id = task_id or uuid.uuid4()
     task = Task(
         id=task_id,
         workspace_id=workspace_id,
@@ -224,6 +230,7 @@ async def complete(
         EventType.TASK_SUCCEEDED,
         {"worker_id": worker_id, "attempt": attempt},
     )
+    await _try_wake_parent(session, await _parent_of(session, task_id))
     return True
 
 
@@ -293,7 +300,87 @@ async def fail(
         EventType.TASK_FAILED,
         {"worker_id": worker_id, "attempt": attempt, "error": error},
     )
+    await _try_wake_parent(session, await _parent_of(session, task_id))
     return TaskStatus.FAILED
+
+
+async def park_for_children(
+    session: AsyncSession,
+    *,
+    task_id: uuid.UUID,
+    worker_id: str,
+    attempt: int,
+) -> TaskStatus | None:
+    """Park a planner until its children settle. Returns the resulting status.
+
+    Fenced like every worker mutation. The park and the lost-wakeup guard run
+    in ONE transaction: after switching to ``waiting_children`` we re-check
+    the children — if they all reached terminal states while we were deciding
+    to park (their completions saw a non-parked parent and skipped the wake),
+    we immediately flip back to ``pending``. A child completing concurrently
+    blocks on this row's lock and re-evaluates after our commit, so exactly
+    one side always delivers the wakeup.
+    """
+    res = await session.execute(
+        sa.update(Task)
+        .where(
+            Task.id == task_id,
+            Task.claimed_by == worker_id,
+            Task.attempt == attempt,
+            Task.status.in_(LEASED_STATUSES),
+        )
+        .values(
+            status=TaskStatus.WAITING_CHILDREN,
+            claimed_by=None,
+            lease_expires_at=None,
+            updated_at=sa.func.now(),
+        )
+    )
+    if _rowcount(res) != 1:
+        return None
+    await append_event(session, task_id, EventType.TASK_PARKED, {"reason": "waiting_children"})
+    if await _try_wake_parent(session, task_id):
+        return TaskStatus.PENDING
+    return TaskStatus.WAITING_CHILDREN
+
+
+async def _try_wake_parent(session: AsyncSession, parent_id: uuid.UUID | None) -> bool:
+    """Re-queue a parked parent iff every child has reached a terminal state.
+
+    Ordering is load-bearing: LOCK THE PARENT ROW FIRST, then examine the
+    children. Two siblings completing concurrently under READ COMMITTED would
+    otherwise each see the other's uncommitted row as unfinished and both skip
+    the wake (write skew) — parking the parent forever. With the lock taken
+    first, the second completer blocks until the first commits and then
+    re-reads the children with that commit visible, so the last one to finish
+    always delivers the wakeup. (The park path takes the same lock via its own
+    UPDATE, which is what closes the park-vs-complete race too.)
+    """
+    if parent_id is None:
+        return False
+    status = await session.scalar(
+        sa.select(Task.status).where(Task.id == parent_id).with_for_update()
+    )
+    if status is None or TaskStatus(status) is not TaskStatus.WAITING_CHILDREN:
+        return False
+    unfinished = await session.scalar(
+        sa.select(
+            sa.select(Task.id)
+            .where(Task.parent_task_id == parent_id, Task.status.notin_(TERMINAL_STATUSES))
+            .exists()
+        )
+    )
+    if unfinished:
+        return False
+    await session.execute(
+        sa.update(Task)
+        .where(Task.id == parent_id)
+        .values(status=TaskStatus.PENDING, scheduled_at=sa.func.now(), updated_at=sa.func.now())
+    )
+    await append_event(session, parent_id, EventType.TASK_RESUMED, {"reason": "children_settled"})
+    await notify_task_ready(session, parent_id)
+    logger.info("queue.parent_woken", parent_id=str(parent_id))
+    return True
 
 
 async def cancel(session: AsyncSession, *, task_id: uuid.UUID) -> Task | None:
@@ -318,6 +405,7 @@ async def cancel(session: AsyncSession, *, task_id: uuid.UUID) -> Task | None:
     if task is None:
         return None
     await append_event(session, task.id, EventType.TASK_CANCELLED, {})
+    await _try_wake_parent(session, task.parent_task_id)  # cancellation is terminal too
     return task
 
 
@@ -353,7 +441,7 @@ async def reap_expired(session: AsyncSession, *, limit: int = 100) -> list[Reape
             lease_expires_at=None,
             updated_at=sa.func.now(),
         )
-        .returning(Task.id, Task.status, Task.attempt, Task.claimed_by)
+        .returning(Task.id, Task.status, Task.attempt, Task.claimed_by, Task.parent_task_id)
     )
     rows = (await session.execute(stmt)).all()
     reaped: list[ReapedTask] = []
@@ -370,6 +458,8 @@ async def reap_expired(session: AsyncSession, *, limit: int = 100) -> list[Reape
         )
         if item.status is TaskStatus.PENDING:
             await notify_task_ready(session, item.task_id)
+        else:  # terminally failed by the reaper — its parent may be waiting
+            await _try_wake_parent(session, row.parent_task_id)
         logger.info(
             "queue.task_reaped",
             task_id=str(item.task_id),
@@ -377,6 +467,10 @@ async def reap_expired(session: AsyncSession, *, limit: int = 100) -> list[Reape
             new_status=item.status,
         )
     return reaped
+
+
+async def _parent_of(session: AsyncSession, task_id: uuid.UUID) -> uuid.UUID | None:
+    return await session.scalar(sa.select(Task.parent_task_id).where(Task.id == task_id))
 
 
 async def _max_attempts_of(session: AsyncSession, task_id: uuid.UUID) -> int:

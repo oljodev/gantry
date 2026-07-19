@@ -62,6 +62,9 @@ class EventType(enum.StrEnum):
     TASK_RETRY_SCHEDULED = "task_retry_scheduled"
     TASK_LEASE_EXPIRED = "task_lease_expired"
     TASK_CANCELLED = "task_cancelled"
+    # Orchestration (Phase 6): event-driven dormancy for planner tasks.
+    TASK_PARKED = "task_parked"
+    TASK_RESUMED = "task_resumed"
     # Agent runtime (Phase 2+) — declared now so the log schema is stable.
     LLM_REQUEST = "llm_request"
     LLM_RESPONSE = "llm_response"
