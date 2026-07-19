@@ -69,6 +69,10 @@ class EventType(enum.StrEnum):
     LLM_REQUEST = "llm_request"
     LLM_RESPONSE = "llm_response"
     TOOL_CALL = "tool_call"
+    #: Emitted for approval-gated calls only, immediately before execution —
+    #: distinguishes "approved but never ran" (safe to run) from "approved and
+    #: crashed mid-run" (idempotency policy applies) on resume.
+    TOOL_STARTED = "tool_started"
     TOOL_RESULT = "tool_result"
     TERMINAL_CHUNK = "terminal_chunk"
     DIFF = "diff"

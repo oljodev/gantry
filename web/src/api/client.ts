@@ -1,5 +1,10 @@
 import type { Task, TaskCreate, TaskEvent, TaskStatus } from './types'
 
+export interface ApprovalItem {
+  task: Task
+  request: TaskEvent
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     headers: { 'Content-Type': 'application/json' },
@@ -36,4 +41,20 @@ export function createTask(body: TaskCreate): Promise<Task> {
 
 export function cancelTask(taskId: string): Promise<Task> {
   return request<Task>(`/api/tasks/${taskId}/cancel`, { method: 'POST' })
+}
+
+export function listApprovals(): Promise<ApprovalItem[]> {
+  return request<{ approvals: ApprovalItem[] }>('/api/approvals').then((body) => body.approvals)
+}
+
+export function resolveApproval(
+  taskId: string,
+  toolCallId: string,
+  decision: 'approved' | 'rejected',
+  comment = '',
+): Promise<Task> {
+  return request<Task>(`/api/tasks/${taskId}/approvals/${toolCallId}`, {
+    method: 'POST',
+    body: JSON.stringify({ decision, comment }),
+  })
 }

@@ -18,9 +18,19 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from gantry.core import queue
 from gantry.core.db import session_scope
 from gantry.core.events import read_events
-from gantry.core.models import DEFAULT_WORKSPACE_ID, Task, TaskKind, TaskStatus
+from gantry.core.models import (
+    DEFAULT_WORKSPACE_ID,
+    EventType,
+    Task,
+    TaskEvent,
+    TaskKind,
+    TaskStatus,
+)
 from gantry.runtime.state import PLANNER_SYSTEM_PROMPT
 from gantry.server.schemas import (
+    ApprovalItem,
+    ApprovalResolveRequest,
+    ApprovalsResponse,
     TaskCreateRequest,
     TaskEventOut,
     TaskEventsResponse,
@@ -108,6 +118,81 @@ async def get_task_events(
             raise HTTPException(status_code=404, detail="task not found")
         events = await read_events(session, task_id, after_seq=after_seq, limit=limit)
     return TaskEventsResponse(events=[TaskEventOut.model_validate(e) for e in events])
+
+
+@router.get("/approvals", response_model=ApprovalsResponse)
+async def list_approvals(request: Request) -> ApprovalsResponse:
+    """The operator inbox: every task parked on an unresolved approval."""
+    sessions = get_sessions(request)
+    items: list[ApprovalItem] = []
+    async with sessions() as session:
+        waiting = (
+            await session.scalars(
+                sa.select(Task)
+                .where(
+                    Task.workspace_id == DEFAULT_WORKSPACE_ID,
+                    Task.status == TaskStatus.WAITING_APPROVAL,
+                )
+                .order_by(Task.updated_at)
+            )
+        ).all()
+        for task in waiting:
+            events = (
+                await session.scalars(
+                    sa.select(TaskEvent)
+                    .where(
+                        TaskEvent.task_id == task.id,
+                        TaskEvent.event_type.in_(
+                            [
+                                EventType.APPROVAL_REQUESTED.value,
+                                EventType.APPROVAL_RESOLVED.value,
+                            ]
+                        ),
+                    )
+                    .order_by(TaskEvent.seq)
+                )
+            ).all()
+            resolved = {
+                str(e.payload.get("tool_call_id"))
+                for e in events
+                if EventType(e.event_type) is EventType.APPROVAL_RESOLVED
+            }
+            for event in events:
+                if (
+                    EventType(event.event_type) is EventType.APPROVAL_REQUESTED
+                    and str(event.payload.get("tool_call_id")) not in resolved
+                ):
+                    items.append(
+                        ApprovalItem(
+                            task=TaskOut.model_validate(task),
+                            request=TaskEventOut.model_validate(event),
+                        )
+                    )
+    return ApprovalsResponse(approvals=items)
+
+
+@router.post("/tasks/{task_id}/approvals/{tool_call_id}", response_model=TaskOut)
+async def resolve_task_approval(
+    request: Request,
+    task_id: uuid.UUID,
+    tool_call_id: str,
+    body: ApprovalResolveRequest,
+) -> TaskOut:
+    sessions = get_sessions(request)
+    async with session_scope(sessions) as session:
+        outcome, task = await queue.resolve_approval(
+            session,
+            task_id=task_id,
+            tool_call_id=tool_call_id,
+            approved=body.decision == "approved",
+            comment=body.comment,
+            resolved_by=body.resolved_by,
+        )
+        if outcome == "resolved" and task is not None:
+            return TaskOut.model_validate(task)
+    if outcome == "already_resolved":
+        raise HTTPException(status_code=409, detail="approval already resolved")
+    raise HTTPException(status_code=404, detail="no such pending approval")
 
 
 @router.post("/tasks/{task_id}/cancel", response_model=TaskOut)

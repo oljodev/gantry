@@ -37,14 +37,32 @@ const MARKER_TONES: Record<string, string> = {
   task_cancelled: 'text-zinc-500',
   task_parked: 'text-indigo-300',
   task_resumed: 'text-sky-300',
+  approval_requested: 'text-purple-300',
+}
+
+function markerDetail(event: TaskEvent): string {
+  const p = event.payload
+  if (event.event_type === 'approval_requested') {
+    return `${String(p.tool)}: ${String(p.reason)}`
+  }
+  if (event.event_type === 'approval_resolved') {
+    const comment = p.comment ? ` — "${String(p.comment)}"` : ''
+    return `${String(p.decision)} by ${String(p.resolved_by ?? 'operator')}${comment}`
+  }
+  return (
+    (p.error as string | undefined) ?? (p.worker_id ? `worker ${String(p.worker_id)}` : '')
+  )
 }
 
 function Marker({ step }: { step: MarkerStep }) {
   const { event } = step
-  const tone = MARKER_TONES[event.event_type] ?? 'text-zinc-400'
-  const detail =
-    (event.payload.error as string | undefined) ??
-    (event.payload.worker_id ? `worker ${String(event.payload.worker_id)}` : '')
+  const tone =
+    event.event_type === 'approval_resolved'
+      ? event.payload.decision === 'approved'
+        ? 'text-emerald-400'
+        : 'text-red-400'
+      : (MARKER_TONES[event.event_type] ?? 'text-zinc-400')
+  const detail = markerDetail(event)
   return (
     <div className="flex items-center gap-2 px-1 py-0.5 text-xs">
       <span className={`font-medium ${tone}`}>{event.event_type.replace(/_/g, ' ')}</span>

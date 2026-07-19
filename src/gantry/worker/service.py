@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from gantry.config import Settings
 from gantry.core import queue
 from gantry.core.db import session_scope
-from gantry.core.models import Task, TaskKind
+from gantry.core.models import Task, TaskKind, TaskStatus
 from gantry.core.notify import QueueListener
 from gantry.logging import get_logger
 from gantry.runtime.compaction import CompactionConfig
@@ -26,6 +26,7 @@ from gantry.runtime.llm import LLMClient
 from gantry.runtime.loop import AgentLoopError, run_agent_task
 from gantry.runtime.tools import TaskParked
 from gantry.worker import workspace as ws
+from gantry.worker.policy import policy_for_payload
 from gantry.worker.tools import build_coding_registry, build_planner_registry
 
 logger = get_logger(__name__)
@@ -136,6 +137,7 @@ class Worker:
                 workspace=workspace.path if workspace else None,
                 compaction=cfg.compaction,
                 on_step=on_step,
+                approval_policy=policy_for_payload(task.payload),
             )
             async with session_scope(self._sessions) as session:
                 succeeded = await queue.complete(
@@ -155,9 +157,14 @@ class Worker:
             logger.info("worker.task_succeeded", task_id=str(task.id), steps=outcome.steps)
         except TaskParked as parked:
             async with session_scope(self._sessions) as session:
-                status = await queue.park_for_children(
-                    session, task_id=task.id, worker_id=cfg.worker_id, attempt=task.attempt
-                )
+                if parked.reason == TaskStatus.WAITING_APPROVAL.value:
+                    status = await queue.park_for_approval(
+                        session, task_id=task.id, worker_id=cfg.worker_id, attempt=task.attempt
+                    )
+                else:
+                    status = await queue.park_for_children(
+                        session, task_id=task.id, worker_id=cfg.worker_id, attempt=task.attempt
+                    )
             succeeded = True  # the workspace (if any) is not needed while parked
             logger.info(
                 "worker.task_parked",

@@ -1,26 +1,30 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { listTasks } from '../api/client'
+import { listApprovals, listTasks, type ApprovalItem } from '../api/client'
 import { openFirehose } from '../api/stream'
 import type { Task } from '../api/types'
+import { ApprovalCard } from '../components/ApprovalCard'
 import { NewTaskForm } from '../components/NewTaskForm'
 import { StatusPill } from '../components/StatusPill'
 import { relativeTime, shortId } from '../lib/format'
 
 export function DashboardPage() {
   const [tasks, setTasks] = useState<Task[] | null>(null)
+  const [approvals, setApprovals] = useState<ApprovalItem[]>([])
   const refetchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const refetch = useCallback(() => {
     listTasks().then(setTasks).catch(console.error)
+    listApprovals().then(setApprovals).catch(console.error)
   }, [])
 
   useEffect(() => {
     refetch()
-    // Any lifecycle event on the firehose means the table is stale.
-    // Debounced so a burst of events causes one refetch, not thirty.
+    // Any lifecycle or approval event on the firehose means the page is
+    // stale. Debounced so a burst of events causes one refetch, not thirty.
     const stop = openFirehose((event) => {
-      if (!event.event_type.startsWith('task_')) return
+      if (!event.event_type.startsWith('task_') && !event.event_type.startsWith('approval_'))
+        return
       if (refetchTimer.current !== null) return
       refetchTimer.current = setTimeout(() => {
         refetchTimer.current = null
@@ -35,6 +39,24 @@ export function DashboardPage() {
 
   return (
     <div className="flex flex-col gap-6">
+      {approvals.length > 0 && (
+        <section aria-label="Approvals inbox">
+          <h2 className="mb-2 text-sm font-semibold text-purple-300">
+            Approvals inbox ({approvals.length})
+          </h2>
+          <div className="flex flex-col gap-2">
+            {approvals.map((item) => (
+              <ApprovalCard
+                key={`${item.task.id}:${item.request.seq}`}
+                taskId={item.task.id}
+                goal={String(item.task.payload.goal ?? '')}
+                request={item.request}
+                onResolved={refetch}
+              />
+            ))}
+          </div>
+        </section>
+      )}
       <NewTaskForm />
       <section>
         <h2 className="mb-2 text-sm font-semibold text-zinc-400">
@@ -61,8 +83,11 @@ export function DashboardPage() {
                   <td className="px-3 py-2">
                     <StatusPill status={task.status} />
                   </td>
-                  <td className="max-w-md truncate px-3 py-2">
-                    <Link to={`/tasks/${task.id}`} className="hover:text-amber-300">
+                  <td className="max-w-md px-3 py-2">
+                    <Link
+                      to={`/tasks/${task.id}`}
+                      className="block truncate hover:text-amber-300"
+                    >
                       {String(task.payload.goal ?? '—')}
                     </Link>
                   </td>

@@ -28,12 +28,16 @@ export type TraceStep = LlmStep | ToolStep | MarkerStep
 export function foldTrace(events: TaskEvent[]): TraceStep[] {
   const steps: TraceStep[] = []
   let openLlm: LlmStep | null = null
-  let openTool: ToolStep | null = null
+  // Tool steps are tracked by call id: a result may arrive many events after
+  // its call (approval gates park the task in between), so lifecycle markers
+  // must never orphan an open tool step.
+  const toolsById = new Map<string, ToolStep>()
+  let lastTool: ToolStep | null = null
 
   for (const event of events) {
     switch (event.event_type) {
       case 'llm_request':
-        openTool = null
+        lastTool = null
         openLlm = { kind: 'llm', request: event }
         steps.push(openLlm)
         break
@@ -45,32 +49,56 @@ export function foldTrace(events: TaskEvent[]): TraceStep[] {
         }
         openLlm = null
         break
-      case 'tool_call':
-        openTool = { kind: 'tool', call: event, chunks: [] }
-        steps.push(openTool)
+      case 'tool_call': {
+        const tool: ToolStep = { kind: 'tool', call: event, chunks: [] }
+        toolsById.set(String(event.payload.tool_call_id), tool)
+        lastTool = tool
+        steps.push(tool)
         break
+      }
+      case 'tool_started': {
+        // Post-approval execution marker; point streaming output back at
+        // the (possibly much earlier) gated tool step.
+        const tool = toolsById.get(String(event.payload.tool_call_id))
+        if (tool) lastTool = tool
+        break
+      }
       case 'terminal_chunk':
-        if (openTool) openTool.chunks.push(event)
+        if (lastTool) lastTool.chunks.push(event)
         break
       case 'diff':
-        if (openTool) openTool.diff = event
+        if (lastTool) lastTool.diff = event
         break
-      case 'tool_result':
-        if (openTool && openTool.call.payload.tool_call_id === event.payload.tool_call_id) {
-          openTool.result = event
-          openTool = null
+      case 'tool_result': {
+        const tool = toolsById.get(String(event.payload.tool_call_id))
+        if (tool) {
+          tool.result = event
+          toolsById.delete(String(event.payload.tool_call_id))
         }
         break
+      }
       case 'compaction':
         steps.push({ kind: 'compaction', event })
         break
       default:
-        // task_* lifecycle events (and anything future) render as markers.
+        // task_* lifecycle and approval_* events render as markers.
         steps.push({ kind: 'lifecycle', event })
-        openTool = null
     }
   }
   return steps
+}
+
+/** approval_requested events with no matching approval_resolved yet. */
+export function pendingApprovals(events: TaskEvent[]): TaskEvent[] {
+  const resolved = new Set(
+    events
+      .filter((e) => e.event_type === 'approval_resolved')
+      .map((e) => String(e.payload.tool_call_id)),
+  )
+  return events.filter(
+    (e) =>
+      e.event_type === 'approval_requested' && !resolved.has(String(e.payload.tool_call_id)),
+  )
 }
 
 /** The last assistant text, for finished tasks whose result isn't loaded. */

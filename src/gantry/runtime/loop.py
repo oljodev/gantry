@@ -45,6 +45,7 @@ from gantry.runtime.state import (
 )
 from gantry.runtime.tools import (
     INTERRUPTED_RESULT,
+    ApprovalPolicy,
     TaskParked,
     ToolContext,
     ToolIdempotency,
@@ -82,6 +83,7 @@ async def run_agent_task(
     workspace: Path | None = None,
     compaction: CompactionConfig | None = None,
     on_step: StepCallback | None = None,
+    approval_policy: ApprovalPolicy | None = None,
 ) -> AgentOutcome:
     payload: dict[str, Any] = task.payload
     model = payload.get("model") or get_settings().default_model
@@ -101,7 +103,7 @@ async def run_agent_task(
             "agent.resumed", task_id=str(task.id), steps=state.steps, messages=len(state.tracked)
         )
 
-    await _resolve_pending_tool_calls(sessions, task, state, tools, ctx)
+    await _resolve_pending_tool_calls(sessions, task, state, tools, ctx, approval_policy)
 
     while True:
         if on_step is not None:
@@ -152,8 +154,69 @@ async def run_agent_task(
                 EventType.TOOL_CALL,
                 {"tool_call_id": tc.id, "name": tc.name, "arguments": tc.arguments},
             )
-            result = await _execute_tool(tools, tc, ctx)
+            verdict = await _gate_tool_call(
+                sessions, task, state, approval_policy, tc, started=False
+            )
+            if isinstance(verdict, ToolResult):
+                result = verdict
+            else:
+                result = await _execute_tool(tools, tc, ctx)
             await _record_tool_result(sessions, task, state, tc, result)
+
+
+async def _gate_tool_call(
+    sessions: Sessions,
+    task: Task,
+    state: AgentState,
+    policy: ApprovalPolicy | None,
+    tc: ToolCallRequest,
+    *,
+    started: bool,
+) -> ToolResult | str:
+    """Apply the approval gate to a call about to be settled.
+
+    Returns ``"run"`` (execute now), ``"policy"`` (crashed mid-execution —
+    apply the tool's idempotency contract), or a ToolResult (human rejection,
+    surfaced to the LLM without executing anything). Raises TaskParked when a
+    human still has to decide — the dangling call is re-gated on wake.
+    """
+    decision = policy.evaluate(tc.name, tc.arguments) if policy is not None else None
+    if decision is None:
+        return "policy" if started else "run"
+
+    approval = state.approvals.get(tc.id)
+    if approval is None:
+        await _checkpoint(
+            sessions,
+            task,
+            EventType.APPROVAL_REQUESTED,
+            {
+                "tool_call_id": tc.id,
+                "tool": tc.name,
+                "arguments": tc.arguments,
+                "reason": decision.reason,
+                "preview": decision.preview,
+            },
+        )
+        raise TaskParked("waiting_approval", tool_call_id=tc.id)
+    if approval.decision == "requested":  # woken for another reason; still undecided
+        raise TaskParked("waiting_approval", tool_call_id=tc.id)
+    if approval.decision == "rejected":
+        comment = approval.comment or "no reason given"
+        logger.info("agent.gated_call_rejected", task_id=str(task.id), tool=tc.name)
+        return ToolResult(
+            f"REJECTED by a human operator: {comment}. Do not retry this exact "
+            "action; choose a safer approach or finish with an explanation.",
+            is_error=True,
+        )
+    # Approved. tool_started proves whether execution already began — without
+    # it we could not tell "approved but never ran" from "crashed mid-run".
+    if tc.id in state.gated_started_ids:
+        return "policy"
+    await _checkpoint(sessions, task, EventType.TOOL_STARTED, {"tool_call_id": tc.id})
+    state.gated_started_ids.add(tc.id)
+    logger.info("agent.gated_call_approved", task_id=str(task.id), tool=tc.name)
+    return "run"
 
 
 async def _resolve_pending_tool_calls(
@@ -162,20 +225,24 @@ async def _resolve_pending_tool_calls(
     state: AgentState,
     tools: ToolRegistry,
     ctx: ToolContext,
+    approval_policy: ApprovalPolicy | None,
 ) -> None:
-    """Settle tool calls left dangling by a crash, per idempotency policy."""
+    """Settle tool calls left dangling by a crash or a park."""
     for tc in state.pending_tool_calls():
         started = tc.id in state.started_tool_ids
         if not started:
-            # Never began executing — safe to run regardless of policy.
             await _checkpoint(
                 sessions,
                 task,
                 EventType.TOOL_CALL,
                 {"tool_call_id": tc.id, "name": tc.name, "arguments": tc.arguments},
             )
+        verdict = await _gate_tool_call(sessions, task, state, approval_policy, tc, started=started)
+        if isinstance(verdict, ToolResult):
+            result = verdict
+        elif verdict == "run":
             result = await _execute_tool(tools, tc, ctx)
-        else:
+        else:  # "policy": execution may have begun — the idempotency contract
             tool = tools.get(tc.name)
             if tool is None:
                 result = ToolResult(f"Unknown tool: {tc.name}", is_error=True)

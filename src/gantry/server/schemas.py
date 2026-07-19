@@ -80,6 +80,23 @@ class TaskEventsResponse(BaseModel):
     events: list[TaskEventOut]
 
 
+class ApprovalResolveRequest(BaseModel):
+    decision: Literal["approved", "rejected"]
+    comment: str = ""
+    resolved_by: str = "operator"
+
+
+class ApprovalItem(BaseModel):
+    """One inbox entry: the waiting task plus its approval_requested event."""
+
+    task: TaskOut
+    request: TaskEventOut
+
+
+class ApprovalsResponse(BaseModel):
+    approvals: list[ApprovalItem]
+
+
 class TaskMessage(BaseModel):
     """WS: a task snapshot — sent on connect and after status transitions."""
 

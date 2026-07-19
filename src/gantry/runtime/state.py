@@ -51,12 +51,24 @@ class TrackedMessage:
     message: Message
 
 
+@dataclass(frozen=True)
+class ApprovalState:
+    """Where a gated tool call stands: requested, or resolved by a human."""
+
+    decision: str  # "requested" | "approved" | "rejected"
+    comment: str = ""
+
+
 @dataclass
 class AgentState:
     tracked: list[TrackedMessage] = field(default_factory=list)
     steps: int = 0  # number of LLM responses so far
     started_tool_ids: set[str] = field(default_factory=set)
     resolved_tool_ids: set[str] = field(default_factory=set)
+    #: Approval status per gated tool_call_id (from approval_* events).
+    approvals: dict[str, ApprovalState] = field(default_factory=dict)
+    #: Gated calls whose post-approval execution has begun (tool_started).
+    gated_started_ids: set[str] = field(default_factory=set)
     prompt_tokens: int = 0
     completion_tokens: int = 0
     resumed: bool = False
@@ -147,6 +159,17 @@ def rehydrate(payload: dict[str, Any], events: Sequence[TaskEvent]) -> AgentStat
             state.resumed = True
         elif event.event_type is EventType.TOOL_CALL:
             state.started_tool_ids.add(p["tool_call_id"])
+            state.resumed = True
+        elif event.event_type is EventType.TOOL_STARTED:
+            state.gated_started_ids.add(p["tool_call_id"])
+            state.resumed = True
+        elif event.event_type is EventType.APPROVAL_REQUESTED:
+            state.approvals[p["tool_call_id"]] = ApprovalState("requested")
+            state.resumed = True
+        elif event.event_type is EventType.APPROVAL_RESOLVED:
+            state.approvals[p["tool_call_id"]] = ApprovalState(
+                str(p.get("decision")), str(p.get("comment") or "")
+            )
             state.resumed = True
         elif event.event_type is EventType.TOOL_RESULT:
             state.tracked.append(

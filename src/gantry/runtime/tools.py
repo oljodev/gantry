@@ -20,7 +20,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Protocol
 
 from gantry.core.models import EventType
 from gantry.runtime.llm import ToolSchema
@@ -55,17 +55,34 @@ class ToolContext:
 
 
 class TaskParked(Exception):
-    """Raised by a tool to park the task (release compute, keep the log).
+    """Raised to park the task (release compute, keep the log).
 
     The tool's ``tool_call`` checkpoint stays dangling in the event log; when
-    the task is woken and re-claimed, normal crash-recovery re-executes the
-    call — which either returns a real result now or parks again. The reason
-    becomes the task's parked status (e.g. ``waiting_children``).
+    the task is woken and re-claimed, normal crash-recovery re-processes the
+    call — which either produces a real result now or parks again. The reason
+    becomes the task's parked status (``waiting_children``/``waiting_approval``);
+    approval parks carry the gated call's id so the queue can pair the park
+    with its resolution.
     """
 
-    def __init__(self, reason: str) -> None:
+    def __init__(self, reason: str, tool_call_id: str | None = None) -> None:
         super().__init__(reason)
         self.reason = reason
+        self.tool_call_id = tool_call_id
+
+
+@dataclass(frozen=True)
+class GateDecision:
+    """Why a tool call requires human approval, plus an inbox preview."""
+
+    reason: str
+    preview: str
+
+
+class ApprovalPolicy(Protocol):
+    def evaluate(self, name: str, arguments: dict[str, Any]) -> GateDecision | None:
+        """Return a GateDecision to require approval, or None to allow."""
+        ...
 
 
 INTERRUPTED_RESULT = ToolResult(

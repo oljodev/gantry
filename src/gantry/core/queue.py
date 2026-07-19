@@ -31,6 +31,7 @@ from gantry.core.models import (
     TERMINAL_STATUSES,
     EventType,
     Task,
+    TaskEvent,
     TaskKind,
     TaskStatus,
 )
@@ -381,6 +382,136 @@ async def _try_wake_parent(session: AsyncSession, parent_id: uuid.UUID | None) -
     await notify_task_ready(session, parent_id)
     logger.info("queue.parent_woken", parent_id=str(parent_id))
     return True
+
+
+async def park_for_approval(
+    session: AsyncSession,
+    *,
+    task_id: uuid.UUID,
+    worker_id: str,
+    attempt: int,
+) -> TaskStatus | None:
+    """Park a task until a human resolves its pending approval request.
+
+    Same shape as :func:`park_for_children`: the fenced park UPDATE locks the
+    task row, and the lost-wakeup guard runs in the same transaction — if the
+    operator resolved the request in the window between the gate emitting
+    ``approval_requested`` and this park committing, we see their committed
+    event here (they lock the row too, so we serialize) and immediately
+    re-queue instead of parking forever.
+    """
+    res = await session.execute(
+        sa.update(Task)
+        .where(
+            Task.id == task_id,
+            Task.claimed_by == worker_id,
+            Task.attempt == attempt,
+            Task.status.in_(LEASED_STATUSES),
+        )
+        .values(
+            status=TaskStatus.WAITING_APPROVAL,
+            claimed_by=None,
+            lease_expires_at=None,
+            updated_at=sa.func.now(),
+        )
+    )
+    if _rowcount(res) != 1:
+        return None
+    await append_event(session, task_id, EventType.TASK_PARKED, {"reason": "waiting_approval"})
+    if not await _unresolved_approval_ids(session, task_id):
+        await session.execute(
+            sa.update(Task)
+            .where(Task.id == task_id)
+            .values(status=TaskStatus.PENDING, scheduled_at=sa.func.now(), updated_at=sa.func.now())
+        )
+        await append_event(
+            session, task_id, EventType.TASK_RESUMED, {"reason": "approval_resolved"}
+        )
+        await notify_task_ready(session, task_id)
+        return TaskStatus.PENDING
+    return TaskStatus.WAITING_APPROVAL
+
+
+async def resolve_approval(
+    session: AsyncSession,
+    *,
+    task_id: uuid.UUID,
+    tool_call_id: str,
+    approved: bool,
+    comment: str = "",
+    resolved_by: str = "operator",
+) -> tuple[str, Task | None]:
+    """Record a human decision for a gated tool call and wake the task.
+
+    Returns ("resolved" | "not_found" | "already_resolved", task). Locks the
+    task row FIRST so this serializes with a concurrent park (see
+    :func:`park_for_approval`); whichever commits second delivers the wakeup.
+    """
+    task = await session.get(Task, task_id, with_for_update=True)
+    if task is None:
+        return "not_found", None
+    requested, resolved = await _approval_ledger(session, task_id)
+    if tool_call_id not in requested:
+        return "not_found", task
+    if tool_call_id in resolved:
+        return "already_resolved", task
+
+    await append_event(
+        session,
+        task_id,
+        EventType.APPROVAL_RESOLVED,
+        {
+            "tool_call_id": tool_call_id,
+            "decision": "approved" if approved else "rejected",
+            "comment": comment,
+            "resolved_by": resolved_by,
+        },
+    )
+    if task.status is TaskStatus.WAITING_APPROVAL and not await _unresolved_approval_ids(
+        session, task_id
+    ):
+        await session.execute(
+            sa.update(Task)
+            .where(Task.id == task_id)
+            .values(status=TaskStatus.PENDING, scheduled_at=sa.func.now(), updated_at=sa.func.now())
+        )
+        await append_event(
+            session, task_id, EventType.TASK_RESUMED, {"reason": "approval_resolved"}
+        )
+        await notify_task_ready(session, task_id)
+        await session.refresh(task)
+    logger.info(
+        "queue.approval_resolved",
+        task_id=str(task_id),
+        tool_call_id=tool_call_id,
+        approved=approved,
+    )
+    return "resolved", task
+
+
+async def _approval_ledger(session: AsyncSession, task_id: uuid.UUID) -> tuple[set[str], set[str]]:
+    """(requested, resolved) tool_call_ids from the task's approval events."""
+    events = await session.scalars(
+        sa.select(TaskEvent).where(
+            TaskEvent.task_id == task_id,
+            TaskEvent.event_type.in_(
+                [EventType.APPROVAL_REQUESTED.value, EventType.APPROVAL_RESOLVED.value]
+            ),
+        )
+    )
+    requested, resolved = set(), set()
+    for event in events:
+        call_id = str(event.payload.get("tool_call_id"))
+        if EventType(event.event_type) is EventType.APPROVAL_REQUESTED:
+            requested.add(call_id)
+        else:
+            resolved.add(call_id)
+    return requested, resolved
+
+
+async def _unresolved_approval_ids(session: AsyncSession, task_id: uuid.UUID) -> set[str]:
+    requested, resolved = await _approval_ledger(session, task_id)
+    return requested - resolved
 
 
 async def cancel(session: AsyncSession, *, task_id: uuid.UUID) -> Task | None:

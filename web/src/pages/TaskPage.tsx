@@ -8,8 +8,9 @@ import { StatusPill } from '../components/StatusPill'
 import { TaskTree } from '../components/TaskTree'
 import { TerminalPane } from '../components/TerminalPane'
 import { TraceTimeline } from '../components/TraceTimeline'
+import { ApprovalCard } from '../components/ApprovalCard'
 import { shortId } from '../lib/format'
-import { foldTrace } from '../lib/trace'
+import { foldTrace, pendingApprovals } from '../lib/trace'
 
 type Tab = 'trace' | 'terminal' | 'diff'
 
@@ -47,10 +48,15 @@ export function TaskPage() {
   )
   const diffCount = events.filter((e) => e.event_type === 'diff').length
 
+  const awaiting = task?.status === 'waiting_approval' ? pendingApprovals(events) : []
+
   if (!taskId) return null
   return (
     <div className="flex flex-col gap-4">
       <Header task={task} connection={connection} />
+      {awaiting.map((request) => (
+        <ApprovalCard key={request.seq} taskId={taskId} request={request} />
+      ))}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[16rem_1fr]">
         <aside className="rounded-lg border border-zinc-800 bg-zinc-900/30 p-2">
           <h2 className="px-1.5 pt-1 pb-2 text-xs font-semibold text-zinc-500">TRACE TREE</h2>
