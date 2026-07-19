@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { createTask } from '../api/client'
+import { createTask, listSkills } from '../api/client'
+import type { Skill } from '../api/types'
 
 const field =
   'w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 py-1.5 text-sm ' +
@@ -12,8 +13,23 @@ export function NewTaskForm() {
   const [repoUrl, setRepoUrl] = useState('')
   const [model, setModel] = useState('')
   const [kind, setKind] = useState<'execute' | 'plan'>('execute')
+  const [skills, setSkills] = useState<Skill[]>([])
+  const [chosenSkills, setChosenSkills] = useState<Set<string>>(new Set())
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    listSkills().then(setSkills).catch(console.error)
+  }, [])
+
+  const toggleSkill = (name: string) => {
+    setChosenSkills((prev) => {
+      const next = new Set(prev)
+      if (next.has(name)) next.delete(name)
+      else next.add(name)
+      return next
+    })
+  }
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -26,6 +42,7 @@ export function NewTaskForm() {
         kind,
         repo_url: repoUrl.trim() || undefined,
         model: model.trim() || undefined,
+        skills: chosenSkills.size ? [...chosenSkills] : undefined,
       })
       navigate(`/tasks/${task.id}`)
     } catch (err) {
@@ -63,6 +80,29 @@ export function NewTaskForm() {
             onChange={(e) => setModel(e.target.value)}
           />
         </div>
+        {skills.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5" aria-label="Skills">
+            <span className="text-xs text-zinc-500">skills</span>
+            {skills.map((skill) => (
+              <button
+                key={skill.name}
+                type="button"
+                title={skill.description}
+                onClick={() => toggleSkill(skill.name)}
+                className={`rounded-full border px-2.5 py-0.5 font-mono text-xs transition ${
+                  chosenSkills.has(skill.name)
+                    ? 'border-amber-600 bg-amber-950/60 text-amber-300'
+                    : 'border-zinc-800 text-zinc-500 hover:border-zinc-600 hover:text-zinc-300'
+                }`}
+              >
+                {skill.name}
+              </button>
+            ))}
+            <span className="text-[10px] text-zinc-600">
+              (unselected skills still auto-attach when the goal matches)
+            </span>
+          </div>
+        )}
         <div className="flex items-center gap-3">
           <button
             type="submit"

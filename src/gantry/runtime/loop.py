@@ -38,6 +38,7 @@ from gantry.runtime.llm import LLMClient, LLMResponse, ToolCallRequest
 from gantry.runtime.state import (
     AgentState,
     TrackedMessage,
+    apply_skill_to_system_message,
     assistant_message,
     rehydrate,
     summary_message,
@@ -52,6 +53,7 @@ from gantry.runtime.tools import (
     ToolRegistry,
     ToolResult,
 )
+from gantry.skills import SkillRegistry
 
 logger = get_logger(__name__)
 
@@ -84,6 +86,7 @@ async def run_agent_task(
     compaction: CompactionConfig | None = None,
     on_step: StepCallback | None = None,
     approval_policy: ApprovalPolicy | None = None,
+    skills: SkillRegistry | None = None,
 ) -> AgentOutcome:
     payload: dict[str, Any] = task.payload
     model = payload.get("model") or get_settings().default_model
@@ -102,6 +105,22 @@ async def run_agent_task(
         logger.info(
             "agent.resumed", task_id=str(task.id), steps=state.steps, messages=len(state.tracked)
         )
+
+    if skills is not None:
+        # Deterministic selection; injection is idempotent per skill name, so
+        # a crash between two injections resumes without duplicates. The event
+        # pins the exact content this run saw, whatever the file says later.
+        for skill in skills.select(payload):
+            if skill.name in state.injected_skills:
+                continue
+            await _checkpoint(
+                sessions,
+                task,
+                EventType.SKILL_INJECTED,
+                {"name": skill.name, "description": skill.description, "content": skill.content},
+            )
+            apply_skill_to_system_message(state, skill.name, skill.content)
+            logger.info("agent.skill_injected", task_id=str(task.id), skill=skill.name)
 
     await _resolve_pending_tool_calls(sessions, task, state, tools, ctx, approval_policy)
 

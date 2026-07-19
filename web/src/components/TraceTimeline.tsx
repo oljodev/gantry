@@ -38,10 +38,14 @@ const MARKER_TONES: Record<string, string> = {
   task_parked: 'text-indigo-300',
   task_resumed: 'text-sky-300',
   approval_requested: 'text-purple-300',
+  skill_injected: 'text-amber-300',
 }
 
 function markerDetail(event: TaskEvent): string {
   const p = event.payload
+  if (event.event_type === 'skill_injected') {
+    return `${String(p.name)} — ${String(p.description)}`
+  }
   if (event.event_type === 'approval_requested') {
     return `${String(p.tool)}: ${String(p.reason)}`
   }

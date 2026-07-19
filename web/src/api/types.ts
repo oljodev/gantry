@@ -50,4 +50,11 @@ export interface TaskCreate {
   model?: string
   max_steps?: number
   priority?: number
+  skills?: string[]
+}
+
+export interface Skill {
+  name: string
+  description: string
+  match: string[]
 }

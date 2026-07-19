@@ -27,6 +27,7 @@ from gantry.core.db import create_engine, create_session_factory, session_scope
 from gantry.logging import configure_logging, get_logger
 from gantry.server import api, ws
 from gantry.server.broker import EventBroker
+from gantry.skills import SkillRegistry
 
 logger = get_logger(__name__)
 
@@ -69,6 +70,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(title="Gantry", version=__version__, lifespan=lifespan)
     app.state.settings = settings
+    app.state.skills = SkillRegistry.load_dir(settings.skills_root)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,

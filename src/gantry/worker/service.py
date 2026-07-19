@@ -25,6 +25,7 @@ from gantry.runtime.compaction import CompactionConfig
 from gantry.runtime.llm import LLMClient
 from gantry.runtime.loop import AgentLoopError, run_agent_task
 from gantry.runtime.tools import TaskParked
+from gantry.skills import SkillRegistry
 from gantry.worker import workspace as ws
 from gantry.worker.policy import policy_for_payload
 from gantry.worker.tools import build_coding_registry, build_planner_registry
@@ -48,6 +49,7 @@ class WorkerConfig:
     keep_failed_workspaces: bool = False
     compaction: CompactionConfig | None = field(default_factory=CompactionConfig)
     max_subtasks: int = 32
+    skills_root: Path | None = None
 
     @classmethod
     def from_settings(cls, settings: Settings, worker_id: str | None = None) -> WorkerConfig:
@@ -56,6 +58,7 @@ class WorkerConfig:
             workspace_root=settings.workspace_root,
             github_token=settings.github_token,
             max_subtasks=settings.max_subtasks_per_task,
+            skills_root=settings.skills_root,
         )
 
 
@@ -71,6 +74,11 @@ class Worker:
         self._config = config
         self._llm = llm
         self._listener = listener
+        self._skills = (
+            SkillRegistry.load_dir(config.skills_root)
+            if config.skills_root is not None
+            else SkillRegistry()
+        )
         self.processed = 0
 
     async def run(self, shutdown: asyncio.Event) -> None:
@@ -138,6 +146,7 @@ class Worker:
                 compaction=cfg.compaction,
                 on_step=on_step,
                 approval_policy=policy_for_payload(task.payload),
+                skills=self._skills,
             )
             async with session_scope(self._sessions) as session:
                 succeeded = await queue.complete(

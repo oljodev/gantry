@@ -1,4 +1,4 @@
-import type { Task, TaskCreate, TaskEvent, TaskStatus } from './types'
+import type { Skill, Task, TaskCreate, TaskEvent, TaskStatus } from './types'
 
 export interface ApprovalItem {
   task: Task
@@ -41,6 +41,10 @@ export function createTask(body: TaskCreate): Promise<Task> {
 
 export function cancelTask(taskId: string): Promise<Task> {
   return request<Task>(`/api/tasks/${taskId}/cancel`, { method: 'POST' })
+}
+
+export function listSkills(): Promise<Skill[]> {
+  return request<{ skills: Skill[] }>('/api/skills').then((body) => body.skills)
 }
 
 export function listApprovals(): Promise<ApprovalItem[]> {

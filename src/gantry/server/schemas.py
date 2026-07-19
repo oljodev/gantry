@@ -27,13 +27,15 @@ class TaskCreateRequest(BaseModel):
     max_steps: int | None = Field(default=None, ge=1)
     priority: int = 0
     max_attempts: int = Field(default=3, ge=1)
+    #: Explicit skill names to inject (auto-matching by goal happens anyway).
+    skills: list[str] | None = None
     #: Extra payload fields passed through to the agent verbatim.
     payload: dict[str, Any] = Field(default_factory=dict)
 
     def build_payload(self) -> dict[str, Any]:
         merged = dict(self.payload)
         merged["goal"] = self.goal
-        for key in ("repo_url", "base_branch", "model", "max_steps"):
+        for key in ("repo_url", "base_branch", "model", "max_steps", "skills"):
             value = getattr(self, key)
             if value is not None:
                 merged[key] = value
@@ -78,6 +80,16 @@ class TaskListResponse(BaseModel):
 
 class TaskEventsResponse(BaseModel):
     events: list[TaskEventOut]
+
+
+class SkillOut(BaseModel):
+    name: str
+    description: str
+    match: list[str]
+
+
+class SkillsResponse(BaseModel):
+    skills: list[SkillOut]
 
 
 class ApprovalResolveRequest(BaseModel):

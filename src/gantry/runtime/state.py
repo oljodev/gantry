@@ -67,6 +67,9 @@ class AgentState:
     resolved_tool_ids: set[str] = field(default_factory=set)
     #: Approval status per gated tool_call_id (from approval_* events).
     approvals: dict[str, ApprovalState] = field(default_factory=dict)
+    #: Skills already injected (from skill_injected events) — injection is
+    #: idempotent per skill name, so a crash mid-injection resumes cleanly.
+    injected_skills: set[str] = field(default_factory=set)
     #: Gated calls whose post-approval execution has begun (tool_started).
     gated_started_ids: set[str] = field(default_factory=set)
     prompt_tokens: int = 0
@@ -141,6 +144,19 @@ def summary_message(summary: str) -> Message:
     }
 
 
+def apply_skill_to_system_message(state: AgentState, name: str, content: str) -> None:
+    """Append one skill's instructions to the system message, exactly once.
+
+    Used by both the live injection path and rehydration, so a resumed run
+    reconstructs a byte-identical system prompt.
+    """
+    if name in state.injected_skills:
+        return
+    system = state.tracked[0].message
+    system["content"] = f"{system.get('content') or ''}\n\n## Skill: {name}\n\n{content}"
+    state.injected_skills.add(name)
+
+
 def rehydrate(payload: dict[str, Any], events: Sequence[TaskEvent]) -> AgentState:
     """Rebuild the agent's exact in-flight state from its event log."""
     state = AgentState(tracked=initial_messages(payload))
@@ -165,6 +181,9 @@ def rehydrate(payload: dict[str, Any], events: Sequence[TaskEvent]) -> AgentStat
             state.resumed = True
         elif event.event_type is EventType.APPROVAL_REQUESTED:
             state.approvals[p["tool_call_id"]] = ApprovalState("requested")
+            state.resumed = True
+        elif event.event_type is EventType.SKILL_INJECTED:
+            apply_skill_to_system_message(state, str(p["name"]), str(p["content"]))
             state.resumed = True
         elif event.event_type is EventType.APPROVAL_RESOLVED:
             state.approvals[p["tool_call_id"]] = ApprovalState(

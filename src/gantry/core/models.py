@@ -79,6 +79,8 @@ class EventType(enum.StrEnum):
     COMPACTION = "compaction"
     APPROVAL_REQUESTED = "approval_requested"
     APPROVAL_RESOLVED = "approval_resolved"
+    #: Skills (Phase 8): full skill content pinned into the run's log.
+    SKILL_INJECTED = "skill_injected"
 
 
 def _status_column() -> sa.Enum:

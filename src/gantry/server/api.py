@@ -31,12 +31,15 @@ from gantry.server.schemas import (
     ApprovalItem,
     ApprovalResolveRequest,
     ApprovalsResponse,
+    SkillOut,
+    SkillsResponse,
     TaskCreateRequest,
     TaskEventOut,
     TaskEventsResponse,
     TaskListResponse,
     TaskOut,
 )
+from gantry.skills import SkillRegistry
 from gantry.worker.tools.orchestration import DEFAULT_PLANNER_MAX_ATTEMPTS
 
 router = APIRouter(prefix="/api", tags=["tasks"])
@@ -118,6 +121,17 @@ async def get_task_events(
             raise HTTPException(status_code=404, detail="task not found")
         events = await read_events(session, task_id, after_seq=after_seq, limit=limit)
     return TaskEventsResponse(events=[TaskEventOut.model_validate(e) for e in events])
+
+
+@router.get("/skills", response_model=SkillsResponse)
+async def list_skills(request: Request) -> SkillsResponse:
+    registry = cast("SkillRegistry", request.app.state.skills)
+    return SkillsResponse(
+        skills=[
+            SkillOut(name=s.name, description=s.description, match=list(s.match))
+            for s in registry.all()
+        ]
+    )
 
 
 @router.get("/approvals", response_model=ApprovalsResponse)
