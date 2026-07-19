@@ -68,6 +68,7 @@ class EventType(enum.StrEnum):
     TOOL_CALL = "tool_call"
     TOOL_RESULT = "tool_result"
     TERMINAL_CHUNK = "terminal_chunk"
+    DIFF = "diff"
     COMPACTION = "compaction"
     APPROVAL_REQUESTED = "approval_requested"
     APPROVAL_RESOLVED = "approval_resolved"

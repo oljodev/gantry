@@ -80,6 +80,32 @@ async def test_commit_push_delivers_work_to_origin(origin: Path, tmp_path: Path)
     assert not again.is_error and "nothing new to commit" in again.content
 
 
+async def test_commit_push_emits_a_durable_diff_event(origin: Path, tmp_path: Path) -> None:
+    workspace = await prepare_workspace(tmp_path / "ws", uuid.uuid4(), 1, {"repo_url": str(origin)})
+    (workspace.path / "feature.txt").write_text("built by gantry\n")
+
+    emitted: list[tuple[object, dict[str, object]]] = []
+
+    async def emit(event_type: object, payload: dict[str, object]) -> int:
+        emitted.append((event_type, payload))
+        return len(emitted)
+
+    ctx = ToolContext(task_id=uuid.uuid4(), workspace=workspace.path, emit_event=emit)
+    result = await GitCommitPushTool(workspace.auth).execute({"message": "add feature"}, ctx)
+    assert not result.is_error
+
+    diffs = [p for et, p in emitted if getattr(et, "value", None) == "diff"]
+    assert len(diffs) == 1
+    assert "+built by gantry" in str(diffs[0]["diff"])
+    assert diffs[0]["message"] == "add feature"
+    assert diffs[0]["truncated"] is False
+
+    # Convergent no-op re-run pushes but emits no second diff.
+    again = await GitCommitPushTool(workspace.auth).execute({"message": "add feature"}, ctx)
+    assert not again.is_error
+    assert len([p for et, p in emitted if getattr(et, "value", None) == "diff"]) == 1
+
+
 async def test_commit_push_requires_a_git_workspace(tmp_path: Path) -> None:
     ctx = ToolContext(task_id=uuid.uuid4(), workspace=tmp_path)
     result = await GitCommitPushTool(GitAuth(env={})).execute({"message": "m"}, ctx)

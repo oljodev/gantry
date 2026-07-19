@@ -14,8 +14,13 @@ from __future__ import annotations
 
 from typing import Any, ClassVar
 
+from gantry.core.models import EventType
 from gantry.runtime.tools import Tool, ToolContext, ToolIdempotency, ToolResult
 from gantry.worker.git import GitAuth, GitError, current_branch, head_commit, run_git
+
+#: Diffs beyond this go to the event log truncated — the UI shows what fits;
+#: the pushed branch itself is always the authoritative artifact.
+_MAX_DIFF_CHARS = 100_000
 
 
 class GitCommitPushTool(Tool):
@@ -48,7 +53,9 @@ class GitCommitPushTool(Tool):
             await run_git(["add", "-A"], cwd=repo)
             staged, _ = await run_git(["diff", "--cached", "--quiet"], cwd=repo, check=False)
             committed = False
+            diff = ""
             if staged != 0:  # non-zero exit means there ARE staged changes
+                _, diff = await run_git(["diff", "--cached"], cwd=repo)
                 await run_git(["commit", "-m", message], cwd=repo)
                 committed = True
             await run_git(["push", "-u", "origin", "HEAD"], cwd=repo, auth=self._auth)
@@ -57,5 +64,18 @@ class GitCommitPushTool(Tool):
 
         branch = await current_branch(repo)
         sha = await head_commit(repo)
+        if committed and ctx.emit_event is not None:
+            # Durable record of exactly what this commit changed — the UI's
+            # diff viewer streams these like any other event.
+            await ctx.emit_event(
+                EventType.DIFF,
+                {
+                    "diff": diff[:_MAX_DIFF_CHARS],
+                    "truncated": len(diff) > _MAX_DIFF_CHARS,
+                    "message": message,
+                    "sha": sha,
+                    "branch": branch,
+                },
+            )
         note = "committed and pushed" if committed else "nothing new to commit; pushed HEAD"
         return ToolResult(f"{note}: branch '{branch}' at {sha}")

@@ -49,6 +49,8 @@ class Settings(BaseSettings):
     github_token: str | None = None
     #: How often the control plane re-queues tasks whose lease expired.
     reaper_interval_seconds: float = 10.0
+    #: Built frontend to serve as the SPA (skipped if index.html is absent).
+    frontend_dist: Path = Path("web/dist")
     #: Origins allowed to call the API from a browser (the Phase 5 frontend).
     cors_origins: list[str] = Field(
         default=["http://localhost:5173", "http://127.0.0.1:5173"],

@@ -1,6 +1,6 @@
 COMPOSE := docker compose -f infra/docker-compose.yml
 
-.PHONY: install dev dev-down dev-logs migrate revision server test lint fmt typecheck check
+.PHONY: install dev dev-down dev-logs migrate revision server worker workers-up test lint fmt typecheck check web-install web-dev web-build web-check
 
 install:
 	uv sync
@@ -44,3 +44,17 @@ typecheck:
 	uv run mypy
 
 check: lint typecheck test
+
+# --- Frontend -----------------------------------------------------------
+
+web-install:
+	cd web && npm install
+
+web-dev:  # Vite dev server (proxies /api + WS to the control plane)
+	cd web && npm run dev
+
+web-build:  # production bundle; FastAPI serves web/dist automatically
+	cd web && npm run build
+
+web-check:  # typecheck + lint + unit tests
+	cd web && npm run check

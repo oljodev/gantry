@@ -13,9 +13,11 @@ import contextlib
 import random
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from gantry import __version__
@@ -80,4 +82,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def healthz() -> dict[str, str]:
         return {"status": "ok", "env": settings.env, "version": __version__}
 
+    _mount_frontend(app, settings.frontend_dist)
     return app
+
+
+def _mount_frontend(app: FastAPI, dist: Path) -> None:
+    """Serve the built SPA (if present) with a client-route fallback.
+
+    Registered last so /api, /healthz and the WebSocket routes always win.
+    In dev the Vite server proxies to us instead and this never mounts.
+    """
+    root = dist.resolve()
+    if not (root / "index.html").is_file():
+        return
+
+    @app.get("/{path:path}", include_in_schema=False)
+    async def spa(path: str) -> FileResponse:
+        candidate = (root / path).resolve()
+        if path and candidate.is_file() and candidate.is_relative_to(root):
+            return FileResponse(candidate)
+        return FileResponse(root / "index.html")
