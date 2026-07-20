@@ -47,6 +47,7 @@ export interface TaskCreate {
   kind?: 'execute' | 'plan'
   repo_url?: string
   base_branch?: string
+  provider_id?: string
   model?: string
   max_steps?: number
   priority?: number
@@ -67,4 +68,105 @@ export interface Stats {
   prompt_tokens: number
   completion_tokens: number
   events_last_hour: number
+}
+
+export interface Me {
+  auth_enabled: boolean
+  email: string | null
+  allowed: boolean
+  reason?: string
+}
+
+export type ProviderType = 'openai' | 'anthropic' | 'google' | 'openrouter' | 'local'
+
+export interface Provider {
+  id: string
+  name: string
+  provider_type: ProviderType
+  base_url: string | null
+  default_model: string
+  api_key_last4: string
+  created_at: string
+}
+
+export interface ProviderCreate {
+  name: string
+  provider_type: ProviderType
+  api_key?: string
+  base_url?: string
+  default_model: string
+}
+
+export interface ProviderTestResult {
+  ok: boolean
+  model: string
+  error: string | null
+}
+
+export interface GithubStatus {
+  connected: boolean
+  login: string | null
+  last4: string | null
+}
+
+export interface GithubRepo {
+  full_name: string
+  private: boolean
+  default_branch: string
+  clone_url: string
+  pushed_at: string | null
+}
+
+export interface AgentProfile {
+  id: string
+  name: string
+  role: string
+  system_prompt: string | null
+  provider_id: string | null
+  model: string | null
+  max_steps: number | null
+  can_spawn: boolean
+  gated_tools: string[]
+  skills: string[]
+  created_at: string
+  updated_at: string
+}
+
+export type AgentProfileCreate = Omit<AgentProfile, 'id' | 'created_at' | 'updated_at'>
+
+export interface TeamNode {
+  profile_id: string
+  children: TeamNode[]
+}
+
+export interface TeamNodeOut {
+  profile: AgentProfile
+  children: TeamNodeOut[]
+}
+
+export interface Team {
+  id: string
+  name: string
+  description: string
+  root: TeamNodeOut
+}
+
+export interface TeamSummary {
+  id: string
+  name: string
+  description: string
+  member_count: number
+}
+
+export interface TeamWrite {
+  name: string
+  description: string
+  root: TeamNode
+}
+
+export interface TeamLaunch {
+  goal: string
+  repo_url?: string
+  base_branch?: string
+  priority?: number
 }

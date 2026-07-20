@@ -12,21 +12,25 @@ import uuid
 from typing import Annotated, cast
 
 import sqlalchemy as sa
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from gantry.config import Settings
 from gantry.core import queue
 from gantry.core.db import session_scope
 from gantry.core.events import read_events
 from gantry.core.models import (
     DEFAULT_WORKSPACE_ID,
     EventType,
+    Provider,
     Task,
     TaskEvent,
     TaskKind,
     TaskStatus,
 )
+from gantry.providers import resolve_model
 from gantry.runtime.state import PLANNER_SYSTEM_PROMPT
+from gantry.server.auth import require_user
 from gantry.server.schemas import (
     ApprovalItem,
     ApprovalResolveRequest,
@@ -43,7 +47,7 @@ from gantry.server.schemas import (
 from gantry.skills import SkillRegistry
 from gantry.worker.tools.orchestration import DEFAULT_PLANNER_MAX_ATTEMPTS
 
-router = APIRouter(prefix="/api", tags=["tasks"])
+router = APIRouter(prefix="/api", tags=["tasks"], dependencies=[Depends(require_user)])
 
 Sessions = async_sessionmaker[AsyncSession]
 
@@ -63,6 +67,14 @@ async def create_task(request: Request, body: TaskCreateRequest) -> TaskOut:
             # Every park/wake cycle consumes an attempt (the fencing token).
             max_attempts = DEFAULT_PLANNER_MAX_ATTEMPTS
     async with session_scope(sessions) as session:
+        if body.provider_id is not None:
+            # Resolve to a final LiteLLM model string now so the runtime and
+            # events only ever see one canonical model field.
+            provider = await session.get(Provider, body.provider_id)
+            if provider is None or provider.workspace_id != DEFAULT_WORKSPACE_ID:
+                raise HTTPException(status_code=422, detail="unknown provider_id")
+            settings = cast("Settings", request.app.state.settings)
+            payload["model"] = resolve_model(provider, body.model, settings.default_model)
         task = await queue.enqueue(
             session,
             workspace_id=DEFAULT_WORKSPACE_ID,

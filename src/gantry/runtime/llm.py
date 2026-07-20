@@ -73,7 +73,14 @@ class LiteLLMClient:
 
     litellm is imported lazily: it is a heavy import and nothing else in
     Gantry (including the whole test suite) should pay for it.
+
+    ``api_key``/``api_base`` come from a vault-backed provider config (or are
+    None to fall back to ambient env vars like ``ANTHROPIC_API_KEY``).
     """
+
+    def __init__(self, api_key: str | None = None, api_base: str | None = None) -> None:
+        self._api_key = api_key
+        self._api_base = api_base
 
     async def complete(
         self,
@@ -87,6 +94,10 @@ class LiteLLMClient:
         kwargs: dict[str, Any] = {"model": model, "messages": messages}
         if tools:
             kwargs["tools"] = list(tools)
+        if self._api_key:
+            kwargs["api_key"] = self._api_key
+        if self._api_base:
+            kwargs["api_base"] = self._api_base
         raw: Any = await litellm.acompletion(**kwargs)
 
         choice = raw.choices[0]

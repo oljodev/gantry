@@ -36,6 +36,7 @@ from gantry.runtime.tools import (
     ToolRegistry,
     ToolResult,
 )
+from gantry.teams import TeamNode, node_kind, node_payload_fields
 
 Sessions = async_sessionmaker[AsyncSession]
 
@@ -84,6 +85,14 @@ class SpawnSubtaskTool(Tool):
             "priority": {"type": "integer", "description": "Higher runs earlier (default 0)"},
             "max_attempts": {"type": "integer"},
             "kind": {"type": "string", "enum": ["execute", "plan"]},
+            "agent": {
+                "type": "string",
+                "description": (
+                    "Name of one of your team's child agents (see 'Your team' in your "
+                    "instructions). The child runs with that agent's own system prompt, "
+                    "model, and permissions; `kind` is then derived from the agent."
+                ),
+            },
             "payload": {"type": "object", "description": "Extra payload fields passed verbatim"},
         },
         "required": ["goal"],
@@ -91,8 +100,15 @@ class SpawnSubtaskTool(Tool):
     #: The deterministic child id makes re-runs converge, so IDEMPOTENT.
     idempotency = ToolIdempotency.IDEMPOTENT
 
-    def __init__(self, max_subtasks: int = DEFAULT_MAX_SUBTASKS) -> None:
+    def __init__(
+        self, max_subtasks: int = DEFAULT_MAX_SUBTASKS, team: TeamNode | None = None
+    ) -> None:
         self._max_subtasks = max_subtasks
+        self._team = team
+
+    def _team_child(self, name: str) -> TeamNode | None:
+        children = (self._team or {}).get("children") or []
+        return next((c for c in children if c.get("name") == name), None)
 
     async def execute(self, arguments: dict[str, Any], ctx: ToolContext) -> ToolResult:
         goal = str(arguments.get("goal") or "").strip()
@@ -100,6 +116,16 @@ class SpawnSubtaskTool(Tool):
             return ToolResult("a non-empty goal is required", is_error=True)
         if ctx.tool_call_id is None:
             return ToolResult("spawn_subtask requires a tool call id", is_error=True)
+        agent = str(arguments.get("agent") or "").strip() or None
+        node: TeamNode | None = None
+        if agent is not None:
+            node = self._team_child(agent)
+            if node is None:
+                names = [str(c.get("name")) for c in (self._team or {}).get("children") or []]
+                available = ", ".join(names) if names else "none — this task has no team"
+                return ToolResult(
+                    f"unknown agent {agent!r}; available agents: {available}", is_error=True
+                )
         sessions = _sessions_of(ctx)
         child_id = child_task_id(ctx.task_id, ctx.tool_call_id)
 
@@ -127,11 +153,22 @@ class SpawnSubtaskTool(Tool):
                 )
 
             payload: dict[str, Any] = dict(arguments.get("payload") or {})
+            if node is not None:
+                # Team spawn: the child's config comes from the parent's
+                # immutable payload snapshot — deterministic across re-runs.
+                payload.update(node_payload_fields(node))
+                # Children work the same repo as the tree unless told otherwise.
+                for key in ("repo_url", "base_branch"):
+                    if parent.payload.get(key) is not None:
+                        payload.setdefault(key, parent.payload[key])
             payload["goal"] = goal
             for key in ("repo_url", "base_branch", "model", "max_steps"):
                 if arguments.get(key) is not None:
                     payload[key] = arguments[key]
-            kind = TaskKind(str(arguments.get("kind") or TaskKind.EXECUTE.value))
+            if node is not None:
+                kind = node_kind(node)  # derived from the snapshot, not the argument
+            else:
+                kind = TaskKind(str(arguments.get("kind") or TaskKind.EXECUTE.value))
             if kind is TaskKind.PLAN:
                 payload.setdefault("system_prompt", PLANNER_SYSTEM_PROMPT)
             default_attempts = DEFAULT_PLANNER_MAX_ATTEMPTS if kind is TaskKind.PLAN else 3
@@ -148,7 +185,8 @@ class SpawnSubtaskTool(Tool):
                 )
             except IntegrityError:  # lost a rare race with our own zombie
                 return ToolResult(f"subtask already spawned: task {child_id}")
-        return ToolResult(f"spawned subtask {child.id} ({kind.value}): {goal}")
+        label = f" as agent {agent!r}" if agent else ""
+        return ToolResult(f"spawned subtask {child.id} ({kind.value}){label}: {goal}")
 
 
 class WaitForChildrenTool(Tool):
@@ -204,5 +242,7 @@ def _children_report(children: list[Task]) -> str:
     return json.dumps({"summary": counts, "children": report}, indent=2)
 
 
-def build_planner_registry(max_subtasks: int = DEFAULT_MAX_SUBTASKS) -> ToolRegistry:
-    return ToolRegistry([SpawnSubtaskTool(max_subtasks), WaitForChildrenTool()])
+def build_planner_registry(
+    max_subtasks: int = DEFAULT_MAX_SUBTASKS, team: TeamNode | None = None
+) -> ToolRegistry:
+    return ToolRegistry([SpawnSubtaskTool(max_subtasks, team=team), WaitForChildrenTool()])

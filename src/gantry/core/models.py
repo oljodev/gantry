@@ -193,3 +193,178 @@ class TaskEvent(Base):
 
     # The unique constraint's backing index also serves ordered per-task reads.
     __table_args__ = (sa.UniqueConstraint("task_id", "seq", name="uq_task_events_task_seq"),)
+
+
+class ProviderType(enum.StrEnum):
+    """LLM provider families. ``LOCAL`` is any OpenAI-compatible endpoint."""
+
+    OPENAI = "openai"
+    ANTHROPIC = "anthropic"
+    GOOGLE = "google"
+    OPENROUTER = "openrouter"
+    LOCAL = "local"
+
+
+class Secret(Base):
+    """Encrypted secret material — the ONLY table that ever holds credentials.
+
+    ``ciphertext`` is ``nonce(12) || AES-256-GCM(plaintext)``; the key lives in
+    ``GANTRY_VAULT_KEY`` outside the database. ``name`` is a per-workspace
+    convention key: ``github:token``, ``provider:{provider_id}``. ``meta`` is
+    for small NON-secret annotations (e.g. the GitHub login the token belongs
+    to) so status endpoints never need to decrypt.
+    """
+
+    __tablename__ = "secrets"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    name: Mapped[str] = mapped_column(sa.String(128), nullable=False)
+    ciphertext: Mapped[bytes] = mapped_column(sa.LargeBinary, nullable=False)
+    last4: Mapped[str] = mapped_column(sa.String(4), nullable=False, default="")
+    meta: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    )
+
+    __table_args__ = (
+        sa.UniqueConstraint("workspace_id", "name", name="uq_secrets_workspace_name"),
+        sa.Index("ix_secrets_workspace", "workspace_id"),
+    )
+
+
+class Provider(Base):
+    """LLM provider configuration — non-secret fields only.
+
+    The API key lives in ``secrets`` under ``provider:{id}``; this row keeps
+    just ``api_key_last4`` for display.
+    """
+
+    __tablename__ = "providers"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    name: Mapped[str] = mapped_column(sa.String(100), nullable=False)
+    provider_type: Mapped[ProviderType] = mapped_column(
+        sa.Enum(
+            ProviderType,
+            name="provider_type",
+            native_enum=False,
+            create_constraint=False,
+            length=32,
+            values_callable=lambda e: [m.value for m in e],
+        ),
+        nullable=False,
+    )
+    #: Required for ``local`` (OpenAI-compatible endpoint); optional otherwise.
+    base_url: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    default_model: Mapped[str] = mapped_column(sa.String(200), nullable=False)
+    api_key_last4: Mapped[str] = mapped_column(sa.String(4), nullable=False, default="")
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    )
+
+    __table_args__ = (
+        sa.UniqueConstraint("workspace_id", "name", name="uq_providers_workspace_name"),
+        sa.Index("ix_providers_workspace", "workspace_id"),
+    )
+
+
+class AgentProfile(Base):
+    """A reusable, named agent definition (prompt, model, permissions).
+
+    Profiles are *templates*: launching a team snapshots the resolved profile
+    into the task payload, so later edits never affect in-flight runs.
+    """
+
+    __tablename__ = "agent_profiles"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    name: Mapped[str] = mapped_column(sa.String(100), nullable=False)
+    #: Short human description ("Senior coder", "Reviews diffs for bugs").
+    role: Mapped[str] = mapped_column(sa.Text, nullable=False, default="")
+    #: NULL -> the kind-appropriate default prompt at launch time.
+    system_prompt: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    provider_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), sa.ForeignKey("providers.id", ondelete="SET NULL"), nullable=True
+    )
+    #: NULL -> provider.default_model -> settings.default_model.
+    model: Mapped[str | None] = mapped_column(sa.String(200), nullable=True)
+    max_steps: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
+    can_spawn: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, default=False)
+    gated_tools: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
+    skills: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    )
+
+    __table_args__ = (
+        sa.UniqueConstraint("workspace_id", "name", name="uq_agent_profiles_workspace_name"),
+        sa.Index("ix_agent_profiles_workspace", "workspace_id"),
+    )
+
+
+class Team(Base):
+    """A named tree of agent profiles, launched with a goal later."""
+
+    __tablename__ = "teams"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    name: Mapped[str] = mapped_column(sa.String(100), nullable=False)
+    description: Mapped[str] = mapped_column(sa.Text, nullable=False, default="")
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    )
+
+    __table_args__ = (sa.UniqueConstraint("workspace_id", "name", name="uq_teams_workspace_name"),)
+
+
+class TeamMember(Base):
+    """Adjacency-list node of a team tree (NULL parent = root).
+
+    Writes always replace a team's whole tree in one transaction, so no
+    ordering/consistency subtleties arise. ``ON DELETE RESTRICT`` on the
+    profile FK turns "delete a profile still used by a team" into a clean 409.
+    """
+
+    __tablename__ = "team_members"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    team_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), sa.ForeignKey("teams.id", ondelete="CASCADE"), nullable=False
+    )
+    parent_member_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), sa.ForeignKey("team_members.id", ondelete="CASCADE"), nullable=True
+    )
+    profile_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), sa.ForeignKey("agent_profiles.id", ondelete="RESTRICT"), nullable=False
+    )
+    position: Mapped[int] = mapped_column(sa.Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    )
+
+    __table_args__ = (
+        sa.Index("ix_team_members_team", "team_id"),
+        # DB-enforced single root per team.
+        sa.Index(
+            "ux_team_members_root",
+            "team_id",
+            unique=True,
+            postgresql_where=sa.text("parent_member_id IS NULL"),
+        ),
+    )

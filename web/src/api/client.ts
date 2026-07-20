@@ -1,4 +1,24 @@
-import type { Skill, Stats, Task, TaskCreate, TaskEvent, TaskStatus } from './types'
+import { getAccessToken } from '../lib/supabase'
+import type {
+  AgentProfile,
+  AgentProfileCreate,
+  GithubRepo,
+  GithubStatus,
+  Me,
+  Provider,
+  ProviderCreate,
+  ProviderTestResult,
+  Skill,
+  Stats,
+  Task,
+  TaskCreate,
+  TaskEvent,
+  TaskStatus,
+  Team,
+  TeamLaunch,
+  TeamSummary,
+  TeamWrite,
+} from './types'
 
 export interface ApprovalItem {
   task: Task
@@ -6,14 +26,20 @@ export interface ApprovalItem {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const token = await getAccessToken()
   const response = await fetch(path, {
-    headers: { 'Content-Type': 'application/json' },
     ...init,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...init?.headers,
+    },
   })
   if (!response.ok) {
     const detail = await response.text().catch(() => '')
     throw new Error(`${response.status} ${response.statusText}: ${detail}`)
   }
+  if (response.status === 204) return undefined as T
   return response.json() as Promise<T>
 }
 
@@ -75,5 +101,100 @@ export function resolveApproval(
   return request<Task>(`/api/tasks/${taskId}/approvals/${toolCallId}`, {
     method: 'POST',
     body: JSON.stringify({ decision, comment }),
+  })
+}
+
+// --- auth / me -----------------------------------------------------------
+
+export function getMe(): Promise<Me> {
+  return request<Me>('/api/me')
+}
+
+// --- providers -----------------------------------------------------------
+
+export function listProviders(): Promise<Provider[]> {
+  return request<{ providers: Provider[] }>('/api/providers').then((body) => body.providers)
+}
+
+export function createProvider(body: ProviderCreate): Promise<Provider> {
+  return request<Provider>('/api/providers', { method: 'POST', body: JSON.stringify(body) })
+}
+
+export function deleteProvider(providerId: string): Promise<void> {
+  return request<void>(`/api/providers/${providerId}`, { method: 'DELETE' })
+}
+
+export function testProvider(providerId: string): Promise<ProviderTestResult> {
+  return request<ProviderTestResult>(`/api/providers/${providerId}/test`, { method: 'POST' })
+}
+
+// --- github --------------------------------------------------------------
+
+export function putGithubToken(token: string): Promise<GithubStatus> {
+  return request<GithubStatus>('/api/github/token', {
+    method: 'PUT',
+    body: JSON.stringify({ token }),
+  })
+}
+
+export function getGithubStatus(): Promise<GithubStatus> {
+  return request<GithubStatus>('/api/github/status')
+}
+
+export function disconnectGithub(): Promise<void> {
+  return request<void>('/api/github/token', { method: 'DELETE' })
+}
+
+export function listGithubRepos(): Promise<GithubRepo[]> {
+  return request<{ repos: GithubRepo[] }>('/api/github/repos').then((body) => body.repos)
+}
+
+// --- agents --------------------------------------------------------------
+
+export function listAgents(): Promise<AgentProfile[]> {
+  return request<{ agents: AgentProfile[] }>('/api/agents').then((body) => body.agents)
+}
+
+export function createAgent(body: AgentProfileCreate): Promise<AgentProfile> {
+  return request<AgentProfile>('/api/agents', { method: 'POST', body: JSON.stringify(body) })
+}
+
+export function updateAgent(agentId: string, body: AgentProfileCreate): Promise<AgentProfile> {
+  return request<AgentProfile>(`/api/agents/${agentId}`, {
+    method: 'PUT',
+    body: JSON.stringify(body),
+  })
+}
+
+export function deleteAgent(agentId: string): Promise<void> {
+  return request<void>(`/api/agents/${agentId}`, { method: 'DELETE' })
+}
+
+// --- teams ---------------------------------------------------------------
+
+export function listTeams(): Promise<TeamSummary[]> {
+  return request<{ teams: TeamSummary[] }>('/api/teams').then((body) => body.teams)
+}
+
+export function getTeam(teamId: string): Promise<Team> {
+  return request<Team>(`/api/teams/${teamId}`)
+}
+
+export function createTeam(body: TeamWrite): Promise<Team> {
+  return request<Team>('/api/teams', { method: 'POST', body: JSON.stringify(body) })
+}
+
+export function updateTeam(teamId: string, body: TeamWrite): Promise<Team> {
+  return request<Team>(`/api/teams/${teamId}`, { method: 'PUT', body: JSON.stringify(body) })
+}
+
+export function deleteTeam(teamId: string): Promise<void> {
+  return request<void>(`/api/teams/${teamId}`, { method: 'DELETE' })
+}
+
+export function launchTeam(teamId: string, body: TeamLaunch): Promise<Task> {
+  return request<Task>(`/api/teams/${teamId}/launch`, {
+    method: 'POST',
+    body: JSON.stringify(body),
   })
 }

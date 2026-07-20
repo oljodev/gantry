@@ -29,6 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from gantry.core.events import read_events
 from gantry.core.models import TERMINAL_STATUSES, Task, TaskEvent
+from gantry.server.auth import ws_authenticated
 from gantry.server.broker import ALL_TASKS, EventBroker, Subscription
 from gantry.server.schemas import EventMessage, TaskEventOut, TaskMessage, TaskOut
 
@@ -49,6 +50,8 @@ def _state(websocket: WebSocket) -> tuple[Sessions, EventBroker]:
 async def task_events_ws(websocket: WebSocket, task_id: uuid.UUID, after_seq: int = 0) -> None:
     sessions, broker = _state(websocket)
     await websocket.accept()
+    if not await ws_authenticated(websocket):
+        return
     task = await _get_task(sessions, task_id)
     if task is None:
         await websocket.close(code=4404, reason="task not found")
@@ -90,6 +93,8 @@ async def firehose_ws(websocket: WebSocket, after_id: int | None = None) -> None
     """
     sessions, broker = _state(websocket)
     await websocket.accept()
+    if not await ws_authenticated(websocket):
+        return
     cursor = after_id if after_id is not None else await _max_event_id(sessions)
     with broker.subscribe(ALL_TASKS) as sub, _disconnect_watch(websocket, sub) as gone:
         try:

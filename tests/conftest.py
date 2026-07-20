@@ -103,7 +103,12 @@ async def engine(database_url: str) -> AsyncIterator[AsyncEngine]:
     engine = create_async_engine(database_url, poolclass=NullPool)
     # Each test starts from clean tables (schema itself persists per session).
     async with engine.begin() as conn:
-        await conn.execute(sa.text("TRUNCATE tasks, task_events RESTART IDENTITY CASCADE"))
+        await conn.execute(
+            sa.text(
+                "TRUNCATE tasks, task_events, secrets, providers, agent_profiles, "
+                "teams, team_members RESTART IDENTITY CASCADE"
+            )
+        )
     yield engine
     await engine.dispose()
 
@@ -128,6 +133,9 @@ async def app(engine: AsyncEngine, database_url: str) -> AsyncIterator[FastAPI]:
         _env_file=None,
         database_url=database_url,
         reaper_interval_seconds=0.2,
+        # Fixed test vault key so secret-carrying routes work; auth stays off
+        # (supabase_url unset).
+        vault_key="11" * 32,
     )
     application = create_app(settings)
     # Drive the lifespan directly (it is a plain asynccontextmanager, safe to

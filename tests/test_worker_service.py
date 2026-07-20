@@ -7,6 +7,8 @@ a local bare git remote — the full Phase 3 path minus the LLM provider.
 from __future__ import annotations
 
 import asyncio
+import os
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -15,8 +17,18 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from gantry.core import queue
 from gantry.core.db import session_scope
-from gantry.core.models import DEFAULT_WORKSPACE_ID, Task, TaskKind, TaskStatus
+from gantry.core.models import (
+    DEFAULT_WORKSPACE_ID,
+    Provider,
+    ProviderType,
+    Task,
+    TaskEvent,
+    TaskKind,
+    TaskStatus,
+)
 from gantry.runtime.llm import LLMClient
+from gantry.vault import Vault
+from gantry.vault.store import GITHUB_TOKEN_SECRET, provider_secret_name, put_secret
 from gantry.worker.service import Worker, WorkerConfig
 
 from .fakes import CountingToolLLM, ScriptedLLM, final_response, response_with_tool_call
@@ -163,3 +175,102 @@ async def test_worker_run_loop_idles_then_picks_up_new_work(db: Sessions, tmp_pa
         shutdown.set()
         await run
     assert worker.processed == 1
+
+
+# --- Vault-backed providers ----------------------------------------------
+
+
+async def seed_provider(db: Sessions, vault: Vault, api_key: str = "sk-vaulted-key-9x7z") -> str:
+    async with session_scope(db) as session:
+        provider = Provider(
+            workspace_id=DEFAULT_WORKSPACE_ID,
+            name="vault-provider",
+            provider_type=ProviderType.OPENROUTER,
+            base_url="https://openrouter.example/api",
+            default_model="some/model",
+            api_key_last4=api_key[-4:],
+        )
+        session.add(provider)
+        await session.flush()
+        await put_secret(
+            session,
+            vault,
+            workspace_id=DEFAULT_WORKSPACE_ID,
+            name=provider_secret_name(provider.id),
+            plaintext=api_key,
+        )
+        return str(provider.id)
+
+
+async def test_provider_credentials_reach_llm_factory(db: Sessions, tmp_path: Path) -> None:
+    vault = Vault(os.urandom(32))
+    provider_id = await seed_provider(db, vault)
+    factory_calls: list[tuple[str | None, str | None]] = []
+    scripted = ScriptedLLM([final_response("done via provider")])
+
+    def factory(api_key: str | None, api_base: str | None) -> LLMClient:
+        factory_calls.append((api_key, api_base))
+        return scripted
+
+    config = WorkerConfig(
+        worker_id="svc-worker-1", workspace_root=tmp_path / "ws", poll_interval_seconds=0.05
+    )
+    worker = Worker(db, config, ScriptedLLM([]), vault=vault, llm_factory=factory)
+    task = await enqueue(db, {"goal": "use my provider", "provider_id": provider_id})
+    await worker.process(await claim_as(db, worker))
+
+    assert (await get_task(db, task)).status is TaskStatus.SUCCEEDED
+    assert factory_calls == [("sk-vaulted-key-9x7z", "https://openrouter.example/api")]
+
+    # The secrecy invariant: the plaintext key appears in no event payload.
+    async with db() as session:
+        events = (await session.scalars(sa.select(TaskEvent))).all()
+    for event in events:
+        assert "sk-vaulted-key-9x7z" not in str(event.payload)
+
+
+async def test_missing_provider_fails_non_retryable(db: Sessions, tmp_path: Path) -> None:
+    vault = Vault(os.urandom(32))
+    config = WorkerConfig(
+        worker_id="svc-worker-1", workspace_root=tmp_path / "ws", poll_interval_seconds=0.05
+    )
+    worker = Worker(db, config, ScriptedLLM([]), vault=vault)
+    task = await enqueue(db, {"goal": "x", "provider_id": str(uuid.uuid4())})
+    await worker.process(await claim_as(db, worker))
+
+    refreshed = await get_task(db, task)
+    assert refreshed.status is TaskStatus.FAILED
+    assert refreshed.last_error is not None and "not found" in refreshed.last_error
+
+
+async def test_provider_without_vault_fails_clearly(db: Sessions, tmp_path: Path) -> None:
+    config = WorkerConfig(
+        worker_id="svc-worker-1", workspace_root=tmp_path / "ws", poll_interval_seconds=0.05
+    )
+    worker = Worker(db, config, ScriptedLLM([]))  # no vault
+    task = await enqueue(db, {"goal": "x", "provider_id": str(uuid.uuid4())})
+    await worker.process(await claim_as(db, worker))
+
+    refreshed = await get_task(db, task)
+    assert refreshed.status is TaskStatus.FAILED
+    assert refreshed.last_error is not None and "GANTRY_VAULT_KEY" in refreshed.last_error
+
+
+async def test_github_token_prefers_vault_over_config(db: Sessions, tmp_path: Path) -> None:
+    vault = Vault(os.urandom(32))
+    async with session_scope(db) as session:
+        await put_secret(
+            session,
+            vault,
+            workspace_id=DEFAULT_WORKSPACE_ID,
+            name=GITHUB_TOKEN_SECRET,
+            plaintext="gho_from_vault",
+        )
+    config = WorkerConfig(
+        worker_id="svc-worker-1", workspace_root=tmp_path / "ws", github_token="ghp_from_env"
+    )
+    task = await enqueue(db, {"goal": "x"})
+    with_vault = Worker(db, config, ScriptedLLM([]), vault=vault)
+    assert await with_vault._github_token(task) == "gho_from_vault"
+    without_vault = Worker(db, config, ScriptedLLM([]))
+    assert await without_vault._github_token(task) == "ghp_from_env"

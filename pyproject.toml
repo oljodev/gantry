@@ -16,13 +16,15 @@ dependencies = [
     "structlog>=24.4",
     "litellm>=1.60",
     "pyyaml>=6.0",
+    "cryptography>=44",
+    "pyjwt[crypto]>=2.10",
+    "httpx>=0.28",
 ]
 
 [dependency-groups]
 dev = [
     "pytest>=8.3",
     "pytest-asyncio>=0.25",
-    "httpx>=0.28",
     "httpx-ws>=0.7",
     "ruff>=0.9",
     "mypy>=1.14",

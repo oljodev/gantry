@@ -29,3 +29,6 @@ web/dist/
 
 # Local session tooling
 .agent-eyes/
+
+# Local runner state (Postgres data, wheels)
+.gantry/

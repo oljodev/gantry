@@ -13,6 +13,7 @@ from gantry.core.db import create_engine
 from gantry.core.notify import QueueListener
 from gantry.logging import configure_logging, get_logger
 from gantry.runtime.llm import LiteLLMClient
+from gantry.vault import Vault
 from gantry.worker.service import Worker, WorkerConfig
 
 logger = get_logger(__name__)
@@ -30,8 +31,9 @@ async def main() -> None:
     for sig in (signal.SIGTERM, signal.SIGINT):
         loop.add_signal_handler(sig, shutdown.set)
 
+    vault = Vault.from_settings(settings) if settings.vault_key else None
     async with QueueListener(settings.database_url_str) as listener:
-        worker = Worker(sessions, config, LiteLLMClient(), listener=listener)
+        worker = Worker(sessions, config, LiteLLMClient(), listener=listener, vault=vault)
         with contextlib.suppress(asyncio.CancelledError):
             await worker.run(shutdown)
     await engine.dispose()

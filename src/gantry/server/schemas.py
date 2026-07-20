@@ -11,9 +11,9 @@ import uuid
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from gantry.core.models import EventType, TaskKind, TaskStatus
+from gantry.core.models import EventType, ProviderType, TaskKind, TaskStatus
 
 
 class TaskCreateRequest(BaseModel):
@@ -22,7 +22,10 @@ class TaskCreateRequest(BaseModel):
     #: Repository the worker clones and delivers a branch to (omit for repo-less tasks).
     repo_url: str | None = None
     base_branch: str | None = None
-    #: LiteLLM model string; defaults to the server's configured model.
+    #: Configured provider to run on (vault-backed API key + base_url).
+    provider_id: uuid.UUID | None = None
+    #: Model name — a full LiteLLM string, or a bare name when provider_id is
+    #: set (the server prefixes it). Defaults to the provider's/server's model.
     model: str | None = None
     max_steps: int | None = Field(default=None, ge=1)
     priority: int = 0
@@ -39,6 +42,8 @@ class TaskCreateRequest(BaseModel):
             value = getattr(self, key)
             if value is not None:
                 merged[key] = value
+        if self.provider_id is not None:
+            merged["provider_id"] = str(self.provider_id)
         return merged
 
 
@@ -133,3 +138,134 @@ class EventMessage(BaseModel):
 
     type: Literal["event"] = "event"
     data: TaskEventOut
+
+
+class ProviderCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    provider_type: ProviderType
+    #: Write-only: encrypted into the vault, never returned by any endpoint.
+    api_key: str | None = None
+    base_url: str | None = None
+    default_model: str = Field(min_length=1, max_length=200)
+
+    @model_validator(mode="after")
+    def _local_requires_base_url(self) -> ProviderCreateRequest:
+        if self.provider_type is ProviderType.LOCAL and not self.base_url:
+            raise ValueError("base_url is required for local providers")
+        return self
+
+
+class ProviderOut(BaseModel):
+    """Redaction by construction: there is no api_key field to leak."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    name: str
+    provider_type: ProviderType
+    base_url: str | None
+    default_model: str
+    api_key_last4: str
+    created_at: datetime
+
+
+class ProvidersResponse(BaseModel):
+    providers: list[ProviderOut]
+
+
+class ProviderTestResponse(BaseModel):
+    ok: bool
+    model: str
+    error: str | None = None
+
+
+class GithubTokenRequest(BaseModel):
+    token: str = Field(min_length=1)
+
+
+class GithubStatusResponse(BaseModel):
+    connected: bool
+    login: str | None = None
+    last4: str | None = None
+
+
+class GithubRepo(BaseModel):
+    full_name: str
+    private: bool
+    default_branch: str
+    clone_url: str
+    pushed_at: datetime | None = None
+
+
+class GithubReposResponse(BaseModel):
+    repos: list[GithubRepo]
+
+
+class AgentProfileIn(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    role: str = ""
+    system_prompt: str | None = None
+    provider_id: uuid.UUID | None = None
+    #: Bare model name (prefixed via the provider) or a full LiteLLM string.
+    model: str | None = None
+    max_steps: int | None = Field(default=None, ge=1)
+    can_spawn: bool = False
+    gated_tools: list[str] = Field(default_factory=list)
+    skills: list[str] = Field(default_factory=list)
+
+
+class AgentProfileOut(AgentProfileIn):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    created_at: datetime
+    updated_at: datetime
+
+
+class AgentsResponse(BaseModel):
+    agents: list[AgentProfileOut]
+
+
+class TeamNodeIn(BaseModel):
+    profile_id: uuid.UUID
+    children: list[TeamNodeIn] = Field(default_factory=list)
+
+
+class TeamWriteRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    description: str = ""
+    root: TeamNodeIn
+
+
+class TeamNodeOut(BaseModel):
+    profile: AgentProfileOut
+    children: list[TeamNodeOut] = Field(default_factory=list)
+
+
+class TeamOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    description: str
+    root: TeamNodeOut
+
+
+class TeamSummary(BaseModel):
+    id: uuid.UUID
+    name: str
+    description: str
+    member_count: int
+
+
+class TeamsResponse(BaseModel):
+    teams: list[TeamSummary]
+
+
+class TeamLaunchRequest(BaseModel):
+    goal: str = Field(min_length=1)
+    repo_url: str | None = None
+    base_branch: str | None = None
+    priority: int = 0
+
+
+TeamNodeIn.model_rebuild()
+TeamNodeOut.model_rebuild()

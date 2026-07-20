@@ -25,9 +25,11 @@ from gantry.config import Settings, get_settings
 from gantry.core import queue
 from gantry.core.db import create_engine, create_session_factory, session_scope
 from gantry.logging import configure_logging, get_logger
-from gantry.server import api, ws
+from gantry.server import agents_api, api, github_api, providers_api, ws
+from gantry.server.auth import AuthFailed, SupabaseAuthenticator, auth_failed_response, me_router
 from gantry.server.broker import EventBroker
 from gantry.skills import SkillRegistry
+from gantry.vault import Vault
 
 logger = get_logger(__name__)
 
@@ -71,13 +73,28 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(title="Gantry", version=__version__, lifespan=lifespan)
     app.state.settings = settings
     app.state.skills = SkillRegistry.load_dir(settings.skills_root)
+    app.state.auth = (
+        SupabaseAuthenticator(
+            settings.supabase_url,
+            allowed_emails=settings.allowed_emails,
+            hs256_secret=settings.supabase_jwt_secret,
+        )
+        if settings.supabase_url
+        else None
+    )
+    app.state.vault = Vault.from_settings(settings) if settings.vault_key else None
+    app.add_exception_handler(AuthFailed, auth_failed_response)  # type: ignore[arg-type]
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    app.include_router(me_router)
     app.include_router(api.router)
+    app.include_router(providers_api.router)
+    app.include_router(github_api.router)
+    app.include_router(agents_api.router)
     app.include_router(ws.router)
 
     @app.get("/healthz")

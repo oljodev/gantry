@@ -59,6 +59,18 @@ class Settings(BaseSettings):
     cors_origins: list[str] = Field(
         default=["http://localhost:5173", "http://127.0.0.1:5173"],
     )
+    #: 32-byte AES-256-GCM key (hex or base64) for the secrets vault. Only
+    #: validated when a secret operation is attempted, so dev/tests without
+    #: secrets never need it. Generated into .env by run.sh.
+    vault_key: str | None = None
+    #: Supabase project URL (e.g. https://xyz.supabase.co). When set, every
+    #: /api route and WebSocket requires a valid Supabase JWT; when None,
+    #: auth is disabled entirely (dev/test parity).
+    supabase_url: str | None = None
+    #: Escape hatch for legacy Supabase projects signing JWTs with HS256.
+    supabase_jwt_secret: str | None = None
+    #: Emails allowed through auth (case-insensitive). Empty = any valid JWT.
+    allowed_emails: list[str] = Field(default_factory=list)
 
     @field_validator("database_url")
     @classmethod

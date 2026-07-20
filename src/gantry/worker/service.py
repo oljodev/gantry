@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import random
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -18,14 +19,16 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from gantry.config import Settings
 from gantry.core import queue
 from gantry.core.db import session_scope
-from gantry.core.models import Task, TaskKind, TaskStatus
+from gantry.core.models import Provider, Task, TaskKind, TaskStatus
 from gantry.core.notify import QueueListener
 from gantry.logging import get_logger
 from gantry.runtime.compaction import CompactionConfig
-from gantry.runtime.llm import LLMClient
+from gantry.runtime.llm import LiteLLMClient, LLMClient
 from gantry.runtime.loop import AgentLoopError, run_agent_task
 from gantry.runtime.tools import TaskParked
 from gantry.skills import SkillRegistry
+from gantry.vault import Vault
+from gantry.vault.store import GITHUB_TOKEN_SECRET, get_secret, provider_secret_name
 from gantry.worker import workspace as ws
 from gantry.worker.policy import policy_for_payload
 from gantry.worker.tools import build_coding_registry, build_planner_registry
@@ -37,6 +40,16 @@ Sessions = async_sessionmaker[AsyncSession]
 
 class LeaseLostError(RuntimeError):
     """Another worker owns this task now; abandon all work on it."""
+
+
+class ProviderConfigError(RuntimeError):
+    """Task references a provider the worker cannot resolve (non-retryable)."""
+
+
+#: Builds an LLM client from (api_key, api_base) — the test seam for
+#: verifying vault-decrypted credentials reach the client without ever
+#: exercising litellm.
+LLMFactory = Callable[[str | None, str | None], LLMClient]
 
 
 @dataclass(frozen=True)
@@ -69,11 +82,16 @@ class Worker:
         config: WorkerConfig,
         llm: LLMClient,
         listener: QueueListener | None = None,
+        *,
+        vault: Vault | None = None,
+        llm_factory: LLMFactory | None = None,
     ) -> None:
         self._sessions = sessions
         self._config = config
         self._llm = llm
         self._listener = listener
+        self._vault = vault
+        self._llm_factory: LLMFactory = llm_factory or LiteLLMClient
         self._skills = (
             SkillRegistry.load_dir(config.skills_root)
             if config.skills_root is not None
@@ -122,14 +140,14 @@ class Worker:
             if task.kind is TaskKind.PLAN:
                 # Planners coordinate; they get orchestration tools and no
                 # sandbox checkout of their own.
-                registry = build_planner_registry(cfg.max_subtasks)
+                registry = build_planner_registry(cfg.max_subtasks, team=task.payload.get("team"))
             else:
                 workspace = await ws.prepare_workspace(
                     cfg.workspace_root,
                     task.id,
                     task.attempt,
                     task.payload,
-                    github_token=cfg.github_token,
+                    github_token=await self._github_token(task),
                 )
                 registry = build_coding_registry(workspace.auth)
 
@@ -140,7 +158,7 @@ class Worker:
             outcome = await run_agent_task(
                 self._sessions,
                 task,
-                self._llm,
+                await self._llm_for_task(task),
                 registry,
                 workspace=workspace.path if workspace else None,
                 compaction=cfg.compaction,
@@ -183,6 +201,10 @@ class Worker:
             )
         except LeaseLostError:
             logger.warning("worker.lease_lost", task_id=str(task.id))
+        except ProviderConfigError as exc:
+            # Bad provider reference / vault misconfig: retrying won't help,
+            # but retry-after-fixing works because we re-read the row then.
+            await self._fail(task, str(exc), retryable=False)
         except AgentLoopError as exc:
             # The agent can't finish (e.g. max steps): retrying won't help.
             await self._fail(task, str(exc), retryable=False)
@@ -194,6 +216,54 @@ class Worker:
             if workspace is not None and (succeeded or not cfg.keep_failed_workspaces):
                 await ws.destroy(workspace.root)
             self.processed += 1
+
+    async def _llm_for_task(self, task: Task) -> LLMClient:
+        """The task's LLM client: vault-backed provider config, or the default.
+
+        Tasks without ``provider_id`` use the worker's shared client (env-var
+        credentials) — the pre-provider behavior, unchanged.
+        """
+        raw_provider_id = task.payload.get("provider_id")
+        if not raw_provider_id:
+            return self._llm
+        if self._vault is None:
+            raise ProviderConfigError(
+                "task uses a configured provider but this worker has no vault key "
+                "(set GANTRY_VAULT_KEY)"
+            )
+        try:
+            provider_id = uuid.UUID(str(raw_provider_id))
+        except ValueError as exc:
+            raise ProviderConfigError(f"invalid provider_id {raw_provider_id!r}") from exc
+        async with self._sessions() as session:
+            provider = await session.get(Provider, provider_id)
+            if provider is None or provider.workspace_id != task.workspace_id:
+                raise ProviderConfigError(
+                    f"provider {provider_id} not found — was it deleted? "
+                    "Recreate it in Settings and retry the task."
+                )
+            api_key = await get_secret(
+                session,
+                self._vault,
+                workspace_id=task.workspace_id,
+                name=provider_secret_name(provider_id),
+            )
+        return self._llm_factory(api_key, provider.base_url)
+
+    async def _github_token(self, task: Task) -> str | None:
+        """Vault-stored GitHub OAuth token, falling back to the env-var token."""
+        if self._vault is not None:
+            async with self._sessions() as session:
+                token = await get_secret(
+                    session,
+                    self._vault,
+                    workspace_id=task.workspace_id,
+                    name=GITHUB_TOKEN_SECRET,
+                )
+            if token:
+                logger.info("worker.git_token_source", task_id=str(task.id), source="vault")
+                return token
+        return self._config.github_token
 
     async def _fail(self, task: Task, error: str, *, retryable: bool) -> None:
         try:
