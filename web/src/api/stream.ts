@@ -8,6 +8,7 @@
 // on the next reconnect attempt automatically.
 
 import { getAccessToken } from '../lib/supabase'
+import { apiWsUrl } from './base'
 import type { StreamMessage, Task, TaskEvent } from './types'
 
 export type ConnectionState = 'connecting' | 'live' | 'reconnecting' | 'ended'
@@ -21,10 +22,7 @@ export interface TaskStreamHandlers {
 const RECONNECT_MIN_MS = 500
 const RECONNECT_MAX_MS = 10_000
 
-function wsUrl(path: string): string {
-  const scheme = location.protocol === 'https:' ? 'wss' : 'ws'
-  return `${scheme}://${location.host}${path}`
-}
+const wsUrl = apiWsUrl
 
 /** Pure: append an auth token to a ws path that may already carry a query. */
 export function withToken(path: string, token: string | null): string {

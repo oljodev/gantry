@@ -20,6 +20,8 @@ interface AppDataValue {
   stats: Stats | null
   approvals: ApprovalItem[]
   connection: ConnectionState
+  /** null = unknown yet, true/false = last API probe reached the backend. */
+  online: boolean | null
   /** Monotonic counter bumped after every (debounced) data-changing event —
    *  depend on it in useEffect to refetch page-local data. */
   version: number
@@ -31,6 +33,7 @@ const AppDataContext = createContext<AppDataValue>({
   stats: null,
   approvals: [],
   connection: 'connecting',
+  online: null,
   version: 0,
   refetch: () => {},
 })
@@ -45,11 +48,20 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   const [stats, setStats] = useState<Stats | null>(null)
   const [approvals, setApprovals] = useState<ApprovalItem[]>([])
   const [connection, setConnection] = useState<ConnectionState>('connecting')
+  const [online, setOnline] = useState<boolean | null>(null)
   const [version, setVersion] = useState(0)
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const refetch = useCallback(() => {
-    getStats().then(setStats).catch(console.error)
+    getStats()
+      .then((s) => {
+        setStats(s)
+        setOnline(true)
+      })
+      .catch((err) => {
+        setOnline(false)
+        console.error(err)
+      })
     listApprovals().then(setApprovals).catch(console.error)
     setVersion((v) => v + 1)
   }, [])
@@ -73,7 +85,9 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   }, [refetch])
 
   return (
-    <AppDataContext.Provider value={{ feed, stats, approvals, connection, version, refetch }}>
+    <AppDataContext.Provider
+      value={{ feed, stats, approvals, connection, online, version, refetch }}
+    >
       {children}
     </AppDataContext.Provider>
   )

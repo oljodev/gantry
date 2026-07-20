@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { apiUrl } from '../api/base'
 import { disconnectGithub, getGithubStatus, getStats, listProviders } from '../api/client'
 import type { GithubStatus, Provider, ProviderType, Stats } from '../api/types'
 import { useAuth } from '../auth/AuthProvider'
@@ -153,8 +154,8 @@ function GeneralTab() {
   const [stats, setStats] = useState<Stats | null>(null)
 
   useEffect(() => {
-    fetch('/healthz')
-      .then((r) => r.json())
+    fetch(apiUrl('/healthz'))
+      .then((r) => (r.headers.get('content-type')?.includes('json') ? r.json() : null))
       .then(setHealth)
       .catch(console.error)
     getStats().then(setStats).catch(console.error)

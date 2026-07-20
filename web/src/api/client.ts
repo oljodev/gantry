@@ -1,4 +1,5 @@
 import { getAccessToken } from '../lib/supabase'
+import { apiUrl, BackendUnreachableError } from './base'
 import type {
   AgentProfile,
   AgentProfileCreate,
@@ -27,19 +28,32 @@ export interface ApprovalItem {
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const token = await getAccessToken()
-  const response = await fetch(path, {
-    ...init,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...init?.headers,
-    },
-  })
+  let response: Response
+  try {
+    response = await fetch(apiUrl(path), {
+      ...init,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...init?.headers,
+      },
+    })
+  } catch (err) {
+    // Network failure (backend down, DNS, CORS preflight refused).
+    throw new BackendUnreachableError(path, String(err))
+  }
   if (!response.ok) {
     const detail = await response.text().catch(() => '')
     throw new Error(`${response.status} ${response.statusText}: ${detail}`)
   }
   if (response.status === 204) return undefined as T
+  // A static host with no API (e.g. Cloudflare Pages SPA fallback) answers
+  // /api/* with index.html — turn that into a clear message instead of the
+  // cryptic "Unexpected token '<'" JSON parse error.
+  const contentType = response.headers.get('content-type') ?? ''
+  if (!contentType.includes('application/json')) {
+    throw new BackendUnreachableError(path, `expected JSON, got ${contentType || 'no content-type'}`)
+  }
   return response.json() as Promise<T>
 }
 

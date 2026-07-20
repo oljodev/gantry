@@ -1,0 +1,5 @@
+# Cloudflare Pages: serve the SPA for client-side routes (deep links like
+# /settings, /agents, /teams/:id must return index.html, not 404). The API is
+# NOT here — it lives at VITE_API_BASE (a separate backend host). This is a
+# static frontend only.
+/*  /index.html  200

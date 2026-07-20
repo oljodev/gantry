@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { Outlet } from 'react-router-dom'
+import { API_BASE } from './api/base'
 import { Sidebar } from './components/Sidebar'
-import { AppDataProvider } from './state/AppDataProvider'
+import { AppDataProvider, useAppData } from './state/AppDataProvider'
 
 export function App() {
   const [menuOpen, setMenuOpen] = useState(false)
@@ -21,11 +22,23 @@ export function App() {
               Gantry
             </span>
           </header>
+          <OfflineBanner />
           <main className="mx-auto max-w-7xl px-4 py-6">
             <Outlet />
           </main>
         </div>
       </div>
     </AppDataProvider>
+  )
+}
+
+function OfflineBanner() {
+  const { online } = useAppData()
+  if (online !== false) return null
+  return (
+    <div className="border-b border-amber-900/60 bg-amber-950/40 px-4 py-2 text-center text-xs text-amber-200">
+      Backend not reachable{API_BASE ? ` at ${API_BASE}` : ''}. The dashboard is static; it needs
+      the Gantry API running. See the deployment notes in <span className="font-mono">CLAUDE.md</span>.
+    </div>
   )
 }

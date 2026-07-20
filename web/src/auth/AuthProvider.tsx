@@ -9,7 +9,7 @@ import {
 } from 'react'
 import { getMe, putGithubToken } from '../api/client'
 import type { Me } from '../api/types'
-import { authEnabled, supabase } from '../lib/supabase'
+import { authEnabled, getSupabase } from '../lib/supabase'
 
 interface AuthContextValue {
   authEnabled: boolean
@@ -42,6 +42,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(authEnabled)
 
   useEffect(() => {
+    const supabase = getSupabase()
     if (!supabase) return
     // Initial restore: without this, every reload flashes the login page.
     supabase.auth.getSession().then(({ data }) => {
@@ -70,14 +71,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [session])
 
   const signInWithGitHub = useCallback(() => {
-    void supabase?.auth.signInWithOAuth({
+    void getSupabase()?.auth.signInWithOAuth({
       provider: 'github',
       options: { scopes: 'repo', redirectTo: location.origin },
     })
   }, [])
 
   const signOut = useCallback(async () => {
-    await supabase?.auth.signOut()
+    await getSupabase()?.auth.signOut()
   }, [])
 
   return (

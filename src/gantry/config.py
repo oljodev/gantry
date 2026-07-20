@@ -55,9 +55,15 @@ class Settings(BaseSettings):
     max_subtasks_per_task: int = 32
     #: Directory of SKILL.md files loaded by workers and the API.
     skills_root: Path = Path("skills")
-    #: Origins allowed to call the API from a browser (the Phase 5 frontend).
+    #: Origins allowed to call the API from a browser. Includes the Cloudflare
+    #: Pages production origin so a split deploy (static frontend + remote
+    #: backend) works out of the box; override via GANTRY_CORS_ORIGINS.
     cors_origins: list[str] = Field(
-        default=["http://localhost:5173", "http://127.0.0.1:5173"],
+        default=[
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+            "https://gantry.oljo.dev",
+        ],
     )
     #: 32-byte AES-256-GCM key (hex or base64) for the secrets vault. Only
     #: validated when a secret operation is attempted, so dev/tests without
