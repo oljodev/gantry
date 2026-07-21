@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
+import { Check, ChevronDown, Copy } from 'lucide-react'
 import { cancelTask, listTasks, retryTask } from '../api/client'
 import { openTaskStream, type ConnectionState } from '../api/stream'
 import type { Task, TaskEvent } from '../api/types'
@@ -9,6 +10,7 @@ import { TaskTree } from '../components/TaskTree'
 import { TerminalPane } from '../components/TerminalPane'
 import { TraceTimeline } from '../components/TraceTimeline'
 import { ApprovalCard } from '../components/ApprovalCard'
+import { Markdown } from '../components/Markdown'
 import { shortId } from '../lib/format'
 import { foldTrace, pendingApprovals } from '../lib/trace'
 
@@ -103,11 +105,12 @@ export function TaskPage() {
             <button
               onClick={() => setFollow(!follow)}
               title="Auto-scroll to new events"
-              className={`-mb-px px-3 py-1.5 text-xs transition ${
+              className={`-mb-px flex items-center gap-1 px-3 py-1.5 text-xs transition ${
                 follow ? 'text-emerald-400' : 'text-zinc-600 hover:text-zinc-400'
               }`}
             >
-              {follow ? '▾ following' : '▾ follow'}
+              <ChevronDown className="h-3.5 w-3.5" aria-hidden />
+              {follow ? 'following' : 'follow'}
             </button>
           </div>
           {tab === 'trace' && <TraceTimeline steps={steps} />}
@@ -122,7 +125,7 @@ export function TaskPage() {
 
 const CONNECTION_LABEL: Record<ConnectionState, [string, string]> = {
   connecting: ['connecting', 'text-zinc-500'],
-  live: ['● live', 'text-emerald-400'],
+  live: ['live', 'text-emerald-400'],
   reconnecting: ['reconnecting…', 'text-amber-400'],
   ended: ['stream ended', 'text-zinc-500'],
 }
@@ -151,7 +154,12 @@ function Header({ task, connection }: { task: Task | null; connection: Connectio
       <div className="flex flex-wrap items-center gap-3">
         <StatusPill status={task.status} />
         <h1 className="text-lg font-semibold">{String(task.payload.goal ?? shortId(task.id))}</h1>
-        <span className={`text-xs ${tone}`}>{label}</span>
+        <span className={`flex items-center gap-1.5 text-xs ${tone}`}>
+          {connection === 'live' && (
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" aria-hidden />
+          )}
+          {label}
+        </span>
         <span className="grow" />
         <button
           onClick={() => {
@@ -162,9 +170,19 @@ function Header({ task, connection }: { task: Task | null; connection: Connectio
             setTimeout(() => setCopied(false), 1500)
           }}
           title={task.id}
-          className="rounded-md border border-zinc-800 px-2.5 py-1 font-mono text-xs text-zinc-400 transition hover:bg-zinc-900 hover:text-zinc-200"
+          className="flex items-center gap-1 rounded-md border border-zinc-800 px-2.5 py-1 font-mono text-xs text-zinc-400 transition hover:bg-zinc-900 hover:text-zinc-200"
         >
-          {copied ? 'copied ✓' : 'copy id'}
+          {copied ? (
+            <>
+              <Check className="h-3.5 w-3.5" aria-hidden />
+              copied
+            </>
+          ) : (
+            <>
+              <Copy className="h-3.5 w-3.5" aria-hidden />
+              copy id
+            </>
+          )}
         </button>
         {task.status === 'pending' && (
           <button
@@ -200,9 +218,9 @@ function Header({ task, connection }: { task: Task | null; connection: Connectio
         ))}
       </dl>
       {typeof result.final_text === 'string' && result.final_text && (
-        <p className="mt-3 rounded-md border border-emerald-900/60 bg-emerald-950/30 px-3 py-2 text-sm whitespace-pre-wrap text-emerald-100">
-          {result.final_text}
-        </p>
+        <div className="mt-3 rounded-md border border-emerald-900/60 bg-emerald-950/30 px-3 py-2">
+          <Markdown>{result.final_text}</Markdown>
+        </div>
       )}
       {task.last_error && (
         <p className="mt-3 rounded-md border border-red-900/60 bg-red-950/30 px-3 py-2 font-mono text-xs whitespace-pre-wrap text-red-200">

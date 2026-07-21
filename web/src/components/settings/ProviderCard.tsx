@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Check, X } from 'lucide-react'
 import { createProvider, deleteProvider, testProvider } from '../../api/client'
 import type { Provider, ProviderTestResult, ProviderType } from '../../api/types'
 import { field } from '../forms'
@@ -182,10 +183,17 @@ export function ProviderCard({
         )}
         {test &&
           (test.ok ? (
-            <span className="text-xs text-emerald-400">✓ {test.model} responded</span>
+            <span className="flex items-center gap-1 text-xs text-emerald-400">
+              <Check className="h-3.5 w-3.5 shrink-0" aria-hidden />
+              {test.model} responded
+            </span>
           ) : (
-            <span className="max-w-md truncate text-xs text-red-400" title={test.error ?? ''}>
-              ✗ {test.error}
+            <span
+              className="flex min-w-0 items-center gap-1 text-xs text-red-400"
+              title={test.error ?? ''}
+            >
+              <X className="h-3.5 w-3.5 shrink-0" aria-hidden />
+              <span className="max-w-md truncate">{test.error}</span>
             </span>
           ))}
         {error && (

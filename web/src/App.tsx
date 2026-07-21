@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Outlet } from 'react-router-dom'
+import { Hexagon, Menu } from 'lucide-react'
 import { API_BASE } from './api/base'
 import { Sidebar } from './components/Sidebar'
 import { AppDataProvider, useAppData } from './state/AppDataProvider'
@@ -8,17 +9,17 @@ export function App() {
   const [menuOpen, setMenuOpen] = useState(false)
   return (
     <AppDataProvider>
-      <div className="flex min-h-screen">
+      <div className="min-h-screen">
         <Sidebar open={menuOpen} onClose={() => setMenuOpen(false)} />
-        <div className="min-w-0 flex-1">
+        {/* The sidebar is fixed, so the shell reserves its width instead of
+            sitting beside it in flow. */}
+        <div className="min-w-0 lg:pl-56">
           <header className="sticky top-0 z-10 flex h-12 items-center gap-3 border-b border-zinc-800 bg-zinc-950/90 px-4 backdrop-blur lg:hidden">
-            <button onClick={() => setMenuOpen(true)} aria-label="Open menu" className="text-lg">
-              ☰
+            <button onClick={() => setMenuOpen(true)} aria-label="Open menu">
+              <Menu className="h-5 w-5" aria-hidden />
             </button>
-            <span className="font-semibold tracking-tight">
-              <span className="text-amber-400" aria-hidden>
-                ⌬{' '}
-              </span>
+            <span className="flex items-center gap-2 font-semibold tracking-tight">
+              <Hexagon className="h-4 w-4 text-amber-400" aria-hidden />
               Gantry
             </span>
           </header>

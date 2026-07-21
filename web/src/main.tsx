@@ -16,6 +16,10 @@ import { SkillsPage } from './pages/SkillsPage'
 import { TaskPage } from './pages/TaskPage'
 import { TeamEditorPage } from './pages/TeamEditorPage'
 import { TeamsPage } from './pages/TeamsPage'
+import { applyTheme, preferredTheme } from './lib/theme'
+
+// Before first paint, so light-mode users never see a flash of the dark shell.
+applyTheme(preferredTheme())
 
 const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },

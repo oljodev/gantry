@@ -1,3 +1,4 @@
+import { Lock } from 'lucide-react'
 import { useAuth } from '../auth/AuthProvider'
 
 export function NotAuthorizedPage() {
@@ -5,9 +6,7 @@ export function NotAuthorizedPage() {
   return (
     <div className="flex min-h-screen items-center justify-center px-4">
       <div className="w-full max-w-sm rounded-xl border border-zinc-800 bg-zinc-900/40 p-8 text-center">
-        <div className="mb-3 text-3xl" aria-hidden>
-          🔒
-        </div>
+        <Lock className="mx-auto mb-3 h-8 w-8 text-zinc-500" aria-hidden />
         <h1 className="text-lg font-semibold">Not authorized</h1>
         <p className="mt-2 text-sm text-zinc-400">
           {me?.email ? (

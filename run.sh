@@ -19,7 +19,46 @@ PGPORT="${GANTRY_PGPORT:-54322}"
 WORKERS="${GANTRY_WORKERS:-2}"
 mkdir -p "$STATE" "$PGSOCK"
 
+# Fail fast (with a clear message) if the API port is already taken — usually a
+# Gantry instance still running in another terminal. Otherwise uvicorn dies with
+# a cryptic "address already in use" and the whole script tears itself down.
+if (exec 3<>"/dev/tcp/127.0.0.1/8400") 2>/dev/null; then
+  exec 3>&- 3<&-
+  echo "error: port 8400 is already in use."
+  # Name the culprit when we can — a stray background/orphaned server won't be
+  # in any visible terminal, so "Ctrl-C it" is useless advice on its own.
+  holder=""
+  if command -v lsof >/dev/null 2>&1; then
+    holder="$(lsof -ti:8400 2>/dev/null | tr '\n' ' ')"
+  elif command -v fuser >/dev/null 2>&1; then
+    holder="$(fuser 8400/tcp 2>/dev/null | tr -s ' ')"
+  fi
+  if [ -n "${holder// /}" ]; then
+    echo "       Held by PID(s):$holder"
+    echo "       Free it with:  kill$holder"
+  else
+    echo "       Free it with:  fuser -k 8400/tcp"
+    echo "                 or:  lsof -ti:8400 | xargs -r kill"
+  fi
+  echo "       Then re-run ./run.sh"
+  exit 1
+fi
+
 command -v uv >/dev/null || { echo "error: uv is required — https://docs.astral.sh/uv/"; exit 1; }
+
+# node/npm are needed to build the dashboard. nvm shells don't export them to
+# non-interactive runs, so locate them ourselves.
+if ! command -v npm >/dev/null 2>&1; then
+  if [ -s "$HOME/.nvm/nvm.sh" ]; then
+    export NVM_DIR="$HOME/.nvm"
+    # shellcheck disable=SC1091
+    . "$NVM_DIR/nvm.sh" >/dev/null 2>&1 || true
+  fi
+  if ! command -v npm >/dev/null 2>&1; then
+    node_bin="$(ls -d "$HOME"/.nvm/versions/node/*/bin 2>/dev/null | sort -V | tail -1)"
+    [ -n "$node_bin" ] && PATH="$node_bin:$PATH"
+  fi
+fi
 
 echo "==> syncing python deps"
 uv sync --group dev --quiet

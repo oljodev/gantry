@@ -1,8 +1,10 @@
 import { useState } from 'react'
 import type { TaskEvent } from '../api/types'
 import type { LlmStep, MarkerStep, ToolStep, TraceStep } from '../lib/trace'
+import { Layers } from 'lucide-react'
 import { clockTime, compactJson, duration } from '../lib/format'
 import { DiffViewer } from './DiffViewer'
+import { Markdown } from './Markdown'
 
 export function TraceTimeline({ steps }: { steps: TraceStep[] }) {
   if (steps.length === 0) {
@@ -82,7 +84,8 @@ function Compaction({ step }: { step: MarkerStep }) {
   const summarized = step.event.payload.summarized_messages as number | undefined
   return (
     <div className="flex items-center gap-2 rounded-md border border-dashed border-zinc-700 px-3 py-1.5 text-xs text-zinc-500">
-      <span>⧉ context compacted{summarized ? ` — ${summarized} messages summarized` : ''}</span>
+      <Layers className="h-3.5 w-3.5 shrink-0" aria-hidden />
+      <span>context compacted{summarized ? ` — ${summarized} messages summarized` : ''}</span>
       <span className="grow" />
       <Timestamp event={step.event} />
     </div>
@@ -120,7 +123,9 @@ function Llm({ step }: { step: LlmStep }) {
         {(response ?? step.request) && <Timestamp event={(response ?? step.request)!} />}
       </div>
       {content && (
-        <p className="px-3 py-2 text-sm whitespace-pre-wrap text-zinc-200">{content}</p>
+        <div className="px-3 py-2">
+          <Markdown>{content}</Markdown>
+        </div>
       )}
     </div>
   )
@@ -132,7 +137,7 @@ function Expandable({ text, tone }: { text: string; tone: string }) {
   return (
     <div className="relative">
       <pre
-        className={`overflow-auto border-t border-zinc-800/60 bg-black/60 px-3 py-2 font-mono text-xs leading-relaxed whitespace-pre-wrap ${tone} ${
+        className={`overflow-auto border-t border-zinc-800/60 bg-code px-3 py-2 font-mono text-xs leading-relaxed whitespace-pre-wrap ${tone} ${
           expanded ? 'max-h-none' : 'max-h-64'
         }`}
       >

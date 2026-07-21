@@ -39,7 +39,7 @@ export function ApprovalCard({
         <span className="text-zinc-300">{String(request.payload.reason)}</span>
         {goal && <span className="truncate text-xs text-zinc-500">— {goal}</span>}
       </div>
-      <pre className="mt-2 max-h-40 overflow-auto rounded bg-black/60 px-3 py-2 font-mono text-xs whitespace-pre-wrap text-amber-200">
+      <pre className="mt-2 max-h-40 overflow-auto rounded bg-code px-3 py-2 font-mono text-xs whitespace-pre-wrap text-amber-200">
         {String(request.payload.preview)}
       </pre>
       <div className="mt-2 flex flex-wrap items-center gap-2">

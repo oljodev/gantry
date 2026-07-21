@@ -3,10 +3,97 @@
 @theme {
   --font-mono: "SFMono-Regular", ui-monospace, "Cascadia Mono", "JetBrains Mono",
     Menlo, Consolas, monospace;
+
+  /* Code/terminal surface. A semantic token rather than bare `bg-black` so the
+     light theme can flip it without touching every pane. */
+  --color-code: #000000;
+}
+
+/* --- Light theme -------------------------------------------------------
+   The UI is written dark-first against Tailwind's ramps (950 = background,
+   200 = body text). Rather than annotate every component with `dark:`
+   variants, light mode *inverts the ramps themselves*: utilities compile to
+   `var(--color-zinc-900)` etc., so redefining those variables here re-themes
+   the entire app — including opacity modifiers, which resolve through the
+   same variable via color-mix.
+
+   Consequence to keep in mind when writing new UI: keep using dark-first
+   shades (light text = low number, dark surface = high number) and light
+   mode follows for free. */
+:root[data-theme="light"] {
+  --color-code: #f4f4f5;
+
+  --color-zinc-950: #ffffff;
+  --color-zinc-900: #f4f4f5;
+  --color-zinc-800: #e4e4e7;
+  --color-zinc-700: #d4d4d8;
+  /* Mid-tones are nudged darker rather than mirrored exactly — a literal
+     inversion leaves muted text too faint against white. */
+  --color-zinc-600: #8b8b93;
+  --color-zinc-500: #6b6b73;
+  --color-zinc-400: #52525b;
+  --color-zinc-300: #3f3f46;
+  --color-zinc-200: #27272a;
+  --color-zinc-100: #18181b;
+  --color-zinc-50: #09090b;
+
+  --color-amber-950: #fffbeb;
+  --color-amber-900: #fef3c7;
+  --color-amber-800: #fde68a;
+  --color-amber-700: #fcd34d;
+  --color-amber-600: #fbbf24;
+  --color-amber-500: #d97706;
+  --color-amber-400: #b45309;
+  --color-amber-300: #92400e;
+  --color-amber-200: #78350f;
+  --color-amber-100: #451a03;
+
+  --color-emerald-950: #ecfdf5;
+  --color-emerald-900: #d1fae5;
+  --color-emerald-800: #a7f3d0;
+  --color-emerald-700: #059669;
+  --color-emerald-600: #047857;
+  --color-emerald-500: #059669;
+  --color-emerald-400: #047857;
+  --color-emerald-300: #065f46;
+  --color-emerald-200: #064e3b;
+
+  --color-red-950: #fef2f2;
+  --color-red-900: #fecaca;
+  --color-red-800: #dc2626;
+  --color-red-700: #b91c1c;
+  --color-red-600: #b91c1c;
+  --color-red-500: #dc2626;
+  --color-red-400: #b91c1c;
+  --color-red-300: #991b1b;
+  --color-red-200: #7f1d1d;
+
+  --color-sky-950: #f0f9ff;
+  --color-sky-900: #e0f2fe;
+  --color-sky-400: #0284c7;
+  --color-sky-300: #0369a1;
+  --color-sky-200: #075985;
+
+  --color-purple-950: #faf5ff;
+  --color-purple-900: #ede9fe;
+  --color-purple-800: #ddd6fe;
+  --color-purple-400: #7e22ce;
+  --color-purple-300: #6b21a8;
+  --color-purple-200: #581c87;
+
+  --color-indigo-950: #eef2ff;
+  --color-indigo-900: #e0e7ff;
+  --color-indigo-400: #4338ca;
+  --color-indigo-300: #3730a3;
+  --color-indigo-200: #312e81;
 }
 
 html {
   color-scheme: dark;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
 }
 
 body {

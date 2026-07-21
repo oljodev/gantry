@@ -15,6 +15,9 @@ dependencies = [
     "pydantic-settings>=2.7",
     "structlog>=24.4",
     "litellm>=1.60",
+    # litellm imports orjson on some provider paths (e.g. OpenRouter) but
+    # declares it only as an extra — pin it directly so those paths don't fail.
+    "orjson>=3.10",
     "pyyaml>=6.0",
     "cryptography>=44",
     "pyjwt[crypto]>=2.10",

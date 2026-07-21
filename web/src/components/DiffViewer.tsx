@@ -46,7 +46,7 @@ function Commit({ event, embedded }: { event: TaskEvent; embedded: boolean }) {
             <span className="text-emerald-500">+{file.additions}</span>
             <span className="text-red-500">−{file.deletions}</span>
           </div>
-          <pre className="max-h-96 overflow-auto bg-black/40 font-mono text-xs leading-relaxed">
+          <pre className="max-h-96 overflow-auto bg-code font-mono text-xs leading-relaxed">
             {file.lines.map((line, i) => (
               <div key={i} className={`px-3 ${LINE_STYLES[line.kind]}`}>
                 <span className="select-none">{LINE_PREFIX[line.kind]}</span>

@@ -14,7 +14,7 @@ export function TerminalPane({ events }: { events: TaskEvent[] }) {
     return <p className="py-8 text-center text-sm text-zinc-600">No terminal output yet.</p>
   }
   return (
-    <div className="max-h-[70vh] overflow-auto rounded-md border border-zinc-800 bg-black p-3 font-mono text-xs leading-relaxed">
+    <div className="max-h-[70vh] overflow-auto rounded-md border border-zinc-800 bg-code p-3 font-mono text-xs leading-relaxed">
       {sessions.map((session) => (
         <div key={session.firstSeq} className="mb-3">
           <div className="text-emerald-400">

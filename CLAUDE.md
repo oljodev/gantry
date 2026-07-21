@@ -70,6 +70,18 @@ until configured:
 
 ## Conventions
 
+- **Never use emojis.** Not in the UI, not in code, comments, docs, commit
+  messages, test names, log output, or CLI scripts. In the frontend, every icon
+  is a `lucide-react` component (`<Check className="h-4 w-4" aria-hidden />`) —
+  never an emoji and never a decorative Unicode glyph (`✓ ✗ ⚠ ▾ ● ☰ ⌬ ⧉`) used
+  as a stand-in for one. Prose should carry meaning on its own; if a marker is
+  genuinely needed outside the UI, use a plain word.
+- The UI is written **dark-first**: light mode works by inverting Tailwind's
+  colour ramps in `web/src/index.css` (`[data-theme="light"]`), not by
+  annotating components with `dark:`. So keep using dark-first shades — light
+  text = low number (`text-zinc-200`), dark surface = high number
+  (`bg-zinc-950`) — and light mode follows automatically. Code/terminal panes
+  use the `bg-code` token rather than `bg-black`.
 - Secrets (LLM keys, GitHub token) live only as AES-256-GCM ciphertext in the
   `secrets` table; `GANTRY_VAULT_KEY` (32-byte hex) is generated into `.env` by
   `run.sh`. `.env` is secret material.

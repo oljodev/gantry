@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Lock } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { getGithubStatus, listGithubRepos } from '../api/client'
 import type { GithubRepo } from '../api/types'
@@ -47,11 +48,12 @@ export function RepoPicker({
         onChange={(e) => pick(e.target.value)}
         list="github-repos"
       />
+      {/* <option> renders plain text only — no icon is possible in a datalist. */}
       <datalist id="github-repos">
         {repos.map((repo) => (
           <option key={repo.full_name} value={repo.clone_url}>
-            {repo.private ? '🔒 ' : ''}
             {repo.full_name}
+            {repo.private ? ' (private)' : ''}
           </option>
         ))}
       </datalist>
@@ -62,14 +64,14 @@ export function RepoPicker({
               key={repo.full_name}
               type="button"
               onClick={() => pick(repo.clone_url)}
-              className={`rounded-full border px-2.5 py-0.5 font-mono text-xs transition ${
+              className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 font-mono text-xs transition ${
                 value === repo.clone_url
                   ? 'border-amber-600 bg-amber-950/60 text-amber-300'
                   : 'border-zinc-800 text-zinc-500 hover:border-zinc-600 hover:text-zinc-300'
               }`}
               title={repo.private ? 'private repository' : 'public repository'}
             >
-              {repo.private ? '🔒 ' : ''}
+              {repo.private && <Lock className="h-3 w-3 shrink-0" aria-hidden />}
               {repo.full_name}
             </button>
           ))}

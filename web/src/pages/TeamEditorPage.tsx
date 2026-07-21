@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
+import { TriangleAlert } from 'lucide-react'
 import { createTeam, getTeam, listAgents, updateTeam } from '../api/client'
 import type { AgentProfile } from '../api/types'
 import { field, primaryButton, secondaryButton } from '../components/forms'
@@ -190,7 +191,10 @@ function TreeNodeCard({
         <span className="text-xs text-zinc-600">
           {profile.can_spawn ? 'delegates' : 'works alone'}
           {node.children.length > 0 && !profile.can_spawn && (
-            <span className="ml-1 text-amber-400">⚠ needs "may delegate"</span>
+            <span className="ml-1 inline-flex items-center gap-1 align-middle text-amber-400">
+              <TriangleAlert className="h-3 w-3" aria-hidden />
+              needs "may delegate"
+            </span>
           )}
         </span>
       )}

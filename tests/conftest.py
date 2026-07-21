@@ -133,9 +133,15 @@ async def app(engine: AsyncEngine, database_url: str) -> AsyncIterator[FastAPI]:
         _env_file=None,
         database_url=database_url,
         reaper_interval_seconds=0.2,
-        # Fixed test vault key so secret-carrying routes work; auth stays off
-        # (supabase_url unset).
+        # Fixed test vault key so secret-carrying routes work.
         vault_key="11" * 32,
+        # Auth OFF, explicitly. `_env_file=None` only ignores the .env file —
+        # pydantic-settings still reads os.environ, and litellm loads .env into
+        # it on import, so a developer with GANTRY_SUPABASE_URL set would
+        # otherwise flip auth on and 401 the whole suite. Tests that want auth
+        # inject a fake authenticator via app.state.auth instead.
+        supabase_url=None,
+        allowed_emails=[],
     )
     application = create_app(settings)
     # Drive the lifespan directly (it is a plain asynccontextmanager, safe to

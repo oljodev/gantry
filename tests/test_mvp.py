@@ -1,4 +1,4 @@
-"""🏁 The MVP acceptance test — the MASTERPLAN sentence, executed literally:
+"""The MVP acceptance test — the MASTERPLAN sentence, executed literally:
 
   "Given a GitHub repo and a goal, Gantry plans, fans out sandboxed workers,
    survives worker kills, pauses for approval on destructive actions, and

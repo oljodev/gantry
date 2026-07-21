@@ -1,17 +1,32 @@
 import { Link, NavLink } from 'react-router-dom'
+import {
+  Bot,
+  CheckCheck,
+  Hexagon,
+  LayoutDashboard,
+  ListOrdered,
+  Moon,
+  Network,
+  Play,
+  Settings,
+  Sparkles,
+  Sun,
+  type LucideIcon,
+} from 'lucide-react'
 import { useAuth } from '../auth/AuthProvider'
 import { useAppData } from '../state/AppDataProvider'
+import { useTheme } from '../lib/theme'
 import type { ConnectionState } from '../api/stream'
 
-const NAV: Array<{ to: string; icon: string; label: string; end?: boolean }> = [
-  { to: '/', icon: '◫', label: 'Dashboard', end: true },
-  { to: '/runs', icon: '≡', label: 'Runs' },
-  { to: '/launch', icon: '▶', label: 'Launch' },
-  { to: '/agents', icon: '◉', label: 'Agents' },
-  { to: '/teams', icon: '⌥', label: 'Teams' },
-  { to: '/approvals', icon: '✓', label: 'Approvals' },
-  { to: '/skills', icon: '✦', label: 'Skills' },
-  { to: '/settings', icon: '⚙', label: 'Settings' },
+const NAV: Array<{ to: string; icon: LucideIcon; label: string; end?: boolean }> = [
+  { to: '/', icon: LayoutDashboard, label: 'Dashboard', end: true },
+  { to: '/runs', icon: ListOrdered, label: 'Runs' },
+  { to: '/launch', icon: Play, label: 'Launch' },
+  { to: '/agents', icon: Bot, label: 'Agents' },
+  { to: '/teams', icon: Network, label: 'Teams' },
+  { to: '/approvals', icon: CheckCheck, label: 'Approvals' },
+  { to: '/skills', icon: Sparkles, label: 'Skills' },
+  { to: '/settings', icon: Settings, label: 'Settings' },
 ]
 
 const CONNECTION_TONE: Record<ConnectionState, [string, string]> = {
@@ -24,6 +39,7 @@ const CONNECTION_TONE: Record<ConnectionState, [string, string]> = {
 export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { approvals, connection } = useAppData()
   const { authEnabled, me, signOut } = useAuth()
+  const { theme, toggle } = useTheme()
   const [connLabel, connDot] = CONNECTION_TONE[connection]
 
   return (
@@ -35,21 +51,23 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
           className="fixed inset-0 z-20 bg-black/60 lg:hidden"
         />
       )}
+      {/* Always `fixed`: the sidebar is pinned to the viewport so long task
+          traces scroll underneath it rather than dragging it off-screen. The
+          shell compensates with lg:pl-56. */}
       <aside
-        className={`fixed inset-y-0 left-0 z-30 flex w-56 shrink-0 flex-col border-r border-zinc-800 bg-zinc-950 transition-transform lg:static lg:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-30 flex w-56 flex-col border-r border-zinc-800 bg-zinc-950 transition-transform lg:translate-x-0 ${
           open ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
         <Link
           to="/"
           onClick={onClose}
-          className="flex h-12 items-center gap-2 border-b border-zinc-800 px-4 font-semibold tracking-tight"
+          className="flex h-12 shrink-0 items-center gap-2 border-b border-zinc-800 px-4 font-semibold tracking-tight"
         >
-          <span className="text-amber-400" aria-hidden>
-            ⌬
-          </span>
+          <Hexagon className="h-4 w-4 text-amber-400" aria-hidden />
           <span>Gantry</span>
         </Link>
+        {/* Only the nav scrolls; the brand and footer stay put. */}
         <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-2 py-3 text-sm">
           {NAV.map((item) => (
             <NavLink
@@ -65,9 +83,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
                 }`
               }
             >
-              <span className="w-4 text-center" aria-hidden>
-                {item.icon}
-              </span>
+              <item.icon className="h-4 w-4 shrink-0" aria-hidden />
               <span>{item.label}</span>
               {item.to === '/approvals' && approvals.length > 0 && (
                 <span className="ml-auto rounded-full bg-purple-900/80 px-1.5 py-0.5 text-[10px] font-semibold text-purple-200">
@@ -77,10 +93,23 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
             </NavLink>
           ))}
         </nav>
-        <div className="border-t border-zinc-800 p-3 text-xs">
+        <div className="shrink-0 border-t border-zinc-800 p-3 text-xs">
           <div className="flex items-center gap-2 text-zinc-500">
             <span className={`h-1.5 w-1.5 rounded-full ${connDot}`} aria-hidden />
             <span>{connLabel}</span>
+            <span className="grow" />
+            <button
+              onClick={toggle}
+              title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+              aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+              className="-m-1.5 rounded-md p-2.5 text-zinc-500 transition hover:bg-zinc-900 hover:text-zinc-200"
+            >
+              {theme === 'dark' ? (
+                <Sun className="h-3.5 w-3.5" aria-hidden />
+              ) : (
+                <Moon className="h-3.5 w-3.5" aria-hidden />
+              )}
+            </button>
           </div>
           {authEnabled && me?.email && (
             <div className="mt-2 flex items-center justify-between gap-2">

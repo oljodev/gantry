@@ -168,7 +168,7 @@ Postgres 16; Alembic baseline; typed settings (pydantic-settings); structlog;
 CI skeleton (GitHub Actions: lint + test). **Demo:** `make dev` boots PG,
 `make test` is green.
 
-### Phase 1 — Durable queue core ⭐ (the foundation everything rests on)
+### Phase 1 — Durable queue core (the foundation everything rests on)
 `tasks` + `task_events` migrations; SKIP LOCKED claim; lease heartbeat; reaper;
 event append with per-task `seq`; LISTEN/NOTIFY wakeups; retry/backoff
 semantics. **Demo/proof:** a brutal concurrency test — 50 fake workers hammer
@@ -215,7 +215,7 @@ parking; approve/reject API + UI inbox with diff/command preview; WS push
 notification. **Demo:** worker attempts `rm -rf` / force-push, parks at 0%
 compute; human approves in UI; task resumes seamlessly.
 
-### Phase 8 — Skills system → **🏁 Local MVP**
+### Phase 8 — Skills system → **Local MVP**
 SKILL.md format + frontmatter; skills registry; injection by task payload +
 matcher; skill usage visible in traces. **MVP acceptance:** *"Given a GitHub
 repo and a goal, Gantry plans, fans out sandboxed workers, survives worker
