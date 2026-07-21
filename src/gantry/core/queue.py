@@ -70,6 +70,22 @@ class ReapedTask:
     claimed_by: str | None
 
 
+@dataclass(frozen=True)
+class Heartbeat:
+    """Outcome of a lease heartbeat.
+
+    Truthy iff the lease is still held, so existing ``if await heartbeat(...)``
+    call sites keep working; ``cancel_requested`` rides along so the worker
+    learns of an operator cancel in the same round-trip.
+    """
+
+    alive: bool
+    cancel_requested: bool = False
+
+    def __bool__(self) -> bool:
+        return self.alive
+
+
 async def enqueue(
     session: AsyncSession,
     *,
@@ -163,19 +179,28 @@ async def heartbeat(
     worker_id: str,
     attempt: int,
     lease_seconds: float = DEFAULT_LEASE_SECONDS,
-) -> bool:
-    """Extend the lease. False means the lease was lost — the worker must abort."""
-    result = await session.execute(
-        sa.update(Task)
-        .where(
-            Task.id == task_id,
-            Task.claimed_by == worker_id,
-            Task.attempt == attempt,
-            Task.status.in_(LEASED_STATUSES),
+) -> Heartbeat:
+    """Extend the lease and report whether a cancel was requested.
+
+    A falsy result (lease lost) means the worker must abort; a truthy result
+    with ``cancel_requested`` set means an operator asked to stop this task.
+    """
+    row = (
+        await session.execute(
+            sa.update(Task)
+            .where(
+                Task.id == task_id,
+                Task.claimed_by == worker_id,
+                Task.attempt == attempt,
+                Task.status.in_(LEASED_STATUSES),
+            )
+            .values(lease_expires_at=_now_plus(lease_seconds), updated_at=sa.func.now())
+            .returning(Task.cancel_requested)
         )
-        .values(lease_expires_at=_now_plus(lease_seconds), updated_at=sa.func.now())
-    )
-    return _rowcount(result) == 1
+    ).first()
+    if row is None:
+        return Heartbeat(alive=False)
+    return Heartbeat(alive=True, cancel_requested=bool(row[0]))
 
 
 async def mark_running(
@@ -547,16 +572,39 @@ async def retry(session: AsyncSession, *, task_id: uuid.UUID) -> Task | None:
     return task
 
 
-async def cancel(session: AsyncSession, *, task_id: uuid.UUID) -> Task | None:
-    """Cancel a task that has not started yet (compare-and-set on PENDING).
+#: Statuses that are parked (no worker owns the loop) yet not terminal — safe
+#: to cancel outright, exactly like PENDING.
+_CANCELLABLE_NOW = (
+    TaskStatus.PENDING,
+    TaskStatus.WAITING_APPROVAL,
+    TaskStatus.WAITING_CHILDREN,
+)
 
-    Running tasks are owned by a lease-holding worker; cancelling those needs
-    worker cooperation (checked at heartbeat) and lands with HITL in Phase 7.
-    Returns the cancelled task, or None if it wasn't pending.
+
+@dataclass(frozen=True)
+class CancelResult:
+    """What ``cancel`` did: ``task`` is the row, ``requested`` is True when a
+    live worker must still cooperatively stop (task not yet terminal)."""
+
+    task: Task
+    requested: bool
+
+
+async def cancel(session: AsyncSession, *, task_id: uuid.UUID) -> CancelResult | None:
+    """Cancel a task in any non-terminal state.
+
+    - PENDING / parked (waiting_approval, waiting_children): no worker owns the
+      loop, so flip straight to CANCELLED (terminal).
+    - CLAIMED / RUNNING: a lease-holding worker owns it, so we can't yank the
+      row terminal from under it (its next write would conflict). Instead set
+      ``cancel_requested``; the worker sees it at its next heartbeat and
+      transitions to CANCELLED itself via :func:`mark_cancelled`.
+
+    Returns None if the task doesn't exist or is already terminal.
     """
     stmt = (
         sa.update(Task)
-        .where(Task.id == task_id, Task.status == TaskStatus.PENDING)
+        .where(Task.id == task_id, Task.status.in_(_CANCELLABLE_NOW))
         .values(
             status=TaskStatus.CANCELLED,
             claimed_by=None,
@@ -566,11 +614,64 @@ async def cancel(session: AsyncSession, *, task_id: uuid.UUID) -> Task | None:
         .returning(Task)
     )
     task = (await session.scalars(stmt)).first()
+    if task is not None:
+        await append_event(session, task.id, EventType.TASK_CANCELLED, {})
+        await _try_wake_parent(session, task.parent_task_id)  # cancellation is terminal too
+        return CancelResult(task=task, requested=False)
+
+    # Live (leased) task: request cooperative cancellation.
+    requested = (
+        (
+            await session.execute(
+                sa.update(Task)
+                .where(Task.id == task_id, Task.status.in_(LEASED_STATUSES))
+                .values(cancel_requested=True, updated_at=sa.func.now())
+                .returning(Task)
+            )
+        )
+        .scalars()
+        .first()
+    )
+    if requested is None:
+        return None  # gone or already terminal
+    return CancelResult(task=requested, requested=True)
+
+
+async def mark_cancelled(
+    session: AsyncSession,
+    *,
+    task_id: uuid.UUID,
+    worker_id: str,
+    attempt: int,
+) -> bool:
+    """Worker-side terminal transition after an honoured cancel request.
+
+    Compare-and-set on the lease so a zombie whose lease was reaped can't
+    cancel a task some other attempt now owns.
+    """
+    task = (
+        await session.scalars(
+            sa.update(Task)
+            .where(
+                Task.id == task_id,
+                Task.claimed_by == worker_id,
+                Task.attempt == attempt,
+                Task.status.in_(LEASED_STATUSES),
+            )
+            .values(
+                status=TaskStatus.CANCELLED,
+                claimed_by=None,
+                lease_expires_at=None,
+                updated_at=sa.func.now(),
+            )
+            .returning(Task)
+        )
+    ).first()
     if task is None:
-        return None
+        return False
     await append_event(session, task.id, EventType.TASK_CANCELLED, {})
-    await _try_wake_parent(session, task.parent_task_id)  # cancellation is terminal too
-    return task
+    await _try_wake_parent(session, task.parent_task_id)
+    return True
 
 
 async def reap_expired(session: AsyncSession, *, limit: int = 100) -> list[ReapedTask]:

@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { Check, ChevronDown, Copy } from 'lucide-react'
+import { Check, ChevronDown, Copy, Loader2, Square } from 'lucide-react'
 import { cancelTask, listTasks, retryTask } from '../api/client'
 import { openTaskStream, type ConnectionState } from '../api/stream'
-import type { Task, TaskEvent } from '../api/types'
+import { ACTIVE_STATUSES, type Task, type TaskEvent } from '../api/types'
 import { DiffViewer } from '../components/DiffViewer'
 import { StatusPill } from '../components/StatusPill'
 import { TaskTree } from '../components/TaskTree'
@@ -134,6 +134,7 @@ function Header({ task, connection }: { task: Task | null; connection: Connectio
   const [label, tone] = CONNECTION_LABEL[connection]
   const [cancelError, setCancelError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const [stopping, setStopping] = useState(false)
   if (!task) return <p className="text-sm text-zinc-500">Loading task…</p>
 
   const result = task.result ?? {}
@@ -184,16 +185,31 @@ function Header({ task, connection }: { task: Task | null; connection: Connectio
             </>
           )}
         </button>
-        {task.status === 'pending' && (
+        {ACTIVE_STATUSES.has(task.status) && (
           <button
-            onClick={() =>
+            onClick={() => {
+              setStopping(true)
               cancelTask(task.id)
                 .then(() => setCancelError(null))
-                .catch((err) => setCancelError(String(err)))
-            }
-            className="rounded-md border border-red-900 px-3 py-1 text-xs text-red-300 transition hover:bg-red-950"
+                .catch((err) => {
+                  setCancelError(String(err))
+                  setStopping(false)
+                })
+            }}
+            disabled={stopping || task.cancel_requested}
+            className="flex items-center gap-1 rounded-md border border-red-900 px-3 py-1 text-xs text-red-300 transition hover:bg-red-950 disabled:opacity-50"
           >
-            Cancel
+            {stopping || task.cancel_requested ? (
+              <>
+                <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                Stopping…
+              </>
+            ) : (
+              <>
+                <Square className="h-3.5 w-3.5" aria-hidden />
+                Stop
+              </>
+            )}
           </button>
         )}
         {(task.status === 'failed' || task.status === 'cancelled') && (

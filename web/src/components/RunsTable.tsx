@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { cancelTask, listTasks, retryTask } from '../api/client'
-import type { Task, TaskStatus } from '../api/types'
+import { ACTIVE_STATUSES, type Task, type TaskStatus } from '../api/types'
 import { duration, relativeTime, shortId } from '../lib/format'
 import { useNow } from '../lib/useNow'
 import { useAppData } from '../state/AppDataProvider'
@@ -171,8 +171,13 @@ function Row({
       <td className="px-3 py-2 text-zinc-500">{relativeTime(task.created_at)}</td>
       {!compact && (
         <td className="px-3 py-2 text-right">
-          {task.status === 'pending' && (
-            <RowButton label="cancel" tone="red" onClick={() => onAction(cancelTask(task.id))} />
+          {ACTIVE_STATUSES.has(task.status) && (
+            <RowButton
+              label={task.cancel_requested ? 'stopping…' : 'stop'}
+              tone="red"
+              disabled={task.cancel_requested}
+              onClick={() => onAction(cancelTask(task.id))}
+            />
           )}
           {(task.status === 'failed' || task.status === 'cancelled') && (
             <RowButton label="retry" tone="amber" onClick={() => onAction(retryTask(task.id))} />
@@ -187,10 +192,12 @@ function RowButton({
   label,
   tone,
   onClick,
+  disabled = false,
 }: {
   label: string
   tone: 'red' | 'amber'
   onClick: () => void
+  disabled?: boolean
 }) {
   const styles =
     tone === 'red'
@@ -199,7 +206,8 @@ function RowButton({
   return (
     <button
       onClick={onClick}
-      className={`rounded border px-2 py-0.5 text-[11px] transition ${styles}`}
+      disabled={disabled}
+      className={`rounded border px-2 py-0.5 text-[11px] transition disabled:opacity-50 ${styles}`}
     >
       {label}
     </button>

@@ -133,3 +133,54 @@ def test_token_auth_uses_askpass_never_urls(tmp_path: Path) -> None:
     assert out == "sekret-token"
     # And the token never appears in the script itself (nothing to leak on disk).
     assert "sekret-token" not in Path(askpass).read_text()
+
+
+async def test_greenfield_commit_works_without_a_cloned_repo(tmp_path: Path) -> None:
+    """A no-repo task starts empty, `git init`s, and can commit — proving the
+    worker's git identity comes from the hermetic global config, not the host."""
+    from gantry.worker.git import run_git
+
+    workspace = await prepare_workspace(tmp_path / "ws", uuid.uuid4(), 1, {"goal": "new project"})
+    repo = workspace.path
+    await run_git(["init", "-b", "main"], cwd=repo)
+    (repo / "app.py").write_text("print('hi')\n")
+    await run_git(["add", "-A"], cwd=repo)
+    # No per-repo user.name/email were set — this only works if the hermetic
+    # global config supplies an identity.
+    await run_git(["commit", "-m", "initial"], cwd=repo)
+    _, author = await run_git(["log", "-1", "--format=%an <%ae>"], cwd=repo)
+    assert author.strip() == "Gantry Worker <worker@gantry.local>"
+
+
+async def test_worker_git_ignores_host_config(tmp_path: Path) -> None:
+    """A hostile ambient credential.helper (like the reported /usr/bin/gh) must
+    not leak into worker git subprocesses."""
+    from gantry.worker.git import run_git
+
+    hostile = tmp_path / "hostile-gitconfig"
+    hostile.write_text("[credential]\n\thelper = /nonexistent/gh auth\n")
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    await run_git(["init", "-b", "main"], cwd=repo)
+    # Even with GIT_CONFIG_GLOBAL pointing at hostile config in the ambient env,
+    # run_git overrides it, so the helper value is NOT inherited.
+    import os
+
+    os.environ["GIT_CONFIG_GLOBAL"] = str(hostile)
+    try:
+        _, helper = await run_git(["config", "--get", "credential.helper"], cwd=repo, check=False)
+    finally:
+        del os.environ["GIT_CONFIG_GLOBAL"]
+    assert "gh" not in helper
+
+
+async def test_clone_of_missing_repo_raises_actionable_error(tmp_path: Path) -> None:
+    from gantry.worker.git import CloneError, GitAuth, clone
+
+    auth = GitAuth.build(tmp_path / "meta", token=None)
+    missing = tmp_path / "does-not-exist.git"
+    with pytest.raises(CloneError) as excinfo:
+        await clone(str(missing), tmp_path / "dest", auth=auth)
+    message = str(excinfo.value)
+    assert str(missing) in message
+    assert "without a repo" in message  # points the user at the greenfield path

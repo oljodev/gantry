@@ -63,6 +63,7 @@ class TaskOut(BaseModel):
     attempt: int
     max_attempts: int
     claimed_by: str | None
+    cancel_requested: bool
     scheduled_at: datetime
     created_at: datetime
     updated_at: datetime

@@ -77,7 +77,13 @@ class SpawnSubtaskTool(Tool):
             "goal": {"type": "string", "description": "Self-contained goal for the child"},
             "repo_url": {
                 "type": "string",
-                "description": "Git repo the child clones and pushes to",
+                "description": (
+                    "Only for an EXISTING repo the child should clone and push to. "
+                    "Omit it for a brand-new/greenfield project — the child then starts "
+                    "in an empty workspace and can `git init` there. Never invent a "
+                    "placeholder URL (e.g. github.com/your-org/...): a repo that can't "
+                    "be cloned fails the child immediately."
+                ),
             },
             "base_branch": {"type": "string"},
             "model": {"type": "string", "description": "Override the child's LLM model"},

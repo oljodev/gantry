@@ -308,13 +308,13 @@ async def resolve_task_approval(
 async def cancel_task(request: Request, task_id: uuid.UUID) -> TaskOut:
     sessions = get_sessions(request)
     async with session_scope(sessions) as session:
-        cancelled = await queue.cancel(session, task_id=task_id)
-        if cancelled is not None:
-            return TaskOut.model_validate(cancelled)
+        result = await queue.cancel(session, task_id=task_id)
+        if result is not None:
+            return TaskOut.model_validate(result.task)
         task = await session.get(Task, task_id)
     if task is None:
         raise HTTPException(status_code=404, detail="task not found")
     raise HTTPException(
         status_code=409,
-        detail=f"task is {task.status.value}; only pending tasks can be cancelled",
+        detail=f"task is {task.status.value}; already finished",
     )

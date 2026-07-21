@@ -30,6 +30,7 @@ from gantry.skills import SkillRegistry
 from gantry.vault import Vault
 from gantry.vault.store import GITHUB_TOKEN_SECRET, get_secret, provider_secret_name
 from gantry.worker import workspace as ws
+from gantry.worker.git import CloneError
 from gantry.worker.policy import policy_for_payload
 from gantry.worker.tools import build_coding_registry, build_planner_registry
 
@@ -40,6 +41,10 @@ Sessions = async_sessionmaker[AsyncSession]
 
 class LeaseLostError(RuntimeError):
     """Another worker owns this task now; abandon all work on it."""
+
+
+class TaskCancelledError(RuntimeError):
+    """An operator asked to stop this task; abort the run cooperatively."""
 
 
 class ProviderConfigError(RuntimeError):
@@ -129,7 +134,8 @@ class Worker:
         cfg = self._config
         logger.info("worker.task_started", task_id=str(task.id), attempt=task.attempt)
         lease_lost = asyncio.Event()
-        heartbeater = asyncio.create_task(self._heartbeat_loop(task, lease_lost))
+        cancel_requested = asyncio.Event()
+        heartbeater = asyncio.create_task(self._heartbeat_loop(task, lease_lost, cancel_requested))
         workspace: ws.Workspace | None = None
         succeeded = False
         try:
@@ -152,6 +158,10 @@ class Worker:
                 registry = build_coding_registry(workspace.auth)
 
             async def on_step() -> None:
+                # Cancellation wins over lease loss: an operator stop is a
+                # deliberate terminal outcome, not something to retry.
+                if cancel_requested.is_set():
+                    raise TaskCancelledError(str(task.id))
                 if lease_lost.is_set():
                     raise LeaseLostError(str(task.id))
 
@@ -199,8 +209,19 @@ class Worker:
                 reason=parked.reason,
                 status=str(status),
             )
+        except TaskCancelledError:
+            async with session_scope(self._sessions) as session:
+                await queue.mark_cancelled(
+                    session, task_id=task.id, worker_id=cfg.worker_id, attempt=task.attempt
+                )
+            succeeded = True  # honoured stop — discard the workspace, don't retry
+            logger.info("worker.task_cancelled", task_id=str(task.id))
         except LeaseLostError:
             logger.warning("worker.lease_lost", task_id=str(task.id))
+        except CloneError as exc:
+            # Missing/private/wrong repo: retrying the same clone can't help.
+            # Non-retryable with an actionable message (start without a repo).
+            await self._fail(task, str(exc), retryable=False)
         except ProviderConfigError as exc:
             # Bad provider reference / vault misconfig: retrying won't help,
             # but retry-after-fixing works because we re-read the row then.
@@ -280,13 +301,18 @@ class Worker:
         except Exception as exc:  # the reaper will recover the task either way
             logger.warning("worker.fail_report_failed", task_id=str(task.id), error=repr(exc))
 
-    async def _heartbeat_loop(self, task: Task, lease_lost: asyncio.Event) -> None:
-        interval = self._config.lease_seconds / 3
+    async def _heartbeat_loop(
+        self, task: Task, lease_lost: asyncio.Event, cancel_requested: asyncio.Event
+    ) -> None:
+        # Poll well under the lease so an operator cancel is noticed within a
+        # few seconds; each poll also extends the lease (cheap, and it keeps
+        # the reaper away), so cancel latency is decoupled from lease length.
+        interval = min(5.0, self._config.lease_seconds / 3)
         while True:
             await asyncio.sleep(interval)
             try:
                 async with session_scope(self._sessions) as session:
-                    alive = await queue.heartbeat(
+                    beat = await queue.heartbeat(
                         session,
                         task_id=task.id,
                         worker_id=self._config.worker_id,
@@ -296,6 +322,11 @@ class Worker:
             except Exception as exc:
                 logger.warning("worker.heartbeat_error", task_id=str(task.id), error=repr(exc))
                 continue
-            if not alive:
+            if not beat.alive:
                 lease_lost.set()
                 return
+            if beat.cancel_requested:
+                # Signal the run to abort at its next step, but keep heartbeating
+                # so the lease can't lapse (and the reaper re-queue the task)
+                # during a long in-flight LLM/tool call before that step.
+                cancel_requested.set()

@@ -274,3 +274,51 @@ async def test_github_token_prefers_vault_over_config(db: Sessions, tmp_path: Pa
     assert await with_vault._github_token(task) == "gho_from_vault"
     without_vault = Worker(db, config, ScriptedLLM([]))
     assert await without_vault._github_token(task) == "ghp_from_env"
+
+
+async def test_worker_honours_cooperative_cancel(db: Sessions, tmp_path: Path) -> None:
+    """An operator cancel of a live task aborts the run at the next step
+    boundary and lands it terminal in CANCELLED — not retried."""
+
+    class SlowLoopingLLM:
+        """Never finishes: always asks for another bash call, sleeping long
+        enough that a heartbeat poll runs between steps."""
+
+        async def complete(self, **kwargs: object) -> Any:
+            await asyncio.sleep(0.3)
+            return response_with_tool_call("c", "bash", {"command": "true"})
+
+    task = await enqueue(db, {"goal": "loop forever", "max_steps": 100})
+    config = WorkerConfig(
+        worker_id="cancel-w",
+        workspace_root=tmp_path / "workspaces",
+        lease_seconds=0.3,  # → heartbeat/cancel poll every 0.1s
+        poll_interval_seconds=0.05,
+    )
+    worker = Worker(db, config, SlowLoopingLLM())
+    async with session_scope(db) as session:
+        claimed = await queue.claim(session, worker_id="cancel-w", lease_seconds=0.3)
+    assert claimed is not None
+
+    # Operator asks to stop while it runs — cooperative request on a live task.
+    async with session_scope(db) as session:
+        result = await queue.cancel(session, task_id=task.id)
+    assert result is not None and result.requested
+
+    await asyncio.wait_for(worker.process(claimed), timeout=15)
+
+    refreshed = await get_task(db, task)
+    assert refreshed.status is TaskStatus.CANCELLED
+    assert refreshed.claimed_by is None
+    async with session_scope(db) as session:
+        types = (
+            (
+                await session.execute(
+                    sa.text("SELECT event_type FROM task_events WHERE task_id = :tid"),
+                    {"tid": task.id},
+                )
+            )
+            .scalars()
+            .all()
+        )
+    assert "task_cancelled" in types

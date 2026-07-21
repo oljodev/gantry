@@ -87,7 +87,7 @@ async def test_task_events_endpoint_pages_by_seq(client: httpx.AsyncClient, db: 
     assert [e["seq"] for e in after] == [3]
 
 
-async def test_cancel_is_pending_only(client: httpx.AsyncClient, db: Sessions) -> None:
+async def test_cancel_pending_is_immediate(client: httpx.AsyncClient, db: Sessions) -> None:
     task = await create_task(client)
 
     cancelled = await client.post(f"/api/tasks/{task['id']}/cancel")
@@ -96,14 +96,34 @@ async def test_cancel_is_pending_only(client: httpx.AsyncClient, db: Sessions) -
     events = (await client.get(f"/api/tasks/{task['id']}/events")).json()["events"]
     assert events[-1]["event_type"] == "task_cancelled"
 
-    # Cancelling again (or any non-pending task) conflicts.
+    # Cancelling a terminal task conflicts.
     assert (await client.post(f"/api/tasks/{task['id']}/cancel")).status_code == 409
 
-    claimed_task = await create_task(client)
+
+async def test_cancel_running_requests_cooperative_stop(
+    client: httpx.AsyncClient, db: Sessions
+) -> None:
+    await create_task(client)
     async with session_scope(db) as session:
         claimed = await queue.claim(session, worker_id="w1", lease_seconds=30)
-    assert claimed is not None and str(claimed.id) == claimed_task["id"]
-    assert (await client.post(f"/api/tasks/{claimed.id}/cancel")).status_code == 409
+    assert claimed is not None
+
+    # A live (leased) task can't be yanked terminal from under its worker; the
+    # endpoint flags it for cooperative stop and leaves the status alone.
+    resp = await client.post(f"/api/tasks/{claimed.id}/cancel")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["status"] == "claimed"
+    assert body["cancel_requested"] is True
+
+    # The worker honours the flag: its heartbeat now reports cancel, and it
+    # transitions the task to CANCELLED via mark_cancelled.
+    async with session_scope(db) as session:
+        beat = await queue.heartbeat(session, task_id=claimed.id, worker_id="w1", attempt=1)
+        assert beat.alive and beat.cancel_requested
+        assert await queue.mark_cancelled(session, task_id=claimed.id, worker_id="w1", attempt=1)
+    refreshed = (await client.get(f"/api/tasks/{claimed.id}")).json()
+    assert refreshed["status"] == "cancelled"
 
 
 async def test_stats_reflect_fleet_state(client: httpx.AsyncClient, db: Sessions) -> None:

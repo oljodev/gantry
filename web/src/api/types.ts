@@ -12,6 +12,15 @@ export type TaskStatus =
 
 export const TERMINAL_STATUSES: readonly TaskStatus[] = ['succeeded', 'failed', 'cancelled']
 
+// Non-terminal statuses — a task in any of these can still be stopped.
+export const ACTIVE_STATUSES: ReadonlySet<TaskStatus> = new Set([
+  'pending',
+  'claimed',
+  'running',
+  'waiting_approval',
+  'waiting_children',
+])
+
 export interface Task {
   id: string
   workspace_id: string
@@ -26,6 +35,7 @@ export interface Task {
   attempt: number
   max_attempts: number
   claimed_by: string | null
+  cancel_requested: boolean
   scheduled_at: string
   created_at: string
   updated_at: string

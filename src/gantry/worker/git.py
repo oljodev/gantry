@@ -12,10 +12,54 @@ from __future__ import annotations
 import asyncio
 import os
 import stat
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
 GIT_TIMEOUT_SECONDS = 300.0
+
+# Worker git must be hermetic: the host's global/system git config (a
+# developer's `credential.helper = !gh ...`, aliases, signing keys) would
+# otherwise leak into worker subprocesses — producing failures like
+# "/usr/bin/gh: No such file or directory" during clone. We point
+# GIT_CONFIG_GLOBAL at this controlled file and GIT_CONFIG_SYSTEM at /dev/null,
+# so the ONLY config is: a fixed commit identity (so greenfield `git init`
+# repos can commit without any host setup), no inherited credential helpers,
+# and safe.directory=* for sandbox checkouts.
+_HERMETIC_GITCONFIG = (
+    "[user]\n"
+    "\tname = Gantry Worker\n"
+    "\temail = worker@gantry.local\n"
+    "[credential]\n"
+    "\thelper =\n"
+    "[safe]\n"
+    "\tdirectory = *\n"
+    "[init]\n"
+    "\tdefaultBranch = main\n"
+)
+
+_hermetic_config_file: str | None = None
+
+
+def _hermetic_config_path() -> str:
+    """Path to the worker's isolated git config, written once per process."""
+    global _hermetic_config_file
+    if _hermetic_config_file is None:
+        directory = Path(tempfile.gettempdir()) / "gantry-git"
+        directory.mkdir(parents=True, exist_ok=True)
+        path = directory / "gitconfig"
+        path.write_text(_HERMETIC_GITCONFIG)
+        _hermetic_config_file = str(path)
+    return _hermetic_config_file
+
+
+def _hermetic_env() -> dict[str, str]:
+    return {
+        "GIT_CONFIG_GLOBAL": _hermetic_config_path(),
+        "GIT_CONFIG_SYSTEM": os.devnull,
+        "GIT_TERMINAL_PROMPT": "0",
+    }
+
 
 _ASKPASS_SCRIPT = """#!/bin/sh
 case "$1" in
@@ -32,6 +76,23 @@ class GitError(RuntimeError):
         self.output = output
 
 
+class CloneError(RuntimeError):
+    """A repo could not be cloned — wrong URL, private without access, or
+    missing. Non-retryable: retrying the same clone won't change the outcome.
+    Carries an actionable message aimed at the operator, not a raw git dump."""
+
+    def __init__(self, url: str, cause: GitError) -> None:
+        self.url = url
+        self.cause = cause
+        tail = (cause.output.strip().splitlines() or ["<no output>"])[-1].strip()
+        super().__init__(
+            f"could not clone {url}: the repository is missing, private without "
+            f"access, or the URL is wrong. To start a NEW project from scratch, "
+            f"launch the task without a repo — Gantry gives it an empty workspace "
+            f"to `git init` in. (git: {tail})"
+        )
+
+
 @dataclass(frozen=True)
 class GitAuth:
     """Environment overlay that authenticates git subprocesses."""
@@ -40,7 +101,7 @@ class GitAuth:
 
     @classmethod
     def build(cls, meta_dir: Path, token: str | None) -> GitAuth:
-        env = {"GIT_TERMINAL_PROMPT": "0"}
+        env = _hermetic_env()
         if token:
             meta_dir.mkdir(parents=True, exist_ok=True)
             askpass = meta_dir / "askpass.sh"
@@ -60,7 +121,9 @@ async def run_git(
     timeout_seconds: float = GIT_TIMEOUT_SECONDS,
 ) -> tuple[int, str]:
     """Run one git command; returns (exit_code, combined output)."""
-    env = {**os.environ, **(auth.env if auth else {"GIT_TERMINAL_PROMPT": "0"})}
+    # Ambient config is always overridden — even for auth-less calls (status,
+    # commit, branch) — so no host git config ever influences a worker.
+    env = {**os.environ, **(auth.env if auth else _hermetic_env())}
     proc = await asyncio.create_subprocess_exec(
         "git",
         *args,
@@ -93,7 +156,10 @@ async def clone(
     if base_branch:
         args += ["--branch", base_branch]
     args += [url, str(dest)]
-    await run_git(args, auth=auth)
+    try:
+        await run_git(args, auth=auth)
+    except GitError as exc:
+        raise CloneError(url, exc) from exc
     # Commit identity is per-repo so agents can commit without global config.
     await run_git(["config", "user.name", "Gantry Worker"], cwd=dest)
     await run_git(["config", "user.email", "worker@gantry.local"], cwd=dest)

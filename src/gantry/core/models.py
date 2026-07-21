@@ -134,6 +134,13 @@ class Task(Base):
         sa.DateTime(timezone=True), nullable=True
     )
 
+    #: Set by the cancel endpoint on a live task; the owning worker reads it at
+    #: its next heartbeat and aborts the run cooperatively (compare-and-set to
+    #: CANCELLED). Pending/parked tasks are cancelled outright, never via this.
+    cancel_requested: Mapped[bool] = mapped_column(
+        sa.Boolean, nullable=False, server_default=sa.false(), default=False
+    )
+
     #: Earliest moment the task may be claimed (used for retry backoff).
     scheduled_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
