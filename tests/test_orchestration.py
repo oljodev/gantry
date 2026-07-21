@@ -324,3 +324,66 @@ async def test_planner_fleet_end_to_end(db: Sessions, tmp_path: Any) -> None:
     types = await event_types_of(db, planner.id)
     parked_at = types.index("task_parked")
     assert "task_resumed" in types[parked_at:]  # woken after parking, durably logged
+
+
+async def _planner_with(db: Sessions, **payload_extra: Any) -> Task:
+    async with session_scope(db) as session:
+        await queue.enqueue(
+            session,
+            workspace_id=DEFAULT_WORKSPACE_ID,
+            kind=TaskKind.PLAN,
+            payload={"goal": "PLAN: orchestrate", **payload_extra},
+            max_attempts=20,
+        )
+    async with session_scope(db) as session:
+        claimed = await queue.claim(session, worker_id="planner-w", lease_seconds=30)
+    assert claimed is not None
+    return claimed
+
+
+async def test_child_inherits_parent_provider_and_model(db: Sessions) -> None:
+    """A delegated child must reuse the planner's credentials, or it falls back
+    to the keyless server default and fails with an auth error."""
+    planner = await _planner_with(
+        db, provider_id="11111111-1111-4111-8111-111111111111", model="openrouter/deepseek/x"
+    )
+    child = await spawn(db, planner, "call_A")
+    assert child.payload["provider_id"] == "11111111-1111-4111-8111-111111111111"
+    assert child.payload["model"] == "openrouter/deepseek/x"
+
+
+async def test_child_inherits_parent_repo_url(db: Sessions) -> None:
+    planner = await _planner_with(db, repo_url="https://github.com/oljodev/real.git")
+    child = await spawn(db, planner, "call_A")
+    assert child.payload["repo_url"] == "https://github.com/oljodev/real.git"
+
+
+async def test_child_pinning_its_own_model_does_not_inherit_provider(db: Sessions) -> None:
+    """provider_id and model inherit only as a matched pair: a child that
+    chose its own model must not silently borrow the parent's provider_id
+    (whose key belongs to a different model family)."""
+    planner = await _planner_with(
+        db, provider_id="11111111-1111-4111-8111-111111111111", model="openrouter/deepseek/x"
+    )
+    child = await spawn(db, planner, "call_A", model="anthropic/claude-opus-4-8")
+    assert child.payload["model"] == "anthropic/claude-opus-4-8"
+    assert "provider_id" not in child.payload
+
+
+async def test_blank_repo_url_falls_through_to_inheritance(db: Sessions) -> None:
+    planner = await _planner_with(db, repo_url="https://github.com/oljodev/real.git")
+    child = await spawn(db, planner, "call_A", repo_url="   ")
+    assert child.payload["repo_url"] == "https://github.com/oljodev/real.git"
+
+
+async def test_placeholder_repo_url_is_rejected(db: Sessions) -> None:
+    planner = await make_planner(db)
+    result = await SpawnSubtaskTool().execute(
+        {"goal": "build it", "repo_url": "https://github.com/your-org/chess-game.git"},
+        ctx_for(planner, db, "call_ph"),
+    )
+    assert result.is_error
+    assert "placeholder" in result.content
+    async with db() as session:
+        child = await session.get(Task, child_task_id(planner.id, "call_ph"))
+    assert child is None  # never created

@@ -57,6 +57,49 @@ def child_task_id(parent_id: uuid.UUID, tool_call_id: str) -> uuid.UUID:
     return uuid.uuid5(_SPAWN_NAMESPACE, f"{parent_id}:{tool_call_id}")
 
 
+#: Tokens that betray an invented/example repo URL rather than a real one.
+#: Planners (especially smaller models) fabricate these when a goal mentions
+#: git, which then fails the child at clone time.
+_PLACEHOLDER_REPO_MARKERS = (
+    "your-org",
+    "your_org",
+    "your-username",
+    "yourusername",
+    "example.com",
+    "example.org",
+    "my-org",
+    "myorg",
+    "org-name",
+    "placeholder",
+    "<",
+    ">",
+)
+
+
+def _looks_like_placeholder(url: str) -> bool:
+    low = url.lower()
+    return any(marker in low for marker in _PLACEHOLDER_REPO_MARKERS)
+
+
+def _inherit_parent_context(payload: dict[str, Any], parent_payload: dict[str, Any]) -> None:
+    """Fill a child's unset execution context from the parent (planner).
+
+    A delegated child works the SAME repo and — crucially — must use the SAME
+    LLM credentials as the planner, or it falls back to the keyless server
+    default and fails with an auth error. ``repo_url``/``base_branch`` inherit
+    independently; ``provider_id`` and ``model`` inherit only as a matched pair
+    (a model string is provider-specific) and only when the child pinned
+    neither itself.
+    """
+    for key in ("repo_url", "base_branch"):
+        if payload.get(key) is None and parent_payload.get(key) is not None:
+            payload[key] = parent_payload[key]
+    if "provider_id" not in payload and "model" not in payload:
+        for key in ("provider_id", "model"):
+            if parent_payload.get(key) is not None:
+                payload[key] = parent_payload[key]
+
+
 def _sessions_of(ctx: ToolContext) -> Sessions:
     if ctx.sessions is None:
         raise RuntimeError("orchestration tools require ToolContext.sessions")
@@ -122,6 +165,14 @@ class SpawnSubtaskTool(Tool):
             return ToolResult("a non-empty goal is required", is_error=True)
         if ctx.tool_call_id is None:
             return ToolResult("spawn_subtask requires a tool call id", is_error=True)
+        explicit_repo = arguments.get("repo_url")
+        if explicit_repo and _looks_like_placeholder(str(explicit_repo)):
+            return ToolResult(
+                f"repo_url {explicit_repo!r} looks like a placeholder, not a real "
+                "repository. Omit repo_url to reuse the team's repo (or to start in "
+                "an empty workspace), or pass a real repo you can access.",
+                is_error=True,
+            )
         agent = str(arguments.get("agent") or "").strip() or None
         node: TeamNode | None = None
         if agent is not None:
@@ -163,14 +214,15 @@ class SpawnSubtaskTool(Tool):
                 # Team spawn: the child's config comes from the parent's
                 # immutable payload snapshot — deterministic across re-runs.
                 payload.update(node_payload_fields(node))
-                # Children work the same repo as the tree unless told otherwise.
-                for key in ("repo_url", "base_branch"):
-                    if parent.payload.get(key) is not None:
-                        payload.setdefault(key, parent.payload[key])
             payload["goal"] = goal
+            # Explicit tool args win over the profile snapshot. A blank string
+            # is treated as "not provided" so it falls through to inheritance
+            # rather than forcing an empty override.
             for key in ("repo_url", "base_branch", "model", "max_steps"):
-                if arguments.get(key) is not None:
-                    payload[key] = arguments[key]
+                value = arguments.get(key)
+                if value is not None and not (isinstance(value, str) and not value.strip()):
+                    payload[key] = value
+            _inherit_parent_context(payload, parent.payload)
             if node is not None:
                 kind = node_kind(node)  # derived from the snapshot, not the argument
             else:

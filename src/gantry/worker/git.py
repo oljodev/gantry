@@ -152,8 +152,20 @@ async def clone(
     auth: GitAuth,
     base_branch: str | None = None,
 ) -> None:
+    # Probe the remote first: it validates access (missing/private → CloneError
+    # with a clear message) AND tells us whether the repo is empty. Cloning an
+    # empty repo with `--branch main` fails ("Remote branch main not found"),
+    # which is exactly the freshly-created repo an operator makes to hold a new
+    # project — so for an empty remote we clone the default (unborn) branch and
+    # let the task's own branch + first push populate it.
+    try:
+        _, heads = await run_git(["ls-remote", "--heads", url], auth=auth)
+    except GitError as exc:
+        raise CloneError(url, exc) from exc
+    is_empty = not heads.strip()
+
     args = ["clone"]
-    if base_branch:
+    if base_branch and not is_empty:
         args += ["--branch", base_branch]
     args += [url, str(dest)]
     try:

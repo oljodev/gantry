@@ -57,6 +57,31 @@ async def test_prepare_workspace_without_repo_is_an_empty_dir(tmp_path: Path) ->
     assert workspace.branch is None and workspace.repo_url is None
 
 
+@pytest.fixture
+def empty_origin(tmp_path: Path) -> Path:
+    """A freshly-created bare repo with no commits — what an operator makes on
+    GitHub to hold a brand-new project."""
+    bare = tmp_path / "empty-origin.git"
+    git("init", "--bare", "-b", "main", str(bare))
+    return bare
+
+
+async def test_clones_and_delivers_into_an_empty_repo(empty_origin: Path, tmp_path: Path) -> None:
+    """The greenfield-with-a-real-repo path: clone an empty repo (no branches),
+    build, and push — the first push creates the branch on the remote."""
+    payload = {"repo_url": str(empty_origin), "base_branch": "main"}
+    workspace = await prepare_workspace(tmp_path / "ws", uuid.uuid4(), 1, payload)
+    assert workspace.branch is not None
+    (workspace.path / "constants.py").write_text("BOARD_SIZE = 8\n")
+
+    ctx = ToolContext(task_id=uuid.uuid4(), workspace=workspace.path)
+    result = await GitCommitPushTool(workspace.auth).execute({"message": "start chess"}, ctx)
+    assert not result.is_error, result.content
+
+    shown = git("--git-dir", str(empty_origin), "show", f"{workspace.branch}:constants.py")
+    assert shown == "BOARD_SIZE = 8"
+
+
 async def test_commit_push_delivers_work_to_origin(origin: Path, tmp_path: Path) -> None:
     workspace = await prepare_workspace(tmp_path / "ws", uuid.uuid4(), 1, {"repo_url": str(origin)})
     assert workspace.branch is not None
