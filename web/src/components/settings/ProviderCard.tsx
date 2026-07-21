@@ -9,6 +9,7 @@ export const PROVIDER_LABELS: Record<ProviderType, string> = {
   anthropic: 'Anthropic',
   openai: 'OpenAI',
   google: 'Google',
+  xai: 'xAI',
   openrouter: 'OpenRouter',
   local: 'Local (OpenAI-compatible)',
 }
@@ -17,6 +18,7 @@ const MODEL_PLACEHOLDERS: Record<ProviderType, string> = {
   anthropic: 'claude-opus-4-8',
   openai: 'gpt-5',
   google: 'gemini-2.5-pro',
+  xai: 'grok-4',
   openrouter: 'qwen/qwen3-coder',
   local: 'qwen3:32b',
 }

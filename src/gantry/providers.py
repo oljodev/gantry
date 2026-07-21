@@ -18,6 +18,7 @@ _PREFIX: dict[ProviderType, str] = {
     ProviderType.OPENAI: "openai",
     ProviderType.ANTHROPIC: "anthropic",
     ProviderType.GOOGLE: "gemini",
+    ProviderType.XAI: "xai",
     ProviderType.OPENROUTER: "openrouter",
     ProviderType.LOCAL: "openai",
 }

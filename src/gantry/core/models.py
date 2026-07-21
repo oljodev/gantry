@@ -201,6 +201,7 @@ class ProviderType(enum.StrEnum):
     OPENAI = "openai"
     ANTHROPIC = "anthropic"
     GOOGLE = "google"
+    XAI = "xai"
     OPENROUTER = "openrouter"
     LOCAL = "local"
 

@@ -77,7 +77,7 @@ export interface Me {
   reason?: string
 }
 
-export type ProviderType = 'openai' | 'anthropic' | 'google' | 'openrouter' | 'local'
+export type ProviderType = 'openai' | 'anthropic' | 'google' | 'xai' | 'openrouter' | 'local'
 
 export interface Provider {
   id: string
