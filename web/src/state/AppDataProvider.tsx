@@ -22,6 +22,8 @@ import { openFirehose, type ConnectionState } from '../api/stream'
 import type { Stats, TaskEvent } from '../api/types'
 
 interface AppDataValue {
+  /** The project whose data this provider is scoped to. */
+  projectId: string
   feed: TaskEvent[]
   stats: Stats | null
   approvals: ApprovalItem[]
@@ -36,6 +38,7 @@ interface AppDataValue {
 }
 
 const AppDataContext = createContext<AppDataValue>({
+  projectId: '',
   feed: [],
   stats: null,
   approvals: [],
@@ -51,7 +54,13 @@ export function useAppData(): AppDataValue {
   return useContext(AppDataContext)
 }
 
-export function AppDataProvider({ children }: { children: ReactNode }) {
+export function AppDataProvider({
+  children,
+  projectId,
+}: {
+  children: ReactNode
+  projectId: string
+}) {
   const [feed, setFeed] = useState<TaskEvent[]>([])
   const [stats, setStats] = useState<Stats | null>(null)
   const [approvals, setApprovals] = useState<ApprovalItem[]>([])
@@ -60,9 +69,10 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   const [online, setOnline] = useState<boolean | null>(null)
   const [version, setVersion] = useState(0)
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const scope = projectId || undefined
 
   const refetch = useCallback(() => {
-    getStats()
+    getStats(scope)
       .then((s) => {
         setStats(s)
         setOnline(true)
@@ -71,10 +81,10 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         setOnline(false)
         console.error(err)
       })
-    listApprovals().then(setApprovals).catch(console.error)
-    listQuestions().then(setQuestions).catch(console.error)
+    listApprovals(scope).then(setApprovals).catch(console.error)
+    listQuestions(scope).then(setQuestions).catch(console.error)
     setVersion((v) => v + 1)
-  }, [])
+  }, [scope])
 
   useEffect(() => {
     refetch()
@@ -100,7 +110,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
 
   return (
     <AppDataContext.Provider
-      value={{ feed, stats, approvals, questions, connection, online, version, refetch }}
+      value={{ projectId, feed, stats, approvals, questions, connection, online, version, refetch }}
     >
       {children}
     </AppDataContext.Provider>

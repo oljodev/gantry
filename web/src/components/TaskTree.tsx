@@ -5,6 +5,7 @@
 import { Link } from 'react-router-dom'
 import type { Task } from '../api/types'
 import { shortId } from '../lib/format'
+import { projectPath } from '../lib/project'
 import { StatusPill } from './StatusPill'
 
 export function TaskTree({ tree, currentId }: { tree: Task[]; currentId: string }) {
@@ -39,7 +40,7 @@ function Branch({
       {tasks.map((task) => (
         <li key={task.id} className="py-0.5">
           <Link
-            to={`/tasks/${task.id}`}
+            to={projectPath(task.project_id, `tasks/${task.id}`)}
             className={`flex items-center gap-2 rounded px-1.5 py-1 transition hover:bg-zinc-900 ${
               task.id === currentId ? 'bg-zinc-900 ring-1 ring-zinc-700' : ''
             }`}

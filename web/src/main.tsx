@@ -10,6 +10,7 @@ import { ApprovalsPage } from './pages/ApprovalsPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { LaunchPage } from './pages/LaunchPage'
 import { LoginPage } from './pages/LoginPage'
+import { ProjectsHomePage } from './pages/ProjectsHomePage'
 import { RunsPage } from './pages/RunsPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { SkillsPage } from './pages/SkillsPage'
@@ -23,8 +24,18 @@ applyTheme(preferredTheme())
 
 const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
+  // Home: the project picker (the "normal" navbar — no in-project nav).
   {
     path: '/',
+    element: (
+      <RequireAuth>
+        <ProjectsHomePage />
+      </RequireAuth>
+    ),
+  },
+  // In-project shell: everything else lives under a project.
+  {
+    path: '/project/:projectId',
     element: (
       <RequireAuth>
         <App />
@@ -33,13 +44,14 @@ const router = createBrowserRouter([
     children: [
       { index: true, element: <DashboardPage /> },
       { path: 'runs', element: <RunsPage /> },
+      { path: 'runs/:date', element: <RunsPage /> },
       { path: 'tasks/:taskId', element: <TaskPage /> },
       { path: 'launch', element: <LaunchPage /> },
       { path: 'agents', element: <AgentsPage /> },
       { path: 'teams', element: <TeamsPage /> },
       { path: 'teams/new', element: <TeamEditorPage /> },
       { path: 'teams/:teamId', element: <TeamEditorPage /> },
-      { path: 'approvals', element: <ApprovalsPage /> },
+      { path: 'approved', element: <ApprovalsPage /> },
       { path: 'skills', element: <SkillsPage /> },
       { path: 'settings', element: <SettingsPage /> },
     ],

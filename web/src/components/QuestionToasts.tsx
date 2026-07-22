@@ -9,6 +9,7 @@ import { resolveQuestion } from '../api/client'
 import { useAppData } from '../state/AppDataProvider'
 import type { QuestionItem } from '../api/client'
 import { shortId } from '../lib/format'
+import { projectPath } from '../lib/project'
 
 export function QuestionToasts() {
   const { questions, refetch } = useAppData()
@@ -122,7 +123,7 @@ function Toast({
           {String(task.payload.goal ?? shortId(task.id))}
         </span>
         <Link
-          to={`/tasks/${task.id}`}
+          to={projectPath(task.project_id, `tasks/${task.id}`)}
           className="ml-auto text-xs text-zinc-400 underline underline-offset-2 transition hover:text-zinc-200"
         >
           open run

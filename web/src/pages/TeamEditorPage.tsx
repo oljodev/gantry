@@ -4,6 +4,7 @@ import { TriangleAlert } from 'lucide-react'
 import { createTeam, getTeam, listAgents, updateTeam } from '../api/client'
 import type { AgentProfile } from '../api/types'
 import { field, primaryButton, secondaryButton } from '../components/forms'
+import { projectPath, useProjectId } from '../lib/project'
 import {
   addChild,
   emptyNode,
@@ -21,6 +22,7 @@ import {
 export function TeamEditorPage() {
   const { teamId } = useParams<{ teamId: string }>()
   const navigate = useNavigate()
+  const projectId = useProjectId()
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [root, setRoot] = useState<EditNode>(() => emptyNode())
@@ -31,7 +33,7 @@ export function TeamEditorPage() {
 
   useEffect(() => {
     document.title = teamId ? 'Gantry — edit team' : 'Gantry — new team'
-    listAgents().then(setProfiles).catch(console.error)
+    listAgents(projectId).then(setProfiles).catch(console.error)
     if (teamId) {
       getTeam(teamId)
         .then((team) => {
@@ -42,7 +44,7 @@ export function TeamEditorPage() {
         })
         .catch((err) => setError(String(err)))
     }
-  }, [teamId])
+  }, [teamId, projectId])
 
   const rows = useMemo(() => flatten(root), [root])
   const byId = useMemo(() => new Map(profiles.map((p) => [p.id, p])), [profiles])
@@ -51,10 +53,15 @@ export function TeamEditorPage() {
     setBusy(true)
     setError(null)
     try {
-      const body = { name: name.trim(), description: description.trim(), root: toApi(root) }
+      const body = {
+        project_id: projectId,
+        name: name.trim(),
+        description: description.trim(),
+        root: toApi(root),
+      }
       if (teamId) await updateTeam(teamId, body)
       else await createTeam(body)
-      navigate('/teams')
+      navigate(projectPath(projectId, 'teams'))
     } catch (err) {
       setError(String(err))
       setBusy(false)
@@ -108,7 +115,7 @@ export function TeamEditorPage() {
       {profiles.length === 0 && (
         <p className="text-xs text-amber-400">
           You have no agents yet —{' '}
-          <Link to="/agents" className="underline">
+          <Link to={projectPath(projectId, 'agents')} className="underline">
             create some agents
           </Link>{' '}
           to fill the tree.
@@ -123,7 +130,7 @@ export function TeamEditorPage() {
         >
           {teamId ? 'Save team' : 'Create team'}
         </button>
-        <Link to="/teams" className={secondaryButton}>
+        <Link to={projectPath(projectId, 'teams')} className={secondaryButton}>
           Cancel
         </Link>
         {!isComplete(root) && (

@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { cancelTask, listTasks, retryTask } from '../api/client'
 import { ACTIVE_STATUSES, type Task, type TaskStatus } from '../api/types'
+import { dayKey, dayLabel } from '../lib/day'
 import { duration, relativeTime, shortId } from '../lib/format'
+import { projectPath, useProjectId } from '../lib/project'
 import { useNow } from '../lib/useNow'
 import { useAppData } from '../state/AppDataProvider'
 import { StatusPill } from './StatusPill'
@@ -25,8 +27,21 @@ const FILTERS: Record<Filter, (t: Task) => boolean> = {
  * The runs table. `compact` hides filters/search/actions and caps rows at
  * `limit` — the dashboard preview; the full experience lives on /runs.
  */
-export function RunsTable({ compact = false, limit }: { compact?: boolean; limit?: number }) {
+export function RunsTable({
+  compact = false,
+  limit,
+  groupByDay = false,
+  date,
+}: {
+  compact?: boolean
+  limit?: number
+  /** Insert day separators between calendar days (the full runs page). */
+  groupByDay?: boolean
+  /** Restrict to a single calendar day (YYYY-MM-DD), for the day view. */
+  date?: string
+}) {
   const { version } = useAppData()
+  const projectId = useProjectId()
   const [tasks, setTasks] = useState<Task[] | null>(null)
   const [filter, setFilter] = useState<Filter>('all')
   const [search, setSearch] = useState('')
@@ -36,25 +51,26 @@ export function RunsTable({ compact = false, limit }: { compact?: boolean; limit
 
   const fetchLimit = limit ?? PAGE * pages
   useEffect(() => {
-    listTasks({ limit: fetchLimit }).then(setTasks).catch(console.error)
-  }, [fetchLimit, version])
+    listTasks({ limit: fetchLimit, projectId }).then(setTasks).catch(console.error)
+  }, [fetchLimit, version, projectId])
 
   const visible = useMemo(() => {
     const needle = search.trim().toLowerCase()
     return (tasks ?? []).filter(
       (task) =>
         FILTERS[filter](task) &&
+        (!date || dayKey(task.created_at) === date) &&
         (!needle ||
           String(task.payload.goal ?? '')
             .toLowerCase()
             .includes(needle) ||
           task.id.startsWith(needle)),
     )
-  }, [tasks, filter, search])
+  }, [tasks, filter, search, date])
 
   const act = (action: Promise<Task>) =>
     action
-      .then(() => listTasks({ limit: fetchLimit }).then(setTasks))
+      .then(() => listTasks({ limit: fetchLimit, projectId }).then(setTasks))
       .catch((err) => setActionError(String(err)))
 
   return (
@@ -104,9 +120,28 @@ export function RunsTable({ compact = false, limit }: { compact?: boolean; limit
             </tr>
           </thead>
           <tbody>
-            {visible.map((task) => (
-              <Row key={task.id} task={task} now={now} compact={compact} onAction={act} />
-            ))}
+            {visible.map((task, i) => {
+              const cols = compact ? 5 : 8
+              const day = dayKey(task.created_at)
+              const showDay = groupByDay && (i === 0 || dayKey(visible[i - 1].created_at) !== day)
+              return (
+                <React.Fragment key={task.id}>
+                  {showDay && (
+                    <tr className="bg-zinc-900/40">
+                      <td colSpan={cols} className="px-3 py-1.5">
+                        <Link
+                          to={projectPath(projectId, `runs/${day}`)}
+                          className="text-xs font-semibold text-zinc-400 hover:text-amber-300"
+                        >
+                          {dayLabel(day)}
+                        </Link>
+                      </td>
+                    </tr>
+                  )}
+                  <Row task={task} now={now} compact={compact} onAction={act} />
+                </React.Fragment>
+              )
+            })}
             {tasks && visible.length === 0 && (
               <tr>
                 <td colSpan={compact ? 5 : 8} className="px-3 py-8 text-center text-zinc-600">
@@ -152,12 +187,18 @@ function Row({
         <StatusPill status={task.status} />
       </td>
       <td className="max-w-md px-3 py-2">
-        <Link to={`/tasks/${task.id}`} className="block truncate hover:text-amber-300">
+        <Link
+          to={projectPath(task.project_id, `tasks/${task.id}`)}
+          className="block truncate hover:text-amber-300"
+        >
           {String(task.payload.goal ?? '—')}
         </Link>
       </td>
       <td className="px-3 py-2 font-mono text-xs text-zinc-500">
-        <Link to={`/tasks/${task.id}`} className="hover:text-amber-300">
+        <Link
+          to={projectPath(task.project_id, `tasks/${task.id}`)}
+          className="hover:text-amber-300"
+        >
           {shortId(task.id)}
         </Link>
       </td>

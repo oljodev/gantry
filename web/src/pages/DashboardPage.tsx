@@ -4,10 +4,12 @@ import { ActivityFeed } from '../components/ActivityFeed'
 import { ApprovalCard } from '../components/ApprovalCard'
 import { RunsTable } from '../components/RunsTable'
 import { StatCards } from '../components/StatCards'
+import { projectPath, useProjectId } from '../lib/project'
 import { useAppData } from '../state/AppDataProvider'
 
 export function DashboardPage() {
   const { stats, approvals, feed, refetch } = useAppData()
+  const projectId = useProjectId()
 
   useEffect(() => {
     document.title = 'Gantry — dashboard'
@@ -19,13 +21,13 @@ export function DashboardPage() {
         <h1 className="text-lg font-semibold tracking-tight">Dashboard</h1>
         <span className="grow" />
         <Link
-          to="/launch"
+          to={projectPath(projectId, 'launch')}
           className="rounded-md bg-amber-600 px-4 py-1.5 text-sm font-semibold text-zinc-950 transition hover:bg-amber-500"
         >
           Launch a run →
         </Link>
         <Link
-          to="/launch?tab=team"
+          to={projectPath(projectId, 'launch?tab=team')}
           className="rounded-md border border-zinc-700 px-4 py-1.5 text-sm text-zinc-300 transition hover:bg-zinc-900"
         >
           Launch a team
@@ -39,7 +41,10 @@ export function DashboardPage() {
           <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold text-purple-300">
             Awaiting your approval ({approvals.length})
             {approvals.length > 3 && (
-              <Link to="/approvals" className="text-xs font-normal text-zinc-500 hover:text-zinc-300">
+              <Link
+                to={projectPath(projectId, 'approved')}
+                className="text-xs font-normal text-zinc-500 hover:text-zinc-300"
+              >
                 view all →
               </Link>
             )}
@@ -62,7 +67,10 @@ export function DashboardPage() {
         <section>
           <div className="mb-2 flex items-center gap-2">
             <h2 className="text-sm font-semibold text-zinc-400">Recent runs</h2>
-            <Link to="/runs" className="text-xs text-zinc-600 hover:text-zinc-300">
+            <Link
+              to={projectPath(projectId, 'runs')}
+              className="text-xs text-zinc-600 hover:text-zinc-300"
+            >
               view all →
             </Link>
           </div>

@@ -29,6 +29,11 @@ from gantry.core.db import Base
 #: tenancy-shaped from day 1; queries must always scope by workspace_id.
 DEFAULT_WORKSPACE_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
 
+#: The "Default" project every pre-projects row was backfilled into (migration
+#: 0004). Runs/agents/teams are scoped by project_id; this is the fallback for
+#: rows created without an explicit project (e.g. children inherit the parent's).
+DEFAULT_PROJECT_ID = uuid.UUID("00000000-0000-0000-0000-000000000002")
+
 
 class TaskStatus(enum.StrEnum):
     PENDING = "pending"
@@ -104,6 +109,13 @@ class Task(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     workspace_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    #: The project this run belongs to (Runs are scoped per project in the UI).
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        sa.ForeignKey("projects.id", ondelete="RESTRICT"),
+        nullable=False,
+        default=DEFAULT_PROJECT_ID,
+    )
     parent_task_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), sa.ForeignKey("tasks.id", ondelete="CASCADE"), nullable=True
     )
@@ -172,6 +184,7 @@ class Task(Base):
             postgresql_where=sa.text("status IN ('claimed', 'running')"),
         ),
         sa.Index("ix_tasks_workspace", "workspace_id"),
+        sa.Index("ix_tasks_project", "project_id"),
         sa.Index("ix_tasks_parent", "parent_task_id"),
         sa.Index("ix_tasks_root", "root_task_id"),
     )
@@ -205,6 +218,35 @@ class TaskEvent(Base):
 
     # The unique constraint's backing index also serves ordered per-task reads.
     __table_args__ = (sa.UniqueConstraint("task_id", "seq", name="uq_task_events_task_seq"),)
+
+
+class Project(Base):
+    """A top-level container grouping runs, agent profiles, and teams.
+
+    Providers, GitHub, and auth stay account-global; only work artifacts are
+    scoped per project. ``default_repo_url``/``default_base_branch`` prefill a
+    project's launch forms.
+    """
+
+    __tablename__ = "projects"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    name: Mapped[str] = mapped_column(sa.String(100), nullable=False)
+    description: Mapped[str] = mapped_column(sa.Text, nullable=False, default="")
+    default_repo_url: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    default_base_branch: Mapped[str | None] = mapped_column(sa.String(200), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    )
+
+    __table_args__ = (
+        sa.UniqueConstraint("workspace_id", "name", name="uq_projects_workspace_name"),
+        sa.Index("ix_projects_workspace", "workspace_id"),
+    )
 
 
 class ProviderType(enum.StrEnum):
@@ -300,6 +342,12 @@ class AgentProfile(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     workspace_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        sa.ForeignKey("projects.id", ondelete="RESTRICT"),
+        nullable=False,
+        default=DEFAULT_PROJECT_ID,
+    )
     name: Mapped[str] = mapped_column(sa.String(100), nullable=False)
     #: Short human description ("Senior coder", "Reviews diffs for bugs").
     role: Mapped[str] = mapped_column(sa.Text, nullable=False, default="")
@@ -322,8 +370,10 @@ class AgentProfile(Base):
     )
 
     __table_args__ = (
-        sa.UniqueConstraint("workspace_id", "name", name="uq_agent_profiles_workspace_name"),
+        # Names are unique per project, so two projects may each have a "coder".
+        sa.UniqueConstraint("project_id", "name", name="uq_agent_profiles_project_name"),
         sa.Index("ix_agent_profiles_workspace", "workspace_id"),
+        sa.Index("ix_agent_profiles_project", "project_id"),
     )
 
 
@@ -334,6 +384,12 @@ class Team(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     workspace_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        sa.ForeignKey("projects.id", ondelete="RESTRICT"),
+        nullable=False,
+        default=DEFAULT_PROJECT_ID,
+    )
     name: Mapped[str] = mapped_column(sa.String(100), nullable=False)
     description: Mapped[str] = mapped_column(sa.Text, nullable=False, default="")
     created_at: Mapped[datetime] = mapped_column(
@@ -343,7 +399,10 @@ class Team(Base):
         sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
     )
 
-    __table_args__ = (sa.UniqueConstraint("workspace_id", "name", name="uq_teams_workspace_name"),)
+    __table_args__ = (
+        sa.UniqueConstraint("project_id", "name", name="uq_teams_project_name"),
+        sa.Index("ix_teams_project", "project_id"),
+    )
 
 
 class TeamMember(Base):

@@ -16,9 +16,41 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from gantry.core.models import EventType, ProviderType, TaskKind, TaskStatus
 
 
+class ProjectWriteRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    description: str = ""
+    default_repo_url: str | None = None
+    default_base_branch: str | None = None
+
+
+class ProjectOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    name: str
+    description: str
+    default_repo_url: str | None
+    default_base_branch: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ProjectSummary(ProjectOut):
+    """A project plus cheap rollup counts for the home/project list."""
+
+    run_count: int
+    agent_count: int
+
+
+class ProjectsResponse(BaseModel):
+    projects: list[ProjectSummary]
+
+
 class TaskCreateRequest(BaseModel):
     goal: str = Field(min_length=1)
     kind: TaskKind = TaskKind.EXECUTE
+    #: The project this run belongs to (defaults to the Default project).
+    project_id: uuid.UUID | None = None
     #: Repository the worker clones and delivers a branch to (omit for repo-less tasks).
     repo_url: str | None = None
     base_branch: str | None = None
@@ -52,6 +84,7 @@ class TaskOut(BaseModel):
 
     id: uuid.UUID
     workspace_id: uuid.UUID
+    project_id: uuid.UUID
     parent_task_id: uuid.UUID | None
     root_task_id: uuid.UUID
     kind: TaskKind
@@ -219,6 +252,8 @@ class GithubReposResponse(BaseModel):
 
 
 class AgentProfileIn(BaseModel):
+    #: The project this profile belongs to (defaults to the Default project).
+    project_id: uuid.UUID | None = None
     name: str = Field(min_length=1, max_length=100)
     role: str = ""
     system_prompt: str | None = None
@@ -249,6 +284,8 @@ class TeamNodeIn(BaseModel):
 
 
 class TeamWriteRequest(BaseModel):
+    #: The project this team belongs to (defaults to the Default project).
+    project_id: uuid.UUID | None = None
     name: str = Field(min_length=1, max_length=100)
     description: str = ""
     root: TeamNodeIn

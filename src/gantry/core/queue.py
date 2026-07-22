@@ -27,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from gantry.core.events import append_event
 from gantry.core.models import (
+    DEFAULT_PROJECT_ID,
     LEASED_STATUSES,
     TERMINAL_STATUSES,
     EventType,
@@ -93,6 +94,7 @@ async def enqueue(
     kind: TaskKind,
     payload: dict[str, Any],
     parent: Task | None = None,
+    project_id: uuid.UUID | None = None,
     priority: int = 0,
     max_attempts: int = 3,
     scheduled_at: datetime | None = None,
@@ -102,11 +104,14 @@ async def enqueue(
 
     ``task_id`` may be supplied for deterministic (exactly-once) enqueueing —
     e.g. ``spawn_subtask`` derives it from the spawning tool call's identity.
+    A child inherits its parent's ``project_id``; a root uses the supplied
+    ``project_id`` (falling back to the Default project).
     """
     task_id = task_id or uuid.uuid4()
     task = Task(
         id=task_id,
         workspace_id=workspace_id,
+        project_id=project_id or (parent.project_id if parent else DEFAULT_PROJECT_ID),
         parent_task_id=parent.id if parent else None,
         root_task_id=parent.root_task_id if parent else task_id,
         kind=kind,

@@ -9,10 +9,10 @@ machinery takes over.
 from __future__ import annotations
 
 import uuid
-from typing import cast
+from typing import Annotated, cast
 
 import sqlalchemy as sa
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,6 +20,7 @@ from gantry.config import Settings
 from gantry.core import queue
 from gantry.core.db import session_scope
 from gantry.core.models import (
+    DEFAULT_PROJECT_ID,
     DEFAULT_WORKSPACE_ID,
     AgentProfile,
     Provider,
@@ -79,7 +80,10 @@ async def create_agent(request: Request, body: AgentProfileIn) -> AgentProfileOu
     sessions = get_sessions(request)
     async with session_scope(sessions) as session:
         await _validate_provider(session, body)
-        profile = AgentProfile(workspace_id=DEFAULT_WORKSPACE_ID)
+        profile = AgentProfile(
+            workspace_id=DEFAULT_WORKSPACE_ID,
+            project_id=body.project_id or DEFAULT_PROJECT_ID,
+        )
         _apply_profile(profile, body)
         session.add(profile)
         try:
@@ -93,16 +97,20 @@ async def create_agent(request: Request, body: AgentProfileIn) -> AgentProfileOu
 
 
 @router.get("/agents", response_model=AgentsResponse)
-async def list_agents(request: Request) -> AgentsResponse:
+async def list_agents(
+    request: Request,
+    project_id: Annotated[uuid.UUID | None, Query()] = None,
+) -> AgentsResponse:
     sessions = get_sessions(request)
+    stmt = (
+        sa.select(AgentProfile)
+        .where(AgentProfile.workspace_id == DEFAULT_WORKSPACE_ID)
+        .order_by(AgentProfile.created_at)
+    )
+    if project_id is not None:
+        stmt = stmt.where(AgentProfile.project_id == project_id)
     async with sessions() as session:
-        rows = (
-            await session.scalars(
-                sa.select(AgentProfile)
-                .where(AgentProfile.workspace_id == DEFAULT_WORKSPACE_ID)
-                .order_by(AgentProfile.created_at)
-            )
-        ).all()
+        rows = (await session.scalars(stmt)).all()
     return AgentsResponse(agents=[AgentProfileOut.model_validate(p) for p in rows])
 
 
@@ -213,7 +221,12 @@ async def create_team(request: Request, body: TeamWriteRequest) -> TeamOut:
     sessions = get_sessions(request)
     async with session_scope(sessions) as session:
         await _validate_tree(session, body.root)
-        team = Team(workspace_id=DEFAULT_WORKSPACE_ID, name=body.name, description=body.description)
+        team = Team(
+            workspace_id=DEFAULT_WORKSPACE_ID,
+            project_id=body.project_id or DEFAULT_PROJECT_ID,
+            name=body.name,
+            description=body.description,
+        )
         session.add(team)
         try:
             await session.flush()
@@ -226,16 +239,18 @@ async def create_team(request: Request, body: TeamWriteRequest) -> TeamOut:
 
 
 @router.get("/teams", response_model=TeamsResponse)
-async def list_teams(request: Request) -> TeamsResponse:
+async def list_teams(
+    request: Request,
+    project_id: Annotated[uuid.UUID | None, Query()] = None,
+) -> TeamsResponse:
     sessions = get_sessions(request)
+    stmt = (
+        sa.select(Team).where(Team.workspace_id == DEFAULT_WORKSPACE_ID).order_by(Team.created_at)
+    )
+    if project_id is not None:
+        stmt = stmt.where(Team.project_id == project_id)
     async with sessions() as session:
-        teams = (
-            await session.scalars(
-                sa.select(Team)
-                .where(Team.workspace_id == DEFAULT_WORKSPACE_ID)
-                .order_by(Team.created_at)
-            )
-        ).all()
+        teams = (await session.scalars(stmt)).all()
         count_rows = (
             await session.execute(
                 sa.select(TeamMember.team_id, sa.func.count()).group_by(TeamMember.team_id)
@@ -336,6 +351,7 @@ async def launch_team(request: Request, team_id: uuid.UUID, body: TeamLaunchRequ
         task = await queue.enqueue(
             session,
             workspace_id=DEFAULT_WORKSPACE_ID,
+            project_id=team.project_id,
             kind=kind,
             payload=payload,
             priority=body.priority,

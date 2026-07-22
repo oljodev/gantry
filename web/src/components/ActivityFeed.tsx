@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import type { TaskEvent } from '../api/types'
 import { activityLine } from '../lib/activity'
 import { clockTime, shortId } from '../lib/format'
+import { projectPath, useProjectId } from '../lib/project'
 
 const TONES = {
   ok: 'text-emerald-400',
@@ -12,6 +13,7 @@ const TONES = {
 } as const
 
 export function ActivityFeed({ events }: { events: TaskEvent[] }) {
+  const projectId = useProjectId()
   const lines = events
     .map((event) => ({ event, line: activityLine(event) }))
     .filter((x): x is { event: TaskEvent; line: NonNullable<ReturnType<typeof activityLine>> } =>
@@ -39,7 +41,7 @@ export function ActivityFeed({ events }: { events: TaskEvent[] }) {
             <li key={event.id} className="flex items-baseline gap-2">
               <span className="shrink-0 text-zinc-600">{clockTime(event.created_at)}</span>
               <Link
-                to={`/tasks/${event.task_id}`}
+                to={projectPath(projectId, `tasks/${event.task_id}`)}
                 className="shrink-0 text-zinc-500 hover:text-amber-300"
               >
                 {shortId(event.task_id)}

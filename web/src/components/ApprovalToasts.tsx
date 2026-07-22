@@ -10,6 +10,7 @@ import { resolveApproval } from '../api/client'
 import { useAppData } from '../state/AppDataProvider'
 import type { ApprovalItem } from '../api/client'
 import { shortId } from '../lib/format'
+import { projectPath } from '../lib/project'
 
 export function ApprovalToasts() {
   const { approvals, refetch } = useAppData()
@@ -104,7 +105,7 @@ function Toast({
           Reject
         </button>
         <Link
-          to={`/tasks/${task.id}`}
+          to={projectPath(task.project_id, `tasks/${task.id}`)}
           className="ml-auto text-xs text-zinc-400 underline underline-offset-2 transition hover:text-zinc-200"
         >
           open run

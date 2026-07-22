@@ -6,6 +6,9 @@ import type {
   GithubRepo,
   GithubStatus,
   Me,
+  Project,
+  ProjectSummary,
+  ProjectWrite,
   Provider,
   ProviderCreate,
   ProviderTestResult,
@@ -66,20 +69,47 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export function listTasks(params?: {
   status?: TaskStatus
   rootTaskId?: string
+  projectId?: string
   limit?: number
   offset?: number
 }): Promise<Task[]> {
   const query = new URLSearchParams()
   if (params?.status) query.set('status', params.status)
   if (params?.rootTaskId) query.set('root_task_id', params.rootTaskId)
+  if (params?.projectId) query.set('project_id', params.projectId)
   if (params?.limit) query.set('limit', String(params.limit))
   if (params?.offset) query.set('offset', String(params.offset))
   const suffix = query.size ? `?${query}` : ''
   return request<{ tasks: Task[] }>(`/api/tasks${suffix}`).then((body) => body.tasks)
 }
 
-export function getStats(): Promise<Stats> {
-  return request<Stats>('/api/stats')
+export function getStats(projectId?: string): Promise<Stats> {
+  return request<Stats>(`/api/stats${projectId ? `?project_id=${projectId}` : ''}`)
+}
+
+// --- projects ------------------------------------------------------------
+
+export function listProjects(): Promise<ProjectSummary[]> {
+  return request<{ projects: ProjectSummary[] }>('/api/projects').then((body) => body.projects)
+}
+
+export function getProject(projectId: string): Promise<Project> {
+  return request<Project>(`/api/projects/${projectId}`)
+}
+
+export function createProject(body: ProjectWrite): Promise<Project> {
+  return request<Project>('/api/projects', { method: 'POST', body: JSON.stringify(body) })
+}
+
+export function updateProject(projectId: string, body: ProjectWrite): Promise<Project> {
+  return request<Project>(`/api/projects/${projectId}`, {
+    method: 'PUT',
+    body: JSON.stringify(body),
+  })
+}
+
+export function deleteProject(projectId: string): Promise<void> {
+  return request<void>(`/api/projects/${projectId}`, { method: 'DELETE' })
 }
 
 export function retryTask(taskId: string): Promise<Task> {
@@ -108,8 +138,11 @@ export function listSkills(): Promise<Skill[]> {
   return request<{ skills: Skill[] }>('/api/skills').then((body) => body.skills)
 }
 
-export function listApprovals(): Promise<ApprovalItem[]> {
-  return request<{ approvals: ApprovalItem[] }>('/api/approvals').then((body) => body.approvals)
+export function listApprovals(projectId?: string): Promise<ApprovalItem[]> {
+  const suffix = projectId ? `?project_id=${projectId}` : ''
+  return request<{ approvals: ApprovalItem[] }>(`/api/approvals${suffix}`).then(
+    (body) => body.approvals,
+  )
 }
 
 export function resolveApproval(
@@ -124,8 +157,11 @@ export function resolveApproval(
   })
 }
 
-export function listQuestions(): Promise<QuestionItem[]> {
-  return request<{ questions: QuestionItem[] }>('/api/questions').then((body) => body.questions)
+export function listQuestions(projectId?: string): Promise<QuestionItem[]> {
+  const suffix = projectId ? `?project_id=${projectId}` : ''
+  return request<{ questions: QuestionItem[] }>(`/api/questions${suffix}`).then(
+    (body) => body.questions,
+  )
 }
 
 export function resolveQuestion(taskId: string, toolCallId: string, answer: string): Promise<Task> {
@@ -182,8 +218,9 @@ export function listGithubRepos(): Promise<GithubRepo[]> {
 
 // --- agents --------------------------------------------------------------
 
-export function listAgents(): Promise<AgentProfile[]> {
-  return request<{ agents: AgentProfile[] }>('/api/agents').then((body) => body.agents)
+export function listAgents(projectId?: string): Promise<AgentProfile[]> {
+  const suffix = projectId ? `?project_id=${projectId}` : ''
+  return request<{ agents: AgentProfile[] }>(`/api/agents${suffix}`).then((body) => body.agents)
 }
 
 export function createAgent(body: AgentProfileCreate): Promise<AgentProfile> {
@@ -203,8 +240,9 @@ export function deleteAgent(agentId: string): Promise<void> {
 
 // --- teams ---------------------------------------------------------------
 
-export function listTeams(): Promise<TeamSummary[]> {
-  return request<{ teams: TeamSummary[] }>('/api/teams').then((body) => body.teams)
+export function listTeams(projectId?: string): Promise<TeamSummary[]> {
+  const suffix = projectId ? `?project_id=${projectId}` : ''
+  return request<{ teams: TeamSummary[] }>(`/api/teams${suffix}`).then((body) => body.teams)
 }
 
 export function getTeam(teamId: string): Promise<Team> {

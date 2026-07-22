@@ -26,6 +26,7 @@ export const ACTIVE_STATUSES: ReadonlySet<TaskStatus> = new Set([
 export interface Task {
   id: string
   workspace_id: string
+  project_id: string
   parent_task_id: string | null
   root_task_id: string
   kind: 'plan' | 'execute'
@@ -54,8 +55,31 @@ export interface TaskEvent {
 
 export type StreamMessage = { type: 'task'; data: Task } | { type: 'event'; data: TaskEvent }
 
+export interface Project {
+  id: string
+  name: string
+  description: string
+  default_repo_url: string | null
+  default_base_branch: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ProjectSummary extends Project {
+  run_count: number
+  agent_count: number
+}
+
+export interface ProjectWrite {
+  name: string
+  description?: string
+  default_repo_url?: string | null
+  default_base_branch?: string | null
+}
+
 export interface TaskCreate {
   goal: string
+  project_id?: string
   kind?: 'execute' | 'plan'
   repo_url?: string
   base_branch?: string
@@ -131,6 +155,7 @@ export interface GithubRepo {
 
 export interface AgentProfile {
   id: string
+  project_id: string
   name: string
   role: string
   system_prompt: string | null
@@ -144,7 +169,10 @@ export interface AgentProfile {
   updated_at: string
 }
 
-export type AgentProfileCreate = Omit<AgentProfile, 'id' | 'created_at' | 'updated_at'>
+export type AgentProfileCreate = Omit<
+  AgentProfile,
+  'id' | 'project_id' | 'created_at' | 'updated_at'
+> & { project_id?: string }
 
 export interface TeamNode {
   profile_id: string
@@ -171,6 +199,7 @@ export interface TeamSummary {
 }
 
 export interface TeamWrite {
+  project_id?: string
   name: string
   description: string
   root: TeamNode

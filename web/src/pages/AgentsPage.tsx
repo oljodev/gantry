@@ -11,8 +11,10 @@ import type { AgentProfile, AgentProfileCreate, Provider, Skill } from '../api/t
 import { field, primaryButton, secondaryButton } from '../components/forms'
 import { SkillChips } from '../components/SkillChips'
 import { GATEABLE_TOOLS } from '../lib/permissions'
+import { useProjectId } from '../lib/project'
 
 export function AgentsPage() {
+  const projectId = useProjectId()
   const [agents, setAgents] = useState<AgentProfile[] | null>(null)
   const [providers, setProviders] = useState<Provider[]>([])
   const [skills, setSkills] = useState<Skill[]>([])
@@ -20,8 +22,8 @@ export function AgentsPage() {
   const [error, setError] = useState<string | null>(null)
 
   const reload = useCallback(() => {
-    listAgents().then(setAgents).catch(console.error)
-  }, [])
+    listAgents(projectId).then(setAgents).catch(console.error)
+  }, [projectId])
 
   useEffect(() => {
     document.title = 'Gantry — agents'
@@ -157,6 +159,7 @@ function AgentForm({
   const [chosenSkills, setChosenSkills] = useState<Set<string>>(new Set(agent?.skills ?? []))
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const projectId = useProjectId()
 
   const provider = providers.find((p) => p.id === providerId)
 
@@ -172,6 +175,7 @@ function AgentForm({
     setBusy(true)
     setError(null)
     const body: AgentProfileCreate = {
+      project_id: projectId,
       name: name.trim(),
       role: role.trim(),
       system_prompt: systemPrompt.trim() || null,

@@ -106,7 +106,16 @@ async def engine(database_url: str) -> AsyncIterator[AsyncEngine]:
         await conn.execute(
             sa.text(
                 "TRUNCATE tasks, task_events, secrets, providers, agent_profiles, "
-                "teams, team_members RESTART IDENTITY CASCADE"
+                "teams, team_members, projects RESTART IDENTITY CASCADE"
+            )
+        )
+        # Re-seed the Default project the migration created — enqueue() and the
+        # backfill convention both depend on DEFAULT_PROJECT_ID existing.
+        await conn.execute(
+            sa.text(
+                "INSERT INTO projects (id, workspace_id, name, description) "
+                "VALUES ('00000000-0000-0000-0000-000000000002', "
+                "'00000000-0000-0000-0000-000000000001', 'Default', 'Default project')"
             )
         )
     yield engine

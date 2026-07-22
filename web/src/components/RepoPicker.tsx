@@ -3,6 +3,7 @@ import { Lock } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { getGithubStatus, listGithubRepos } from '../api/client'
 import type { GithubRepo } from '../api/types'
+import { projectPath, useProjectId } from '../lib/project'
 import { field } from './forms'
 
 /**
@@ -21,6 +22,7 @@ export function RepoPicker({
 }) {
   const [repos, setRepos] = useState<GithubRepo[]>([])
   const [connected, setConnected] = useState<boolean | null>(null)
+  const projectId = useProjectId()
 
   useEffect(() => {
     getGithubStatus()
@@ -79,7 +81,7 @@ export function RepoPicker({
       )}
       {connected === false && (
         <p className="text-[11px] text-zinc-600">
-          <Link to="/settings" className="underline hover:text-zinc-400">
+          <Link to={projectPath(projectId, 'settings')} className="underline hover:text-zinc-400">
             Connect GitHub in Settings
           </Link>{' '}
           to pick from your repositories (including private ones).

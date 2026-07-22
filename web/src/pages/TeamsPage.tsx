@@ -3,15 +3,17 @@ import { Link, useNavigate } from 'react-router-dom'
 import { deleteTeam, listTeams } from '../api/client'
 import type { TeamSummary } from '../api/types'
 import { primaryButton } from '../components/forms'
+import { projectPath, useProjectId } from '../lib/project'
 
 export function TeamsPage() {
   const navigate = useNavigate()
+  const projectId = useProjectId()
   const [teams, setTeams] = useState<TeamSummary[] | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const reload = useCallback(() => {
-    listTeams().then(setTeams).catch(console.error)
-  }, [])
+    listTeams(projectId).then(setTeams).catch(console.error)
+  }, [projectId])
 
   useEffect(() => {
     document.title = 'Gantry — teams'
@@ -37,7 +39,7 @@ export function TeamsPage() {
           </p>
         </div>
         <span className="grow" />
-        <Link to="/teams/new" className={primaryButton}>
+        <Link to={projectPath(projectId, 'teams/new')} className={primaryButton}>
           + New team
         </Link>
       </div>
@@ -65,13 +67,13 @@ export function TeamsPage() {
               {team.description && <p className="text-sm text-zinc-400">{team.description}</p>}
               <div className="mt-auto flex items-center gap-2 pt-2">
                 <button
-                  onClick={() => navigate(`/launch?tab=team&team=${team.id}`)}
+                  onClick={() => navigate(projectPath(projectId, `launch?tab=team&team=${team.id}`))}
                   className="rounded-md bg-amber-600 px-3 py-1 text-xs font-semibold text-zinc-950 transition hover:bg-amber-500"
                 >
                   Launch
                 </button>
                 <Link
-                  to={`/teams/${team.id}`}
+                  to={projectPath(projectId, `teams/${team.id}`)}
                   className="rounded-md border border-zinc-700 px-3 py-1 text-xs text-zinc-300 transition hover:bg-zinc-900"
                 >
                   Edit

@@ -11,6 +11,8 @@ import type { Provider, Skill, TeamSummary } from '../api/types'
 import { field, primaryButton } from '../components/forms'
 import { RepoPicker } from '../components/RepoPicker'
 import { SkillChips } from '../components/SkillChips'
+import { projectPath, useProjectId } from '../lib/project'
+import { getProject } from '../api/client'
 
 type Tab = 'quick' | 'team'
 
@@ -52,6 +54,7 @@ export function LaunchPage() {
 
 function QuickRun() {
   const navigate = useNavigate()
+  const projectId = useProjectId()
   const [goal, setGoal] = useState('')
   const [repoUrl, setRepoUrl] = useState('')
   const [baseBranch, setBaseBranch] = useState('')
@@ -67,7 +70,16 @@ function QuickRun() {
   useEffect(() => {
     listProviders().then(setProviders).catch(console.error)
     listSkills().then(setSkills).catch(console.error)
-  }, [])
+    // Prefill the repo from the project's default, if it has one.
+    if (projectId) {
+      getProject(projectId)
+        .then((p) => {
+          if (p.default_repo_url) setRepoUrl(p.default_repo_url)
+          if (p.default_base_branch) setBaseBranch(p.default_base_branch)
+        })
+        .catch(console.error)
+    }
+  }, [projectId])
 
   const provider = providers.find((p) => p.id === providerId)
 
@@ -79,6 +91,7 @@ function QuickRun() {
     try {
       const task = await createTask({
         goal: goal.trim(),
+        project_id: projectId || undefined,
         kind,
         repo_url: repoUrl.trim() || undefined,
         base_branch: baseBranch.trim() || undefined,
@@ -86,7 +99,7 @@ function QuickRun() {
         model: model.trim() || undefined,
         skills: chosenSkills.size ? [...chosenSkills] : undefined,
       })
-      navigate(`/tasks/${task.id}`)
+      navigate(projectPath(projectId, `tasks/${task.id}`))
     } catch (err) {
       setError(String(err))
       setBusy(false)
@@ -165,6 +178,7 @@ function QuickRun() {
 
 function TeamRun({ preselected }: { preselected: string | null }) {
   const navigate = useNavigate()
+  const projectId = useProjectId()
   const [teams, setTeams] = useState<TeamSummary[] | null>(null)
   const [teamId, setTeamId] = useState(preselected ?? '')
   const [goal, setGoal] = useState('')
@@ -174,13 +188,13 @@ function TeamRun({ preselected }: { preselected: string | null }) {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    listTeams()
+    listTeams(projectId)
       .then((list) => {
         setTeams(list)
         if (!preselected && list.length === 1) setTeamId(list[0].id)
       })
       .catch(console.error)
-  }, [preselected])
+  }, [preselected, projectId])
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -193,7 +207,7 @@ function TeamRun({ preselected }: { preselected: string | null }) {
         repo_url: repoUrl.trim() || undefined,
         base_branch: baseBranch.trim() || undefined,
       })
-      navigate(`/tasks/${task.id}`)
+      navigate(projectPath(projectId, `tasks/${task.id}`))
     } catch (err) {
       setError(String(err))
       setBusy(false)

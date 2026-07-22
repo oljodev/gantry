@@ -6,11 +6,13 @@ import { ApprovalToasts } from './components/ApprovalToasts'
 import { QuestionToasts } from './components/QuestionToasts'
 import { Sidebar } from './components/Sidebar'
 import { AppDataProvider, useAppData } from './state/AppDataProvider'
+import { useProjectId } from './lib/project'
 
 export function App() {
   const [menuOpen, setMenuOpen] = useState(false)
+  const projectId = useProjectId()
   return (
-    <AppDataProvider>
+    <AppDataProvider projectId={projectId}>
       <div className="min-h-screen">
         <Sidebar open={menuOpen} onClose={() => setMenuOpen(false)} />
         {/* The sidebar is fixed, so the shell reserves its width instead of

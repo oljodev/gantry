@@ -81,6 +81,7 @@ async def create_task(request: Request, body: TaskCreateRequest) -> TaskOut:
         task = await queue.enqueue(
             session,
             workspace_id=DEFAULT_WORKSPACE_ID,
+            project_id=body.project_id,
             kind=body.kind,
             payload=payload,
             priority=body.priority,
@@ -94,6 +95,7 @@ async def list_tasks(
     request: Request,
     status: Annotated[TaskStatus | None, Query()] = None,
     root_task_id: Annotated[uuid.UUID | None, Query()] = None,
+    project_id: Annotated[uuid.UUID | None, Query()] = None,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> TaskListResponse:
@@ -109,6 +111,8 @@ async def list_tasks(
         stmt = stmt.where(Task.status == status)
     if root_task_id is not None:
         stmt = stmt.where(Task.root_task_id == root_task_id)
+    if project_id is not None:
+        stmt = stmt.where(Task.project_id == project_id)
     async with sessions() as session:
         tasks = (await session.scalars(stmt)).all()
     return TaskListResponse(tasks=[TaskOut.model_validate(t) for t in tasks])
@@ -140,13 +144,17 @@ async def get_task_events(
 
 
 @router.get("/stats", response_model=StatsResponse)
-async def get_stats(request: Request) -> StatsResponse:
+async def get_stats(
+    request: Request,
+    project_id: Annotated[uuid.UUID | None, Query()] = None,
+) -> StatsResponse:
     sessions = get_sessions(request)
+    project_filter = Task.project_id == project_id if project_id is not None else sa.true()
     async with sessions() as session:
         status_rows = (
             await session.execute(
                 sa.select(Task.status, sa.func.count())
-                .where(Task.workspace_id == DEFAULT_WORKSPACE_ID)
+                .where(Task.workspace_id == DEFAULT_WORKSPACE_ID, project_filter)
                 .group_by(Task.status)
             )
         ).all()
@@ -181,7 +189,7 @@ async def get_stats(request: Request) -> StatsResponse:
                         ),
                         0,
                     ),
-                ).where(Task.result.isnot(None))
+                ).where(Task.result.isnot(None), project_filter)
             )
         ).one()
         events_last_hour = (
@@ -233,9 +241,13 @@ async def list_skills(request: Request) -> SkillsResponse:
 
 
 @router.get("/approvals", response_model=ApprovalsResponse)
-async def list_approvals(request: Request) -> ApprovalsResponse:
+async def list_approvals(
+    request: Request,
+    project_id: Annotated[uuid.UUID | None, Query()] = None,
+) -> ApprovalsResponse:
     """The operator inbox: every task parked on an unresolved approval."""
     sessions = get_sessions(request)
+    project_filter = Task.project_id == project_id if project_id is not None else sa.true()
     items: list[ApprovalItem] = []
     async with sessions() as session:
         waiting = (
@@ -244,6 +256,7 @@ async def list_approvals(request: Request) -> ApprovalsResponse:
                 .where(
                     Task.workspace_id == DEFAULT_WORKSPACE_ID,
                     Task.status == TaskStatus.WAITING_APPROVAL,
+                    project_filter,
                 )
                 .order_by(Task.updated_at)
             )
@@ -308,9 +321,13 @@ async def resolve_task_approval(
 
 
 @router.get("/questions", response_model=QuestionsResponse)
-async def list_questions(request: Request) -> QuestionsResponse:
+async def list_questions(
+    request: Request,
+    project_id: Annotated[uuid.UUID | None, Query()] = None,
+) -> QuestionsResponse:
     """The operator inbox for ask_user: every task parked on a question."""
     sessions = get_sessions(request)
+    project_filter = Task.project_id == project_id if project_id is not None else sa.true()
     items: list[QuestionItem] = []
     async with sessions() as session:
         waiting = (
@@ -319,6 +336,7 @@ async def list_questions(request: Request) -> QuestionsResponse:
                 .where(
                     Task.workspace_id == DEFAULT_WORKSPACE_ID,
                     Task.status == TaskStatus.WAITING_INPUT,
+                    project_filter,
                 )
                 .order_by(Task.updated_at)
             )
