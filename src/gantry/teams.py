@@ -90,6 +90,11 @@ def node_payload_fields(node: TeamNode) -> dict[str, Any]:
     for key in ("model", "provider_id", "max_steps"):
         if node.get(key):
             fields[key] = node[key]
+    if node.get("can_spawn"):
+        # Carried so the worker grants delegation tools to a hands-on agent
+        # that also spawns (a coder that delegates to a reviewer), even when
+        # its kind is EXECUTE rather than PLAN.
+        fields["can_spawn"] = True
     if node.get("gated_tools"):
         fields["gated_tools"] = list(node["gated_tools"])
     if node.get("skills"):

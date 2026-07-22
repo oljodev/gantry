@@ -10,6 +10,7 @@ import pytest
 
 from gantry.core.models import EventType
 from gantry.runtime.tools import ToolContext
+from gantry.worker.tools import build_coding_registry
 from gantry.worker.tools.bash import BashTool
 from gantry.worker.tools.files import EditFileTool, ListDirTool, ReadFileTool, WriteFileTool
 
@@ -111,6 +112,35 @@ async def test_edit_recover_detects_an_applied_edit(ctx: ToolContext, tmp_path: 
 
     (tmp_path / "f.txt").write_text("state: before")  # ...or it never landed
     assert await tool.recover(args, ctx) is None
+
+
+def _tool_names(registry: object) -> set[str]:
+    from gantry.runtime.tools import ToolRegistry
+
+    assert isinstance(registry, ToolRegistry)
+    return {s["function"]["name"] for s in registry.schemas()}
+
+
+def test_coding_registry_always_has_the_read_only_toolset() -> None:
+    names = _tool_names(build_coding_registry())
+    # Coding + search + web + ask_user, no git (no auth), no delegation.
+    assert {"read_file", "write_file", "edit_file", "bash", "glob", "grep"} <= names
+    assert {"web_search", "web_fetch", "ask_user"} <= names
+    assert "git_commit_push" not in names
+    assert "spawn_subtask" not in names
+
+
+def test_can_spawn_adds_delegation_tools() -> None:
+    names = _tool_names(build_coding_registry(can_spawn=True))
+    # Hybrid: a coder that can also delegate to a reviewer and manage it.
+    assert {
+        "spawn_subtask",
+        "wait_for_children",
+        "agent_status",
+        "agent_terminate",
+    } <= names
+    # ...while keeping the full coding toolset.
+    assert {"write_file", "bash", "read_file"} <= names
 
 
 @pytest.mark.parametrize("path", ["../outside.txt", "../../etc/passwd", "/etc/passwd"])

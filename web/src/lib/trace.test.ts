@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { TaskEvent } from '../api/types'
-import { finalText, foldTrace } from './trace'
+import { finalText, foldTrace, pendingQuestions } from './trace'
 
 let seq = 0
 function event(event_type: string, payload: Record<string, unknown> = {}): TaskEvent {
@@ -82,5 +82,17 @@ describe('finalText', () => {
     expect(finalText([event('llm_response', { content: 'x', tool_calls: [{ id: 'c' }] })])).toBe(
       null,
     )
+  })
+})
+
+describe('pendingQuestions', () => {
+  it('returns ask_user_question events with no matching answer', () => {
+    const events = [
+      event('ask_user_question', { tool_call_id: 'q1', question: 'a?' }),
+      event('ask_user_question', { tool_call_id: 'q2', question: 'b?' }),
+      event('ask_user_answered', { tool_call_id: 'q1', answer: 'yes' }),
+    ]
+    const pending = pendingQuestions(events)
+    expect(pending.map((e) => e.payload.tool_call_id)).toEqual(['q2'])
   })
 })

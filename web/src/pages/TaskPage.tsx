@@ -11,7 +11,7 @@ import { TerminalPane } from '../components/TerminalPane'
 import { TraceTimeline } from '../components/TraceTimeline'
 import { Markdown } from '../components/Markdown'
 import { shortId } from '../lib/format'
-import { foldTrace, pendingApprovals } from '../lib/trace'
+import { foldTrace, pendingApprovals, pendingQuestions } from '../lib/trace'
 
 type Tab = 'trace' | 'terminal' | 'diff'
 
@@ -68,6 +68,10 @@ export function TaskPage() {
     () => new Set(pendingApprovals(events).map((e) => String(e.payload.tool_call_id))),
     [events],
   )
+  const pendingQuestionIds = useMemo(
+    () => new Set(pendingQuestions(events).map((e) => String(e.payload.tool_call_id))),
+    [events],
+  )
 
   if (!taskId) return null
   return (
@@ -119,6 +123,7 @@ export function TaskPage() {
               steps={steps}
               taskId={taskId}
               pendingApprovalIds={pendingApprovalIds}
+              pendingQuestionIds={pendingQuestionIds}
             />
           )}
           {tab === 'terminal' && <TerminalPane events={chunkEvents} />}

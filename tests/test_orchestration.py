@@ -23,6 +23,9 @@ from gantry.core.models import DEFAULT_WORKSPACE_ID, Task, TaskEvent, TaskKind, 
 from gantry.runtime.tools import TaskParked, ToolContext
 from gantry.worker.service import Worker, WorkerConfig
 from gantry.worker.tools.orchestration import (
+    MAX_SPAWN_DEPTH,
+    AgentStatusTool,
+    AgentTerminateTool,
     SpawnSubtaskTool,
     WaitForChildrenTool,
     child_task_id,
@@ -387,3 +390,61 @@ async def test_placeholder_repo_url_is_rejected(db: Sessions) -> None:
     async with db() as session:
         child = await session.get(Task, child_task_id(planner.id, "call_ph"))
     assert child is None  # never created
+
+
+async def test_spawn_sets_and_increments_child_depth(db: Sessions) -> None:
+    planner = await make_planner(db)  # no depth in payload -> treated as 0
+    child = await spawn(db, planner, "call_A")
+    assert child.payload["depth"] == 1
+
+
+async def test_spawn_depth_cap_rejects_too_deep(db: Sessions) -> None:
+    planner = await _planner_with(db, depth=MAX_SPAWN_DEPTH)
+    result = await SpawnSubtaskTool().execute(
+        {"goal": "one level too deep"}, ctx_for(planner, db, "deep")
+    )
+    assert result.is_error and "depth cap" in result.content
+    async with db() as session:
+        child = await session.get(Task, child_task_id(planner.id, "deep"))
+    assert child is None  # never created
+
+
+async def test_agent_status_reports_a_child(db: Sessions) -> None:
+    planner = await make_planner(db)
+    child = await spawn(db, planner, "call_A")
+    result = await AgentStatusTool().execute(
+        {"task_id": str(child.id)}, ctx_for(planner, db, "status_1")
+    )
+    assert not result.is_error
+    entry = json.loads(result.content)
+    assert entry["task_id"] == str(child.id)
+    assert entry["status"] == TaskStatus.PENDING.value
+
+
+async def test_agent_status_rejects_a_non_child(db: Sessions) -> None:
+    planner = await make_planner(db)
+    other = await make_planner(db)  # a task that is NOT this planner's child
+    result = await AgentStatusTool().execute(
+        {"task_id": str(other.id)}, ctx_for(planner, db, "status_2")
+    )
+    assert result.is_error and "not one of your children" in result.content
+
+
+async def test_agent_terminate_stops_a_child(db: Sessions) -> None:
+    planner = await make_planner(db)
+    child = await spawn(db, planner, "call_A")
+    result = await AgentTerminateTool().execute(
+        {"task_id": str(child.id)}, ctx_for(planner, db, "term_1")
+    )
+    assert not result.is_error and "stop" in result.content
+    assert await get_status(db, child.id) is TaskStatus.CANCELLED
+
+
+async def test_agent_terminate_rejects_a_non_child(db: Sessions) -> None:
+    planner = await make_planner(db)
+    other = await make_planner(db)
+    result = await AgentTerminateTool().execute(
+        {"task_id": str(other.id)}, ctx_for(planner, db, "term_2")
+    )
+    assert result.is_error and "not one of your children" in result.content
+    assert await get_status(db, other.id) is not TaskStatus.CANCELLED

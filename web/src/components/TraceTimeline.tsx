@@ -4,6 +4,7 @@ import type { LlmStep, MarkerStep, ToolStep, TraceStep } from '../lib/trace'
 import { Layers } from 'lucide-react'
 import { clockTime, compactJson, duration } from '../lib/format'
 import { ApprovalCard } from './ApprovalCard'
+import { QuestionCard } from './QuestionCard'
 import { DiffViewer } from './DiffViewer'
 import { Markdown } from './Markdown'
 
@@ -11,10 +12,12 @@ export function TraceTimeline({
   steps,
   taskId,
   pendingApprovalIds,
+  pendingQuestionIds,
 }: {
   steps: TraceStep[]
   taskId?: string
   pendingApprovalIds?: ReadonlySet<string>
+  pendingQuestionIds?: ReadonlySet<string>
 }) {
   if (steps.length === 0) {
     return <p className="py-8 text-center text-sm text-zinc-600">Waiting for events…</p>
@@ -22,17 +25,25 @@ export function TraceTimeline({
   return (
     <ol className="flex flex-col gap-2">
       {steps.map((step, i) => {
-        // A still-pending approval renders its full actionable card right where
-        // the agent parked — Approve/Reject inline, no trip to another page.
+        // A still-pending approval or question renders its full actionable card
+        // right where the agent parked — resolve inline, no trip to another page.
+        const toolCallId = step.kind === 'lifecycle' ? String(step.event.payload.tool_call_id) : ''
         const isPendingApproval =
           step.kind === 'lifecycle' &&
           step.event.event_type === 'approval_requested' &&
           taskId !== undefined &&
-          (pendingApprovalIds?.has(String(step.event.payload.tool_call_id)) ?? false)
+          (pendingApprovalIds?.has(toolCallId) ?? false)
+        const isPendingQuestion =
+          step.kind === 'lifecycle' &&
+          step.event.event_type === 'ask_user_question' &&
+          taskId !== undefined &&
+          (pendingQuestionIds?.has(toolCallId) ?? false)
         return (
           <li key={i}>
             {isPendingApproval && step.kind === 'lifecycle' ? (
               <ApprovalCard taskId={taskId} request={step.event} />
+            ) : isPendingQuestion && step.kind === 'lifecycle' ? (
+              <QuestionCard taskId={taskId} request={step.event} />
             ) : (
               <>
                 {step.kind === 'lifecycle' && <Marker step={step} />}
@@ -65,6 +76,8 @@ const MARKER_TONES: Record<string, string> = {
   task_parked: 'text-indigo-300',
   task_resumed: 'text-sky-300',
   approval_requested: 'text-purple-300',
+  ask_user_question: 'text-sky-300',
+  ask_user_answered: 'text-emerald-400',
   skill_injected: 'text-amber-300',
 }
 
@@ -75,6 +88,12 @@ function markerDetail(event: TaskEvent): string {
   }
   if (event.event_type === 'approval_requested') {
     return `${String(p.tool)}: ${String(p.reason)}`
+  }
+  if (event.event_type === 'ask_user_question') {
+    return String(p.question)
+  }
+  if (event.event_type === 'ask_user_answered') {
+    return `answered "${String(p.answer)}"`
   }
   if (event.event_type === 'approval_resolved') {
     const comment = p.comment ? ` — "${String(p.comment)}"` : ''

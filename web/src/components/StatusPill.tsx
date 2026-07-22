@@ -5,6 +5,7 @@ const STYLES: Record<TaskStatus, string> = {
   claimed: 'bg-sky-950 text-sky-300 border border-sky-800',
   running: 'bg-amber-950 text-amber-300 border border-amber-800',
   waiting_approval: 'bg-purple-950 text-purple-300 border border-purple-800',
+  waiting_input: 'bg-sky-950 text-sky-300 border border-sky-800',
   waiting_children: 'bg-indigo-950 text-indigo-300 border border-indigo-800',
   succeeded: 'bg-emerald-950 text-emerald-300 border border-emerald-800',
   failed: 'bg-red-950 text-red-300 border border-red-800',

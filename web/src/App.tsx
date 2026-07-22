@@ -3,6 +3,7 @@ import { Outlet } from 'react-router-dom'
 import { Hexagon, Menu } from 'lucide-react'
 import { API_BASE } from './api/base'
 import { ApprovalToasts } from './components/ApprovalToasts'
+import { QuestionToasts } from './components/QuestionToasts'
 import { Sidebar } from './components/Sidebar'
 import { AppDataProvider, useAppData } from './state/AppDataProvider'
 
@@ -30,6 +31,7 @@ export function App() {
           </main>
         </div>
         <ApprovalToasts />
+        <QuestionToasts />
       </div>
     </AppDataProvider>
   )

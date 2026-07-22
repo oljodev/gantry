@@ -35,6 +35,7 @@ class TaskStatus(enum.StrEnum):
     CLAIMED = "claimed"
     RUNNING = "running"
     WAITING_APPROVAL = "waiting_approval"
+    WAITING_INPUT = "waiting_input"
     WAITING_CHILDREN = "waiting_children"
     SUCCEEDED = "succeeded"
     FAILED = "failed"
@@ -79,6 +80,10 @@ class EventType(enum.StrEnum):
     COMPACTION = "compaction"
     APPROVAL_REQUESTED = "approval_requested"
     APPROVAL_RESOLVED = "approval_resolved"
+    #: Human-in-the-loop questions (ask_user tool): the agent parks on a
+    #: question and resumes with the operator's answer as the tool result.
+    ASK_USER_QUESTION = "ask_user_question"
+    ASK_USER_ANSWERED = "ask_user_answered"
     #: Skills (Phase 8): full skill content pinned into the run's log.
     SKILL_INJECTED = "skill_injected"
 

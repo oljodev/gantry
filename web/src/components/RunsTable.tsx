@@ -14,7 +14,9 @@ type Filter = 'all' | 'active' | 'succeeded' | 'failed'
 const FILTERS: Record<Filter, (t: Task) => boolean> = {
   all: () => true,
   active: (t) =>
-    ['pending', 'claimed', 'running', 'waiting_approval', 'waiting_children'].includes(t.status),
+    ['pending', 'claimed', 'running', 'waiting_approval', 'waiting_input', 'waiting_children'].includes(
+      t.status,
+    ),
   succeeded: (t) => t.status === 'succeeded',
   failed: (t) => t.status === 'failed' || t.status === 'cancelled',
 }

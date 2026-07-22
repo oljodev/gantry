@@ -35,6 +35,9 @@ from gantry.server.schemas import (
     ApprovalItem,
     ApprovalResolveRequest,
     ApprovalsResponse,
+    QuestionAnswerRequest,
+    QuestionItem,
+    QuestionsResponse,
     SkillOut,
     SkillsResponse,
     StatsResponse,
@@ -302,6 +305,80 @@ async def resolve_task_approval(
     if outcome == "already_resolved":
         raise HTTPException(status_code=409, detail="approval already resolved")
     raise HTTPException(status_code=404, detail="no such pending approval")
+
+
+@router.get("/questions", response_model=QuestionsResponse)
+async def list_questions(request: Request) -> QuestionsResponse:
+    """The operator inbox for ask_user: every task parked on a question."""
+    sessions = get_sessions(request)
+    items: list[QuestionItem] = []
+    async with sessions() as session:
+        waiting = (
+            await session.scalars(
+                sa.select(Task)
+                .where(
+                    Task.workspace_id == DEFAULT_WORKSPACE_ID,
+                    Task.status == TaskStatus.WAITING_INPUT,
+                )
+                .order_by(Task.updated_at)
+            )
+        ).all()
+        for task in waiting:
+            events = (
+                await session.scalars(
+                    sa.select(TaskEvent)
+                    .where(
+                        TaskEvent.task_id == task.id,
+                        TaskEvent.event_type.in_(
+                            [
+                                EventType.ASK_USER_QUESTION.value,
+                                EventType.ASK_USER_ANSWERED.value,
+                            ]
+                        ),
+                    )
+                    .order_by(TaskEvent.seq)
+                )
+            ).all()
+            answered = {
+                str(e.payload.get("tool_call_id"))
+                for e in events
+                if EventType(e.event_type) is EventType.ASK_USER_ANSWERED
+            }
+            for event in events:
+                if (
+                    EventType(event.event_type) is EventType.ASK_USER_QUESTION
+                    and str(event.payload.get("tool_call_id")) not in answered
+                ):
+                    items.append(
+                        QuestionItem(
+                            task=TaskOut.model_validate(task),
+                            request=TaskEventOut.model_validate(event),
+                        )
+                    )
+    return QuestionsResponse(questions=items)
+
+
+@router.post("/tasks/{task_id}/questions/{tool_call_id}", response_model=TaskOut)
+async def answer_task_question(
+    request: Request,
+    task_id: uuid.UUID,
+    tool_call_id: str,
+    body: QuestionAnswerRequest,
+) -> TaskOut:
+    sessions = get_sessions(request)
+    async with session_scope(sessions) as session:
+        outcome, task = await queue.resolve_input(
+            session,
+            task_id=task_id,
+            tool_call_id=tool_call_id,
+            answer=body.answer,
+            resolved_by=body.resolved_by,
+        )
+        if outcome == "resolved" and task is not None:
+            return TaskOut.model_validate(task)
+    if outcome == "already_resolved":
+        raise HTTPException(status_code=409, detail="question already answered")
+    raise HTTPException(status_code=404, detail="no such pending question")
 
 
 @router.post("/tasks/{task_id}/cancel", response_model=TaskOut)

@@ -5,6 +5,7 @@ export type TaskStatus =
   | 'claimed'
   | 'running'
   | 'waiting_approval'
+  | 'waiting_input'
   | 'waiting_children'
   | 'succeeded'
   | 'failed'
@@ -18,6 +19,7 @@ export const ACTIVE_STATUSES: ReadonlySet<TaskStatus> = new Set([
   'claimed',
   'running',
   'waiting_approval',
+  'waiting_input',
   'waiting_children',
 ])
 

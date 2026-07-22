@@ -46,6 +46,10 @@ _SPAWN_NAMESPACE = uuid.UUID("6a1a9f5e-0000-4000-8000-67616e747279")
 #: Runaway-planner guard: hard cap on children per task.
 DEFAULT_MAX_SUBTASKS = 32
 
+#: Recursion guard: how deep the spawn tree may go (root is depth 0). Stops a
+#: delegating agent from spawning delegating agents without bound.
+MAX_SPAWN_DEPTH = 5
+
 _RESULT_TEXT_CAP = 2000
 
 #: Each park/wake cycle re-claims the planner (attempt += 1 — it's the fencing
@@ -208,6 +212,14 @@ class SpawnSubtaskTool(Tool):
                     "children before spawning more",
                     is_error=True,
                 )
+            child_depth = int(parent.payload.get("depth") or 0) + 1
+            if child_depth > MAX_SPAWN_DEPTH:
+                return ToolResult(
+                    f"spawn depth cap reached (max {MAX_SPAWN_DEPTH}); this agent is too "
+                    "deep in the tree to spawn more children — do the work directly or "
+                    "report back to your parent",
+                    is_error=True,
+                )
 
             payload: dict[str, Any] = dict(arguments.get("payload") or {})
             if node is not None:
@@ -223,6 +235,7 @@ class SpawnSubtaskTool(Tool):
                 if value is not None and not (isinstance(value, str) and not value.strip()):
                     payload[key] = value
             _inherit_parent_context(payload, parent.payload)
+            payload["depth"] = child_depth
             if node is not None:
                 kind = node_kind(node)  # derived from the snapshot, not the argument
             else:
@@ -300,7 +313,102 @@ def _children_report(children: list[Task]) -> str:
     return json.dumps({"summary": counts, "children": report}, indent=2)
 
 
+class AgentStatusTool(Tool):
+    name = "agent_status"
+    description = (
+        "Check the current status (and result, if finished) of one child agent you "
+        "spawned, by its task id. Use this to poll a specific child; to sleep until "
+        "ALL children finish, use wait_for_children instead."
+    )
+    parameters: ClassVar[dict[str, Any]] = {
+        "type": "object",
+        "properties": {"task_id": {"type": "string", "description": "The child's task id"}},
+        "required": ["task_id"],
+    }
+    idempotency = ToolIdempotency.IDEMPOTENT
+
+    async def execute(self, arguments: dict[str, Any], ctx: ToolContext) -> ToolResult:
+        child = await _lookup_child(arguments, ctx)
+        if isinstance(child, ToolResult):
+            return child
+        return ToolResult(json.dumps(_child_entry(child), indent=2))
+
+
+class AgentTerminateTool(Tool):
+    name = "agent_terminate"
+    description = (
+        "Stop one child agent you spawned, by its task id — for a runaway or no-longer-"
+        "needed child. Already-finished children are left as they are."
+    )
+    parameters: ClassVar[dict[str, Any]] = {
+        "type": "object",
+        "properties": {"task_id": {"type": "string", "description": "The child's task id"}},
+        "required": ["task_id"],
+    }
+    #: Cancelling an already-cancelled/finished task is a no-op — safe to re-run.
+    idempotency = ToolIdempotency.IDEMPOTENT
+
+    async def execute(self, arguments: dict[str, Any], ctx: ToolContext) -> ToolResult:
+        child = await _lookup_child(arguments, ctx)
+        if isinstance(child, ToolResult):
+            return child
+        sessions = _sessions_of(ctx)
+        async with session_scope(sessions) as session:
+            result = await queue.cancel(session, task_id=child.id)
+        if result is None:
+            return ToolResult(f"child {child.id} is already {child.status.value}; not stopped")
+        return ToolResult(f"requested stop of child {child.id} ({result.task.status.value})")
+
+
+async def _lookup_child(arguments: dict[str, Any], ctx: ToolContext) -> Task | ToolResult:
+    """Resolve a child task id argument, enforcing it is a direct child."""
+    raw = str(arguments.get("task_id") or "").strip()
+    try:
+        child_id = uuid.UUID(raw)
+    except ValueError:
+        return ToolResult(f"invalid task id {raw!r}", is_error=True)
+    sessions = _sessions_of(ctx)
+    async with session_scope(sessions) as session:
+        child = await session.get(Task, child_id)
+    if child is None or child.parent_task_id != ctx.task_id:
+        return ToolResult(
+            f"task {raw} is not one of your children (you can only inspect agents you spawned)",
+            is_error=True,
+        )
+    return child
+
+
+def _child_entry(child: Task) -> dict[str, Any]:
+    result = child.result or {}
+    entry: dict[str, Any] = {
+        "task_id": str(child.id),
+        "goal": child.payload.get("goal"),
+        "status": child.status.value,
+    }
+    if child.status is TaskStatus.SUCCEEDED:
+        entry["final_text"] = str(result.get("final_text") or "")[:_RESULT_TEXT_CAP]
+    elif child.last_error:
+        entry["error"] = child.last_error[:_RESULT_TEXT_CAP]
+    return entry
+
+
+def orchestration_tools(
+    max_subtasks: int = DEFAULT_MAX_SUBTASKS, team: TeamNode | None = None
+) -> list[Tool]:
+    """The delegation toolset: spawn/wait plus per-child status/terminate."""
+    return [
+        SpawnSubtaskTool(max_subtasks, team=team),
+        WaitForChildrenTool(),
+        AgentStatusTool(),
+        AgentTerminateTool(),
+    ]
+
+
 def build_planner_registry(
     max_subtasks: int = DEFAULT_MAX_SUBTASKS, team: TeamNode | None = None
 ) -> ToolRegistry:
-    return ToolRegistry([SpawnSubtaskTool(max_subtasks, team=team), WaitForChildrenTool()])
+    from gantry.worker.tools.ask import AskUserTool
+
+    registry = ToolRegistry(orchestration_tools(max_subtasks, team=team))
+    registry.register(AskUserTool())
+    return registry

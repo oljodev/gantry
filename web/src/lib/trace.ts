@@ -101,6 +101,18 @@ export function pendingApprovals(events: TaskEvent[]): TaskEvent[] {
   )
 }
 
+/** ask_user_question events with no matching ask_user_answered yet. */
+export function pendingQuestions(events: TaskEvent[]): TaskEvent[] {
+  const answered = new Set(
+    events
+      .filter((e) => e.event_type === 'ask_user_answered')
+      .map((e) => String(e.payload.tool_call_id)),
+  )
+  return events.filter(
+    (e) => e.event_type === 'ask_user_question' && !answered.has(String(e.payload.tool_call_id)),
+  )
+}
+
 /** The last assistant text, for finished tasks whose result isn't loaded. */
 export function finalText(events: TaskEvent[]): string | null {
   for (let i = events.length - 1; i >= 0; i--) {

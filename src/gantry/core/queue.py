@@ -539,6 +539,118 @@ async def _unresolved_approval_ids(session: AsyncSession, task_id: uuid.UUID) ->
     return requested - resolved
 
 
+async def park_for_input(
+    session: AsyncSession,
+    *,
+    task_id: uuid.UUID,
+    worker_id: str,
+    attempt: int,
+) -> TaskStatus | None:
+    """Park a task until a human answers its pending ask_user question.
+
+    Identical machinery to :func:`park_for_approval` (same fenced park +
+    lost-wakeup guard in one transaction), keyed on the ask_user question
+    ledger instead of the approval ledger.
+    """
+    res = await session.execute(
+        sa.update(Task)
+        .where(
+            Task.id == task_id,
+            Task.claimed_by == worker_id,
+            Task.attempt == attempt,
+            Task.status.in_(LEASED_STATUSES),
+        )
+        .values(
+            status=TaskStatus.WAITING_INPUT,
+            claimed_by=None,
+            lease_expires_at=None,
+            updated_at=sa.func.now(),
+        )
+    )
+    if _rowcount(res) != 1:
+        return None
+    await append_event(session, task_id, EventType.TASK_PARKED, {"reason": "waiting_input"})
+    if not await _unresolved_question_ids(session, task_id):
+        await session.execute(
+            sa.update(Task)
+            .where(Task.id == task_id)
+            .values(status=TaskStatus.PENDING, scheduled_at=sa.func.now(), updated_at=sa.func.now())
+        )
+        await append_event(session, task_id, EventType.TASK_RESUMED, {"reason": "input_answered"})
+        await notify_task_ready(session, task_id)
+        return TaskStatus.PENDING
+    return TaskStatus.WAITING_INPUT
+
+
+async def resolve_input(
+    session: AsyncSession,
+    *,
+    task_id: uuid.UUID,
+    tool_call_id: str,
+    answer: str,
+    resolved_by: str = "operator",
+) -> tuple[str, Task | None]:
+    """Record a human's answer to an ask_user question and wake the task.
+
+    Returns ("resolved" | "not_found" | "already_resolved", task). Locks the
+    task row FIRST so this serializes with a concurrent park (see
+    :func:`resolve_approval`); whichever commits second delivers the wakeup.
+    """
+    task = await session.get(Task, task_id, with_for_update=True)
+    if task is None:
+        return "not_found", None
+    asked, answered = await _question_ledger(session, task_id)
+    if tool_call_id not in asked:
+        return "not_found", task
+    if tool_call_id in answered:
+        return "already_resolved", task
+
+    await append_event(
+        session,
+        task_id,
+        EventType.ASK_USER_ANSWERED,
+        {"tool_call_id": tool_call_id, "answer": answer, "resolved_by": resolved_by},
+    )
+    if task.status is TaskStatus.WAITING_INPUT and not await _unresolved_question_ids(
+        session, task_id
+    ):
+        await session.execute(
+            sa.update(Task)
+            .where(Task.id == task_id)
+            .values(status=TaskStatus.PENDING, scheduled_at=sa.func.now(), updated_at=sa.func.now())
+        )
+        await append_event(session, task_id, EventType.TASK_RESUMED, {"reason": "input_answered"})
+        await notify_task_ready(session, task_id)
+        await session.refresh(task)
+    logger.info("queue.input_answered", task_id=str(task_id), tool_call_id=tool_call_id)
+    return "resolved", task
+
+
+async def _question_ledger(session: AsyncSession, task_id: uuid.UUID) -> tuple[set[str], set[str]]:
+    """(asked, answered) tool_call_ids from the task's ask_user events."""
+    events = await session.scalars(
+        sa.select(TaskEvent).where(
+            TaskEvent.task_id == task_id,
+            TaskEvent.event_type.in_(
+                [EventType.ASK_USER_QUESTION.value, EventType.ASK_USER_ANSWERED.value]
+            ),
+        )
+    )
+    asked, answered = set(), set()
+    for event in events:
+        call_id = str(event.payload.get("tool_call_id"))
+        if EventType(event.event_type) is EventType.ASK_USER_QUESTION:
+            asked.add(call_id)
+        else:
+            answered.add(call_id)
+    return asked, answered
+
+
+async def _unresolved_question_ids(session: AsyncSession, task_id: uuid.UUID) -> set[str]:
+    asked, answered = await _question_ledger(session, task_id)
+    return asked - answered
+
+
 async def retry(session: AsyncSession, *, task_id: uuid.UUID) -> Task | None:
     """Manually re-queue a terminally failed or cancelled task.
 

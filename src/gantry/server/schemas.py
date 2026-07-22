@@ -127,6 +127,22 @@ class ApprovalsResponse(BaseModel):
     approvals: list[ApprovalItem]
 
 
+class QuestionAnswerRequest(BaseModel):
+    answer: str = Field(min_length=1)
+    resolved_by: str = "operator"
+
+
+class QuestionItem(BaseModel):
+    """One inbox entry: the waiting task plus its ask_user_question event."""
+
+    task: TaskOut
+    request: TaskEventOut
+
+
+class QuestionsResponse(BaseModel):
+    questions: list[QuestionItem]
+
+
 class TaskMessage(BaseModel):
     """WS: a task snapshot — sent on connect and after status transitions."""
 

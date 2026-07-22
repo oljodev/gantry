@@ -26,6 +26,12 @@ export interface ApprovalItem {
   request: TaskEvent
 }
 
+// An ask_user question awaiting a human answer (task parked in waiting_input).
+export interface QuestionItem {
+  task: Task
+  request: TaskEvent
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const token = await getAccessToken()
   let response: Response
@@ -115,6 +121,17 @@ export function resolveApproval(
   return request<Task>(`/api/tasks/${taskId}/approvals/${toolCallId}`, {
     method: 'POST',
     body: JSON.stringify({ decision, comment }),
+  })
+}
+
+export function listQuestions(): Promise<QuestionItem[]> {
+  return request<{ questions: QuestionItem[] }>('/api/questions').then((body) => body.questions)
+}
+
+export function resolveQuestion(taskId: string, toolCallId: string, answer: string): Promise<Task> {
+  return request<Task>(`/api/tasks/${taskId}/questions/${toolCallId}`, {
+    method: 'POST',
+    body: JSON.stringify({ answer }),
   })
 }
 
