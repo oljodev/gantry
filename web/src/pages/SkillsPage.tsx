@@ -3,17 +3,22 @@
 // keywords appear in a run's goal.
 
 import { useCallback, useEffect, useState } from 'react'
-import { Pencil, Plus, Sparkles, Trash2 } from 'lucide-react'
+import { Pencil, Plus, Sparkles, Trash2, Wand2 } from 'lucide-react'
 import { createSkill, deleteSkill, listSkills, updateSkill } from '../api/client'
 import type { Skill } from '../api/types'
+import { CopilotSidebar } from '../components/CopilotSidebar'
 import { field, primaryButton, secondaryButton } from '../components/forms'
 import { Markdown } from '../components/Markdown'
 import { useProjectId } from '../lib/project'
+
+type Prefill = { name?: string; description?: string; match?: string[]; body?: string }
 
 export function SkillsPage() {
   const projectId = useProjectId()
   const [skills, setSkills] = useState<Skill[] | null>(null)
   const [editing, setEditing] = useState<Skill | 'new' | null>(null)
+  const [prefill, setPrefill] = useState<Prefill | null>(null)
+  const [copilot, setCopilot] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const reload = useCallback(() => {
@@ -45,7 +50,17 @@ export function SkillsPage() {
         </div>
         <span className="grow" />
         <button
-          onClick={() => setEditing('new')}
+          onClick={() => setCopilot(true)}
+          className={`flex items-center gap-1.5 ${secondaryButton}`}
+        >
+          <Wand2 className="h-4 w-4" aria-hidden />
+          Co-pilot
+        </button>
+        <button
+          onClick={() => {
+            setPrefill(null)
+            setEditing('new')
+          }}
           className={`flex items-center gap-1.5 ${primaryButton}`}
         >
           <Plus className="h-4 w-4" aria-hidden />
@@ -56,15 +71,35 @@ export function SkillsPage() {
 
       {editing && (
         <SkillForm
+          key={prefill ? 'prefilled' : editing === 'new' ? 'new' : editing.id}
           skill={editing === 'new' ? null : editing}
+          initial={editing === 'new' ? prefill : null}
           projectId={projectId}
           onDone={() => {
             setEditing(null)
+            setPrefill(null)
             reload()
           }}
           onCancel={() => setEditing(null)}
         />
       )}
+
+      <CopilotSidebar
+        kind="skill"
+        projectId={projectId}
+        context={editing && editing !== 'new' ? JSON.stringify(editing) : ''}
+        open={copilot}
+        onClose={() => setCopilot(false)}
+        onApply={async (proposal) => {
+          const skill = (proposal.skill ?? {}) as Prefill
+          setPrefill(skill)
+          setEditing('new')
+          return async () => {
+            setEditing(null)
+            setPrefill(null)
+          }
+        }}
+      />
 
       {skills === null ? (
         <p className="text-sm text-zinc-600">loading…</p>
@@ -122,19 +157,21 @@ export function SkillsPage() {
 
 function SkillForm({
   skill,
+  initial,
   projectId,
   onDone,
   onCancel,
 }: {
   skill: Skill | null
+  initial?: Prefill | null
   projectId: string
   onDone: () => void
   onCancel: () => void
 }) {
-  const [name, setName] = useState(skill?.name ?? '')
-  const [description, setDescription] = useState(skill?.description ?? '')
-  const [match, setMatch] = useState((skill?.match ?? []).join(', '))
-  const [body, setBody] = useState(skill?.body ?? '')
+  const [name, setName] = useState(skill?.name ?? initial?.name ?? '')
+  const [description, setDescription] = useState(skill?.description ?? initial?.description ?? '')
+  const [match, setMatch] = useState((skill?.match ?? initial?.match ?? []).join(', '))
+  const [body, setBody] = useState(skill?.body ?? initial?.body ?? '')
   const [preview, setPreview] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)

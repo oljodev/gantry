@@ -28,6 +28,7 @@ from gantry.logging import configure_logging, get_logger
 from gantry.server import (
     agents_api,
     api,
+    copilot_api,
     github_api,
     projects_api,
     providers_api,
@@ -103,6 +104,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(github_api.router)
     app.include_router(agents_api.router)
     app.include_router(skills_api.router)
+    app.include_router(copilot_api.router)
     app.include_router(ws.router)
 
     @app.get("/healthz")

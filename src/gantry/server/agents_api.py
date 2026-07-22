@@ -23,6 +23,7 @@ from gantry.core.models import (
     DEFAULT_PROJECT_ID,
     DEFAULT_WORKSPACE_ID,
     AgentProfile,
+    Project,
     Provider,
     TaskKind,
     Team,
@@ -341,6 +342,9 @@ async def launch_team(request: Request, team_id: uuid.UUID, body: TeamLaunchRequ
         payload = node_payload_fields(root_node)
         payload["goal"] = body.goal
         payload["team_id"] = str(team_id)
+        project = await session.get(Project, team.project_id)
+        if project is not None and project.auto_approve:
+            payload["auto_approve"] = True
         if body.repo_url:
             payload["repo_url"] = body.repo_url
         if body.base_branch:

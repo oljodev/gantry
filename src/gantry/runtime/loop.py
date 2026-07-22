@@ -217,6 +217,24 @@ async def _gate_tool_call(
                 "preview": decision.preview,
             },
         )
+        if task.payload.get("auto_approve"):
+            # HITL auto-accept: resolve the gate immediately instead of parking,
+            # but still record it (requested + resolved) so the trace is honest.
+            await _checkpoint(
+                sessions,
+                task,
+                EventType.APPROVAL_RESOLVED,
+                {
+                    "tool_call_id": tc.id,
+                    "decision": "approved",
+                    "comment": "",
+                    "resolved_by": "auto-accept",
+                },
+            )
+            await _checkpoint(sessions, task, EventType.TOOL_STARTED, {"tool_call_id": tc.id})
+            state.gated_started_ids.add(tc.id)
+            logger.info("agent.auto_approved", task_id=str(task.id), tool=tc.name)
+            return "run"
         raise TaskParked("waiting_approval", tool_call_id=tc.id)
     if approval.decision == "requested":  # woken for another reason; still undecided
         raise TaskParked("waiting_approval", tool_call_id=tc.id)

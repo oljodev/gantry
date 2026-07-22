@@ -21,6 +21,7 @@ class ProjectWriteRequest(BaseModel):
     description: str = ""
     default_repo_url: str | None = None
     default_base_branch: str | None = None
+    auto_approve: bool = False
 
 
 class ProjectOut(BaseModel):
@@ -31,6 +32,7 @@ class ProjectOut(BaseModel):
     description: str
     default_repo_url: str | None
     default_base_branch: str | None
+    auto_approve: bool
     created_at: datetime
     updated_at: datetime
 
@@ -44,6 +46,16 @@ class ProjectSummary(ProjectOut):
 
 class ProjectsResponse(BaseModel):
     projects: list[ProjectSummary]
+
+
+class CopilotStartRequest(BaseModel):
+    kind: Literal["skill", "tree"]
+    instruction: str = Field(min_length=1)
+    project_id: uuid.UUID | None = None
+    #: The page's current editor state, given to the co-pilot as context.
+    context: str = ""
+    provider_id: uuid.UUID | None = None
+    model: str | None = None
 
 
 class TaskCreateRequest(BaseModel):

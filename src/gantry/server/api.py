@@ -20,8 +20,10 @@ from gantry.core import queue
 from gantry.core.db import session_scope
 from gantry.core.events import read_events
 from gantry.core.models import (
+    DEFAULT_PROJECT_ID,
     DEFAULT_WORKSPACE_ID,
     EventType,
+    Project,
     Provider,
     Task,
     TaskEvent,
@@ -75,6 +77,9 @@ async def create_task(request: Request, body: TaskCreateRequest) -> TaskOut:
                 raise HTTPException(status_code=422, detail="unknown provider_id")
             settings = cast("Settings", request.app.state.settings)
             payload["model"] = resolve_model(provider, body.model, settings.default_model)
+        project = await session.get(Project, body.project_id or DEFAULT_PROJECT_ID)
+        if project is not None and project.auto_approve:
+            payload["auto_approve"] = True
         task = await queue.enqueue(
             session,
             workspace_id=DEFAULT_WORKSPACE_ID,

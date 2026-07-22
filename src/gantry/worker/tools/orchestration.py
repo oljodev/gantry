@@ -98,6 +98,9 @@ def _inherit_parent_context(payload: dict[str, Any], parent_payload: dict[str, A
     for key in ("repo_url", "base_branch"):
         if payload.get(key) is None and parent_payload.get(key) is not None:
             payload[key] = parent_payload[key]
+    # A run-wide setting: auto-accept flows down to every descendant.
+    if parent_payload.get("auto_approve") and payload.get("auto_approve") is None:
+        payload["auto_approve"] = True
     if "provider_id" not in payload and "model" not in payload:
         for key in ("provider_id", "model"):
             if parent_payload.get(key) is not None:

@@ -131,6 +131,30 @@ async def test_gated_call_parks_without_executing(db: Sessions) -> None:
     assert request.payload["reason"] == "recursive or forced deletion"
 
 
+async def test_auto_accept_runs_gated_call_without_parking(db: Sessions) -> None:
+    """With auto_approve on, a gated call runs immediately — but the gate is
+    still recorded (requested + resolved by 'auto-accept'), never silent."""
+    task = await enqueue_task(db, {"auto_approve": True})
+    tool = RecordingTool(name="bash")
+    outcome = await run_agent_task(
+        db, task, gated_llm(), ToolRegistry([tool]), approval_policy=POLICY
+    )
+    assert outcome.final_text == "all tidy"
+    assert tool.executions == [{"command": "rm -rf ./junk"}]  # it ran
+
+    types = await event_type_values(db, task.id)
+    assert "approval_requested" in types and "approval_resolved" in types
+    assert "task_parked" not in types  # never parked
+    async with session_scope(db) as session:
+        resolved = next(
+            e
+            for e in await read_events(session, task.id)
+            if e.event_type.value == "approval_resolved"
+        )
+    assert resolved.payload["decision"] == "approved"
+    assert resolved.payload["resolved_by"] == "auto-accept"
+
+
 async def test_approved_call_executes_on_resume_exactly_once(db: Sessions) -> None:
     task = await enqueue_task(db)
     tool = RecordingTool(name="bash")

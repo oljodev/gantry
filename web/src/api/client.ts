@@ -185,6 +185,21 @@ export function resolveQuestion(taskId: string, toolCallId: string, answer: stri
   })
 }
 
+// --- co-pilot ------------------------------------------------------------
+
+export interface CopilotStart {
+  kind: 'skill' | 'tree'
+  instruction: string
+  project_id?: string
+  context?: string
+  provider_id?: string
+  model?: string
+}
+
+export function startCopilot(body: CopilotStart): Promise<Task> {
+  return request<Task>('/api/copilot', { method: 'POST', body: JSON.stringify(body) })
+}
+
 // --- auth / me -----------------------------------------------------------
 
 export function getMe(): Promise<Me> {

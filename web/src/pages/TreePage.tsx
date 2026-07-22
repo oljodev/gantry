@@ -2,20 +2,27 @@
 // agent library. Replaces the separate Agents and Teams pages — a team IS the
 // tree, and agents are its boxes.
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Network, Plus } from 'lucide-react'
-import { deleteTeam, getTeam, listTeams } from '../api/client'
-import type { Team, TeamSummary } from '../api/types'
+import { Network, Plus, Wand2 } from 'lucide-react'
+import { deleteTeam, getTeam, listTasks, listTeams } from '../api/client'
+import { type Task, type Team, type TeamSummary } from '../api/types'
 import { AgentTree } from '../components/AgentTree'
+import { CopilotSidebar } from '../components/CopilotSidebar'
 import { primaryButton, secondaryButton } from '../components/forms'
+import { applyTreeProposal } from '../lib/copilotTree'
+import { runningAgentsByTeam } from '../lib/runningAgents'
 import { projectPath, useProjectId } from '../lib/project'
+import { useAppData } from '../state/AppDataProvider'
 import { AgentLibrary } from './AgentsPage'
 
 export function TreePage() {
   const projectId = useProjectId()
   const navigate = useNavigate()
+  const { version } = useAppData()
   const [teams, setTeams] = useState<Team[] | null>(null)
+  const [tasks, setTasks] = useState<Task[]>([])
+  const [copilot, setCopilot] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const reload = useCallback(() => {
@@ -29,6 +36,13 @@ export function TreePage() {
     document.title = 'Gantry — tree'
     reload()
   }, [reload])
+
+  // Which agents are running right now, per team — refreshed as events stream.
+  useEffect(() => {
+    if (projectId) listTasks({ projectId, limit: 100 }).then(setTasks).catch(console.error)
+  }, [projectId, version])
+
+  const runningByTeam = useMemo(() => runningAgentsByTeam(tasks), [tasks])
 
   const remove = (team: Team) =>
     deleteTeam(team.id)
@@ -49,6 +63,13 @@ export function TreePage() {
           </p>
         </div>
         <span className="grow" />
+        <button
+          onClick={() => setCopilot(true)}
+          className={`flex items-center gap-1.5 ${secondaryButton}`}
+        >
+          <Wand2 className="h-4 w-4" aria-hidden />
+          Co-pilot
+        </button>
         <Link
           to={projectPath(projectId, 'teams/new')}
           className={`flex items-center gap-1.5 ${primaryButton}`}
@@ -58,6 +79,23 @@ export function TreePage() {
         </Link>
       </div>
       {error && <p className="text-xs text-red-400">{error}</p>}
+
+      <CopilotSidebar
+        kind="tree"
+        projectId={projectId}
+        context={teams ? JSON.stringify(teams.map((t) => t.name)) : ''}
+        open={copilot}
+        onClose={() => setCopilot(false)}
+        onApply={async (proposal) => {
+          const team = (proposal.team ?? {}) as Record<string, unknown>
+          const undo = await applyTreeProposal(projectId, team)
+          reload()
+          return async () => {
+            await undo()
+            reload()
+          }
+        }}
+      />
 
       {teams === null ? (
         <p className="text-sm text-zinc-600">loading…</p>
@@ -100,7 +138,11 @@ export function TreePage() {
                   delete
                 </button>
               </div>
-              <AgentTree root={team.root} />
+              <AgentTree
+                root={team.root}
+                running={runningByTeam.get(team.id)}
+                projectId={projectId}
+              />
             </section>
           ))}
         </div>

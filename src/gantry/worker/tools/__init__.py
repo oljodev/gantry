@@ -9,11 +9,12 @@ disjoint planner/coder split made impossible.
 
 from __future__ import annotations
 
-from gantry.runtime.tools import ToolRegistry
+from gantry.runtime.tools import Tool, ToolRegistry
 from gantry.teams import TeamNode
 from gantry.worker.git import GitAuth
 from gantry.worker.tools.ask import AskUserTool
 from gantry.worker.tools.bash import BashTool
+from gantry.worker.tools.copilot import ProposeSkillTool, ProposeTreeTool
 from gantry.worker.tools.files import EditFileTool, ListDirTool, ReadFileTool, WriteFileTool
 from gantry.worker.tools.gittool import GitCommitPushTool
 from gantry.worker.tools.orchestration import (
@@ -24,7 +25,13 @@ from gantry.worker.tools.orchestration import (
 from gantry.worker.tools.search import GlobTool, GrepTool
 from gantry.worker.tools.web import WebFetchTool, WebSearchTool
 
-__all__ = ["build_coding_registry", "build_planner_registry"]
+__all__ = ["build_coding_registry", "build_copilot_registry", "build_planner_registry"]
+
+
+def build_copilot_registry(kind: str) -> ToolRegistry:
+    """Restricted toolset for a co-pilot task: propose + ask_user only."""
+    propose: Tool = ProposeTreeTool() if kind == "tree" else ProposeSkillTool()
+    return ToolRegistry([propose, AskUserTool()])
 
 
 def build_coding_registry(

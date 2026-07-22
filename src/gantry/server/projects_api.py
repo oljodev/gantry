@@ -46,6 +46,7 @@ def _apply(project: Project, body: ProjectWriteRequest) -> None:
     project.description = body.description
     project.default_repo_url = body.default_repo_url
     project.default_base_branch = body.default_base_branch
+    project.auto_approve = body.auto_approve
 
 
 @router.post("/projects", response_model=ProjectOut, status_code=201)

@@ -32,7 +32,7 @@ from gantry.vault.store import GITHUB_TOKEN_SECRET, get_secret, provider_secret_
 from gantry.worker import workspace as ws
 from gantry.worker.git import CloneError
 from gantry.worker.policy import policy_for_payload
-from gantry.worker.tools import build_coding_registry
+from gantry.worker.tools import build_coding_registry, build_copilot_registry
 
 logger = get_logger(__name__)
 
@@ -138,24 +138,29 @@ class Worker:
                 await queue.mark_running(
                     session, task_id=task.id, worker_id=cfg.worker_id, attempt=task.attempt
                 )
-            # Every agent gets a sandbox + the coding toolset. A delegating
-            # agent (kind=plan, or a profile with can_spawn) additionally gets
-            # the orchestration tools, so it can both do hands-on work AND
-            # spawn/await children (the coder->reviewer->fix loop).
-            workspace = await ws.prepare_workspace(
-                cfg.workspace_root,
-                task.id,
-                task.attempt,
-                task.payload,
-                github_token=await self._github_token(task),
-            )
-            can_spawn = task.kind is TaskKind.PLAN or bool(task.payload.get("can_spawn"))
-            registry = build_coding_registry(
-                workspace.auth,
-                can_spawn=can_spawn,
-                max_subtasks=cfg.max_subtasks,
-                team=task.payload.get("team"),
-            )
+            copilot = task.payload.get("copilot")
+            if copilot:
+                # Co-pilot tasks propose a skill/tree for the UI; no sandbox.
+                registry = build_copilot_registry(str(copilot))
+            else:
+                # Every agent gets a sandbox + the coding toolset. A delegating
+                # agent (kind=plan, or a profile with can_spawn) additionally gets
+                # the orchestration tools, so it can both do hands-on work AND
+                # spawn/await children (the coder->reviewer->fix loop).
+                workspace = await ws.prepare_workspace(
+                    cfg.workspace_root,
+                    task.id,
+                    task.attempt,
+                    task.payload,
+                    github_token=await self._github_token(task),
+                )
+                can_spawn = task.kind is TaskKind.PLAN or bool(task.payload.get("can_spawn"))
+                registry = build_coding_registry(
+                    workspace.auth,
+                    can_spawn=can_spawn,
+                    max_subtasks=cfg.max_subtasks,
+                    team=task.payload.get("team"),
+                )
 
             async def on_step() -> None:
                 # Cancellation wins over lease loss: an operator stop is a

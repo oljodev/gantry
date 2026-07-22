@@ -91,6 +91,8 @@ class EventType(enum.StrEnum):
     ASK_USER_ANSWERED = "ask_user_answered"
     #: Skills (Phase 8): full skill content pinned into the run's log.
     SKILL_INJECTED = "skill_injected"
+    #: Co-pilot (Phase 5): a proposed skill/tree the UI stages for the user.
+    COPILOT_PROPOSAL = "copilot_proposal"
 
 
 def _status_column() -> sa.Enum:
@@ -236,6 +238,11 @@ class Project(Base):
     description: Mapped[str] = mapped_column(sa.Text, nullable=False, default="")
     default_repo_url: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
     default_base_branch: Mapped[str | None] = mapped_column(sa.String(200), nullable=True)
+    #: HITL auto-accept: when on, gated tool calls in this project's runs are
+    #: auto-approved (still recorded in the trace, never silent).
+    auto_approve: Mapped[bool] = mapped_column(
+        sa.Boolean, nullable=False, server_default=sa.false(), default=False
+    )
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
     )

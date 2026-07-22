@@ -61,6 +61,7 @@ export interface Project {
   description: string
   default_repo_url: string | null
   default_base_branch: string | null
+  auto_approve: boolean
   created_at: string
   updated_at: string
 }
@@ -75,6 +76,7 @@ export interface ProjectWrite {
   description?: string
   default_repo_url?: string | null
   default_base_branch?: string | null
+  auto_approve?: boolean
 }
 
 export interface TaskCreate {

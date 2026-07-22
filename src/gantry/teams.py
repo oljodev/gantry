@@ -82,6 +82,9 @@ def node_payload_fields(node: TeamNode) -> dict[str, Any]:
     are launch-time facts, not profile facts.
     """
     fields: dict[str, Any] = {}
+    # The tree node this task embodies — lets the UI light up the running box.
+    if node.get("name"):
+        fields["agent_name"] = node["name"]
     prompt = node.get("system_prompt")
     if node_kind(node) is TaskKind.PLAN:
         prompt = (prompt or PLANNER_SYSTEM_PROMPT) + roster_text(node)
