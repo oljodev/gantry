@@ -3,23 +3,47 @@ import type { TaskEvent } from '../api/types'
 import type { LlmStep, MarkerStep, ToolStep, TraceStep } from '../lib/trace'
 import { Layers } from 'lucide-react'
 import { clockTime, compactJson, duration } from '../lib/format'
+import { ApprovalCard } from './ApprovalCard'
 import { DiffViewer } from './DiffViewer'
 import { Markdown } from './Markdown'
 
-export function TraceTimeline({ steps }: { steps: TraceStep[] }) {
+export function TraceTimeline({
+  steps,
+  taskId,
+  pendingApprovalIds,
+}: {
+  steps: TraceStep[]
+  taskId?: string
+  pendingApprovalIds?: ReadonlySet<string>
+}) {
   if (steps.length === 0) {
     return <p className="py-8 text-center text-sm text-zinc-600">Waiting for events…</p>
   }
   return (
     <ol className="flex flex-col gap-2">
-      {steps.map((step, i) => (
-        <li key={i}>
-          {step.kind === 'lifecycle' && <Marker step={step} />}
-          {step.kind === 'compaction' && <Compaction step={step} />}
-          {step.kind === 'llm' && <Llm step={step} />}
-          {step.kind === 'tool' && <ToolCard step={step} />}
-        </li>
-      ))}
+      {steps.map((step, i) => {
+        // A still-pending approval renders its full actionable card right where
+        // the agent parked — Approve/Reject inline, no trip to another page.
+        const isPendingApproval =
+          step.kind === 'lifecycle' &&
+          step.event.event_type === 'approval_requested' &&
+          taskId !== undefined &&
+          (pendingApprovalIds?.has(String(step.event.payload.tool_call_id)) ?? false)
+        return (
+          <li key={i}>
+            {isPendingApproval && step.kind === 'lifecycle' ? (
+              <ApprovalCard taskId={taskId} request={step.event} />
+            ) : (
+              <>
+                {step.kind === 'lifecycle' && <Marker step={step} />}
+                {step.kind === 'compaction' && <Compaction step={step} />}
+                {step.kind === 'llm' && <Llm step={step} />}
+                {step.kind === 'tool' && <ToolCard step={step} />}
+              </>
+            )}
+          </li>
+        )
+      })}
     </ol>
   )
 }
@@ -157,10 +181,16 @@ function Expandable({ text, tone }: { text: string; tone: string }) {
 
 function ToolCard({ step }: { step: ToolStep }) {
   const name = String(step.call.payload.name ?? 'tool')
-  const args = step.call.payload.arguments
+  const args = (step.call.payload.arguments ?? {}) as Record<string, unknown>
   const result = step.result
   const isError = result?.payload.is_error === true
   const terminalText = step.chunks.map((c) => String(c.payload.data ?? '')).join('')
+  // Show the actual code an agent wrote/changed inline. Only for a SUCCESSFUL
+  // file op — a failed write shows its error instead of a misleading preview.
+  const fileChange =
+    !isError && (name === 'write_file' || name === 'edit_file') ? (
+      <FileChange name={name} args={args} />
+    ) : null
   return (
     <div
       className={`rounded-md border ${isError ? 'border-red-900' : 'border-zinc-800'} bg-zinc-900/40`}
@@ -169,20 +199,99 @@ function ToolCard({ step }: { step: ToolStep }) {
         <span className={`font-mono font-semibold ${isError ? 'text-red-300' : 'text-sky-300'}`}>
           {name}
         </span>
-        <span className="truncate font-mono text-zinc-500">{compactJson(args)}</span>
+        <span className="truncate font-mono text-zinc-500">
+          {fileChange ? String(args.path ?? '') : compactJson(args)}
+        </span>
         {!result && <span className="animate-pulse text-amber-400">running…</span>}
         <StepDuration from={step.call} to={step.result} />
         <span className="grow" />
         <Timestamp event={step.call} />
       </div>
+      {fileChange}
       {terminalText && <Expandable text={terminalText} tone="text-zinc-300" />}
       {step.diff && <DiffViewer events={[step.diff]} embedded />}
-      {result && !terminalText && (
+      {result && !terminalText && !fileChange && (
         <Expandable
           text={String(result.payload.content ?? '')}
           tone={isError ? 'text-red-300' : 'text-zinc-400'}
         />
       )}
     </div>
+  )
+}
+
+/** Code an agent wrote (write_file: all lines added/green) or changed
+ *  (edit_file: old lines removed/red on the left, new lines added/green on the
+ *  right). Long content scrolls inside the card and expands on demand. */
+function FileChange({ name, args }: { name: string; args: Record<string, unknown> }) {
+  if (name === 'edit_file') {
+    return <EditColumns oldStr={String(args.old_str ?? '')} newStr={String(args.new_str ?? '')} />
+  }
+  return <AddedCode content={String(args.content ?? '')} />
+}
+
+function useExpandable(lineCount: number): [boolean, () => void, boolean] {
+  const [expanded, setExpanded] = useState(false)
+  return [expanded, () => setExpanded((e) => !e), lineCount > 18]
+}
+
+function CodeLines({ lines, tone, sign }: { lines: string[]; tone: string; sign: string }) {
+  return (
+    <>
+      {lines.map((line, i) => (
+        <div key={i} className={`px-3 ${tone}`}>
+          <span className="mr-2 select-none opacity-60">{sign}</span>
+          {line || ' '}
+        </div>
+      ))}
+    </>
+  )
+}
+
+function AddedCode({ content }: { content: string }) {
+  const lines = content.split('\n')
+  const [expanded, toggle, long] = useExpandable(lines.length)
+  return (
+    <div className="relative border-t border-zinc-800/60">
+      <pre
+        className={`overflow-auto bg-code font-mono text-xs leading-relaxed ${expanded ? 'max-h-none' : 'max-h-64'}`}
+      >
+        <CodeLines lines={lines} tone="bg-emerald-950/40 text-emerald-200" sign="+" />
+      </pre>
+      {long && <ExpandToggle expanded={expanded} onToggle={toggle} />}
+    </div>
+  )
+}
+
+function EditColumns({ oldStr, newStr }: { oldStr: string; newStr: string }) {
+  const oldLines = oldStr.split('\n')
+  const newLines = newStr.split('\n')
+  const [expanded, toggle, long] = useExpandable(Math.max(oldLines.length, newLines.length))
+  const paneClass = `overflow-auto bg-code font-mono text-xs leading-relaxed ${
+    expanded ? 'max-h-none' : 'max-h-64'
+  }`
+  return (
+    <div className="relative border-t border-zinc-800/60">
+      <div className="grid grid-cols-2 gap-px bg-zinc-800">
+        <pre className={paneClass}>
+          <CodeLines lines={oldLines} tone="bg-red-950/40 text-red-300" sign="−" />
+        </pre>
+        <pre className={paneClass}>
+          <CodeLines lines={newLines} tone="bg-emerald-950/40 text-emerald-200" sign="+" />
+        </pre>
+      </div>
+      {long && <ExpandToggle expanded={expanded} onToggle={toggle} />}
+    </div>
+  )
+}
+
+function ExpandToggle({ expanded, onToggle }: { expanded: boolean; onToggle: () => void }) {
+  return (
+    <button
+      onClick={onToggle}
+      className="absolute right-2 bottom-1.5 rounded border border-zinc-700 bg-zinc-900/90 px-1.5 py-0.5 text-[10px] text-zinc-400 transition hover:text-zinc-200"
+    >
+      {expanded ? 'collapse' : 'expand'}
+    </button>
   )
 }

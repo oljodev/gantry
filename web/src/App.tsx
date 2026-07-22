@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Outlet } from 'react-router-dom'
 import { Hexagon, Menu } from 'lucide-react'
 import { API_BASE } from './api/base'
+import { ApprovalToasts } from './components/ApprovalToasts'
 import { Sidebar } from './components/Sidebar'
 import { AppDataProvider, useAppData } from './state/AppDataProvider'
 
@@ -28,6 +29,7 @@ export function App() {
             <Outlet />
           </main>
         </div>
+        <ApprovalToasts />
       </div>
     </AppDataProvider>
   )

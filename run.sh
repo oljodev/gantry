@@ -116,9 +116,22 @@ echo "==> applying migrations"
 uv run alembic upgrade head
 
 # --- frontend ------------------------------------------------------------
-if [ "$MODE" = "serve" ] && [ ! -f web/dist/index.html ]; then
-  echo "==> building dashboard (first run)"
-  (cd web && npm install && npm run build)
+# Rebuild when the bundle is missing OR any source file is newer than it —
+# otherwise `git pull` + ./run.sh silently serves a stale dashboard and none of
+# the latest UI changes appear.
+if [ "$MODE" = "serve" ]; then
+  needs_build=0
+  if [ ! -f web/dist/index.html ]; then
+    needs_build=1
+  elif [ -n "$(find web/src web/index.html web/package.json web/vite.config.* \
+      -newer web/dist/index.html 2>/dev/null | head -1)" ]; then
+    needs_build=1
+    echo "==> dashboard sources changed since last build"
+  fi
+  if [ "$needs_build" = 1 ]; then
+    echo "==> building dashboard"
+    (cd web && npm install && npm run build)
+  fi
 fi
 if [ "$MODE" = "dev" ] && [ ! -d web/node_modules ]; then
   (cd web && npm install)

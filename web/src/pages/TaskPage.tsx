@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { Check, ChevronDown, Copy, Loader2, Square } from 'lucide-react'
+import { Check, ChevronDown, ChevronUp, Copy, Loader2, Square } from 'lucide-react'
 import { cancelTask, listTasks, retryTask } from '../api/client'
 import { openTaskStream, type ConnectionState } from '../api/stream'
 import { ACTIVE_STATUSES, type Task, type TaskEvent } from '../api/types'
@@ -9,7 +9,6 @@ import { StatusPill } from '../components/StatusPill'
 import { TaskTree } from '../components/TaskTree'
 import { TerminalPane } from '../components/TerminalPane'
 import { TraceTimeline } from '../components/TraceTimeline'
-import { ApprovalCard } from '../components/ApprovalCard'
 import { Markdown } from '../components/Markdown'
 import { shortId } from '../lib/format'
 import { foldTrace, pendingApprovals } from '../lib/trace'
@@ -65,17 +64,19 @@ export function TaskPage() {
   )
   const diffCount = events.filter((e) => e.event_type === 'diff').length
 
-  const awaiting = task?.status === 'waiting_approval' ? pendingApprovals(events) : []
+  const pendingApprovalIds = useMemo(
+    () => new Set(pendingApprovals(events).map((e) => String(e.payload.tool_call_id))),
+    [events],
+  )
 
   if (!taskId) return null
   return (
     <div className="flex flex-col gap-4">
       <Header task={task} connection={connection} />
-      {awaiting.map((request) => (
-        <ApprovalCard key={request.seq} taskId={taskId} request={request} />
-      ))}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[16rem_1fr]">
-        <aside className="rounded-lg border border-zinc-800 bg-zinc-900/30 p-2">
+      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[16rem_1fr]">
+        {/* Its own scroll region, pinned in view while the trace scrolls: a
+            deep task tree never drags the timeline out of reach. */}
+        <aside className="rounded-lg border border-zinc-800 bg-zinc-900/30 p-2 lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto">
           <h2 className="px-1.5 pt-1 pb-2 text-xs font-semibold text-zinc-500">TRACE TREE</h2>
           {tree.length > 0 ? (
             <TaskTree tree={tree} currentId={taskId} />
@@ -113,7 +114,13 @@ export function TaskPage() {
               {follow ? 'following' : 'follow'}
             </button>
           </div>
-          {tab === 'trace' && <TraceTimeline steps={steps} />}
+          {tab === 'trace' && (
+            <TraceTimeline
+              steps={steps}
+              taskId={taskId}
+              pendingApprovalIds={pendingApprovalIds}
+            />
+          )}
           {tab === 'terminal' && <TerminalPane events={chunkEvents} />}
           {tab === 'diff' && <DiffViewer events={events} />}
           <div ref={bottomRef} />
@@ -128,6 +135,45 @@ const CONNECTION_LABEL: Record<ConnectionState, [string, string]> = {
   live: ['live', 'text-emerald-400'],
   reconnecting: ['reconnecting…', 'text-amber-400'],
   ended: ['stream ended', 'text-zinc-500'],
+}
+
+// The task's first message (the goal/prompt). It can be enormous — a full
+// spec pasted by a human or handed down by a parent agent — so it's collapsed
+// to a few lines by default with an expand toggle, and rendered as Markdown.
+function GoalBlock({ goal }: { goal: string }) {
+  const [expanded, setExpanded] = useState(false)
+  const long = goal.length > 200 || goal.split('\n').length > 3
+  return (
+    <div className="mt-3">
+      <div className="mb-1 flex items-center gap-2">
+        <span className="text-[11px] font-semibold tracking-wide text-zinc-500">PROMPT</span>
+        {long && (
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="flex items-center gap-0.5 text-[11px] text-zinc-500 transition hover:text-zinc-300"
+          >
+            {expanded ? (
+              <>
+                <ChevronUp className="h-3 w-3" aria-hidden />
+                collapse
+              </>
+            ) : (
+              <>
+                <ChevronDown className="h-3 w-3" aria-hidden />
+                expand
+              </>
+            )}
+          </button>
+        )}
+      </div>
+      <div className={`relative overflow-hidden ${expanded ? '' : 'max-h-16'}`}>
+        <Markdown>{goal}</Markdown>
+        {!expanded && long && (
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-zinc-900 to-transparent" />
+        )}
+      </div>
+    </div>
+  )
 }
 
 function Header({ task, connection }: { task: Task | null; connection: ConnectionState }) {
@@ -154,7 +200,6 @@ function Header({ task, connection }: { task: Task | null; connection: Connectio
     <header className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4">
       <div className="flex flex-wrap items-center gap-3">
         <StatusPill status={task.status} />
-        <h1 className="text-lg font-semibold">{String(task.payload.goal ?? shortId(task.id))}</h1>
         <span className={`flex items-center gap-1.5 text-xs ${tone}`}>
           {connection === 'live' && (
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" aria-hidden />
@@ -225,7 +270,8 @@ function Header({ task, connection }: { task: Task | null; connection: Connectio
           </button>
         )}
       </div>
-      <dl className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-xs text-zinc-500">
+      <GoalBlock goal={String(task.payload.goal ?? shortId(task.id))} />
+      <dl className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-xs text-zinc-500">
         {meta.map(([key, value]) => (
           <div key={key} className="flex gap-1.5">
             <dt>{key}</dt>

@@ -1,7 +1,6 @@
 import { Link, NavLink } from 'react-router-dom'
 import {
   Bot,
-  CheckCheck,
   Hexagon,
   LayoutDashboard,
   ListOrdered,
@@ -24,7 +23,6 @@ const NAV: Array<{ to: string; icon: LucideIcon; label: string; end?: boolean }>
   { to: '/launch', icon: Play, label: 'Launch' },
   { to: '/agents', icon: Bot, label: 'Agents' },
   { to: '/teams', icon: Network, label: 'Teams' },
-  { to: '/approvals', icon: CheckCheck, label: 'Approvals' },
   { to: '/skills', icon: Sparkles, label: 'Skills' },
   { to: '/settings', icon: Settings, label: 'Settings' },
 ]
@@ -37,7 +35,7 @@ const CONNECTION_TONE: Record<ConnectionState, [string, string]> = {
 }
 
 export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { approvals, connection } = useAppData()
+  const { connection } = useAppData()
   const { authEnabled, me, signOut } = useAuth()
   const { theme, toggle } = useTheme()
   const [connLabel, connDot] = CONNECTION_TONE[connection]
@@ -85,11 +83,6 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
             >
               <item.icon className="h-4 w-4 shrink-0" aria-hidden />
               <span>{item.label}</span>
-              {item.to === '/approvals' && approvals.length > 0 && (
-                <span className="ml-auto rounded-full bg-purple-900/80 px-1.5 py-0.5 text-[10px] font-semibold text-purple-200">
-                  {approvals.length}
-                </span>
-              )}
             </NavLink>
           ))}
         </nav>
@@ -102,7 +95,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
               onClick={toggle}
               title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
               aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-              className="-m-1.5 rounded-md p-2.5 text-zinc-500 transition hover:bg-zinc-900 hover:text-zinc-200"
+              className="grid h-6 w-6 place-items-center rounded-md text-zinc-500 transition hover:bg-zinc-900 hover:text-zinc-200"
             >
               {theme === 'dark' ? (
                 <Sun className="h-3.5 w-3.5" aria-hidden />
