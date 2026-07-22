@@ -133,10 +133,26 @@ class StatsResponse(BaseModel):
     events_last_hour: int
 
 
+class SkillWriteRequest(BaseModel):
+    #: The project this skill belongs to (defaults to the Default project).
+    project_id: uuid.UUID | None = None
+    name: str = Field(min_length=1, max_length=100)
+    description: str = ""
+    match: list[str] = Field(default_factory=list)
+    body: str = ""
+
+
 class SkillOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    project_id: uuid.UUID
     name: str
     description: str
     match: list[str]
+    body: str
+    created_at: datetime
+    updated_at: datetime
 
 
 class SkillsResponse(BaseModel):

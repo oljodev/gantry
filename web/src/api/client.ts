@@ -13,6 +13,7 @@ import type {
   ProviderCreate,
   ProviderTestResult,
   Skill,
+  SkillWrite,
   Stats,
   Task,
   TaskCreate,
@@ -134,8 +135,21 @@ export function cancelTask(taskId: string): Promise<Task> {
   return request<Task>(`/api/tasks/${taskId}/cancel`, { method: 'POST' })
 }
 
-export function listSkills(): Promise<Skill[]> {
-  return request<{ skills: Skill[] }>('/api/skills').then((body) => body.skills)
+export function listSkills(projectId?: string): Promise<Skill[]> {
+  const suffix = projectId ? `?project_id=${projectId}` : ''
+  return request<{ skills: Skill[] }>(`/api/skills${suffix}`).then((body) => body.skills)
+}
+
+export function createSkill(body: SkillWrite): Promise<Skill> {
+  return request<Skill>('/api/skills', { method: 'POST', body: JSON.stringify(body) })
+}
+
+export function updateSkill(skillId: string, body: SkillWrite): Promise<Skill> {
+  return request<Skill>(`/api/skills/${skillId}`, { method: 'PUT', body: JSON.stringify(body) })
+}
+
+export function deleteSkill(skillId: string): Promise<void> {
+  return request<void>(`/api/skills/${skillId}`, { method: 'DELETE' })
 }
 
 export function listApprovals(projectId?: string): Promise<ApprovalItem[]> {

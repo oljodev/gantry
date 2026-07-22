@@ -26,7 +26,7 @@ from gantry.runtime.compaction import CompactionConfig
 from gantry.runtime.llm import LiteLLMClient, LLMClient
 from gantry.runtime.loop import AgentLoopError, run_agent_task
 from gantry.runtime.tools import TaskParked
-from gantry.skills import SkillRegistry
+from gantry.skills.store import load_registry
 from gantry.vault import Vault
 from gantry.vault.store import GITHUB_TOKEN_SECRET, get_secret, provider_secret_name
 from gantry.worker import workspace as ws
@@ -97,11 +97,6 @@ class Worker:
         self._listener = listener
         self._vault = vault
         self._llm_factory: LLMFactory = llm_factory or LiteLLMClient
-        self._skills = (
-            SkillRegistry.load_dir(config.skills_root)
-            if config.skills_root is not None
-            else SkillRegistry()
-        )
         self.processed = 0
 
     async def run(self, shutdown: asyncio.Event) -> None:
@@ -170,6 +165,10 @@ class Worker:
                 if lease_lost.is_set():
                     raise LeaseLostError(str(task.id))
 
+            async with self._sessions() as session:
+                skills = await load_registry(
+                    session, workspace_id=task.workspace_id, project_id=task.project_id
+                )
             outcome = await run_agent_task(
                 self._sessions,
                 task,
@@ -179,7 +178,7 @@ class Worker:
                 compaction=cfg.compaction,
                 on_step=on_step,
                 approval_policy=policy_for_payload(task.payload),
-                skills=self._skills,
+                skills=skills,
             )
             async with session_scope(self._sessions) as session:
                 succeeded = await queue.complete(

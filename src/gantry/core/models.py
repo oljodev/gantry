@@ -249,6 +249,42 @@ class Project(Base):
     )
 
 
+class Skill(Base):
+    """An authored skill: instructions injected into an agent's system prompt.
+
+    Skills used to be read-only ``*.md`` files on disk; they now live here so
+    they can be created and edited per project. ``body`` is the markdown
+    appended to the prompt; ``match`` is the keyword list that auto-selects the
+    skill when a goal mentions one of them.
+    """
+
+    __tablename__ = "skills"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        sa.ForeignKey("projects.id", ondelete="RESTRICT"),
+        nullable=False,
+        default=DEFAULT_PROJECT_ID,
+    )
+    name: Mapped[str] = mapped_column(sa.String(100), nullable=False)
+    description: Mapped[str] = mapped_column(sa.Text, nullable=False, default="")
+    match: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
+    body: Mapped[str] = mapped_column(sa.Text, nullable=False, default="")
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    )
+
+    __table_args__ = (
+        sa.UniqueConstraint("project_id", "name", name="uq_skills_project_name"),
+        sa.Index("ix_skills_project", "project_id"),
+    )
+
+
 class ProviderType(enum.StrEnum):
     """LLM provider families. ``LOCAL`` is any OpenAI-compatible endpoint."""
 

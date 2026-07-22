@@ -91,9 +91,22 @@ export interface TaskCreate {
 }
 
 export interface Skill {
+  id: string
+  project_id: string
   name: string
   description: string
   match: string[]
+  body: string
+  created_at: string
+  updated_at: string
+}
+
+export interface SkillWrite {
+  project_id?: string
+  name: string
+  description?: string
+  match?: string[]
+  body?: string
 }
 
 export interface Stats {

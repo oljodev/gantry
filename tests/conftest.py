@@ -106,7 +106,7 @@ async def engine(database_url: str) -> AsyncIterator[AsyncEngine]:
         await conn.execute(
             sa.text(
                 "TRUNCATE tasks, task_events, secrets, providers, agent_profiles, "
-                "teams, team_members, projects RESTART IDENTITY CASCADE"
+                "teams, team_members, skills, projects RESTART IDENTITY CASCADE"
             )
         )
         # Re-seed the Default project the migration created — enqueue() and the

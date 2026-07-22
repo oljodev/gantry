@@ -38,8 +38,6 @@ from gantry.server.schemas import (
     QuestionAnswerRequest,
     QuestionItem,
     QuestionsResponse,
-    SkillOut,
-    SkillsResponse,
     StatsResponse,
     TaskCreateRequest,
     TaskEventOut,
@@ -47,7 +45,6 @@ from gantry.server.schemas import (
     TaskListResponse,
     TaskOut,
 )
-from gantry.skills import SkillRegistry
 from gantry.worker.tools.orchestration import DEFAULT_PLANNER_MAX_ATTEMPTS
 
 router = APIRouter(prefix="/api", tags=["tasks"], dependencies=[Depends(require_user)])
@@ -226,17 +223,6 @@ async def retry_task(request: Request, task_id: uuid.UUID) -> TaskOut:
     raise HTTPException(
         status_code=409,
         detail=f"task is {task.status.value}; only failed or cancelled tasks can be retried",
-    )
-
-
-@router.get("/skills", response_model=SkillsResponse)
-async def list_skills(request: Request) -> SkillsResponse:
-    registry = cast("SkillRegistry", request.app.state.skills)
-    return SkillsResponse(
-        skills=[
-            SkillOut(name=s.name, description=s.description, match=list(s.match))
-            for s in registry.all()
-        ]
     )
 
 

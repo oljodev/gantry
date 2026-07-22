@@ -69,7 +69,7 @@ function QuickRun() {
 
   useEffect(() => {
     listProviders().then(setProviders).catch(console.error)
-    listSkills().then(setSkills).catch(console.error)
+    listSkills(projectId).then(setSkills).catch(console.error)
     // Prefill the repo from the project's default, if it has one.
     if (projectId) {
       getProject(projectId)

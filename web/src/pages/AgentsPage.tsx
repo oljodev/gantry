@@ -13,7 +13,9 @@ import { SkillChips } from '../components/SkillChips'
 import { GATEABLE_TOOLS } from '../lib/permissions'
 import { useProjectId } from '../lib/project'
 
-export function AgentsPage() {
+// The agent library: create/edit/delete the project's reusable agent
+// definitions. Rendered as a section of the Tree page (agents are the boxes).
+export function AgentLibrary() {
   const projectId = useProjectId()
   const [agents, setAgents] = useState<AgentProfile[] | null>(null)
   const [providers, setProviders] = useState<Provider[]>([])
@@ -29,8 +31,8 @@ export function AgentsPage() {
     document.title = 'Gantry — agents'
     reload()
     listProviders().then(setProviders).catch(console.error)
-    listSkills().then(setSkills).catch(console.error)
-  }, [reload])
+    listSkills(projectId).then(setSkills).catch(console.error)
+  }, [reload, projectId])
 
   const remove = (agent: AgentProfile) =>
     deleteAgent(agent.id)
@@ -44,10 +46,10 @@ export function AgentsPage() {
     <div className="flex flex-col gap-4">
       <div className="flex items-center gap-3">
         <div>
-          <h1 className="text-lg font-semibold tracking-tight">Agents</h1>
-          <p className="mt-1 text-sm text-zinc-500">
-            Reusable agent definitions — name, system prompt, model, permissions. Compose them
-            into teams, or launch one directly.
+          <h2 className="text-base font-semibold tracking-tight">Agent library</h2>
+          <p className="mt-0.5 text-sm text-zinc-500">
+            Reusable agent definitions — name, system prompt, model, permissions. Arrange them
+            into a team tree above, or launch one directly.
           </p>
         </div>
         <span className="grow" />

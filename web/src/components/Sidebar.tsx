@@ -1,7 +1,6 @@
 import { Link, NavLink } from 'react-router-dom'
 import {
   ArrowLeft,
-  Bot,
   CheckCheck,
   Hexagon,
   LayoutDashboard,
@@ -49,10 +48,14 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
     { to: projectPath(projectId, 'launch'), icon: Play, label: 'Launch run' },
   ]
   const ai: NavItem[] = [
-    { to: projectPath(projectId, 'agents'), icon: Bot, label: 'Agents' },
-    { to: projectPath(projectId, 'teams'), icon: Network, label: 'Teams' },
+    { to: projectPath(projectId, 'agents'), icon: Network, label: 'Tree' },
     { to: projectPath(projectId, 'skills'), icon: Sparkles, label: 'Skills' },
-    { to: projectPath(projectId, 'approved'), icon: CheckCheck, label: 'Approved', badge: pendingHitl },
+    {
+      to: projectPath(projectId, 'approved'),
+      icon: CheckCheck,
+      label: 'Approved',
+      badge: pendingHitl,
+    },
   ]
 
   return (

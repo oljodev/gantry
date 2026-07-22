@@ -23,7 +23,15 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from gantry.core import queue
 from gantry.core.db import session_scope
 from gantry.core.events import read_events
-from gantry.core.models import DEFAULT_WORKSPACE_ID, Task, TaskKind, TaskStatus
+from gantry.core.models import (
+    DEFAULT_PROJECT_ID,
+    DEFAULT_WORKSPACE_ID,
+    Skill,
+    Task,
+    TaskKind,
+    TaskStatus,
+)
+from gantry.skills import parse_skill_file
 from gantry.worker.service import Worker, WorkerConfig
 
 from .fakes import final_response, multi_tool_response, response_with_tool_call
@@ -32,6 +40,28 @@ from .test_worker_git import git, origin  # noqa: F401  (fixture re-export)
 Sessions = async_sessionmaker[AsyncSession]
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+
+
+async def _seed_builtin_skills(db: Sessions) -> None:
+    """Load the built-in skills from disk into the Default project's DB rows.
+
+    Skills are now DB-backed (loaded per project at run time), so the end-to-end
+    run needs them present in the database, not just on disk."""
+    async with session_scope(db) as session:
+        for path in sorted((REPO_ROOT / "skills").glob("*.md")):
+            if path.name.lower() == "readme.md":
+                continue
+            skill = parse_skill_file(path)
+            session.add(
+                Skill(
+                    workspace_id=DEFAULT_WORKSPACE_ID,
+                    project_id=DEFAULT_PROJECT_ID,
+                    name=skill.name,
+                    description=skill.description,
+                    match=list(skill.match),
+                    body=skill.content,
+                )
+            )
 
 
 class MvpLLM:
@@ -107,6 +137,7 @@ async def get_task(db: Sessions, task_id) -> Task:  # type: ignore[no-untyped-de
 
 async def test_mvp_acceptance(db: Sessions, origin: Path, tmp_path: Path) -> None:  # noqa: F811
     llm = MvpLLM(str(origin))
+    await _seed_builtin_skills(db)
 
     # Given a repo and a goal: a planner task.
     async with session_scope(db) as session:

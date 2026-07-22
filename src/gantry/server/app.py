@@ -25,10 +25,17 @@ from gantry.config import Settings, get_settings
 from gantry.core import queue
 from gantry.core.db import create_engine, create_session_factory, session_scope
 from gantry.logging import configure_logging, get_logger
-from gantry.server import agents_api, api, github_api, projects_api, providers_api, ws
+from gantry.server import (
+    agents_api,
+    api,
+    github_api,
+    projects_api,
+    providers_api,
+    skills_api,
+    ws,
+)
 from gantry.server.auth import AuthFailed, SupabaseAuthenticator, auth_failed_response, me_router
 from gantry.server.broker import EventBroker
-from gantry.skills import SkillRegistry
 from gantry.vault import Vault
 
 logger = get_logger(__name__)
@@ -72,7 +79,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(title="Gantry", version=__version__, lifespan=lifespan)
     app.state.settings = settings
-    app.state.skills = SkillRegistry.load_dir(settings.skills_root)
     app.state.auth = (
         SupabaseAuthenticator(
             settings.supabase_url,
@@ -96,6 +102,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(providers_api.router)
     app.include_router(github_api.router)
     app.include_router(agents_api.router)
+    app.include_router(skills_api.router)
     app.include_router(ws.router)
 
     @app.get("/healthz")

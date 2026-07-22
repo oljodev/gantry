@@ -5,7 +5,6 @@ import './index.css'
 import { App } from './App'
 import { AuthProvider } from './auth/AuthProvider'
 import { RequireAuth } from './auth/RequireAuth'
-import { AgentsPage } from './pages/AgentsPage'
 import { ApprovalsPage } from './pages/ApprovalsPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { LaunchPage } from './pages/LaunchPage'
@@ -16,7 +15,7 @@ import { SettingsPage } from './pages/SettingsPage'
 import { SkillsPage } from './pages/SkillsPage'
 import { TaskPage } from './pages/TaskPage'
 import { TeamEditorPage } from './pages/TeamEditorPage'
-import { TeamsPage } from './pages/TeamsPage'
+import { TreePage } from './pages/TreePage'
 import { applyTheme, preferredTheme } from './lib/theme'
 
 // Before first paint, so light-mode users never see a flash of the dark shell.
@@ -47,8 +46,7 @@ const router = createBrowserRouter([
       { path: 'runs/:date', element: <RunsPage /> },
       { path: 'tasks/:taskId', element: <TaskPage /> },
       { path: 'launch', element: <LaunchPage /> },
-      { path: 'agents', element: <AgentsPage /> },
-      { path: 'teams', element: <TeamsPage /> },
+      { path: 'agents', element: <TreePage /> },
       { path: 'teams/new', element: <TeamEditorPage /> },
       { path: 'teams/:teamId', element: <TeamEditorPage /> },
       { path: 'approved', element: <ApprovalsPage /> },

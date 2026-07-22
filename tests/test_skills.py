@@ -132,8 +132,13 @@ async def test_reinjection_never_duplicates(db: Sessions) -> None:
     assert llm2.calls[0]["messages"][0]["content"].count("## Skill: widgets") == 1
 
 
-async def test_skills_api_lists_builtins(client: httpx.AsyncClient) -> None:
-    response = await client.get("/api/skills")
-    assert response.status_code == 200
-    names = {s["name"] for s in response.json()["skills"]}
-    assert "conventional-commits" in names
+async def test_skills_api_create_and_list(client: httpx.AsyncClient) -> None:
+    created = await client.post(
+        "/api/skills",
+        json={"name": "widgets", "description": "d", "match": ["widget"], "body": "RULES"},
+    )
+    assert created.status_code == 201, created.text
+    assert created.json()["body"] == "RULES"
+
+    listed = (await client.get("/api/skills")).json()["skills"]
+    assert [s["name"] for s in listed] == ["widgets"]
