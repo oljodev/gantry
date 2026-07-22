@@ -8,13 +8,25 @@ from gantry.worker.tools.bash import BashTool
 from gantry.worker.tools.files import EditFileTool, ListDirTool, ReadFileTool, WriteFileTool
 from gantry.worker.tools.gittool import GitCommitPushTool
 from gantry.worker.tools.orchestration import build_planner_registry
+from gantry.worker.tools.search import GlobTool, GrepTool
+from gantry.worker.tools.web import WebFetchTool, WebSearchTool
 
 __all__ = ["build_coding_registry", "build_planner_registry"]
 
 
 def build_coding_registry(auth: GitAuth | None = None) -> ToolRegistry:
     registry = ToolRegistry(
-        [BashTool(), ReadFileTool(), WriteFileTool(), EditFileTool(), ListDirTool()]
+        [
+            BashTool(),
+            ReadFileTool(),
+            WriteFileTool(),
+            EditFileTool(),
+            ListDirTool(),
+            GlobTool(),
+            GrepTool(),
+            WebSearchTool(),
+            WebFetchTool(),
+        ]
     )
     if auth is not None:
         registry.register(GitCommitPushTool(auth))

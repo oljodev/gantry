@@ -176,6 +176,32 @@ function GoalBlock({ goal }: { goal: string }) {
   )
 }
 
+// The AI's final answer. It can run long, so the whole green box collapses to
+// its header on demand; it opens expanded because the answer is the payload.
+function AnswerBlock({ text }: { text: string }) {
+  const [expanded, setExpanded] = useState(true)
+  return (
+    <div className="mt-3 rounded-md border border-emerald-900/60 bg-emerald-950/30">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] font-semibold tracking-wide text-emerald-400/80 transition hover:text-emerald-300"
+      >
+        {expanded ? (
+          <ChevronUp className="h-3 w-3" aria-hidden />
+        ) : (
+          <ChevronDown className="h-3 w-3" aria-hidden />
+        )}
+        ANSWER
+      </button>
+      {expanded && (
+        <div className="border-t border-emerald-900/40 px-3 py-2">
+          <Markdown>{text}</Markdown>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function Header({ task, connection }: { task: Task | null; connection: ConnectionState }) {
   const [label, tone] = CONNECTION_LABEL[connection]
   const [cancelError, setCancelError] = useState<string | null>(null)
@@ -280,9 +306,7 @@ function Header({ task, connection }: { task: Task | null; connection: Connectio
         ))}
       </dl>
       {typeof result.final_text === 'string' && result.final_text && (
-        <div className="mt-3 rounded-md border border-emerald-900/60 bg-emerald-950/30 px-3 py-2">
-          <Markdown>{result.final_text}</Markdown>
-        </div>
+        <AnswerBlock text={result.final_text} />
       )}
       {task.last_error && (
         <p className="mt-3 rounded-md border border-red-900/60 bg-red-950/30 px-3 py-2 font-mono text-xs whitespace-pre-wrap text-red-200">
