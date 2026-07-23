@@ -176,6 +176,38 @@ class StatsResponse(BaseModel):
     events_last_hour: int
 
 
+class UsagePoint(BaseModel):
+    """One calendar day of token usage (UTC), for the trend chart."""
+
+    date: str  # YYYY-MM-DD
+    prompt_tokens: int
+    completion_tokens: int
+    cache_read_tokens: int
+    calls: int
+
+
+class ModelUsage(BaseModel):
+    """Token totals attributed to one model string."""
+
+    model: str
+    prompt_tokens: int
+    completion_tokens: int
+    calls: int
+
+
+class UsageResponse(BaseModel):
+    """Everything the Usage dashboard plots: lifetime totals, a daily trend,
+    and a per-model breakdown, all aggregated from the durable event log."""
+
+    prompt_tokens: int
+    completion_tokens: int
+    cache_read_tokens: int
+    cache_write_tokens: int
+    llm_calls: int
+    daily: list[UsagePoint]
+    by_model: list[ModelUsage]
+
+
 class SkillWriteRequest(BaseModel):
     #: The project this skill belongs to (defaults to the Default project).
     project_id: uuid.UUID | None = None

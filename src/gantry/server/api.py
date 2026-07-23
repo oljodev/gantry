@@ -37,6 +37,7 @@ from gantry.server.schemas import (
     ApprovalItem,
     ApprovalResolveRequest,
     ApprovalsResponse,
+    ModelUsage,
     QuestionAnswerRequest,
     QuestionItem,
     QuestionsResponse,
@@ -46,6 +47,8 @@ from gantry.server.schemas import (
     TaskEventsResponse,
     TaskListResponse,
     TaskOut,
+    UsagePoint,
+    UsageResponse,
 )
 from gantry.worker.tools.orchestration import DEFAULT_PLANNER_MAX_ATTEMPTS
 
@@ -216,6 +219,116 @@ async def get_stats(
         prompt_tokens=int(token_rows[0]),
         completion_tokens=int(token_rows[1]),
         events_last_hour=events_last_hour,
+    )
+
+
+#: Event types that carry an LLM ``usage`` block: model turns and the
+#: summarizer call that compaction runs. Everything else is bookkeeping.
+_USAGE_EVENTS = (EventType.LLM_RESPONSE.value, EventType.COMPACTION.value)
+
+
+def _usage_sum(key: str) -> sa.ColumnElement[int]:
+    """SUM of one integer field inside the event's JSON ``usage`` block,
+    tolerating rows written before that field existed (NULL -> 0)."""
+    field = TaskEvent.payload["usage"][key].astext
+    return sa.func.coalesce(sa.func.sum(sa.cast(field, sa.BigInteger)), 0)
+
+
+@router.get("/usage", response_model=UsageResponse)
+async def get_usage(
+    request: Request,
+    project_id: Annotated[uuid.UUID | None, Query()] = None,
+    days: Annotated[int, Query(ge=1, le=365)] = 30,
+) -> UsageResponse:
+    """Token usage aggregated from the event log — lifetime totals, a daily
+    trend over the last ``days``, and a per-model breakdown."""
+    sessions = get_sessions(request)
+    project_filter = Task.project_id == project_id if project_id is not None else sa.true()
+    scope = (
+        Task.workspace_id == DEFAULT_WORKSPACE_ID,
+        TaskEvent.event_type.in_(_USAGE_EVENTS),
+        project_filter,
+    )
+    # A model turn counts as one "call"; the summarizer's compaction call does not.
+    calls = sa.func.count().filter(TaskEvent.event_type == EventType.LLM_RESPONSE.value)
+    joined = sa.join(TaskEvent, Task, Task.id == TaskEvent.task_id)
+
+    async with sessions() as session:
+        totals = (
+            await session.execute(
+                sa.select(
+                    _usage_sum("prompt_tokens"),
+                    _usage_sum("completion_tokens"),
+                    _usage_sum("cache_read_tokens"),
+                    _usage_sum("cache_write_tokens"),
+                    calls,
+                )
+                .select_from(joined)
+                .where(*scope)
+            )
+        ).one()
+
+        # days is Query-validated to [1, 365], so this interpolation is safe.
+        since = sa.func.now() - sa.text(f"interval '{days} days'")
+        day = sa.func.date_trunc("day", TaskEvent.created_at)
+        daily_rows = (
+            await session.execute(
+                sa.select(
+                    day,
+                    _usage_sum("prompt_tokens"),
+                    _usage_sum("completion_tokens"),
+                    _usage_sum("cache_read_tokens"),
+                    calls,
+                )
+                .select_from(joined)
+                .where(*scope, TaskEvent.created_at > since)
+                .group_by(day)
+                .order_by(day)
+            )
+        ).all()
+
+        # Compaction rows have no model in payload -> attribute them to the summarizer.
+        model = sa.func.coalesce(TaskEvent.payload["model"].astext, "summarizer")
+        model_rows = (
+            await session.execute(
+                sa.select(
+                    model,
+                    _usage_sum("prompt_tokens"),
+                    _usage_sum("completion_tokens"),
+                    calls,
+                )
+                .select_from(joined)
+                .where(*scope)
+                .group_by(model)
+                .order_by(sa.desc(_usage_sum("prompt_tokens") + _usage_sum("completion_tokens")))
+            )
+        ).all()
+
+    return UsageResponse(
+        prompt_tokens=int(totals[0]),
+        completion_tokens=int(totals[1]),
+        cache_read_tokens=int(totals[2]),
+        cache_write_tokens=int(totals[3]),
+        llm_calls=int(totals[4]),
+        daily=[
+            UsagePoint(
+                date=row[0].date().isoformat(),
+                prompt_tokens=int(row[1]),
+                completion_tokens=int(row[2]),
+                cache_read_tokens=int(row[3]),
+                calls=int(row[4]),
+            )
+            for row in daily_rows
+        ],
+        by_model=[
+            ModelUsage(
+                model=str(row[0]),
+                prompt_tokens=int(row[1]),
+                completion_tokens=int(row[2]),
+                calls=int(row[3]),
+            )
+            for row in model_rows
+        ],
     )
 
 
