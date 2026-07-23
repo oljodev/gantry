@@ -16,7 +16,13 @@ STATE="$ROOT/.gantry"
 PGDATA="$STATE/pgdata"
 PGSOCK="$STATE/pgsock"
 PGPORT="${GANTRY_PGPORT:-54322}"
-WORKERS="${GANTRY_WORKERS:-2}"
+# Concurrency = number of worker processes; each runs one task at a time.
+WORKERS="${GANTRY_WORKERS:-100}"
+# Postgres must allow a connection for every worker's LISTEN link plus its small
+# session pool (~6/worker, see GANTRY_DB_POOL_SIZE), with headroom for the API
+# server, migrations and psql. Sized from the worker count so raising WORKERS
+# just works instead of exhausting connections.
+PG_MAX_CONN="${GANTRY_PG_MAX_CONN:-$(( WORKERS * 6 + 60 ))}"
 mkdir -p "$STATE" "$PGSOCK"
 
 # Fail fast (with a clear message) if the API port is already taken — usually a
@@ -95,13 +101,22 @@ if [ ! -f "$PGDATA/PG_VERSION" ]; then
   "$PGBIN/initdb" -D "$PGDATA" -U gantry --auth=trust -E UTF8 >/dev/null
 fi
 
+PG_OPTS="-p $PGPORT -k $PGSOCK -c listen_addresses=127.0.0.1 -c max_connections=$PG_MAX_CONN"
 if ! "$PGBIN/pg_ctl" -D "$PGDATA" status >/dev/null 2>&1; then
-  echo "==> starting postgres on 127.0.0.1:$PGPORT"
-  "$PGBIN/pg_ctl" -D "$PGDATA" -w -l "$STATE/postgres.log" \
-    -o "-p $PGPORT -k $PGSOCK -c listen_addresses=127.0.0.1" start >/dev/null
+  echo "==> starting postgres on 127.0.0.1:$PGPORT (max_connections=$PG_MAX_CONN)"
+  "$PGBIN/pg_ctl" -D "$PGDATA" -w -l "$STATE/postgres.log" -o "$PG_OPTS" start >/dev/null
   STARTED_PG=1
 else
   STARTED_PG=0
+  # A server left running from a smaller WORKERS can't fit the connections we
+  # now need (max_connections only changes on restart) — restart it to resize.
+  current="$("$PGBIN/psql" -h 127.0.0.1 -p "$PGPORT" -U gantry -d postgres -tAc \
+    'SHOW max_connections' 2>/dev/null | tr -d '[:space:]')"
+  if [ -n "$current" ] && [ "$current" -lt "$PG_MAX_CONN" ]; then
+    echo "==> restarting postgres to raise max_connections $current -> $PG_MAX_CONN"
+    "$PGBIN/pg_ctl" -D "$PGDATA" -w -l "$STATE/postgres.log" -o "$PG_OPTS" restart >/dev/null
+    STARTED_PG=1
+  fi
 fi
 
 if ! "$PGBIN/psql" -h 127.0.0.1 -p "$PGPORT" -U gantry -d postgres -tAc \

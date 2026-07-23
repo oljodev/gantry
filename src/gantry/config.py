@@ -52,6 +52,14 @@ class Settings(BaseSettings):
     workspace_root: Path = Path("/tmp/gantry-workspaces")
     #: GitHub token for workers' git operations (vault-managed from Phase 9).
     github_token: str | None = None
+    #: Per-process SQLAlchemy connection-pool bounds. Concurrency comes from
+    #: running many worker processes (GANTRY_WORKERS), so each process keeps a
+    #: small pool — a worker runs one task at a time and needs only a couple of
+    #: concurrent sessions. Total DB connections ~= workers * (pool + overflow + 1
+    #: LISTEN conn); size Postgres's max_connections above that. Override via
+    #: GANTRY_DB_POOL_SIZE / GANTRY_DB_MAX_OVERFLOW.
+    db_pool_size: int = 3
+    db_max_overflow: int = 2
     #: How often the control plane re-queues tasks whose lease expired.
     reaper_interval_seconds: float = 10.0
     #: Built frontend to serve as the SPA (skipped if index.html is absent).

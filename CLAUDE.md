@@ -3,7 +3,7 @@
 ## Local dev
 
 `./run.sh` starts the whole stack (bundled Postgres via the pgserver wheel,
-migrations, 2 workers, dashboard on `:8400`). `./run.sh dev` adds the Vite dev
+migrations, 100 workers, dashboard on `:8400`). `./run.sh dev` adds the Vite dev
 server on `:5173`. No Docker. Gate: `make check` (ruff, mypy strict, pytest) and
 `cd web && npm run check` (tsc, oxlint, vitest).
 
