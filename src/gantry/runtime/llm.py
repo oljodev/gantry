@@ -14,6 +14,8 @@ from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field, replace
 from typing import Any, Protocol
 
+from gantry.runtime.ratelimit import AsyncRateLimiter
+
 #: OpenAI-style chat message dict: {"role": ..., "content": ..., ...}
 Message = dict[str, Any]
 #: OpenAI-style function tool schema dict.
@@ -168,10 +170,13 @@ class LiteLLMClient:
         api_base: str | None = None,
         *,
         prompt_caching: bool = True,
+        limiter: AsyncRateLimiter | None = None,
     ) -> None:
         self._api_key = api_key
         self._api_base = api_base
         self._prompt_caching = prompt_caching
+        #: Shared, process-wide outbound pacer (None = unthrottled, e.g. tests).
+        self._limiter = limiter
 
     async def complete(
         self,
@@ -182,6 +187,11 @@ class LiteLLMClient:
         on_delta: DeltaSink | None = None,
     ) -> LLMResponse:
         import litellm
+
+        # Pace the outbound stream before spending any tokens — under high
+        # concurrency this queues bursts to avoid provider 429 spikes.
+        if self._limiter is not None:
+            await self._limiter.acquire()
 
         payload = with_cache_control(messages, model) if self._prompt_caching else messages
         kwargs: dict[str, Any] = {"model": model, "messages": payload}
