@@ -34,7 +34,7 @@ from gantry.core.events import append_event, read_events
 from gantry.core.models import EventType, Project, Task, TaskKind
 from gantry.logging import get_logger
 from gantry.runtime.compaction import CompactionConfig, plan_compaction, summarize
-from gantry.runtime.llm import LLMClient, LLMResponse, ToolCallRequest
+from gantry.runtime.llm import LLMClient, LLMResponse, LLMUsage, ToolCallRequest
 from gantry.runtime.state import (
     AgentState,
     TrackedMessage,
@@ -378,10 +378,7 @@ async def _maybe_compact(
             "summary": result.summary,
             "kept_seqs": result.kept_seqs,
             "summarized_messages": result.summarized_messages,
-            "usage": {
-                "prompt_tokens": result.usage.prompt_tokens,
-                "completion_tokens": result.usage.completion_tokens,
-            },
+            "usage": _usage_payload(result.usage),
         },
     )
     state.tracked = [
@@ -418,8 +415,14 @@ def _response_payload(response: LLMResponse) -> dict[str, Any]:
         ],
         "model": response.model,
         "finish_reason": response.finish_reason,
-        "usage": {
-            "prompt_tokens": response.usage.prompt_tokens,
-            "completion_tokens": response.usage.completion_tokens,
-        },
+        "usage": _usage_payload(response.usage),
+    }
+
+
+def _usage_payload(usage: LLMUsage) -> dict[str, int]:
+    return {
+        "prompt_tokens": usage.prompt_tokens,
+        "completion_tokens": usage.completion_tokens,
+        "cache_read_tokens": usage.cache_read_tokens,
+        "cache_write_tokens": usage.cache_write_tokens,
     }

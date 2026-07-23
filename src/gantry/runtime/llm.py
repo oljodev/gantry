@@ -30,6 +30,25 @@ class ToolCallRequest:
 class LLMUsage:
     prompt_tokens: int = 0
     completion_tokens: int = 0
+    #: Input tokens served from the provider's prompt cache (cheap re-reads).
+    cache_read_tokens: int = 0
+    #: Input tokens written into the prompt cache this call (one-time surcharge).
+    cache_write_tokens: int = 0
+
+
+def _usage_from(raw_usage: Any) -> LLMUsage:
+    """Read token counts off a LiteLLM usage object, including Anthropic's
+    prompt-cache fields (absent/zero for providers or calls without caching)."""
+    read = int(getattr(raw_usage, "cache_read_input_tokens", 0) or 0)
+    if not read:
+        details = getattr(raw_usage, "prompt_tokens_details", None)
+        read = int(getattr(details, "cached_tokens", 0) or 0) if details is not None else 0
+    return LLMUsage(
+        prompt_tokens=int(getattr(raw_usage, "prompt_tokens", 0) or 0),
+        completion_tokens=int(getattr(raw_usage, "completion_tokens", 0) or 0),
+        cache_read_tokens=read,
+        cache_write_tokens=int(getattr(raw_usage, "cache_creation_input_tokens", 0) or 0),
+    )
 
 
 @dataclass(frozen=True)
@@ -173,14 +192,10 @@ class LiteLLMClient:
             )
             for tc in (message.tool_calls or [])
         )
-        usage = LLMUsage(
-            prompt_tokens=int(getattr(raw.usage, "prompt_tokens", 0) or 0),
-            completion_tokens=int(getattr(raw.usage, "completion_tokens", 0) or 0),
-        )
         return LLMResponse(
             content=message.content,
             tool_calls=tool_calls,
             model=str(raw.model or model),
-            usage=usage,
+            usage=_usage_from(raw.usage),
             finish_reason=str(choice.finish_reason or "stop"),
         )
