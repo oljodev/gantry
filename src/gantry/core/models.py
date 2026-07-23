@@ -81,6 +81,10 @@ class EventType(enum.StrEnum):
     TOOL_STARTED = "tool_started"
     TOOL_RESULT = "tool_result"
     TERMINAL_CHUNK = "terminal_chunk"
+    #: Live reasoning-token deltas from a thinking model (DeepSeek R1 etc.),
+    #: streamed for display only — folded into no agent state on rehydration,
+    #: exactly like terminal_chunk.
+    REASONING_CHUNK = "reasoning_chunk"
     DIFF = "diff"
     COMPACTION = "compaction"
     APPROVAL_REQUESTED = "approval_requested"

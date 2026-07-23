@@ -9,14 +9,17 @@ OpenAI-style dict format LiteLLM speaks natively.
 from __future__ import annotations
 
 import json
-from collections.abc import Sequence
-from dataclasses import dataclass, field
+from collections.abc import Awaitable, Callable, Sequence
+from dataclasses import dataclass, field, replace
 from typing import Any, Protocol
 
 #: OpenAI-style chat message dict: {"role": ..., "content": ..., ...}
 Message = dict[str, Any]
 #: OpenAI-style function tool schema dict.
 ToolSchema = dict[str, Any]
+#: Live-delta sink: (kind, text) where kind is "reasoning" or "content".
+#: The loop passes one to stream a thinking model's tokens as they arrive.
+DeltaSink = Callable[[str, str], Awaitable[None]]
 
 
 @dataclass(frozen=True)
@@ -58,6 +61,11 @@ class LLMResponse:
     model: str = ""
     usage: LLMUsage = field(default_factory=LLMUsage)
     finish_reason: str = "stop"
+    #: A thinking model's internal reasoning for this turn (DeepSeek R1's
+    #: reasoning_content etc.). Recorded for display; deliberately NOT replayed
+    #: into later turns' history — provider specs require dropping it, and the
+    #: assistant message reconstruction only ever carries content + tool_calls.
+    reasoning: str = ""
 
 
 class LLMClient(Protocol):
@@ -67,6 +75,7 @@ class LLMClient(Protocol):
         model: str,
         messages: list[Message],
         tools: Sequence[ToolSchema] = (),
+        on_delta: DeltaSink | None = None,
     ) -> LLMResponse: ...
 
 
@@ -169,6 +178,7 @@ class LiteLLMClient:
         model: str,
         messages: list[Message],
         tools: Sequence[ToolSchema] = (),
+        on_delta: DeltaSink | None = None,
     ) -> LLMResponse:
         import litellm
 
@@ -180,22 +190,65 @@ class LiteLLMClient:
             kwargs["api_key"] = self._api_key
         if self._api_base:
             kwargs["api_base"] = self._api_base
-        raw: Any = await litellm.acompletion(**kwargs)
 
-        choice = raw.choices[0]
-        message = choice.message
-        tool_calls = tuple(
-            ToolCallRequest(
-                id=tc.id,
-                name=tc.function.name,
-                arguments=parse_tool_arguments(tc.function.arguments),
+        if on_delta is None:
+            raw: Any = await litellm.acompletion(**kwargs)
+            return _response_from_raw(raw, model)
+
+        # Streaming path: forward reasoning/content deltas live, then rebuild the
+        # full response (tool-call fragments included) from the collected chunks.
+        kwargs["stream"] = True
+        kwargs["stream_options"] = {"include_usage": True}
+        chunks: list[Any] = []
+        reasoning_parts: list[str] = []
+        stream = await litellm.acompletion(**kwargs)
+        async for chunk in stream:
+            chunks.append(chunk)
+            delta = _chunk_delta(chunk)
+            if delta is None:
+                continue
+            reasoning = getattr(delta, "reasoning_content", None) or getattr(
+                delta, "reasoning", None
             )
-            for tc in (message.tool_calls or [])
+            if reasoning:
+                reasoning_parts.append(str(reasoning))
+                await on_delta("reasoning", str(reasoning))
+            content = getattr(delta, "content", None)
+            if content:
+                await on_delta("content", str(content))
+
+        rebuilt = litellm.stream_chunk_builder(chunks, messages=payload)
+        response = _response_from_raw(rebuilt, model)
+        reasoning_text = "".join(reasoning_parts)
+        return replace(response, reasoning=reasoning_text) if reasoning_text else response
+
+
+def _chunk_delta(chunk: Any) -> Any:
+    """The delta object of a streaming chunk, or None for a usage-only chunk."""
+    choices = getattr(chunk, "choices", None) or []
+    return getattr(choices[0], "delta", None) if choices else None
+
+
+def _response_from_raw(raw: Any, model: str) -> LLMResponse:
+    """Adapt a LiteLLM (streamed or not) response into our LLMResponse."""
+    if raw is None:  # an empty stream — no content, no calls
+        return LLMResponse(content=None, model=model)
+    choice = raw.choices[0]
+    message = choice.message
+    tool_calls = tuple(
+        ToolCallRequest(
+            id=tc.id,
+            name=tc.function.name,
+            arguments=parse_tool_arguments(tc.function.arguments),
         )
-        return LLMResponse(
-            content=message.content,
-            tool_calls=tool_calls,
-            model=str(raw.model or model),
-            usage=_usage_from(raw.usage),
-            finish_reason=str(choice.finish_reason or "stop"),
-        )
+        for tc in (message.tool_calls or [])
+    )
+    reasoning = getattr(message, "reasoning_content", None) or getattr(message, "reasoning", None)
+    return LLMResponse(
+        content=message.content,
+        tool_calls=tool_calls,
+        model=str(raw.model or model),
+        usage=_usage_from(raw.usage),
+        finish_reason=str(choice.finish_reason or "stop"),
+        reasoning=str(reasoning) if reasoning else "",
+    )
