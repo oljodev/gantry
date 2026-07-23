@@ -3,10 +3,17 @@
 // fan-out will populate it — the UI is ready first, on purpose.
 
 import { Link } from 'react-router-dom'
-import type { Task } from '../api/types'
+import { TERMINAL_STATUSES, type Task } from '../api/types'
 import { shortId } from '../lib/format'
 import { projectPath } from '../lib/project'
 import { StatusPill } from './StatusPill'
+
+// Active agents sink above finished ones so a long run's live work stays near
+// the top; order is otherwise stable.
+function activeFirst(tasks: Task[]): Task[] {
+  const rank = (t: Task) => (TERMINAL_STATUSES.includes(t.status) ? 1 : 0)
+  return [...tasks].sort((a, b) => rank(a) - rank(b))
+}
 
 export function TaskTree({ tree, currentId }: { tree: Task[]; currentId: string }) {
   const byParent = new Map<string | null, Task[]>()
@@ -37,7 +44,7 @@ function Branch({
 }) {
   return (
     <ul className={depth > 0 ? 'ml-3 border-l border-zinc-800 pl-2' : ''}>
-      {tasks.map((task) => (
+      {activeFirst(tasks).map((task) => (
         <li key={task.id} className="py-0.5">
           <Link
             to={projectPath(task.project_id, `tasks/${task.id}`)}

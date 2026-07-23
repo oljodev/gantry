@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom'
 import { Check, ChevronDown, ChevronUp, Copy, Loader2, Square } from 'lucide-react'
 import { cancelTask, listTasks, retryTask } from '../api/client'
 import { openTaskStream, type ConnectionState } from '../api/stream'
-import { ACTIVE_STATUSES, type Task, type TaskEvent } from '../api/types'
+import { ACTIVE_STATUSES, TERMINAL_STATUSES, type Task, type TaskEvent } from '../api/types'
 import { DiffViewer } from '../components/DiffViewer'
 import { StatusPill } from '../components/StatusPill'
 import { TaskTree } from '../components/TaskTree'
@@ -11,9 +11,12 @@ import { TerminalPane } from '../components/TerminalPane'
 import { TraceTimeline } from '../components/TraceTimeline'
 import { Markdown } from '../components/Markdown'
 import { shortId } from '../lib/format'
-import { foldTrace, pendingApprovals, pendingQuestions } from '../lib/trace'
+import { finalText, foldTrace, pendingApprovals, pendingQuestions } from '../lib/trace'
 
-type Tab = 'trace' | 'terminal' | 'diff'
+type RightTab = 'terminal' | 'diff'
+type TopView = 'overview' | 'details'
+
+const RIGHT_WIDTH_KEY = 'gantry.run.rightWidth'
 
 export function TaskPage() {
   const { taskId } = useParams<{ taskId: string }>()
@@ -21,8 +24,8 @@ export function TaskPage() {
   const [events, setEvents] = useState<TaskEvent[]>([])
   const [connection, setConnection] = useState<ConnectionState>('connecting')
   const [tree, setTree] = useState<Task[]>([])
-  const [tab, setTab] = useState<Tab>('trace')
   const [follow, setFollow] = useState(true)
+  const [stopping, setStopping] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -49,8 +52,6 @@ export function TaskPage() {
     }
   }, [events.length, follow])
 
-  // The tree changes only on lifecycle transitions (and, in Phase 6, when a
-  // planner spawns children) — count lifecycle events as the refresh signal.
   const lifecycleCount = events.filter((e) => e.event_type.startsWith('task_')).length
   useEffect(() => {
     if (!task) return
@@ -73,14 +74,35 @@ export function TaskPage() {
     [events],
   )
 
+  // Every still-running agent in the whole run — the target of "Stop all".
+  const activeInRun = useMemo(
+    () => (tree.length ? tree : task ? [task] : []).filter((t) => ACTIVE_STATUSES.has(t.status)),
+    [tree, task],
+  )
+
+  const stopAll = async () => {
+    setStopping(true)
+    // Stop every agent in the run, not just the one on screen — a parent left
+    // running would otherwise keep spawning work.
+    await Promise.allSettled(activeInRun.map((t) => cancelTask(t.id)))
+    setStopping(false)
+  }
+
   if (!taskId) return null
   return (
-    <div className="flex flex-col gap-4">
-      <Header task={task} connection={connection} />
-      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[16rem_1fr]">
-        {/* Its own scroll region, pinned in view while the trace scrolls: a
-            deep task tree never drags the timeline out of reach. */}
-        <aside className="rounded-lg border border-zinc-800 bg-zinc-900/30 p-2 lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto">
+    <div className="flex h-full min-h-0 flex-col">
+      <RunTop
+        task={task}
+        tree={tree}
+        events={events}
+        connection={connection}
+        activeCount={activeInRun.length}
+        stopping={stopping}
+        onStopAll={() => void stopAll()}
+      />
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:flex-row">
+        {/* Trace tree: flush to the sidebar, full height, its own scroll. */}
+        <aside className="max-h-44 shrink-0 overflow-y-auto border-b border-zinc-800 bg-zinc-900/20 p-2 lg:max-h-none lg:w-60 lg:border-r lg:border-b-0">
           <h2 className="px-1.5 pt-1 pb-2 text-xs font-semibold text-zinc-500">TRACE TREE</h2>
           {tree.length > 0 ? (
             <TaskTree tree={tree} currentId={taskId} />
@@ -88,24 +110,13 @@ export function TaskPage() {
             <p className="px-1.5 pb-2 text-xs text-zinc-600">loading…</p>
           )}
         </aside>
-        <section className="min-w-0">
-          <div className="mb-3 flex gap-1 border-b border-zinc-800 text-sm">
-            {(['trace', 'terminal', 'diff'] as const).map((name) => (
-              <button
-                key={name}
-                onClick={() => setTab(name)}
-                className={`-mb-px border-b-2 px-3 py-1.5 capitalize transition ${
-                  tab === name
-                    ? 'border-amber-500 text-amber-300'
-                    : 'border-transparent text-zinc-500 hover:text-zinc-300'
-                }`}
-              >
-                {name}
-                {name === 'diff' && diffCount > 0 && (
-                  <span className="ml-1 rounded-full bg-zinc-800 px-1.5 text-xs">{diffCount}</span>
-                )}
-              </button>
-            ))}
+
+        {/* Trace: fills the space between the tree and the terminal. min-w-0 so
+            wide trace content scrolls inside instead of widening the whole row
+            (which would slide the layout under the fixed sidebar). */}
+        <section className="flex min-h-0 min-w-0 flex-1 flex-col">
+          <div className="flex shrink-0 items-center gap-1 border-b border-zinc-800 px-2 text-sm">
+            <span className="border-b-2 border-amber-500 px-3 py-1.5 text-amber-300">Trace</span>
             <span className="grow" />
             <button
               onClick={() => setFollow(!follow)}
@@ -118,18 +129,103 @@ export function TaskPage() {
               {follow ? 'following' : 'follow'}
             </button>
           </div>
-          {tab === 'trace' && (
+          <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-3 py-3">
             <TraceTimeline
               steps={steps}
               taskId={taskId}
               pendingApprovalIds={pendingApprovalIds}
               pendingQuestionIds={pendingQuestionIds}
             />
-          )}
-          {tab === 'terminal' && <TerminalPane events={chunkEvents} />}
-          {tab === 'diff' && <DiffViewer events={events} />}
-          <div ref={bottomRef} />
+            <div ref={bottomRef} />
+          </div>
         </section>
+
+        {/* Terminal / Diff: flush to the right, full height, drag to resize. */}
+        <RightPane chunkEvents={chunkEvents} events={events} diffCount={diffCount} />
+      </div>
+    </div>
+  )
+}
+
+// The right column: Terminal and Diff. On desktop it's a fixed-width pane you
+// can drag wider by its left edge; it stacks full-width below the trace on
+// narrow screens.
+function RightPane({
+  chunkEvents,
+  events,
+  diffCount,
+}: {
+  chunkEvents: TaskEvent[]
+  events: TaskEvent[]
+  diffCount: number
+}) {
+  const [tab, setTab] = useState<RightTab>('terminal')
+  const [width, setWidth] = useState(() => {
+    const saved = Number(localStorage.getItem(RIGHT_WIDTH_KEY))
+    return saved >= 280 && saved <= 820 ? saved : 380
+  })
+  const drag = useRef<{ startX: number; startW: number } | null>(null)
+
+  useEffect(() => {
+    const move = (e: MouseEvent) => {
+      if (!drag.current) return
+      const next = drag.current.startW + (drag.current.startX - e.clientX)
+      setWidth(Math.max(280, Math.min(820, Math.round(next))))
+    }
+    const up = () => {
+      if (drag.current) {
+        drag.current = null
+        document.body.style.userSelect = ''
+        localStorage.setItem(RIGHT_WIDTH_KEY, String(width))
+      }
+    }
+    window.addEventListener('mousemove', move)
+    window.addEventListener('mouseup', up)
+    return () => {
+      window.removeEventListener('mousemove', move)
+      window.removeEventListener('mouseup', up)
+    }
+  }, [width])
+
+  return (
+    <div
+      className="relative flex w-full shrink-0 flex-col border-t border-zinc-800 lg:w-[var(--rw)] lg:max-w-[60vw] lg:border-t-0 lg:border-l"
+      style={{ ['--rw' as string]: `${width}px` }}
+    >
+      <div
+        onMouseDown={(e) => {
+          drag.current = { startX: e.clientX, startW: width }
+          document.body.style.userSelect = 'none'
+        }}
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize terminal panel"
+        className="absolute top-0 -left-1 hidden h-full w-2 cursor-col-resize bg-transparent transition hover:bg-amber-600/40 lg:block"
+      />
+      <div className="flex shrink-0 items-center gap-1 border-b border-zinc-800 px-2 text-sm">
+        {(['terminal', 'diff'] as const).map((name) => (
+          <button
+            key={name}
+            onClick={() => setTab(name)}
+            className={`-mb-px border-b-2 px-3 py-1.5 capitalize transition ${
+              tab === name
+                ? 'border-amber-500 text-amber-300'
+                : 'border-transparent text-zinc-500 hover:text-zinc-300'
+            }`}
+          >
+            {name}
+            {name === 'diff' && diffCount > 0 && (
+              <span className="ml-1 rounded-full bg-zinc-800 px-1.5 text-xs">{diffCount}</span>
+            )}
+          </button>
+        ))}
+      </div>
+      <div className="max-h-96 min-h-0 min-w-0 flex-1 overflow-auto lg:max-h-none">
+        {tab === 'terminal' ? (
+          <TerminalPane events={chunkEvents} />
+        ) : (
+          <DiffViewer events={events} />
+        )}
       </div>
     </div>
   )
@@ -142,9 +238,9 @@ const CONNECTION_LABEL: Record<ConnectionState, [string, string]> = {
   ended: ['stream ended', 'text-zinc-500'],
 }
 
-// The task's first message (the goal/prompt). It can be enormous — a full
-// spec pasted by a human or handed down by a parent agent — so it's collapsed
-// to a few lines by default with an expand toggle, and rendered as Markdown.
+// The task's first message (the goal/prompt). It can be enormous, so it's
+// collapsed to a few lines by default with an expand toggle, and rendered as
+// Markdown.
 function GoalBlock({ goal }: { goal: string }) {
   const [expanded, setExpanded] = useState(false)
   const long = goal.length > 200 || goal.split('\n').length > 3
@@ -183,7 +279,7 @@ function GoalBlock({ goal }: { goal: string }) {
 
 // The AI's final answer. It can run long, so the whole green box collapses to
 // its header on demand; it opens expanded because the answer is the payload.
-function AnswerBlock({ text }: { text: string }) {
+function AnswerBlock({ text, live }: { text: string; live?: boolean }) {
   const [expanded, setExpanded] = useState(true)
   return (
     <div className="mt-3 rounded-md border border-emerald-900/60 bg-emerald-950/30">
@@ -196,7 +292,7 @@ function AnswerBlock({ text }: { text: string }) {
         ) : (
           <ChevronDown className="h-3 w-3" aria-hidden />
         )}
-        ANSWER
+        {live ? 'LATEST' : 'ANSWER'}
       </button>
       {expanded && (
         <div className="border-t border-emerald-900/40 px-3 py-2">
@@ -207,28 +303,40 @@ function AnswerBlock({ text }: { text: string }) {
   )
 }
 
-function Header({ task, connection }: { task: Task | null; connection: ConnectionState }) {
-  const [label, tone] = CONNECTION_LABEL[connection]
-  const [cancelError, setCancelError] = useState<string | null>(null)
+// The top panel: run status + actions, and a body that toggles between a live
+// Overview (default) and the full Details.
+function RunTop({
+  task,
+  tree,
+  events,
+  connection,
+  activeCount,
+  stopping,
+  onStopAll,
+}: {
+  task: Task | null
+  tree: Task[]
+  events: TaskEvent[]
+  connection: ConnectionState
+  activeCount: number
+  stopping: boolean
+  onStopAll: () => void
+}) {
+  const [view, setView] = useState<TopView>('overview')
   const [copied, setCopied] = useState(false)
-  const [stopping, setStopping] = useState(false)
+  const [actionError, setActionError] = useState<string | null>(null)
+  const [label, tone] = CONNECTION_LABEL[connection]
   if (!task) return <p className="text-sm text-zinc-500">Loading task…</p>
 
-  const result = task.result ?? {}
-  const meta: Array<[string, string]> = [
-    ['task', shortId(task.id)],
-    ['kind', task.kind],
-    ['attempt', `${task.attempt}/${task.max_attempts}`],
-  ]
-  if (task.claimed_by) meta.push(['worker', task.claimed_by])
-  if (typeof task.payload.model === 'string') meta.push(['model', task.payload.model])
-  if (typeof result.branch === 'string') meta.push(['branch', result.branch])
-  if (typeof result.steps === 'number') meta.push(['steps', String(result.steps)])
-  if (typeof result.prompt_tokens === 'number')
-    meta.push(['tokens', `${result.prompt_tokens}→${String(result.completion_tokens ?? '?')}`])
+  const goal = String(task.payload.goal ?? shortId(task.id))
+  const answer =
+    (typeof task.result?.final_text === 'string' && task.result.final_text) ||
+    finalText(events) ||
+    ''
+  const answerLive = !TERMINAL_STATUSES.includes(task.status)
 
   return (
-    <header className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4">
+    <header className="shrink-0 border-b border-zinc-800 bg-zinc-900/40 px-4 py-3">
       <div className="flex flex-wrap items-center gap-3">
         <StatusPill status={task.status} />
         <span className={`flex items-center gap-1.5 text-xs ${tone}`}>
@@ -238,6 +346,19 @@ function Header({ task, connection }: { task: Task | null; connection: Connectio
           {label}
         </span>
         <span className="grow" />
+        <div className="flex rounded-md border border-zinc-800 p-0.5 text-xs">
+          {(['overview', 'details'] as const).map((name) => (
+            <button
+              key={name}
+              onClick={() => setView(name)}
+              className={`rounded px-2.5 py-0.5 capitalize transition ${
+                view === name ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-500 hover:text-zinc-300'
+              }`}
+            >
+              {name}
+            </button>
+          ))}
+        </div>
         <button
           onClick={() => {
             navigator.clipboard?.writeText(task.id).then(
@@ -261,21 +382,14 @@ function Header({ task, connection }: { task: Task | null; connection: Connectio
             </>
           )}
         </button>
-        {ACTIVE_STATUSES.has(task.status) && (
+        {activeCount > 0 && (
           <button
-            onClick={() => {
-              setStopping(true)
-              cancelTask(task.id)
-                .then(() => setCancelError(null))
-                .catch((err) => {
-                  setCancelError(String(err))
-                  setStopping(false)
-                })
-            }}
-            disabled={stopping || task.cancel_requested}
+            onClick={onStopAll}
+            disabled={stopping}
+            title="Stop every agent in this run"
             className="flex items-center gap-1 rounded-md border border-red-900 px-3 py-1 text-xs text-red-300 transition hover:bg-red-950 disabled:opacity-50"
           >
-            {stopping || task.cancel_requested ? (
+            {stopping ? (
               <>
                 <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
                 Stopping…
@@ -283,7 +397,7 @@ function Header({ task, connection }: { task: Task | null; connection: Connectio
             ) : (
               <>
                 <Square className="h-3.5 w-3.5" aria-hidden />
-                Stop
+                Stop all{activeCount > 1 ? ` (${activeCount})` : ''}
               </>
             )}
           </button>
@@ -292,8 +406,8 @@ function Header({ task, connection }: { task: Task | null; connection: Connectio
           <button
             onClick={() =>
               retryTask(task.id)
-                .then(() => setCancelError(null))
-                .catch((err) => setCancelError(String(err)))
+                .then(() => setActionError(null))
+                .catch((err) => setActionError(String(err)))
             }
             className="rounded-md border border-amber-900 px-3 py-1 text-xs text-amber-300 transition hover:bg-amber-950"
           >
@@ -301,24 +415,84 @@ function Header({ task, connection }: { task: Task | null; connection: Connectio
           </button>
         )}
       </div>
-      <GoalBlock goal={String(task.payload.goal ?? shortId(task.id))} />
-      <dl className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-xs text-zinc-500">
-        {meta.map(([key, value]) => (
-          <div key={key} className="flex gap-1.5">
-            <dt>{key}</dt>
-            <dd className="font-mono text-zinc-300">{value}</dd>
-          </div>
-        ))}
-      </dl>
-      {typeof result.final_text === 'string' && result.final_text && (
-        <AnswerBlock text={result.final_text} />
+
+      <GoalBlock goal={goal} />
+
+      {view === 'overview' ? (
+        <RunRollup task={task} tree={tree} />
+      ) : (
+        <RunVitals task={task} />
       )}
+
+      {answer && <AnswerBlock text={answer} live={answerLive} />}
       {task.last_error && (
         <p className="mt-3 rounded-md border border-red-900/60 bg-red-950/30 px-3 py-2 font-mono text-xs whitespace-pre-wrap text-red-200">
           {task.last_error}
         </p>
       )}
-      {cancelError && <p className="mt-2 text-xs text-red-400">{cancelError}</p>}
+      {actionError && <p className="mt-2 text-xs text-red-400">{actionError}</p>}
     </header>
+  )
+}
+
+// Overview body: a live summary of the whole run — how many agents are running,
+// done, or failed, plus step/token totals.
+function RunRollup({ task, tree }: { task: Task | null; tree: Task[] }) {
+  const nodes = tree.length ? tree : task ? [task] : []
+  const running = nodes.filter((t) => ACTIVE_STATUSES.has(t.status)).length
+  const done = nodes.filter((t) => t.status === 'succeeded').length
+  const failed = nodes.filter((t) => t.status === 'failed' || t.status === 'cancelled').length
+  const result = task?.result ?? {}
+  const stats: Array<[string, string, string]> = [
+    ['running', String(running), 'text-amber-300'],
+    ['done', String(done), 'text-emerald-300'],
+    ['failed', String(failed), failed ? 'text-red-300' : 'text-zinc-400'],
+  ]
+  if (typeof result.steps === 'number') stats.push(['steps', String(result.steps), 'text-zinc-300'])
+  if (typeof result.prompt_tokens === 'number')
+    stats.push([
+      'tokens',
+      `${result.prompt_tokens}→${String(result.completion_tokens ?? '?')}`,
+      'text-zinc-300',
+    ])
+  return (
+    <dl className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-xs text-zinc-500">
+      <div className="flex gap-1.5">
+        <dt>agents</dt>
+        <dd className="font-mono text-zinc-300">{nodes.length}</dd>
+      </div>
+      {stats.map(([key, value, colour]) => (
+        <div key={key} className="flex gap-1.5">
+          <dt>{key}</dt>
+          <dd className={`font-mono ${colour}`}>{value}</dd>
+        </div>
+      ))}
+    </dl>
+  )
+}
+
+// Details body: the full per-task vitals.
+function RunVitals({ task }: { task: Task }) {
+  const result = task.result ?? {}
+  const meta: Array<[string, string]> = [
+    ['task', shortId(task.id)],
+    ['kind', task.kind],
+    ['attempt', `${task.attempt}/${task.max_attempts}`],
+  ]
+  if (task.claimed_by) meta.push(['worker', task.claimed_by])
+  if (typeof task.payload.model === 'string') meta.push(['model', task.payload.model])
+  if (typeof result.branch === 'string') meta.push(['branch', result.branch])
+  if (typeof result.steps === 'number') meta.push(['steps', String(result.steps)])
+  if (typeof result.prompt_tokens === 'number')
+    meta.push(['tokens', `${result.prompt_tokens}→${String(result.completion_tokens ?? '?')}`])
+  return (
+    <dl className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-xs text-zinc-500">
+      {meta.map(([key, value]) => (
+        <div key={key} className="flex gap-1.5">
+          <dt>{key}</dt>
+          <dd className="font-mono text-zinc-300">{value}</dd>
+        </div>
+      ))}
+    </dl>
   )
 }

@@ -96,6 +96,7 @@ function markerDetail(event: TaskEvent): string {
     return `answered "${String(p.answer)}"`
   }
   if (event.event_type === 'approval_resolved') {
+    if (p.resolved_by === 'auto-accept') return 'auto-accepted'
     const comment = p.comment ? ` — "${String(p.comment)}"` : ''
     return `${String(p.decision)} by ${String(p.resolved_by ?? 'operator')}${comment}`
   }
@@ -258,7 +259,7 @@ function CodeLines({ lines, tone, sign }: { lines: string[]; tone: string; sign:
   return (
     <>
       {lines.map((line, i) => (
-        <div key={i} className={`px-3 ${tone}`}>
+        <div key={i} className={`w-max min-w-full px-3 ${tone}`}>
           <span className="mr-2 select-none opacity-60">{sign}</span>
           {line || ' '}
         </div>
