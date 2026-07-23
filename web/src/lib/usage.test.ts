@@ -7,6 +7,7 @@ import {
   maxModelTotal,
   niceCeil,
   runTokens,
+  sumCacheUsage,
   totalTokens,
 } from './usage'
 
@@ -88,6 +89,34 @@ describe('runTokens', () => {
   })
   it('is zero for an empty or all-unfinished run', () => {
     expect(runTokens([{ result: null }])).toEqual({ prompt: 0, completion: 0 })
+  })
+})
+
+describe('sumCacheUsage', () => {
+  const ev = (event_type: string, usage?: Record<string, number>) => ({
+    event_type,
+    payload: usage ? { usage } : {},
+  })
+
+  it('sums usage across model turns and compaction, counting only turns as calls', () => {
+    const t = sumCacheUsage([
+      ev('llm_response', {
+        prompt_tokens: 100,
+        completion_tokens: 20,
+        cache_read_tokens: 80,
+        cache_write_tokens: 10,
+      }),
+      ev('compaction', { prompt_tokens: 200, completion_tokens: 30, cache_read_tokens: 0 }),
+      ev('llm_response', { prompt_tokens: 50, completion_tokens: 5, cache_read_tokens: 40 }),
+    ])
+    expect(t).toEqual({ prompt: 350, completion: 55, cacheRead: 120, cacheWrite: 10, calls: 2 })
+  })
+
+  it('ignores unrelated events and usage-less turns entirely', () => {
+    // A usage-less llm_response contributes nothing — not even a call (real
+    // turns always carry usage, so this only guards malformed events).
+    const t = sumCacheUsage([ev('task_claimed'), ev('tool_call'), ev('llm_response')])
+    expect(t).toEqual({ prompt: 0, completion: 0, cacheRead: 0, cacheWrite: 0, calls: 0 })
   })
 })
 

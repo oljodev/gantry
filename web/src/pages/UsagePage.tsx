@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { ArrowDownToLine, ArrowUpFromLine, Coins, Database, Gauge, Hash, Sigma } from 'lucide-react'
 import { getUsage } from '../api/client'
 import type { ModelUsage, Usage, UsagePoint } from '../api/types'
+import { LiveCacheMeter } from '../components/LiveCacheMeter'
 import { compactNumber } from '../lib/format'
 import { useProjectId } from '../lib/project'
 import {
@@ -59,6 +60,8 @@ export function UsagePage() {
           ))}
         </div>
       </div>
+
+      <LiveCacheMeter />
 
       {error && (
         <div className="rounded-lg border border-red-900/60 bg-red-950/30 px-4 py-3 text-sm text-red-300">

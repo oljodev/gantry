@@ -8,10 +8,47 @@ import type { ModelUsage, Usage, UsagePoint } from '../api/types'
  * LiteLLM's `prompt_tokens` convention (cache-inclusive vs. -exclusive) varies
  * by provider, so the denominator takes whichever is larger — the reported
  * input, or read+write — which keeps the ratio honest and never above 1. */
+export function hitRate(cacheRead: number, prompt: number, cacheWrite: number): number {
+  const denom = Math.max(prompt, cacheRead + cacheWrite, 1)
+  return Math.min(cacheRead / denom, 1)
+}
+
 export function cacheHitRate(u: Usage): number {
-  const cached = u.cache_read_tokens
-  const denom = Math.max(u.prompt_tokens, u.cache_read_tokens + u.cache_write_tokens, 1)
-  return Math.min(cached / denom, 1)
+  return hitRate(u.cache_read_tokens, u.prompt_tokens, u.cache_write_tokens)
+}
+
+export interface CacheTally {
+  prompt: number
+  completion: number
+  cacheRead: number
+  cacheWrite: number
+  calls: number
+}
+
+const USAGE_EVENTS = new Set(['llm_response', 'compaction'])
+
+function asNum(v: unknown): number {
+  return typeof v === 'number' && Number.isFinite(v) ? v : 0
+}
+
+/** Fold a batch of stream events into token counters — the live cache meter's
+ * core. Only model turns and the summarizer's compaction carry usage; each
+ * model turn is one "call". Unknown/usage-less events contribute nothing. */
+export function sumCacheUsage(
+  events: Array<{ event_type: string; payload: Record<string, unknown> }>,
+): CacheTally {
+  const t: CacheTally = { prompt: 0, completion: 0, cacheRead: 0, cacheWrite: 0, calls: 0 }
+  for (const e of events) {
+    if (!USAGE_EVENTS.has(e.event_type)) continue
+    const u = e.payload.usage as Record<string, unknown> | undefined
+    if (!u) continue
+    t.prompt += asNum(u.prompt_tokens)
+    t.completion += asNum(u.completion_tokens)
+    t.cacheRead += asNum(u.cache_read_tokens)
+    t.cacheWrite += asNum(u.cache_write_tokens)
+    if (e.event_type === 'llm_response') t.calls += 1
+  }
+  return t
 }
 
 /** Total tokens billed across every call (input + output). */
