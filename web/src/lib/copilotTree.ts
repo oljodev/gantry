@@ -29,6 +29,7 @@ interface ProposalNode {
   system_prompt?: unknown
   model?: unknown
   can_spawn?: unknown
+  autonomous_leader?: unknown
   gated_tools?: unknown
   skills?: unknown
   children?: unknown
@@ -77,6 +78,7 @@ function toProfileBody(
     // The co-pilot never caps steps unless the user asked (item 8).
     max_steps: null,
     can_spawn: Boolean(node.can_spawn) || strList(node.children).length > 0,
+    autonomous_leader: Boolean(node.autonomous_leader),
     gated_tools: strList(node.gated_tools),
     skills: strList(node.skills),
   }
@@ -94,6 +96,7 @@ function profileToBody(p: AgentProfile): AgentProfileCreate {
     model: p.model,
     max_steps: p.max_steps,
     can_spawn: p.can_spawn,
+    autonomous_leader: p.autonomous_leader,
     gated_tools: p.gated_tools,
     skills: p.skills,
   }

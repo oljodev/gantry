@@ -118,10 +118,16 @@ function AgentCard({
     <div className="flex flex-col gap-2 rounded-lg border border-zinc-800 bg-zinc-900/40 p-4">
       <div className="flex items-center gap-2">
         <h2 className="font-semibold">{agent.name}</h2>
-        {agent.can_spawn && (
-          <span className="rounded-full bg-indigo-950/70 px-2 py-0.5 text-[10px] text-indigo-300">
-            delegates
+        {agent.autonomous_leader ? (
+          <span className="rounded-full bg-amber-950/70 px-2 py-0.5 text-[10px] text-amber-300">
+            leader
           </span>
+        ) : (
+          agent.can_spawn && (
+            <span className="rounded-full bg-indigo-950/70 px-2 py-0.5 text-[10px] text-indigo-300">
+              delegates
+            </span>
+          )
         )}
         <span className="grow" />
         <button onClick={onEdit} className="text-xs text-zinc-500 hover:text-zinc-200">
@@ -166,6 +172,7 @@ function AgentForm({
   const [model, setModel] = useState(agent?.model ?? '')
   const [maxSteps, setMaxSteps] = useState(agent?.max_steps ? String(agent.max_steps) : '')
   const [canSpawn, setCanSpawn] = useState(agent?.can_spawn ?? false)
+  const [autonomousLeader, setAutonomousLeader] = useState(agent?.autonomous_leader ?? false)
   const [gated, setGated] = useState<Set<string>>(new Set(agent?.gated_tools ?? []))
   const [chosenSkills, setChosenSkills] = useState<Set<string>>(new Set(agent?.skills ?? []))
   const [busy, setBusy] = useState(false)
@@ -195,6 +202,7 @@ function AgentForm({
       model: model.trim() || null,
       max_steps: maxSteps.trim() ? Number(maxSteps) : null,
       can_spawn: canSpawn,
+      autonomous_leader: autonomousLeader,
       gated_tools: [...gated],
       skills: [...chosenSkills],
     }
@@ -270,13 +278,28 @@ function AgentForm({
       </div>
       <fieldset className="flex flex-col gap-1.5">
         <legend className="mb-1 text-xs text-zinc-500">Permissions</legend>
+        <label className="flex items-start gap-2 text-sm text-zinc-300">
+          <input
+            type="checkbox"
+            className="mt-1"
+            checked={autonomousLeader}
+            onChange={(e) => setAutonomousLeader(e.target.checked)}
+          />
+          <span>
+            <span className="text-amber-300">Autonomous Leader</span> — run as a swarm
+            master: forces the leader system prompt and unlocks delegation, spinning up
+            sub-tasks dynamically even with no fixed children.
+          </span>
+        </label>
         <label className="flex items-center gap-2 text-sm text-zinc-300">
           <input
             type="checkbox"
             checked={canSpawn}
+            disabled={autonomousLeader}
             onChange={(e) => setCanSpawn(e.target.checked)}
           />
           May delegate to sub-agents (required for team parents)
+          {autonomousLeader && <span className="text-xs text-zinc-500">(implied by leader)</span>}
         </label>
         {GATEABLE_TOOLS.map((tool) => (
           <label key={tool.name} className="flex items-center gap-2 text-sm text-zinc-300">

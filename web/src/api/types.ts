@@ -229,6 +229,7 @@ export interface AgentProfile {
   model: string | null
   max_steps: number | null
   can_spawn: boolean
+  autonomous_leader: boolean
   gated_tools: string[]
   skills: string[]
   created_at: string
