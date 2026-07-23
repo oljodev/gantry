@@ -33,7 +33,10 @@ export function TeamEditorPage() {
 
   useEffect(() => {
     document.title = teamId ? 'Gantry — edit team' : 'Gantry — new team'
-    listAgents(projectId).then(setProfiles).catch(console.error)
+    // A team edits from its own library; a new team draws from unassigned drafts.
+    listAgents(projectId, teamId ? { teamId } : { unassigned: true })
+      .then(setProfiles)
+      .catch(console.error)
     if (teamId) {
       getTeam(teamId)
         .then((team) => {

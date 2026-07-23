@@ -1,15 +1,24 @@
 import { useCallback, useEffect, useState } from 'react'
 import { apiUrl } from '../api/base'
-import { disconnectGithub, getGithubStatus, getStats, listProviders } from '../api/client'
-import type { GithubStatus, Provider, ProviderType, Stats } from '../api/types'
+import {
+  disconnectGithub,
+  getGithubStatus,
+  getProject,
+  getStats,
+  listProviders,
+  updateProject,
+} from '../api/client'
+import type { GithubStatus, Project, Provider, ProviderType, Stats } from '../api/types'
 import { useAuth } from '../auth/AuthProvider'
+import { field, primaryButton } from '../components/forms'
 import { PROVIDER_LABELS, ProviderCard } from '../components/settings/ProviderCard'
 import { compactNumber } from '../lib/format'
+import { useProjectId } from '../lib/project'
 
-type Tab = 'providers' | 'github' | 'general'
+type Tab = 'project' | 'providers' | 'github' | 'general'
 
 export function SettingsPage() {
-  const [tab, setTab] = useState<Tab>('providers')
+  const [tab, setTab] = useState<Tab>('project')
 
   useEffect(() => {
     document.title = 'Gantry — settings'
@@ -19,7 +28,7 @@ export function SettingsPage() {
     <div className="flex flex-col gap-4">
       <h1 className="text-lg font-semibold tracking-tight">Settings</h1>
       <div className="flex gap-1 border-b border-zinc-800 text-sm">
-        {(['providers', 'github', 'general'] as const).map((name) => (
+        {(['project', 'providers', 'github', 'general'] as const).map((name) => (
           <button
             key={name}
             onClick={() => setTab(name)}
@@ -33,10 +42,123 @@ export function SettingsPage() {
           </button>
         ))}
       </div>
+      {tab === 'project' && <ProjectTab />}
       {tab === 'providers' && <ProvidersTab />}
       {tab === 'github' && <GithubTab />}
       {tab === 'general' && <GeneralTab />}
     </div>
+  )
+}
+
+function ProjectTab() {
+  const projectId = useProjectId()
+  const [project, setProject] = useState<Project | null>(null)
+  const [name, setName] = useState('')
+  const [description, setDescription] = useState('')
+  const [repoUrl, setRepoUrl] = useState('')
+  const [baseBranch, setBaseBranch] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    getProject(projectId)
+      .then((p) => {
+        setProject(p)
+        setName(p.name)
+        setDescription(p.description)
+        setRepoUrl(p.default_repo_url ?? '')
+        setBaseBranch(p.default_base_branch ?? '')
+      })
+      .catch((err) => setError(String(err)))
+  }, [projectId])
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!name.trim()) return
+    setBusy(true)
+    setError(null)
+    setSaved(false)
+    try {
+      const updated = await updateProject(projectId, {
+        name: name.trim(),
+        description: description.trim(),
+        default_repo_url: repoUrl.trim() || null,
+        default_base_branch: baseBranch.trim() || null,
+        auto_approve: project?.auto_approve ?? false,
+      })
+      setProject(updated)
+      setSaved(true)
+    } catch (err) {
+      setError(String(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (project === null && !error) return <p className="text-sm text-zinc-600">loading…</p>
+
+  return (
+    <form onSubmit={submit} className="flex max-w-2xl flex-col gap-3">
+      <p className="text-sm text-zinc-500">
+        Rename this project and set the defaults new runs and teams inherit.
+      </p>
+      <label className="flex flex-col gap-1 text-xs text-zinc-500">
+        Name
+        <input
+          className={field}
+          value={name}
+          onChange={(e) => {
+            setName(e.target.value)
+            setSaved(false)
+          }}
+        />
+      </label>
+      <label className="flex flex-col gap-1 text-xs text-zinc-500">
+        Description
+        <input
+          className={field}
+          value={description}
+          onChange={(e) => {
+            setDescription(e.target.value)
+            setSaved(false)
+          }}
+        />
+      </label>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="flex flex-col gap-1 text-xs text-zinc-500">
+          Default repo URL
+          <input
+            className={field}
+            value={repoUrl}
+            onChange={(e) => {
+              setRepoUrl(e.target.value)
+              setSaved(false)
+            }}
+            placeholder="https://github.com/org/repo"
+          />
+        </label>
+        <label className="flex flex-col gap-1 text-xs text-zinc-500">
+          Default base branch
+          <input
+            className={field}
+            value={baseBranch}
+            onChange={(e) => {
+              setBaseBranch(e.target.value)
+              setSaved(false)
+            }}
+            placeholder="main"
+          />
+        </label>
+      </div>
+      <div className="flex items-center gap-3">
+        <button type="submit" disabled={busy || !name.trim()} className={primaryButton}>
+          {busy ? 'Saving…' : 'Save project'}
+        </button>
+        {saved && <span className="text-xs text-emerald-400">Saved</span>}
+        {error && <span className="text-xs text-red-400">{error}</span>}
+      </div>
+    </form>
   )
 }
 

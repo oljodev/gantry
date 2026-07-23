@@ -13,9 +13,9 @@ import { SkillChips } from '../components/SkillChips'
 import { GATEABLE_TOOLS } from '../lib/permissions'
 import { useProjectId } from '../lib/project'
 
-// The agent library: create/edit/delete the project's reusable agent
-// definitions. Rendered as a section of the Tree page (agents are the boxes).
-export function AgentLibrary() {
+// The agent library. Each team owns its own library (`teamId`); without a team
+// it shows the project's unassigned/draft agents used to seed a new team.
+export function AgentLibrary({ teamId }: { teamId?: string } = {}) {
   const projectId = useProjectId()
   const [agents, setAgents] = useState<AgentProfile[] | null>(null)
   const [providers, setProviders] = useState<Provider[]>([])
@@ -24,11 +24,12 @@ export function AgentLibrary() {
   const [error, setError] = useState<string | null>(null)
 
   const reload = useCallback(() => {
-    listAgents(projectId).then(setAgents).catch(console.error)
-  }, [projectId])
+    listAgents(projectId, teamId ? { teamId } : { unassigned: true })
+      .then(setAgents)
+      .catch(console.error)
+  }, [projectId, teamId])
 
   useEffect(() => {
-    document.title = 'Gantry — agents'
     reload()
     listProviders().then(setProviders).catch(console.error)
     listSkills(projectId).then(setSkills).catch(console.error)
@@ -43,17 +44,20 @@ export function AgentLibrary() {
       .catch((err) => setError(String(err)))
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-3">
       <div className="flex items-center gap-3">
         <div>
-          <h2 className="text-base font-semibold tracking-tight">Agent library</h2>
-          <p className="mt-0.5 text-sm text-zinc-500">
-            Reusable agent definitions — name, system prompt, model, permissions. Arrange them
-            into a team tree above, or launch one directly.
+          <h2 className="text-sm font-semibold tracking-tight text-zinc-300">
+            {teamId ? 'Team agents' : 'Unassigned agents'}
+          </h2>
+          <p className="mt-0.5 text-xs text-zinc-500">
+            {teamId
+              ? 'This team’s own agent library — its boxes in the tree above. Not shared with other teams.'
+              : 'Draft agents not yet in any team. Build a team from them, or launch one directly.'}
           </p>
         </div>
         <span className="grow" />
-        <button onClick={() => setEditing('new')} className={primaryButton}>
+        <button onClick={() => setEditing('new')} className={secondaryButton}>
           + New agent
         </button>
       </div>
@@ -62,6 +66,7 @@ export function AgentLibrary() {
       {editing && (
         <AgentForm
           agent={editing === 'new' ? null : editing}
+          teamId={teamId}
           providers={providers}
           skills={skills}
           onDone={() => {
@@ -75,8 +80,10 @@ export function AgentLibrary() {
       {agents === null ? (
         <p className="text-sm text-zinc-600">loading…</p>
       ) : agents.length === 0 && !editing ? (
-        <p className="rounded-lg border border-zinc-800 bg-zinc-900/30 px-4 py-10 text-center text-sm text-zinc-600">
-          No agents yet — create your first agent to start building teams.
+        <p className="rounded-lg border border-dashed border-zinc-800 bg-zinc-900/20 px-4 py-6 text-center text-xs text-zinc-600">
+          {teamId
+            ? 'No agents in this team yet — add one to build its tree.'
+            : 'No unassigned agents.'}
         </p>
       ) : (
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -139,12 +146,14 @@ function AgentCard({
 
 function AgentForm({
   agent,
+  teamId,
   providers,
   skills,
   onDone,
   onCancel,
 }: {
   agent: AgentProfile | null
+  teamId?: string
   providers: Provider[]
   skills: Skill[]
   onDone: () => void
@@ -178,6 +187,7 @@ function AgentForm({
     setError(null)
     const body: AgentProfileCreate = {
       project_id: projectId,
+      team_id: teamId ?? null,
       name: name.trim(),
       role: role.trim(),
       system_prompt: systemPrompt.trim() || null,

@@ -1,41 +1,66 @@
 import { useState } from 'react'
-import { Outlet } from 'react-router-dom'
+import { Outlet, useLocation } from 'react-router-dom'
 import { Hexagon, Menu } from 'lucide-react'
 import { API_BASE } from './api/base'
 import { ApprovalToasts } from './components/ApprovalToasts'
+import { CopilotDock } from './components/CopilotDock'
 import { QuestionToasts } from './components/QuestionToasts'
 import { Sidebar } from './components/Sidebar'
 import { AppDataProvider, useAppData } from './state/AppDataProvider'
+import { CopilotProvider, useCopilot } from './state/CopilotProvider'
 import { useProjectId } from './lib/project'
 
 export function App() {
-  const [menuOpen, setMenuOpen] = useState(false)
   const projectId = useProjectId()
   return (
     <AppDataProvider projectId={projectId}>
-      <div className="min-h-screen">
-        <Sidebar open={menuOpen} onClose={() => setMenuOpen(false)} />
-        {/* The sidebar is fixed, so the shell reserves its width instead of
-            sitting beside it in flow. */}
-        <div className="min-w-0 lg:pl-56">
-          <header className="sticky top-0 z-10 flex h-12 items-center gap-3 border-b border-zinc-800 bg-zinc-950/90 px-4 backdrop-blur lg:hidden">
-            <button onClick={() => setMenuOpen(true)} aria-label="Open menu">
-              <Menu className="h-5 w-5" aria-hidden />
-            </button>
-            <span className="flex items-center gap-2 font-semibold tracking-tight">
-              <Hexagon className="h-4 w-4 text-amber-400" aria-hidden />
-              Gantry
-            </span>
-          </header>
-          <OfflineBanner />
+      <CopilotProvider>
+        <Shell />
+      </CopilotProvider>
+    </AppDataProvider>
+  )
+}
+
+function Shell() {
+  const [menuOpen, setMenuOpen] = useState(false)
+  const { config, width } = useCopilot()
+  // The run page is a full-bleed, full-height 3-column workspace; every other
+  // page is a centred, scrolling document.
+  const fullBleed = /\/tasks\/[^/]+$/.test(useLocation().pathname)
+  return (
+    <div className="min-h-screen">
+      <Sidebar open={menuOpen} onClose={() => setMenuOpen(false)} />
+      {/* The sidebar is fixed on the left, so the shell reserves its width; the
+          co-pilot dock is fixed on the right, so when open the shell reserves
+          its width too — content is pushed aside, never covered. */}
+      <div
+        className="min-w-0 transition-[padding] duration-150 lg:pl-56"
+        style={{ paddingRight: config ? width : 0 }}
+      >
+        <header className="sticky top-0 z-10 flex h-12 items-center gap-3 border-b border-zinc-800 bg-zinc-950/90 px-4 backdrop-blur lg:hidden">
+          <button onClick={() => setMenuOpen(true)} aria-label="Open menu">
+            <Menu className="h-5 w-5" aria-hidden />
+          </button>
+          <span className="flex items-center gap-2 font-semibold tracking-tight">
+            <Hexagon className="h-4 w-4 text-amber-400" aria-hidden />
+            Gantry
+          </span>
+        </header>
+        <OfflineBanner />
+        {fullBleed ? (
+          <main className="h-[100dvh] lg:overflow-hidden">
+            <Outlet />
+          </main>
+        ) : (
           <main className="mx-auto max-w-7xl px-4 py-6">
             <Outlet />
           </main>
-        </div>
-        <ApprovalToasts />
-        <QuestionToasts />
+        )}
       </div>
-    </AppDataProvider>
+      <CopilotDock />
+      <ApprovalToasts />
+      <QuestionToasts />
+    </div>
   )
 }
 

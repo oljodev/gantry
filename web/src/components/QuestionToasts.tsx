@@ -15,7 +15,10 @@ export function QuestionToasts() {
   const { questions, refetch } = useAppData()
   const [dismissed, setDismissed] = useState<Set<string>>(new Set())
 
-  const visible = questions.filter((q) => !dismissed.has(String(q.request.payload.tool_call_id)))
+  const visible = questions.filter(
+    // Co-pilot questions are answered inline in its own dock — don't also toast them.
+    (q) => !q.task.payload.copilot && !dismissed.has(String(q.request.payload.tool_call_id)),
+  )
   if (visible.length === 0) return null
 
   return (

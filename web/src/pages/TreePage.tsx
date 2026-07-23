@@ -8,21 +8,21 @@ import { Network, Plus, Wand2 } from 'lucide-react'
 import { deleteTeam, getTeam, listTasks, listTeams } from '../api/client'
 import { type Task, type Team, type TeamSummary } from '../api/types'
 import { AgentTree } from '../components/AgentTree'
-import { CopilotSidebar } from '../components/CopilotSidebar'
 import { primaryButton, secondaryButton } from '../components/forms'
-import { applyTreeProposal } from '../lib/copilotTree'
+import { applyTreeProposal, teamToContext } from '../lib/copilotTree'
 import { runningAgentsByTeam } from '../lib/runningAgents'
 import { projectPath, useProjectId } from '../lib/project'
 import { useAppData } from '../state/AppDataProvider'
+import { type Applied, useCopilot } from '../state/CopilotProvider'
 import { AgentLibrary } from './AgentsPage'
 
 export function TreePage() {
   const projectId = useProjectId()
   const navigate = useNavigate()
   const { version } = useAppData()
+  const { open, close } = useCopilot()
   const [teams, setTeams] = useState<Team[] | null>(null)
   const [tasks, setTasks] = useState<Task[]>([])
-  const [copilot, setCopilot] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const reload = useCallback(() => {
@@ -37,12 +37,43 @@ export function TreePage() {
     reload()
   }, [reload])
 
+  // Close the co-pilot when leaving the page — its apply handler is bound to
+  // this page's data.
+  useEffect(() => close, [close])
+
   // Which agents are running right now, per team — refreshed as events stream.
   useEffect(() => {
     if (projectId) listTasks({ projectId, limit: 100 }).then(setTasks).catch(console.error)
   }, [projectId, version])
 
   const runningByTeam = useMemo(() => runningAgentsByTeam(tasks), [tasks])
+
+  // Edit an existing team in place (or create a new one when `team` is
+  // undefined). The co-pilot only ever sees and changes the team handed here.
+  const openCopilot = useCallback(
+    (team?: Team) => {
+      const applyProposal = async (
+        proposal: Record<string, unknown>,
+      ): Promise<Applied> => {
+        const proposedTeam = (proposal.team ?? {}) as Record<string, unknown>
+        const undo = await applyTreeProposal(projectId, proposedTeam, team)
+        reload()
+        return async () => {
+          await undo()
+          reload()
+        }
+      }
+      open({
+        kind: 'tree',
+        title: team ? `${team.name} co-pilot` : 'New team co-pilot',
+        projectId,
+        teamId: team?.id,
+        context: team ? teamToContext(team) : '',
+        onApply: applyProposal,
+      })
+    },
+    [open, projectId, reload],
+  )
 
   const remove = (team: Team) =>
     deleteTeam(team.id)
@@ -64,11 +95,11 @@ export function TreePage() {
         </div>
         <span className="grow" />
         <button
-          onClick={() => setCopilot(true)}
+          onClick={() => openCopilot()}
           className={`flex items-center gap-1.5 ${secondaryButton}`}
         >
           <Wand2 className="h-4 w-4" aria-hidden />
-          Co-pilot
+          New team with co-pilot
         </button>
         <Link
           to={projectPath(projectId, 'teams/new')}
@@ -79,23 +110,6 @@ export function TreePage() {
         </Link>
       </div>
       {error && <p className="text-xs text-red-400">{error}</p>}
-
-      <CopilotSidebar
-        kind="tree"
-        projectId={projectId}
-        context={teams ? JSON.stringify(teams.map((t) => t.name)) : ''}
-        open={copilot}
-        onClose={() => setCopilot(false)}
-        onApply={async (proposal) => {
-          const team = (proposal.team ?? {}) as Record<string, unknown>
-          const undo = await applyTreeProposal(projectId, team)
-          reload()
-          return async () => {
-            await undo()
-            reload()
-          }
-        }}
-      />
 
       {teams === null ? (
         <p className="text-sm text-zinc-600">loading…</p>
@@ -125,6 +139,13 @@ export function TreePage() {
                 >
                   Launch
                 </button>
+                <button
+                  onClick={() => openCopilot(team)}
+                  className={`flex items-center gap-1 px-3 py-1 text-xs ${secondaryButton}`}
+                >
+                  <Wand2 className="h-3.5 w-3.5" aria-hidden />
+                  Co-pilot
+                </button>
                 <Link
                   to={projectPath(projectId, `teams/${team.id}`)}
                   className={`px-3 py-1 text-xs ${secondaryButton}`}
@@ -143,6 +164,9 @@ export function TreePage() {
                 running={runningByTeam.get(team.id)}
                 projectId={projectId}
               />
+              <div className="mt-4 border-t border-zinc-800/60 pt-4">
+                <AgentLibrary teamId={team.id} />
+              </div>
             </section>
           ))}
         </div>

@@ -6,19 +6,19 @@ import { useCallback, useEffect, useState } from 'react'
 import { Pencil, Plus, Sparkles, Trash2, Wand2 } from 'lucide-react'
 import { createSkill, deleteSkill, listSkills, updateSkill } from '../api/client'
 import type { Skill } from '../api/types'
-import { CopilotSidebar } from '../components/CopilotSidebar'
 import { field, primaryButton, secondaryButton } from '../components/forms'
 import { Markdown } from '../components/Markdown'
 import { useProjectId } from '../lib/project'
+import { useCopilot } from '../state/CopilotProvider'
 
 type Prefill = { name?: string; description?: string; match?: string[]; body?: string }
 
 export function SkillsPage() {
   const projectId = useProjectId()
+  const { open, close } = useCopilot()
   const [skills, setSkills] = useState<Skill[] | null>(null)
   const [editing, setEditing] = useState<Skill | 'new' | null>(null)
   const [prefill, setPrefill] = useState<Prefill | null>(null)
-  const [copilot, setCopilot] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const reload = useCallback(() => {
@@ -29,6 +29,27 @@ export function SkillsPage() {
     document.title = 'Gantry — skills'
     reload()
   }, [reload])
+
+  // Close the co-pilot when leaving the page — its apply handler edits this
+  // page's form state.
+  useEffect(() => close, [close])
+
+  const openCopilot = () =>
+    open({
+      kind: 'skill',
+      title: 'Skill co-pilot',
+      projectId,
+      context: editing && editing !== 'new' ? JSON.stringify(editing) : '',
+      onApply: async (proposal) => {
+        const skill = (proposal.skill ?? {}) as Prefill
+        setPrefill(skill)
+        setEditing('new')
+        return async () => {
+          setEditing(null)
+          setPrefill(null)
+        }
+      },
+    })
 
   const remove = (skill: Skill) =>
     deleteSkill(skill.id)
@@ -50,7 +71,7 @@ export function SkillsPage() {
         </div>
         <span className="grow" />
         <button
-          onClick={() => setCopilot(true)}
+          onClick={openCopilot}
           className={`flex items-center gap-1.5 ${secondaryButton}`}
         >
           <Wand2 className="h-4 w-4" aria-hidden />
@@ -83,23 +104,6 @@ export function SkillsPage() {
           onCancel={() => setEditing(null)}
         />
       )}
-
-      <CopilotSidebar
-        kind="skill"
-        projectId={projectId}
-        context={editing && editing !== 'new' ? JSON.stringify(editing) : ''}
-        open={copilot}
-        onClose={() => setCopilot(false)}
-        onApply={async (proposal) => {
-          const skill = (proposal.skill ?? {}) as Prefill
-          setPrefill(skill)
-          setEditing('new')
-          return async () => {
-            setEditing(null)
-            setPrefill(null)
-          }
-        }}
-      />
 
       {skills === null ? (
         <p className="text-sm text-zinc-600">loading…</p>
