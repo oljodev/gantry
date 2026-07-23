@@ -43,6 +43,16 @@ def test_tree_architect_allocates_models_by_cost_tier() -> None:
     assert "orchestrator" in prompt
 
 
+def test_tree_architect_designs_swarm_leaders_with_qa() -> None:
+    from gantry.worker.tools.copilot import TREE_ARCHITECT_PROMPT
+
+    prompt = TREE_ARCHITECT_PROMPT.lower()
+    # Leaders delegate in tiny parallel micro-tasks...
+    assert "micro-task" in prompt
+    # ...and every code-writing team gets a sequential qa-reviewer node.
+    assert "qa-reviewer" in prompt
+
+
 def test_copilot_registry_is_restricted() -> None:
     assert _names("skill") == {"propose_skill", "ask_user"}
     # The tree co-pilot can also author skills for the team (gated by approval).
