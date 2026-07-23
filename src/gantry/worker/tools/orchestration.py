@@ -323,6 +323,7 @@ def _children_report(children: list[Task]) -> str:
 
 class AgentStatusTool(Tool):
     name = "agent_status"
+    parallel_safe = True
     description = (
         "Check the current status (and result, if finished) of one child agent you "
         "spawned, by its task id. Use this to poll a specific child; to sleep until "

@@ -70,7 +70,7 @@ class MvpLLM:
     def __init__(self, origin_url: str) -> None:
         self._origin = origin_url
 
-    async def complete(self, *, model, messages, tools=()):  # type: ignore[no-untyped-def]
+    async def complete(self, *, model, messages, tools=(), on_delta=None):  # type: ignore[no-untyped-def]
         goal = str(messages[1].get("content") or "")
         tool_msgs = [str(m.get("content") or "") for m in messages if m.get("role") == "tool"]
         if goal.startswith("PLAN:"):

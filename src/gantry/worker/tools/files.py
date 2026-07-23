@@ -42,6 +42,7 @@ def _as_int(value: Any) -> int | None:
 
 class ReadFileTool(Tool):
     name = "read_file"
+    parallel_safe = True
     description = (
         "Read a file from the workspace (path relative to the workspace root). For "
         "large files, pass 'offset' (1-based start line) and 'limit' (number of "
@@ -158,6 +159,7 @@ class EditFileTool(Tool):
 
 class ListDirTool(Tool):
     name = "list_dir"
+    parallel_safe = True
     description = "List files under a workspace directory (recursively, capped)."
     parameters: ClassVar[dict[str, Any]] = {
         "type": "object",

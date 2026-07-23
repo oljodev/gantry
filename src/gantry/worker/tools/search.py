@@ -33,6 +33,7 @@ def _jailed_root(ctx: ToolContext, rel_dir: str) -> Path | None:
 
 class GlobTool(Tool):
     name = "glob"
+    parallel_safe = True
     description = (
         "Find files in the workspace by glob pattern (e.g. '**/*.py', 'src/**/test_*.py'). "
         "Returns workspace-relative paths, sorted, capped."
@@ -83,6 +84,7 @@ class GlobTool(Tool):
 
 class GrepTool(Tool):
     name = "grep"
+    parallel_safe = True
     description = (
         "Search file contents in the workspace by regular expression. Returns "
         "'path:line: matched text' lines, capped. Optionally restrict to files "

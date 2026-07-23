@@ -105,6 +105,7 @@ def _decode_ddg_url(href: str) -> str:
 
 class WebSearchTool(Tool):
     name = "web_search"
+    parallel_safe = True
     description = (
         "Search the web via DuckDuckGo and return the top results (title, url, snippet). "
         "Use this to find documentation or current information beyond your training data."
@@ -144,6 +145,7 @@ class WebSearchTool(Tool):
 
 class WebFetchTool(Tool):
     name = "web_fetch"
+    parallel_safe = True
     description = (
         "Fetch a URL and return its readable text content (HTML stripped, capped). "
         "Use after web_search to read a page, or to fetch a known documentation URL."

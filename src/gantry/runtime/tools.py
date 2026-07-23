@@ -100,6 +100,12 @@ class Tool(ABC):
     #: JSON Schema for the tool's arguments (object schema).
     parameters: ClassVar[dict[str, Any]]
     idempotency: ToolIdempotency = ToolIdempotency.IDEMPOTENT
+    #: Whether this tool is safe to run concurrently with sibling calls in the
+    #: same assistant turn. True only for read-only, side-effect-free tools (no
+    #: workspace mutation, no parking, no gating expectations) — the loop runs a
+    #: consecutive run of these together while keeping everything else strictly
+    #: sequential, so approval gating and workspace safety are preserved.
+    parallel_safe: ClassVar[bool] = False
 
     @abstractmethod
     async def execute(self, arguments: dict[str, Any], ctx: ToolContext) -> ToolResult: ...

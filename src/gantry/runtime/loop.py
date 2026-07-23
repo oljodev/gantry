@@ -20,6 +20,7 @@ cheap — nothing already checkpointed is redone.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
 from functools import partial
@@ -34,7 +35,7 @@ from gantry.core.events import append_event, read_events
 from gantry.core.models import EventType, Project, Task, TaskKind
 from gantry.logging import get_logger
 from gantry.runtime.compaction import CompactionConfig, plan_compaction, summarize
-from gantry.runtime.llm import LLMClient, LLMResponse, LLMUsage, ToolCallRequest
+from gantry.runtime.llm import DeltaSink, LLMClient, LLMResponse, LLMUsage, ToolCallRequest
 from gantry.runtime.state import (
     AgentState,
     TrackedMessage,
@@ -150,7 +151,11 @@ async def run_agent_task(
             EventType.LLM_REQUEST,
             {"step": state.steps + 1, "model": model, "message_count": len(state.tracked)},
         )
-        response = await llm.complete(model=model, messages=state.messages, tools=tools.schemas())
+        on_delta, flush_reasoning = _reasoning_streamer(sessions, task)
+        response = await llm.complete(
+            model=model, messages=state.messages, tools=tools.schemas(), on_delta=on_delta
+        )
+        await flush_reasoning()
         seq = await _checkpoint(sessions, task, EventType.LLM_RESPONSE, _response_payload(response))
         state.tracked.append(
             TrackedMessage(
@@ -177,21 +182,9 @@ async def run_agent_task(
                 completion_tokens=state.completion_tokens,
             )
 
-        for tc in response.tool_calls:
-            await _checkpoint(
-                sessions,
-                task,
-                EventType.TOOL_CALL,
-                {"tool_call_id": tc.id, "name": tc.name, "arguments": tc.arguments},
-            )
-            verdict = await _gate_tool_call(
-                sessions, task, state, approval_policy, tc, started=False
-            )
-            if isinstance(verdict, ToolResult):
-                result = verdict
-            else:
-                result = await _execute_tool(tools, tc, ctx)
-            await _record_tool_result(sessions, task, state, tc, result)
+        await _settle_tool_calls(
+            sessions, task, state, tools, ctx, approval_policy, response.tool_calls
+        )
 
 
 async def _auto_approve_enabled(sessions: Sessions, task: Task) -> bool:
@@ -320,6 +313,89 @@ async def _resolve_pending_tool_calls(
         await _record_tool_result(sessions, task, state, tc, result)
 
 
+def _is_parallel_safe(
+    tools: ToolRegistry, policy: ApprovalPolicy | None, tc: ToolCallRequest
+) -> bool:
+    """A call may join a concurrent batch only if its tool is read-only
+    (``parallel_safe``) AND the approval policy would not gate it. Gated calls
+    must stay on the sequential path so they can park for human approval, and
+    mutating tools must stay sequential so they never race the workspace."""
+    tool = tools.get(tc.name)
+    if tool is None or not tool.parallel_safe:
+        return False
+    return policy is None or policy.evaluate(tc.name, tc.arguments) is None
+
+
+async def _settle_tool_calls(
+    sessions: Sessions,
+    task: Task,
+    state: AgentState,
+    tools: ToolRegistry,
+    ctx: ToolContext,
+    policy: ApprovalPolicy | None,
+    tool_calls: tuple[ToolCallRequest, ...],
+) -> None:
+    """Execute an assistant turn's tool calls, running consecutive runs of
+    read-only, ungated calls concurrently while keeping everything else strictly
+    sequential and in order. Events are always checkpointed in the original call
+    order, so rehydration stays deterministic regardless of completion order."""
+    i, n = 0, len(tool_calls)
+    while i < n:
+        if _is_parallel_safe(tools, policy, tool_calls[i]):
+            j = i
+            while j < n and _is_parallel_safe(tools, policy, tool_calls[j]):
+                j += 1
+            await _settle_parallel_batch(sessions, task, state, tools, ctx, tool_calls[i:j])
+            i = j
+        else:
+            await _settle_one_tool_call(sessions, task, state, tools, ctx, policy, tool_calls[i])
+            i += 1
+
+
+async def _settle_one_tool_call(
+    sessions: Sessions,
+    task: Task,
+    state: AgentState,
+    tools: ToolRegistry,
+    ctx: ToolContext,
+    policy: ApprovalPolicy | None,
+    tc: ToolCallRequest,
+) -> None:
+    await _checkpoint(
+        sessions,
+        task,
+        EventType.TOOL_CALL,
+        {"tool_call_id": tc.id, "name": tc.name, "arguments": tc.arguments},
+    )
+    verdict = await _gate_tool_call(sessions, task, state, policy, tc, started=False)
+    result = verdict if isinstance(verdict, ToolResult) else await _execute_tool(tools, tc, ctx)
+    await _record_tool_result(sessions, task, state, tc, result)
+
+
+async def _settle_parallel_batch(
+    sessions: Sessions,
+    task: Task,
+    state: AgentState,
+    tools: ToolRegistry,
+    ctx: ToolContext,
+    batch: tuple[ToolCallRequest, ...],
+) -> None:
+    """Run a run of read-only, ungated calls concurrently. No gating (none of
+    these are gated) and no parking (read-only tools never park), so a plain
+    gather is safe; each tool already turns its own failure into an error
+    result, so gather never raises."""
+    for tc in batch:
+        await _checkpoint(
+            sessions,
+            task,
+            EventType.TOOL_CALL,
+            {"tool_call_id": tc.id, "name": tc.name, "arguments": tc.arguments},
+        )
+    results = await asyncio.gather(*(_execute_tool(tools, tc, ctx) for tc in batch))
+    for tc, result in zip(batch, results, strict=True):
+        await _record_tool_result(sessions, task, state, tc, result)
+
+
 async def _record_tool_result(
     sessions: Sessions,
     task: Task,
@@ -407,6 +483,35 @@ async def _checkpoint(
         return await append_event(session, task.id, event_type, payload)
 
 
+#: Reasoning deltas are coalesced to ~this many chars before a REASONING_CHUNK
+#: is emitted — snappy enough to read live without one DB write per token.
+_REASONING_FLUSH_CHARS = 120
+
+
+def _reasoning_streamer(
+    sessions: Sessions, task: Task
+) -> tuple[DeltaSink, Callable[[], Awaitable[None]]]:
+    """A per-step sink that emits a thinking model's reasoning tokens as live
+    REASONING_CHUNK events (coalesced), plus a flush for the trailing buffer.
+    Content deltas are ignored here — the full content is checkpointed in the
+    llm_response — and reasoning is display-only, folded into no agent state."""
+    buffer: list[str] = []
+
+    async def flush() -> None:
+        if buffer:
+            await _checkpoint(sessions, task, EventType.REASONING_CHUNK, {"data": "".join(buffer)})
+            buffer.clear()
+
+    async def on_delta(kind: str, text: str) -> None:
+        if kind != "reasoning" or not text:
+            return
+        buffer.append(text)
+        if sum(len(part) for part in buffer) >= _REASONING_FLUSH_CHARS:
+            await flush()
+
+    return on_delta, flush
+
+
 def _response_payload(response: LLMResponse) -> dict[str, Any]:
     return {
         "content": response.content,
@@ -416,6 +521,8 @@ def _response_payload(response: LLMResponse) -> dict[str, Any]:
         "model": response.model,
         "finish_reason": response.finish_reason,
         "usage": _usage_payload(response.usage),
+        # Recorded for display; state reconstruction never replays it back.
+        "reasoning": response.reasoning,
     }
 
 

@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, ClassVar
 
 from gantry.runtime.llm import (
+    DeltaSink,
     LLMResponse,
     LLMUsage,
     Message,
@@ -24,7 +25,10 @@ from gantry.runtime.tools import Tool, ToolContext, ToolIdempotency, ToolResult
 
 
 class ScriptedLLM:
-    """Returns canned responses in order; records every call it receives."""
+    """Returns canned responses in order; records every call it receives.
+
+    If a queued response carries ``reasoning`` and a delta sink is provided, it
+    streams that reasoning first — standing in for a thinking model's tokens."""
 
     def __init__(self, responses: list[LLMResponse]) -> None:
         self._responses = list(responses)
@@ -36,11 +40,16 @@ class ScriptedLLM:
         model: str,
         messages: list[Message],
         tools: Sequence[ToolSchema] = (),
+        on_delta: DeltaSink | None = None,
     ) -> LLMResponse:
         self.calls.append({"model": model, "messages": list(messages), "tools": list(tools)})
         if not self._responses:
             raise AssertionError("ScriptedLLM ran out of responses")
-        return self._responses.pop(0)
+        response = self._responses.pop(0)
+        if on_delta is not None and response.reasoning:
+            for part in response.reasoning.split(" "):
+                await on_delta("reasoning", part + " ")
+        return response
 
 
 class CountingToolLLM:
@@ -55,6 +64,7 @@ class CountingToolLLM:
         model: str,
         messages: list[Message],
         tools: Sequence[ToolSchema] = (),
+        on_delta: DeltaSink | None = None,
     ) -> LLMResponse:
         done = sum(1 for m in messages if m.get("role") == "tool")
         if done < self.target:
@@ -81,8 +91,10 @@ def response_with_tool_call(call_id: str, name: str, arguments: dict[str, Any]) 
     )
 
 
-def final_response(text: str) -> LLMResponse:
-    return LLMResponse(content=text, usage=LLMUsage(prompt_tokens=10, completion_tokens=5))
+def final_response(text: str, reasoning: str = "") -> LLMResponse:
+    return LLMResponse(
+        content=text, reasoning=reasoning, usage=LLMUsage(prompt_tokens=10, completion_tokens=5)
+    )
 
 
 def multi_tool_response(*calls: tuple[str, str, dict[str, Any]]) -> LLMResponse:
@@ -119,6 +131,7 @@ class OrchestratorLLM:
         model: str,
         messages: list[Message],
         tools: Sequence[ToolSchema] = (),
+        on_delta: DeltaSink | None = None,
     ) -> LLMResponse:
         goal = str(messages[1].get("content") or "")
         if not goal.startswith("PLAN:"):
