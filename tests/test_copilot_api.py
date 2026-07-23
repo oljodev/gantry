@@ -6,11 +6,17 @@ import uuid
 from typing import Any
 
 import httpx
+import sqlalchemy as sa
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from gantry.core.models import EventType
+from gantry.core import queue
+from gantry.core.db import session_scope
+from gantry.core.models import DEFAULT_WORKSPACE_ID, EventType, Skill, TaskKind
 from gantry.runtime.tools import ToolContext
 from gantry.worker.tools import build_copilot_registry
-from gantry.worker.tools.copilot import ProposeSkillTool, ProposeTreeTool
+from gantry.worker.tools.copilot import CreateSkillTool, ProposeSkillTool, ProposeTreeTool
+
+Sessions = async_sessionmaker[AsyncSession]
 
 
 class Emitted:
@@ -28,7 +34,8 @@ def _names(kind: str) -> set[str]:
 
 def test_copilot_registry_is_restricted() -> None:
     assert _names("skill") == {"propose_skill", "ask_user"}
-    assert _names("tree") == {"propose_tree", "ask_user"}
+    # The tree co-pilot can also author skills for the team (gated by approval).
+    assert _names("tree") == {"propose_tree", "create_skill", "ask_user"}
     # None of the powerful tools leak into a co-pilot.
     assert "bash" not in _names("skill") and "spawn_subtask" not in _names("tree")
 
@@ -110,3 +117,35 @@ async def test_saved_session_records_turns(client: httpx.AsyncClient) -> None:
 
     assert (await client.delete(f"/api/copilot/sessions/{session_id}")).status_code == 204
     assert (await client.get(f"/api/copilot/sessions/{session_id}")).status_code == 404
+
+
+async def test_create_skill_tool_saves_to_the_project(db: Sessions) -> None:
+    async with session_scope(db) as session:
+        task = await queue.enqueue(
+            session,
+            workspace_id=DEFAULT_WORKSPACE_ID,
+            kind=TaskKind.EXECUTE,
+            payload={"goal": "build a team", "copilot": "tree"},
+        )
+    ctx = ToolContext(task_id=task.id, sessions=db, tool_call_id="c1")
+    result = await CreateSkillTool().execute(
+        {"name": "pr-hygiene", "description": "d", "match": ["pr"], "body": "RULES"}, ctx
+    )
+    assert not result.is_error, result.content
+    async with session_scope(db) as session:
+        rows = (await session.scalars(sa.select(Skill).where(Skill.name == "pr-hygiene"))).all()
+    assert len(rows) == 1
+    assert rows[0].body == "RULES" and rows[0].project_id == task.project_id
+
+    # Re-running (crash recovery after approval) upserts by name, never duplicates.
+    ctx2 = ToolContext(task_id=task.id, sessions=db, tool_call_id="c1")
+    await CreateSkillTool().execute({"name": "pr-hygiene", "body": "NEW"}, ctx2)
+    async with session_scope(db) as session:
+        rows = (await session.scalars(sa.select(Skill).where(Skill.name == "pr-hygiene"))).all()
+    assert len(rows) == 1 and rows[0].body == "NEW"
+
+
+async def test_tree_copilot_gates_create_skill(client: httpx.AsyncClient) -> None:
+    resp = await client.post("/api/copilot", json={"kind": "tree", "instruction": "build a crew"})
+    assert resp.status_code == 201
+    assert resp.json()["payload"]["gated_tools"] == ["create_skill"]

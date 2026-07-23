@@ -14,7 +14,7 @@ from gantry.teams import TeamNode
 from gantry.worker.git import GitAuth
 from gantry.worker.tools.ask import AskUserTool
 from gantry.worker.tools.bash import BashTool
-from gantry.worker.tools.copilot import ProposeSkillTool, ProposeTreeTool
+from gantry.worker.tools.copilot import CreateSkillTool, ProposeSkillTool, ProposeTreeTool
 from gantry.worker.tools.files import EditFileTool, ListDirTool, ReadFileTool, WriteFileTool
 from gantry.worker.tools.gittool import GitCommitPushTool
 from gantry.worker.tools.orchestration import (
@@ -29,8 +29,11 @@ __all__ = ["build_coding_registry", "build_copilot_registry", "build_planner_reg
 
 
 def build_copilot_registry(kind: str) -> ToolRegistry:
-    """Restricted toolset for a co-pilot task: propose + ask_user only."""
-    propose: Tool = ProposeTreeTool() if kind == "tree" else ProposeSkillTool()
+    """Restricted toolset for a co-pilot task. The tree co-pilot can also author
+    skills for the team (create_skill), which is gated behind user approval."""
+    if kind == "tree":
+        return ToolRegistry([ProposeTreeTool(), CreateSkillTool(), AskUserTool()])
+    propose: Tool = ProposeSkillTool()
     return ToolRegistry([propose, AskUserTool()])
 
 

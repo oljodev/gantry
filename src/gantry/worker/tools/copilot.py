@@ -9,10 +9,16 @@ before proposing.
 
 from __future__ import annotations
 
-from typing import Any, ClassVar
+from typing import Any, ClassVar, cast
 
-from gantry.core.models import EventType
+import sqlalchemy as sa
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+from gantry.core.db import session_scope
+from gantry.core.models import EventType, Skill, Task
 from gantry.runtime.tools import Tool, ToolContext, ToolIdempotency, ToolResult
+
+Sessions = async_sessionmaker[AsyncSession]
 
 SKILL_ARCHITECT_PROMPT = (
     "You are an elite skill architect. A skill is markdown instructions appended to "
@@ -42,6 +48,10 @@ TREE_ARCHITECT_PROMPT = (
     "the agents already have a model, keep it unless the user asks to change it.\n"
     "STEPS: never set a step limit (max_steps) on any agent unless the user explicitly "
     "asks for one; if you believe a cap is genuinely warranted, ask via ask_user first.\n"
+    "SKILLS: agents can share skills (reusable playbooks auto-injected into their "
+    "prompts). If the team genuinely needs a convention or playbook that isn't already "
+    "a skill, use create_skill to author it (this requires the user's approval), then "
+    "reference it in the relevant nodes' skills[]. Do not invent skills gratuitously.\n"
     "Ask other clarifying questions with ask_user only if genuinely needed. When ready, "
     "call propose_tree EXACTLY ONCE with the whole tree, then give a one-sentence summary."
 )
@@ -124,3 +134,73 @@ class ProposeTreeTool(Tool):
         if ctx.emit_event is not None:
             await ctx.emit_event(EventType.COPILOT_PROPOSAL, {"kind": "tree", "team": team})
         return ToolResult("Team tree proposed — tell the user it is ready to review and apply.")
+
+
+class CreateSkillTool(Tool):
+    name = "create_skill"
+    description = (
+        "Create a reusable skill and SAVE it to this project's library so the team's "
+        "agents can use it (reference it in a node's skills[]). A skill is markdown "
+        "auto-injected into an agent's prompt when a run's goal matches its keywords. "
+        "This WRITES to the project and requires the user's approval before it takes "
+        "effect. Use it only when the team genuinely needs a shared convention or "
+        "playbook that isn't already a skill. Provide a kebab-case name, a one-line "
+        "description, a few match keywords, and a focused, actionable markdown body."
+    )
+    parameters: ClassVar[dict[str, Any]] = {
+        "type": "object",
+        "properties": {
+            "name": {"type": "string", "description": "kebab-case skill name"},
+            "description": {"type": "string"},
+            "match": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Keywords that auto-select this skill by goal.",
+            },
+            "body": {"type": "string", "description": "Markdown appended to the system prompt."},
+        },
+        "required": ["name", "body"],
+    }
+    #: Re-running after approval just upserts by name — safe under crash recovery.
+    idempotency = ToolIdempotency.IDEMPOTENT
+
+    async def execute(self, arguments: dict[str, Any], ctx: ToolContext) -> ToolResult:
+        name = str(arguments.get("name") or "").strip()
+        body = str(arguments.get("body") or "")
+        if not name or not body:
+            return ToolResult("create_skill needs a name and a body", is_error=True)
+        if ctx.sessions is None:
+            return ToolResult("create_skill requires ToolContext.sessions", is_error=True)
+        sessions = cast("Sessions", ctx.sessions)
+        description = str(arguments.get("description") or "").strip()
+        match = [str(m) for m in (arguments.get("match") or [])]
+
+        async with session_scope(sessions) as session:
+            task = await session.get(Task, ctx.task_id)
+            if task is None:
+                return ToolResult("create_skill: task not found", is_error=True)
+            existing = (
+                await session.scalars(
+                    sa.select(Skill).where(Skill.project_id == task.project_id, Skill.name == name)
+                )
+            ).first()
+            if existing is not None:
+                existing.description = description
+                existing.match = match
+                existing.body = body
+                verb = "updated"
+            else:
+                session.add(
+                    Skill(
+                        workspace_id=task.workspace_id,
+                        project_id=task.project_id,
+                        name=name,
+                        description=description,
+                        match=match,
+                        body=body,
+                    )
+                )
+                verb = "created"
+        return ToolResult(
+            f"Skill {name!r} {verb} in the project library — agents can now reference it."
+        )

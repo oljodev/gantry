@@ -34,8 +34,9 @@ import type { CopilotSession, Provider, TaskEvent } from '../api/types'
 import { openTaskStream } from '../api/stream'
 import { copilotFeed } from '../lib/copilotFeed'
 import { relativeTime } from '../lib/format'
-import { pendingQuestions } from '../lib/trace'
+import { pendingApprovals, pendingQuestions } from '../lib/trace'
 import { type Applied, useCopilot } from '../state/CopilotProvider'
+import { ApprovalCard } from './ApprovalCard'
 import { CopilotQuestions, type PendingQuestion } from './CopilotQuestions'
 import { Markdown } from './Markdown'
 
@@ -431,13 +432,15 @@ function TurnBlock({
 }) {
   const feed = copilotFeed(events)
   const questions = pendingQuestions(events)
+  const approvals = pendingApprovals(events)
   const proposal = useMemo(
     () => [...events].reverse().find((e) => e.event_type === 'copilot_proposal')?.payload ?? null,
     [events],
   )
   const failed = [...events].reverse().find((e) => e.event_type === 'task_failed')
   const done = events.some((e) => e.event_type === 'task_succeeded') || failed !== undefined
-  const thinking = active && !done && !proposal && questions.length === 0
+  const thinking =
+    active && !done && !proposal && questions.length === 0 && approvals.length === 0
 
   return (
     <div className="space-y-2">
@@ -462,6 +465,9 @@ function TurnBlock({
           </div>
         ),
       )}
+      {approvals.map((a) => (
+        <ApprovalCard key={a.id} taskId={turn.taskId} request={a} />
+      ))}
       {proposal && <ProposalCard proposal={proposal} onApply={onApply} />}
       {failed && (
         <div className="flex items-start gap-2 pl-6 text-xs text-red-400">

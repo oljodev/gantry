@@ -62,6 +62,10 @@ async def start_copilot(request: Request, body: CopilotStartRequest) -> TaskOut:
         "system_prompt": _PROMPTS[body.kind],
         "max_steps": 12,
     }
+    # The tree co-pilot may author skills for the team, but only with the user's
+    # sign-off — gate that tool behind the HITL approval flow.
+    if body.kind == "tree":
+        payload["gated_tools"] = ["create_skill"]
 
     async with session_scope(sessions) as session:
         # A tree co-pilot needs to know the API library so it can ask which model

@@ -12,6 +12,7 @@ export type FeedItem =
 const TOOL_LABELS: Record<string, string> = {
   propose_tree: 'Drafting the team',
   propose_skill: 'Drafting the skill',
+  create_skill: 'Authoring a skill',
   web_search: 'Searching the web',
   web_fetch: 'Reading a page',
   grep: 'Searching files',

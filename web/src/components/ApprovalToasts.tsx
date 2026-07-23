@@ -17,7 +17,8 @@ export function ApprovalToasts() {
   const [dismissed, setDismissed] = useState<Set<string>>(new Set())
 
   const visible = approvals.filter(
-    (a) => !dismissed.has(String(a.request.payload.tool_call_id)),
+    // Co-pilot approvals are handled inline in its dock — don't also toast them.
+    (a) => !a.task.payload.copilot && !dismissed.has(String(a.request.payload.tool_call_id)),
   )
   if (visible.length === 0) return null
 
