@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { TaskEvent } from '../api/types'
 import type { LlmStep, MarkerStep, ToolStep, TraceStep } from '../lib/trace'
-import { Layers } from 'lucide-react'
+import { Brain, Layers } from 'lucide-react'
 import { clockTime, compactJson, duration } from '../lib/format'
 import { ApprovalCard } from './ApprovalCard'
 import { QuestionCard } from './QuestionCard'
@@ -149,6 +149,11 @@ function Llm({ step }: { step: LlmStep }) {
     | { prompt_tokens: number; completion_tokens: number }
     | undefined
   const stepNo = step.request?.payload.step as number | undefined
+  // Prefer the live chunks; fall back to the reasoning recorded on the response
+  // (e.g. when viewing a finished run whose chunks aged out of the feed).
+  const reasoning =
+    step.reasoning.map((e) => String(e.payload.data ?? '')).join('') ||
+    ((response?.payload.reasoning as string | undefined) ?? '')
   return (
     <div className="rounded-md border border-zinc-800 bg-zinc-900/40">
       <div className="flex items-center gap-2 border-b border-zinc-800/60 px-3 py-1.5 text-xs text-zinc-500">
@@ -156,7 +161,7 @@ function Llm({ step }: { step: LlmStep }) {
           {stepNo !== undefined ? `Step ${stepNo}` : 'LLM'}
         </span>
         <span className="font-mono">{String(step.request?.payload.model ?? '')}</span>
-        {!response && <span className="animate-pulse text-amber-400">thinking…</span>}
+        {!response && !reasoning && <span className="animate-pulse text-amber-400">thinking…</span>}
         {usage && (
           <span className="font-mono text-zinc-600">
             {usage.prompt_tokens}→{usage.completion_tokens} tok
@@ -166,10 +171,44 @@ function Llm({ step }: { step: LlmStep }) {
         <span className="grow" />
         {(response ?? step.request) && <Timestamp event={(response ?? step.request)!} />}
       </div>
+      {reasoning && <ReasoningBlock text={reasoning} live={!response} />}
       {content && (
         <div className="px-3 py-2">
           <Markdown>{content}</Markdown>
         </div>
+      )}
+    </div>
+  )
+}
+
+/** A thinking model's internal monologue, streamed live and dimmed apart from
+ *  the answer. Auto-scrolls to the newest tokens while the model is still
+ *  thinking; collapsible once the turn resolves. */
+function ReasoningBlock({ text, live }: { text: string; live: boolean }) {
+  const [open, setOpen] = useState(true)
+  const ref = useRef<HTMLPreElement>(null)
+  useEffect(() => {
+    if (live && open && ref.current) ref.current.scrollTop = ref.current.scrollHeight
+  }, [text, live, open])
+  return (
+    <div className="border-b border-zinc-800/60 bg-indigo-950/10 last:border-b-0">
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex w-full items-center gap-1.5 px-3 py-1.5 text-[11px] transition hover:text-zinc-300"
+      >
+        <Brain className="h-3.5 w-3.5 text-indigo-300" aria-hidden />
+        <span className="font-medium text-indigo-300">thinking</span>
+        {live && <span className="animate-pulse text-indigo-400">…</span>}
+        <span className="grow" />
+        <span className="text-zinc-600">{open ? 'hide' : 'show'}</span>
+      </button>
+      {open && (
+        <pre
+          ref={ref}
+          className="max-h-56 overflow-auto px-3 pb-2 text-xs leading-relaxed whitespace-pre-wrap text-zinc-500 italic"
+        >
+          {text}
+        </pre>
       )}
     </div>
   )

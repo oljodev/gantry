@@ -44,6 +44,20 @@ describe('foldTrace', () => {
     expect(tool.result?.payload.content).toBe('ok')
   })
 
+  it('attaches reasoning_chunk events to the open llm step', () => {
+    const events = [
+      event('llm_request', { step: 1, model: 'deepseek-r1' }),
+      event('reasoning_chunk', { data: 'let me ' }),
+      event('reasoning_chunk', { data: 'think' }),
+      event('llm_response', { content: 'answer', tool_calls: [] }),
+    ]
+    const steps = foldTrace(events)
+    expect(steps.map((s) => s.kind)).toEqual(['llm']) // chunks fold in, not separate steps
+    const llm = steps[0]
+    if (llm.kind !== 'llm') throw new Error('expected llm step')
+    expect(llm.reasoning.map((e) => e.payload.data).join('')).toBe('let me think')
+  })
+
   it('attaches diff events to the enclosing tool step', () => {
     const events = [
       event('tool_call', { tool_call_id: 'c9', name: 'git_commit_push', arguments: {} }),

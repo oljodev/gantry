@@ -8,6 +8,8 @@ export interface LlmStep {
   kind: 'llm'
   request?: TaskEvent
   response?: TaskEvent
+  /** Live reasoning_chunk events streamed while a thinking model thinks. */
+  reasoning: TaskEvent[]
 }
 
 export interface ToolStep {
@@ -38,14 +40,18 @@ export function foldTrace(events: TaskEvent[]): TraceStep[] {
     switch (event.event_type) {
       case 'llm_request':
         lastTool = null
-        openLlm = { kind: 'llm', request: event }
+        openLlm = { kind: 'llm', request: event, reasoning: [] }
         steps.push(openLlm)
+        break
+      case 'reasoning_chunk':
+        // Thinking tokens stream in between the request and the response.
+        if (openLlm) openLlm.reasoning.push(event)
         break
       case 'llm_response':
         if (openLlm && !openLlm.response) {
           openLlm.response = event
         } else {
-          steps.push({ kind: 'llm', response: event })
+          steps.push({ kind: 'llm', response: event, reasoning: [] })
         }
         openLlm = null
         break
