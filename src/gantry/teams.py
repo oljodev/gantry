@@ -16,6 +16,7 @@ Snapshot node shape (recursive)::
       "model": "openrouter/..." | null,  # ALREADY LiteLLM-mapped
       "max_steps": 40 | null,
       "can_spawn": true,
+      "autonomous_leader": false,       # true -> forced swarm-leader prompt + spawn
       "gated_tools": ["git_commit_push"],
       "skills": ["test-first"],
       "children": [ <node>, ... ]
@@ -28,7 +29,7 @@ from typing import Any
 
 from gantry.core.models import AgentProfile, Provider, TaskKind
 from gantry.providers import resolve_model
-from gantry.runtime.state import PLANNER_SYSTEM_PROMPT
+from gantry.runtime.state import AUTONOMOUS_LEADER_PROMPT, PLANNER_SYSTEM_PROMPT
 
 TeamNode = dict[str, Any]
 
@@ -48,6 +49,7 @@ def snapshot_node(
         "model": model,
         "max_steps": profile.max_steps,
         "can_spawn": profile.can_spawn,
+        "autonomous_leader": profile.autonomous_leader,
         "gated_tools": list(profile.gated_tools),
         "skills": list(profile.skills),
         "children": children,
@@ -55,7 +57,11 @@ def snapshot_node(
 
 
 def node_kind(node: TeamNode) -> TaskKind:
-    """Planner iff it may spawn and actually has someone to delegate to."""
+    """Planner iff it orchestrates: an Autonomous Leader always, or an agent that
+    may spawn and actually has someone to delegate to. Planner kind carries the
+    generous park/wake attempt budget an orchestrator needs."""
+    if node.get("autonomous_leader"):
+        return TaskKind.PLAN
     if node.get("can_spawn") and node.get("children"):
         return TaskKind.PLAN
     return TaskKind.EXECUTE
@@ -92,17 +98,26 @@ def node_payload_fields(node: TeamNode) -> dict[str, Any]:
     if node.get("name"):
         fields["agent_name"] = node["name"]
     prompt = node.get("system_prompt")
-    if node_kind(node) is TaskKind.PLAN:
+    if node.get("autonomous_leader"):
+        # The Autonomous Leader flag FORCES the swarm-master prompt as the core
+        # instruction, overriding any standard/custom prompt (which rides along
+        # as extra context so it isn't lost), and unlocks delegation even with
+        # no fixed children (dynamic swarm). Named children still get a roster.
+        extra = f"\n\n## Additional instructions\n{prompt}" if prompt else ""
+        prompt = AUTONOMOUS_LEADER_PROMPT + extra
+        if node.get("children"):
+            prompt += roster_text(node)
+    elif node_kind(node) is TaskKind.PLAN:
         prompt = (prompt or PLANNER_SYSTEM_PROMPT) + roster_text(node)
     if prompt:
         fields["system_prompt"] = prompt
     for key in ("model", "provider_id", "max_steps"):
         if node.get(key):
             fields[key] = node[key]
-    if node.get("can_spawn"):
-        # Carried so the worker grants delegation tools to a hands-on agent
-        # that also spawns (a coder that delegates to a reviewer), even when
-        # its kind is EXECUTE rather than PLAN.
+    if node.get("can_spawn") or node.get("autonomous_leader"):
+        # Carried so the worker grants delegation tools — to a hands-on agent
+        # that also spawns (a coder that delegates to a reviewer), and always to
+        # an Autonomous Leader even when its kind would otherwise be EXECUTE.
         fields["can_spawn"] = True
     if node.get("gated_tools"):
         fields["gated_tools"] = list(node["gated_tools"])

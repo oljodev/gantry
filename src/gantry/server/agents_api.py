@@ -64,6 +64,7 @@ def _apply_profile(profile: AgentProfile, body: AgentProfileIn) -> None:
     profile.model = body.model
     profile.max_steps = body.max_steps
     profile.can_spawn = body.can_spawn
+    profile.autonomous_leader = body.autonomous_leader
     profile.gated_tools = list(body.gated_tools)
     profile.skills = list(body.skills)
 

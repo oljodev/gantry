@@ -371,6 +371,9 @@ class AgentProfileIn(BaseModel):
     model: str | None = None
     max_steps: int | None = Field(default=None, ge=1)
     can_spawn: bool = False
+    #: Run this agent as an Autonomous Leader (swarm master): forces the leader
+    #: system prompt and unlocks spawn_subtask even with no fixed children.
+    autonomous_leader: bool = False
     gated_tools: list[str] = Field(default_factory=list)
     skills: list[str] = Field(default_factory=list)
 

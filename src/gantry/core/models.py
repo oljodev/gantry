@@ -455,6 +455,10 @@ class AgentProfile(Base):
     model: Mapped[str | None] = mapped_column(sa.String(200), nullable=True)
     max_steps: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
     can_spawn: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, default=False)
+    #: When on, this agent runs as an Autonomous Leader (swarm master): the
+    #: leader system prompt is forced and delegation tools are unlocked even
+    #: with no fixed children. Resolved into the launch snapshot, never mid-run.
+    autonomous_leader: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, default=False)
     gated_tools: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
     skills: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
     created_at: Mapped[datetime] = mapped_column(
