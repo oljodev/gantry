@@ -29,6 +29,8 @@ def test_leader_forces_prompt_and_unlocks_delegation_without_children() -> None:
     fields = node_payload_fields(_node(autonomous_leader=True))
     # Delegation is unlocked even though there are no fixed children...
     assert fields["can_spawn"] is True
+    # ...the run is marked so the worker gives it the restricted (no-write) toolset...
+    assert fields["autonomous_leader"] is True
     # ...and the leader prompt is the core instruction.
     assert fields["system_prompt"] == AUTONOMOUS_LEADER_PROMPT
     # A leader is always a planner (generous park/wake attempt budget).

@@ -39,15 +39,41 @@ def build_copilot_registry(kind: str) -> ToolRegistry:
     return ToolRegistry([propose, AskUserTool()])
 
 
+def _add_delegation_tools(
+    registry: ToolRegistry,
+    max_subtasks: int,
+    team: TeamNode | None,
+    auth: GitAuth | None,
+    trunk_branch: str | None,
+    conflict_resolver: ConflictResolver | None,
+) -> None:
+    for tool in orchestration_tools(max_subtasks, team=team):
+        registry.register(tool)
+    # A repo-backed leader can also integrate the branches its workers push.
+    if auth is not None and trunk_branch is not None:
+        registry.register(MergeChildBranchesTool(auth, trunk_branch, conflict_resolver))
+
+
 def build_coding_registry(
     auth: GitAuth | None = None,
     *,
     can_spawn: bool = False,
+    leader: bool = False,
     max_subtasks: int = DEFAULT_MAX_SUBTASKS,
     team: TeamNode | None = None,
     trunk_branch: str | None = None,
     conflict_resolver: ConflictResolver | None = None,
 ) -> ToolRegistry:
+    if leader:
+        # A pure Autonomous Leader surveys read-only and delegates ALL writing.
+        # It deliberately has no write/edit/bash/commit tools, so it *cannot* do
+        # the work itself — its only way to change code is to spawn workers.
+        registry = ToolRegistry(
+            [ReadFileTool(), ListDirTool(), GlobTool(), GrepTool(), AskUserTool()]
+        )
+        _add_delegation_tools(registry, max_subtasks, team, auth, trunk_branch, conflict_resolver)
+        return registry
+
     registry = ToolRegistry(
         [
             BashTool(),
@@ -65,9 +91,5 @@ def build_coding_registry(
     if auth is not None:
         registry.register(GitCommitPushTool(auth))
     if can_spawn:
-        for tool in orchestration_tools(max_subtasks, team=team):
-            registry.register(tool)
-        # A repo-backed leader can also integrate the branches its workers push.
-        if auth is not None and trunk_branch is not None:
-            registry.register(MergeChildBranchesTool(auth, trunk_branch, conflict_resolver))
+        _add_delegation_tools(registry, max_subtasks, team, auth, trunk_branch, conflict_resolver)
     return registry

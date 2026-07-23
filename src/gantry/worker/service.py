@@ -295,13 +295,17 @@ class Worker:
                     task.payload,
                     github_token=await self._github_token(task),
                 )
-                can_spawn = task.kind is TaskKind.PLAN or bool(task.payload.get("can_spawn"))
+                is_leader = bool(task.payload.get("autonomous_leader"))
+                can_spawn = (
+                    task.kind is TaskKind.PLAN or bool(task.payload.get("can_spawn")) or is_leader
+                )
                 resolver_model = (
                     cfg.conflict_resolver_model or task.payload.get("model") or cfg.default_model
                 )
                 registry = build_coding_registry(
                     workspace.auth,
                     can_spawn=can_spawn,
+                    leader=is_leader,
                     max_subtasks=cfg.max_subtasks,
                     team=task.payload.get("team"),
                     trunk_branch=workspace.branch,

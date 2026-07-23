@@ -119,6 +119,10 @@ def node_payload_fields(node: TeamNode) -> dict[str, Any]:
         # that also spawns (a coder that delegates to a reviewer), and always to
         # an Autonomous Leader even when its kind would otherwise be EXECUTE.
         fields["can_spawn"] = True
+    if node.get("autonomous_leader"):
+        # Marks the run for the restricted, read-only + delegation toolset: a
+        # pure leader has no write/edit/bash/commit tools, so it must delegate.
+        fields["autonomous_leader"] = True
     if node.get("gated_tools"):
         fields["gated_tools"] = list(node["gated_tools"])
     if node.get("skills"):
