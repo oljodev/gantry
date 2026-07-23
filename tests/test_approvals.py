@@ -17,7 +17,15 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from gantry.core import queue
 from gantry.core.db import session_scope
 from gantry.core.events import read_events
-from gantry.core.models import DEFAULT_WORKSPACE_ID, EventType, Task, TaskKind, TaskStatus
+from gantry.core.models import (
+    DEFAULT_PROJECT_ID,
+    DEFAULT_WORKSPACE_ID,
+    EventType,
+    Project,
+    Task,
+    TaskKind,
+    TaskStatus,
+)
 from gantry.runtime.loop import run_agent_task
 from gantry.runtime.tools import TaskParked, ToolRegistry
 from gantry.worker.policy import DefaultApprovalPolicy, policy_for_payload
@@ -153,6 +161,25 @@ async def test_auto_accept_runs_gated_call_without_parking(db: Sessions) -> None
         )
     assert resolved.payload["decision"] == "approved"
     assert resolved.payload["resolved_by"] == "auto-accept"
+
+
+async def test_auto_accept_follows_live_project_toggle(db: Sessions) -> None:
+    """Even with no auto_approve in the launch payload, the project's live toggle
+    makes gated calls auto-accept — so flipping it on affects in-flight runs."""
+    async with session_scope(db) as session:
+        project = await session.get(Project, DEFAULT_PROJECT_ID)
+        assert project is not None
+        project.auto_approve = True
+    task = await enqueue_task(db)  # payload has no auto_approve
+    tool = RecordingTool(name="bash")
+    outcome = await run_agent_task(
+        db, task, gated_llm(), ToolRegistry([tool]), approval_policy=POLICY
+    )
+    assert outcome.final_text == "all tidy"
+    assert tool.executions == [{"command": "rm -rf ./junk"}]  # ran without parking
+    types = await event_type_values(db, task.id)
+    assert "task_parked" not in types
+    assert "approval_resolved" in types
 
 
 async def test_approved_call_executes_on_resume_exactly_once(db: Sessions) -> None:

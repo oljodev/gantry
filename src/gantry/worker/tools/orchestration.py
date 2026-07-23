@@ -118,8 +118,10 @@ class SpawnSubtaskTool(Tool):
     description = (
         "Spawn one child task executed in parallel by another worker. Returns the "
         "child's task id immediately; results arrive later via wait_for_children. "
-        "The child worker shares no context with you — its goal must be fully "
-        "self-contained."
+        "To run agents concurrently, call spawn_subtask several times in a row "
+        "(e.g. launch all 5 coders at once) BEFORE calling wait_for_children — each "
+        "call returns instantly and the children run at the same time. The child "
+        "worker shares no context with you — its goal must be fully self-contained."
     )
     parameters: ClassVar[dict[str, Any]] = {
         "type": "object",
@@ -267,8 +269,11 @@ class WaitForChildrenTool(Tool):
     name = "wait_for_children"
     description = (
         "Sleep (at zero compute cost) until every spawned subtask has finished, "
-        "then receive a report of each child's status and result. Call this after "
-        "spawning subtasks; do not poll."
+        "then receive a report of each child's status and result. Spawn ALL the "
+        "children you need first (they run concurrently), then call this ONCE to "
+        "wait for the whole batch — do not spawn one, wait, spawn the next. To act "
+        "on children as they finish individually instead, poll agent_status. Never "
+        "poll in a busy loop."
     )
     parameters: ClassVar[dict[str, Any]] = {"type": "object", "properties": {}}
     #: Re-running after a crash just re-checks state — naturally idempotent.

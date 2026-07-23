@@ -53,6 +53,10 @@ class Settings(BaseSettings):
     frontend_dist: Path = Path("web/dist")
     #: Runaway-planner guard: max children one task may spawn.
     max_subtasks_per_task: int = 32
+    #: Default per-agent step budget when a task/profile doesn't set its own.
+    #: The ceiling before a run fails with "exceeded max_steps"; override via
+    #: GANTRY_DEFAULT_MAX_STEPS or per-agent max_steps.
+    default_max_steps: int = 300
     #: Directory of SKILL.md files loaded by workers and the API.
     skills_root: Path = Path("skills")
     #: Origins allowed to call the API from a browser. Includes the Cloudflare

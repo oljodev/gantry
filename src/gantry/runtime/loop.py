@@ -31,7 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from gantry.config import get_settings
 from gantry.core.db import session_scope
 from gantry.core.events import append_event, read_events
-from gantry.core.models import EventType, Task
+from gantry.core.models import EventType, Project, Task, TaskKind
 from gantry.logging import get_logger
 from gantry.runtime.compaction import CompactionConfig, plan_compaction, summarize
 from gantry.runtime.llm import LLMClient, LLMResponse, ToolCallRequest
@@ -56,8 +56,6 @@ from gantry.runtime.tools import (
 from gantry.skills import SkillRegistry
 
 logger = get_logger(__name__)
-
-DEFAULT_MAX_STEPS = 50
 
 Sessions = async_sessionmaker[AsyncSession]
 StepCallback = Callable[[], Awaitable[None]]
@@ -89,8 +87,21 @@ async def run_agent_task(
     skills: SkillRegistry | None = None,
 ) -> AgentOutcome:
     payload: dict[str, Any] = task.payload
-    model = payload.get("model") or get_settings().default_model
-    max_steps = int(payload.get("max_steps") or DEFAULT_MAX_STEPS)
+    settings = get_settings()
+    model = payload.get("model") or settings.default_model
+    # An orchestrator (a planner, or a profile that can spawn) coordinates and
+    # parks while its children work — it legitimately takes many steps, so it is
+    # NOT step-capped unless it explicitly asked for one. A plain worker agent
+    # uses the default budget.
+    can_spawn = task.kind is TaskKind.PLAN or bool(payload.get("can_spawn"))
+    explicit_steps = payload.get("max_steps")
+    max_steps: int | None
+    if explicit_steps:
+        max_steps = int(explicit_steps)
+    elif can_spawn:
+        max_steps = None  # unlimited for delegating agents
+    else:
+        max_steps = settings.default_max_steps
     ctx = ToolContext(
         task_id=task.id,
         workspace=workspace,
@@ -127,7 +138,7 @@ async def run_agent_task(
     while True:
         if on_step is not None:
             await on_step()
-        if state.steps >= max_steps:
+        if max_steps is not None and state.steps >= max_steps:
             raise AgentLoopError(f"exceeded max_steps={max_steps} without a final answer")
 
         if compaction is not None:
@@ -183,6 +194,17 @@ async def run_agent_task(
             await _record_tool_result(sessions, task, state, tc, result)
 
 
+async def _auto_approve_enabled(sessions: Sessions, task: Task) -> bool:
+    """Whether gated calls should auto-accept: the launch snapshot said so, or
+    the project's live toggle is on now. Consulting the live setting makes the
+    Approved-page toggle affect runs that were already in flight."""
+    if task.payload.get("auto_approve"):
+        return True
+    async with session_scope(sessions) as session:
+        project = await session.get(Project, task.project_id)
+        return bool(project is not None and project.auto_approve)
+
+
 async def _gate_tool_call(
     sessions: Sessions,
     task: Task,
@@ -217,7 +239,7 @@ async def _gate_tool_call(
                 "preview": decision.preview,
             },
         )
-        if task.payload.get("auto_approve"):
+        if await _auto_approve_enabled(sessions, task):
             # HITL auto-accept: resolve the gate immediately instead of parking,
             # but still record it (requested + resolved) so the trace is honest.
             await _checkpoint(
