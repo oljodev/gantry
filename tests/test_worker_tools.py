@@ -94,6 +94,38 @@ async def test_write_read_edit_list_roundtrip(ctx: ToolContext) -> None:
     assert "pkg/" in listing.content and "pkg/mod.py" in listing.content
 
 
+async def test_read_file_offset_and_limit_slice_lines(ctx: ToolContext, tmp_path: Path) -> None:
+    (tmp_path / "big.txt").write_text("".join(f"line{i}\n" for i in range(1, 11)))
+
+    # Whole-file read is unchanged when no offset/limit is given.
+    whole = await ReadFileTool().execute({"path": "big.txt"}, ctx)
+    assert whole.content.count("\n") == 10 and whole.content.startswith("line1\n")
+
+    # offset is 1-based; limit caps the line count.
+    sliced = await ReadFileTool().execute({"path": "big.txt", "offset": 3, "limit": 2}, ctx)
+    assert sliced.content == "line3\nline4\n"
+
+    # offset alone reads to end; a numeric string arg is tolerated.
+    tail = await ReadFileTool().execute({"path": "big.txt", "offset": "9"}, ctx)
+    assert tail.content == "line9\nline10\n"
+
+
+async def test_read_file_offset_past_end_is_an_error(ctx: ToolContext, tmp_path: Path) -> None:
+    (tmp_path / "small.txt").write_text("only\ntwo\n")
+    result = await ReadFileTool().execute({"path": "small.txt", "offset": 99}, ctx)
+    assert result.is_error and "past the end" in result.content
+
+
+async def test_read_file_char_cap_applies_to_a_slice(ctx: ToolContext, tmp_path: Path) -> None:
+    from gantry.worker.tools.files import _MAX_READ_CHARS
+
+    # One enormous line, requested as a slice: the char cap is still the backstop.
+    (tmp_path / "wide.txt").write_text("x" * (_MAX_READ_CHARS + 5000) + "\n")
+    result = await ReadFileTool().execute({"path": "wide.txt", "offset": 1, "limit": 1}, ctx)
+    assert "[truncated at" in result.content
+    assert len(result.content) < _MAX_READ_CHARS + 200
+
+
 async def test_edit_requires_exactly_one_occurrence(ctx: ToolContext, tmp_path: Path) -> None:
     (tmp_path / "f.txt").write_text("aaa bbb aaa")
     result = await EditFileTool().execute(

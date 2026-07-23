@@ -30,12 +30,30 @@ def _jail_error(rel_path: str) -> ToolResult:
     )
 
 
+def _as_int(value: Any) -> int | None:
+    """Coerce a tool arg to int, tolerating the LLM passing a numeric string."""
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
 class ReadFileTool(Tool):
     name = "read_file"
-    description = "Read a file from the workspace (path relative to the workspace root)."
+    description = (
+        "Read a file from the workspace (path relative to the workspace root). For "
+        "large files, pass 'offset' (1-based start line) and 'limit' (number of "
+        "lines) to read just a slice instead of the whole file."
+    )
     parameters: ClassVar[dict[str, Any]] = {
         "type": "object",
-        "properties": {"path": {"type": "string"}},
+        "properties": {
+            "path": {"type": "string"},
+            "offset": {"type": "integer", "description": "1-based first line to read (optional)"},
+            "limit": {"type": "integer", "description": "Max lines from offset (optional)"},
+        },
         "required": ["path"],
     }
     idempotency = ToolIdempotency.IDEMPOTENT
@@ -48,8 +66,24 @@ class ReadFileTool(Tool):
         if not path.is_file():
             return ToolResult(f"no such file: {rel}", is_error=True)
         text = path.read_text(errors="replace")
+
+        offset = _as_int(arguments.get("offset"))
+        limit = _as_int(arguments.get("limit"))
+        if offset is not None or limit is not None:
+            lines = text.splitlines(keepends=True)
+            start = max((offset or 1) - 1, 0)
+            if start >= len(lines) and lines:
+                return ToolResult(
+                    f"file has {len(lines)} lines; offset {offset} is past the end", is_error=True
+                )
+            end = start + limit if limit is not None and limit > 0 else len(lines)
+            text = "".join(lines[start:end])
+
         if len(text) > _MAX_READ_CHARS:
-            text = text[:_MAX_READ_CHARS] + f"\n... [truncated at {_MAX_READ_CHARS} chars]"
+            text = (
+                text[:_MAX_READ_CHARS]
+                + f"\n... [truncated at {_MAX_READ_CHARS} chars; use offset/limit to read more]"
+            )
         return ToolResult(text)
 
 
