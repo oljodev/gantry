@@ -81,6 +81,10 @@ class WorkerConfig:
             max_subtasks=settings.max_subtasks_per_task,
             skills_root=settings.skills_root,
             prompt_caching=settings.prompt_caching,
+            compaction=CompactionConfig(
+                max_context_tokens=settings.max_context_tokens,
+                keep_recent_messages=settings.keep_recent_messages,
+            ),
         )
 
 

@@ -62,6 +62,15 @@ class Settings(BaseSettings):
     #: The ceiling before a run fails with "exceeded max_steps"; override via
     #: GANTRY_DEFAULT_MAX_STEPS or per-agent max_steps.
     default_max_steps: int = 300
+    #: Estimated-token ceiling before the durable loop compacts history into a
+    #: summary checkpoint. Lower than the old hardcoded 120_000 so per-call input
+    #: stays bounded on long runs (compaction fires ~every 10-15 steps instead of
+    #: almost never). Override via GANTRY_MAX_CONTEXT_TOKENS.
+    max_context_tokens: int = 50_000
+    #: Messages kept verbatim as the recent tail when compaction fires (the rest
+    #: is summarized). Keep max_context_tokens >= ~2x the tail's token size or
+    #: compaction re-fires every step. Override via GANTRY_KEEP_RECENT_MESSAGES.
+    keep_recent_messages: int = 6
     #: Directory of SKILL.md files loaded by workers and the API.
     skills_root: Path = Path("skills")
     #: Origins allowed to call the API from a browser. Includes the Cloudflare

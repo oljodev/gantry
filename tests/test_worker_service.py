@@ -37,6 +37,16 @@ from .test_worker_git import git, origin  # noqa: F401  (fixture re-export)
 Sessions = async_sessionmaker[AsyncSession]
 
 
+def test_from_settings_threads_the_compaction_thresholds() -> None:
+    from gantry.config import Settings
+
+    settings = Settings(max_context_tokens=33_000, keep_recent_messages=4)
+    cfg = WorkerConfig.from_settings(settings)
+    assert cfg.compaction is not None
+    assert cfg.compaction.max_context_tokens == 33_000
+    assert cfg.compaction.keep_recent_messages == 4
+
+
 def make_worker(db: Sessions, tmp_path: Path, llm: LLMClient) -> Worker:
     config = WorkerConfig(
         worker_id="svc-worker-1",
