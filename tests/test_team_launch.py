@@ -158,6 +158,35 @@ async def test_spawn_with_unknown_agent_errors(client: httpx.AsyncClient, db: Se
     assert "coder" in result.content and "reviewer" in result.content
 
 
+async def test_teamless_leader_ignores_invented_agent_and_spawns_generic(db: Sessions) -> None:
+    # A standalone Autonomous Leader has no team roster; when it invents an agent
+    # name, spawn_subtask must fall back to a generic worker, not hard-fail.
+    from gantry.core.models import DEFAULT_WORKSPACE_ID
+
+    async with session_scope(db) as session:
+        parent = await queue.enqueue(
+            session,
+            workspace_id=DEFAULT_WORKSPACE_ID,
+            kind=TaskKind.PLAN,
+            payload={"goal": "lead the swarm", "can_spawn": True},
+        )
+
+    tool = SpawnSubtaskTool(team=None)  # no fixed team
+    ctx = ToolContext(task_id=parent.id, sessions=db, tool_call_id="call-g")
+    result = await tool.execute(
+        {"goal": "Split ai.py into modules", "agent": "software-engineer"}, ctx
+    )
+    assert not result.is_error, result.content
+
+    async with db() as session:
+        child = await session.get(Task, child_task_id(parent.id, "call-g"))
+    assert child is not None
+    assert child.kind is TaskKind.EXECUTE
+    assert child.payload["goal"] == "Split ai.py into modules"
+    # The invented name was dropped — this is a plain worker, not a team member.
+    assert "agent_name" not in child.payload
+
+
 async def test_spawn_explicit_model_overrides_snapshot(
     client: httpx.AsyncClient, db: Sessions
 ) -> None:

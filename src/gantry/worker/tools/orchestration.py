@@ -187,11 +187,16 @@ class SpawnSubtaskTool(Tool):
         if agent is not None:
             node = self._team_child(agent)
             if node is None:
-                names = [str(c.get("name")) for c in (self._team or {}).get("children") or []]
-                available = ", ".join(names) if names else "none — this task has no team"
-                return ToolResult(
-                    f"unknown agent {agent!r}; available agents: {available}", is_error=True
-                )
+                team_children = (self._team or {}).get("children") or []
+                if team_children:
+                    names = ", ".join(str(c.get("name")) for c in team_children)
+                    return ToolResult(
+                        f"unknown agent {agent!r}; available agents: {names}", is_error=True
+                    )
+                # A dynamic-swarm leader (no fixed team) named an agent it made up —
+                # there is no roster to pick from, so drop the name and spawn a
+                # generic worker from the self-contained goal instead of failing.
+                agent = None
         sessions = _sessions_of(ctx)
         child_id = child_task_id(ctx.task_id, ctx.tool_call_id)
 
