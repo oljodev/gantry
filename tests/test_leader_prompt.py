@@ -8,6 +8,12 @@ from gantry.runtime.state import AUTONOMOUS_LEADER_PROMPT, PLANNER_SYSTEM_PROMPT
 
 def test_leader_prompt_encodes_the_swarm_disciplines() -> None:
     prompt = AUTONOMOUS_LEADER_PROMPT.lower()
+    # Survey the codebase before delegating — read, don't plan blind.
+    assert "read_file" in prompt and "survey" in prompt
+    # Survey comes before the delegation section — read before delegating.
+    assert prompt.index("survey") < prompt.index("delegate in micro-task")
+    # ask_user is for product decisions, not facts it can read.
+    assert "ask_user" in prompt
     # Micro-task delegation for parallelism.
     assert "micro-task" in prompt
     assert "one function" in prompt or "one file" in prompt
