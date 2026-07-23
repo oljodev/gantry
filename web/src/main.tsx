@@ -16,6 +16,7 @@ import { SkillsPage } from './pages/SkillsPage'
 import { TaskPage } from './pages/TaskPage'
 import { TeamEditorPage } from './pages/TeamEditorPage'
 import { TreePage } from './pages/TreePage'
+import { UsagePage } from './pages/UsagePage'
 import { applyTheme, preferredTheme } from './lib/theme'
 
 // Before first paint, so light-mode users never see a flash of the dark shell.
@@ -51,6 +52,7 @@ const router = createBrowserRouter([
       { path: 'teams/:teamId', element: <TeamEditorPage /> },
       { path: 'approved', element: <ApprovalsPage /> },
       { path: 'skills', element: <SkillsPage /> },
+      { path: 'usage', element: <UsagePage /> },
       { path: 'settings', element: <SettingsPage /> },
     ],
   },

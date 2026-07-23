@@ -24,6 +24,7 @@ import type {
   TeamLaunch,
   TeamSummary,
   TeamWrite,
+  Usage,
 } from './types'
 
 export interface ApprovalItem {
@@ -89,6 +90,12 @@ export function listTasks(params?: {
 
 export function getStats(projectId?: string): Promise<Stats> {
   return request<Stats>(`/api/stats${projectId ? `?project_id=${projectId}` : ''}`)
+}
+
+export function getUsage(projectId?: string, days = 30): Promise<Usage> {
+  const query = new URLSearchParams({ days: String(days) })
+  if (projectId) query.set('project_id', projectId)
+  return request<Usage>(`/api/usage?${query}`)
 }
 
 // --- projects ------------------------------------------------------------

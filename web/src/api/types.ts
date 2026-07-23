@@ -137,6 +137,31 @@ export interface Stats {
   events_last_hour: number
 }
 
+export interface UsagePoint {
+  date: string // YYYY-MM-DD
+  prompt_tokens: number
+  completion_tokens: number
+  cache_read_tokens: number
+  calls: number
+}
+
+export interface ModelUsage {
+  model: string
+  prompt_tokens: number
+  completion_tokens: number
+  calls: number
+}
+
+export interface Usage {
+  prompt_tokens: number
+  completion_tokens: number
+  cache_read_tokens: number
+  cache_write_tokens: number
+  llm_calls: number
+  daily: UsagePoint[]
+  by_model: ModelUsage[]
+}
+
 export interface Me {
   auth_enabled: boolean
   email: string | null

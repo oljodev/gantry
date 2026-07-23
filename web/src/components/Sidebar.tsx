@@ -1,6 +1,7 @@
 import { Link, NavLink } from 'react-router-dom'
 import {
   ArrowLeft,
+  BarChart3,
   CheckCheck,
   Hexagon,
   LayoutDashboard,
@@ -98,10 +99,13 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
           <Section items={ai} onClose={onClose} />
         </nav>
 
-        {/* Settings pinned above the footer, per the IA. */}
+        {/* Usage + Settings pinned above the footer, per the IA. */}
         <div className="shrink-0 border-t border-zinc-800 px-2 py-2">
           <Section
-            items={[{ to: projectPath(projectId, 'settings'), icon: Settings, label: 'Settings' }]}
+            items={[
+              { to: projectPath(projectId, 'usage'), icon: BarChart3, label: 'Usage' },
+              { to: projectPath(projectId, 'settings'), icon: Settings, label: 'Settings' },
+            ]}
             onClose={onClose}
           />
         </div>
