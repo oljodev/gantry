@@ -90,3 +90,8 @@ until configured:
 - Teams snapshot their whole tree into the launch payload — never re-read
   profiles mid-run.
 - `git push` / deploy only when the user asks (they did, for this site).
+- **Commits: always split a batch of work into several reasonably-sized,
+  coherent commits** — grouped by feature or area — rather than one large
+  catch-all commit. Do this every time, even when the user just says "commit
+  everything." Order them so the tree stays buildable, and keep each commit's
+  message focused on its own change.
