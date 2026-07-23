@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { TaskEvent } from '../api/types'
 import type { LlmStep, MarkerStep, ToolStep, TraceStep } from '../lib/trace'
 import { Brain, Layers } from 'lucide-react'
 import { clockTime, compactJson, duration } from '../lib/format'
+import { flavorForPath, highlightText, type TokenKind } from '../lib/highlight'
 import { ApprovalCard } from './ApprovalCard'
 import { QuestionCard } from './QuestionCard'
 import { DiffViewer } from './DiffViewer'
@@ -283,10 +284,17 @@ function ToolCard({ step }: { step: ToolStep }) {
  *  (edit_file: old lines removed/red on the left, new lines added/green on the
  *  right). Long content scrolls inside the card and expands on demand. */
 function FileChange({ name, args }: { name: string; args: Record<string, unknown> }) {
+  const path = String(args.path ?? '')
   if (name === 'edit_file') {
-    return <EditColumns oldStr={String(args.old_str ?? '')} newStr={String(args.new_str ?? '')} />
+    return (
+      <EditColumns
+        oldStr={String(args.old_str ?? '')}
+        newStr={String(args.new_str ?? '')}
+        path={path}
+      />
+    )
   }
-  return <AddedCode content={String(args.content ?? '')} />
+  return <AddedCode content={String(args.content ?? '')} path={path} />
 }
 
 function useExpandable(lineCount: number): [boolean, () => void, boolean] {
@@ -294,50 +302,88 @@ function useExpandable(lineCount: number): [boolean, () => void, boolean] {
   return [expanded, () => setExpanded((e) => !e), lineCount > 18]
 }
 
-function CodeLines({ lines, tone, sign }: { lines: string[]; tone: string; sign: string }) {
+const TOKEN_CLASS: Record<TokenKind, string> = {
+  comment: 'text-zinc-500 italic',
+  string: 'text-amber-300',
+  number: 'text-orange-300',
+  keyword: 'text-sky-300',
+  constant: 'text-purple-300',
+  plain: '',
+}
+
+const GUTTER_TONE = {
+  added: 'text-emerald-500/60',
+  removed: 'text-red-400/60',
+  neutral: 'text-zinc-600',
+}
+const ROW_TINT = { added: 'bg-emerald-950/20', removed: 'bg-red-950/20', neutral: '' }
+
+/** A read-only, syntax-highlighted code view with an IDE-style line-number
+ *  gutter that stays pinned during horizontal scroll. Language is inferred from
+ *  the file path; tokenizing is memoised so streaming re-renders stay cheap. */
+function CodeView({
+  text,
+  path,
+  tone = 'neutral',
+}: {
+  text: string
+  path: string
+  tone?: keyof typeof ROW_TINT
+}) {
+  const lines = useMemo(() => highlightText(text, flavorForPath(path)), [text, path])
+  const digits = String(lines.length).length
   return (
-    <>
-      {lines.map((line, i) => (
-        <div key={i} className={`w-max min-w-full px-3 ${tone}`}>
-          <span className="mr-2 select-none opacity-60">{sign}</span>
-          {line || ' '}
+    <code className="block bg-code font-mono text-xs leading-relaxed">
+      {lines.map((tokens, i) => (
+        <div key={i} className={`flex w-max min-w-full ${ROW_TINT[tone]}`}>
+          <span
+            aria-hidden
+            style={{ minWidth: `${digits + 1}ch` }}
+            className={`sticky left-0 shrink-0 select-none border-r border-zinc-800/60 bg-code px-2 text-right tabular-nums ${GUTTER_TONE[tone]}`}
+          >
+            {i + 1}
+          </span>
+          <span className="whitespace-pre px-3">
+            {tokens.length === 0
+              ? ' '
+              : tokens.map((t, j) => (
+                  <span key={j} className={TOKEN_CLASS[t.kind]}>
+                    {t.text}
+                  </span>
+                ))}
+          </span>
         </div>
       ))}
-    </>
+    </code>
   )
 }
 
-function AddedCode({ content }: { content: string }) {
-  const lines = content.split('\n')
-  const [expanded, toggle, long] = useExpandable(lines.length)
+function AddedCode({ content, path }: { content: string; path: string }) {
+  const [expanded, toggle, long] = useExpandable(content.split('\n').length)
   return (
     <div className="relative border-t border-zinc-800/60">
-      <pre
-        className={`overflow-auto bg-code font-mono text-xs leading-relaxed ${expanded ? 'max-h-none' : 'max-h-64'}`}
-      >
-        <CodeLines lines={lines} tone="bg-emerald-950/40 text-emerald-200" sign="+" />
-      </pre>
+      <div className={`overflow-auto ${expanded ? 'max-h-none' : 'max-h-64'}`}>
+        <CodeView text={content} path={path} tone="added" />
+      </div>
       {long && <ExpandToggle expanded={expanded} onToggle={toggle} />}
     </div>
   )
 }
 
-function EditColumns({ oldStr, newStr }: { oldStr: string; newStr: string }) {
-  const oldLines = oldStr.split('\n')
-  const newLines = newStr.split('\n')
-  const [expanded, toggle, long] = useExpandable(Math.max(oldLines.length, newLines.length))
-  const paneClass = `overflow-auto bg-code font-mono text-xs leading-relaxed ${
-    expanded ? 'max-h-none' : 'max-h-64'
-  }`
+function EditColumns({ oldStr, newStr, path }: { oldStr: string; newStr: string; path: string }) {
+  const [expanded, toggle, long] = useExpandable(
+    Math.max(oldStr.split('\n').length, newStr.split('\n').length),
+  )
+  const pane = `overflow-auto ${expanded ? 'max-h-none' : 'max-h-64'}`
   return (
     <div className="relative border-t border-zinc-800/60">
       <div className="grid grid-cols-2 gap-px bg-zinc-800">
-        <pre className={paneClass}>
-          <CodeLines lines={oldLines} tone="bg-red-950/40 text-red-300" sign="−" />
-        </pre>
-        <pre className={paneClass}>
-          <CodeLines lines={newLines} tone="bg-emerald-950/40 text-emerald-200" sign="+" />
-        </pre>
+        <div className={pane}>
+          <CodeView text={oldStr} path={path} tone="removed" />
+        </div>
+        <div className={pane}>
+          <CodeView text={newStr} path={path} tone="added" />
+        </div>
       </div>
       {long && <ExpandToggle expanded={expanded} onToggle={toggle} />}
     </div>
