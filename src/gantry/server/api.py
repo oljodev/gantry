@@ -41,6 +41,8 @@ from gantry.server.schemas import (
     QuestionAnswerRequest,
     QuestionItem,
     QuestionsResponse,
+    RunUsage,
+    RunUsageResponse,
     StatsResponse,
     TaskCreateRequest,
     TaskEventOut,
@@ -329,6 +331,53 @@ async def get_usage(
             )
             for row in model_rows
         ],
+    )
+
+
+@router.get("/usage/runs", response_model=RunUsageResponse)
+async def get_run_usage(
+    request: Request,
+    project_id: Annotated[uuid.UUID | None, Query()] = None,
+    limit: Annotated[int, Query(ge=1, le=1000)] = 500,
+) -> RunUsageResponse:
+    """Per-run token totals: each root task summed with every agent it spawned
+    (grouped by ``root_task_id``), most-recently-active first."""
+    sessions = get_sessions(request)
+    project_filter = Task.project_id == project_id if project_id is not None else sa.true()
+    run = Task.root_task_id
+    rows = (
+        sa.select(
+            run,
+            _usage_sum("prompt_tokens"),
+            _usage_sum("completion_tokens"),
+            _usage_sum("cache_read_tokens"),
+            sa.func.count(sa.distinct(TaskEvent.task_id)),
+            sa.func.count().filter(TaskEvent.event_type == EventType.LLM_RESPONSE.value),
+        )
+        .select_from(sa.join(TaskEvent, Task, Task.id == TaskEvent.task_id))
+        .where(
+            Task.workspace_id == DEFAULT_WORKSPACE_ID,
+            TaskEvent.event_type.in_(_USAGE_EVENTS),
+            project_filter,
+        )
+        .group_by(run)
+        .order_by(sa.func.max(TaskEvent.created_at).desc())
+        .limit(limit)
+    )
+    async with sessions() as session:
+        result = (await session.execute(rows)).all()
+    return RunUsageResponse(
+        runs=[
+            RunUsage(
+                run_id=row[0],
+                prompt_tokens=int(row[1]),
+                completion_tokens=int(row[2]),
+                cache_read_tokens=int(row[3]),
+                agents=int(row[4]),
+                calls=int(row[5]),
+            )
+            for row in result
+        ]
     )
 
 

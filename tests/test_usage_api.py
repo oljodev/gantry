@@ -85,6 +85,40 @@ async def test_usage_daily_buckets_today(client: httpx.AsyncClient, db: Sessions
     assert daily[0]["calls"] == 2
 
 
+async def test_run_usage_aggregates_the_whole_team_tree(
+    client: httpx.AsyncClient, db: Sessions
+) -> None:
+    async with session_scope(db) as session:
+        root = await queue.enqueue(
+            session,
+            workspace_id=DEFAULT_WORKSPACE_ID,
+            kind=TaskKind.PLAN,
+            payload={"goal": "orchestrate", "can_spawn": True},
+        )
+        # The orchestrator itself barely spends; its worker does the real work.
+        await append_event(
+            session, root.id, EventType.LLM_RESPONSE, {"model": "m", "usage": _usage(30, 5)}
+        )
+        child = await queue.enqueue(
+            session,
+            workspace_id=DEFAULT_WORKSPACE_ID,
+            kind=TaskKind.EXECUTE,
+            payload={"goal": "do work", "agent_name": "coder"},
+            parent=root,
+        )
+        await append_event(
+            session, child.id, EventType.LLM_RESPONSE, {"model": "m", "usage": _usage(400, 90)}
+        )
+
+    runs = {r["run_id"]: r for r in (await client.get("/api/usage/runs")).json()["runs"]}
+    run = runs[str(root.id)]
+    # The team total is root + child, not just the thin orchestrator.
+    assert run["prompt_tokens"] == 430
+    assert run["completion_tokens"] == 95
+    assert run["agents"] == 2  # orchestrator + worker both did LLM work
+    assert run["calls"] == 2
+
+
 async def test_usage_scoped_by_project(client: httpx.AsyncClient, db: Sessions) -> None:
     await _seed(db)
     # A project with no runs sees zero, proving the project filter isolates.

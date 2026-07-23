@@ -195,6 +195,22 @@ class ModelUsage(BaseModel):
     calls: int
 
 
+class RunUsage(BaseModel):
+    """Token totals for one run (a root task and every agent it spawned),
+    keyed by the run's root task id."""
+
+    run_id: uuid.UUID
+    prompt_tokens: int
+    completion_tokens: int
+    cache_read_tokens: int
+    agents: int  # tasks in the run that did LLM work
+    calls: int
+
+
+class RunUsageResponse(BaseModel):
+    runs: list[RunUsage]
+
+
 class UsageResponse(BaseModel):
     """Everything the Usage dashboard plots: lifetime totals, a daily trend,
     and a per-model breakdown, all aggregated from the durable event log."""
