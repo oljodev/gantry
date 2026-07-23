@@ -45,6 +45,24 @@ async def test_reasoning_streams_live_and_is_recorded_but_not_replayed(db: Sessi
     assert all("think" not in str(m.get("content")) for m in state.messages)
 
 
+def test_split_reasoning_handles_native_tags_and_plain_content() -> None:
+    from gantry.runtime.llm import _split_reasoning
+
+    # Native reasoning_content is authoritative; content passes through.
+    assert _split_reasoning("the answer", "deep thoughts") == ("the answer", "deep thoughts")
+
+    # Inline <think> tags are extracted into reasoning and stripped from content.
+    content, reasoning = _split_reasoning("<think>hmm let me see</think>the answer", "")
+    assert content == "the answer" and reasoning == "hmm let me see"
+
+    # A standard model's plain prose is returned untouched (no thinking view).
+    assert _split_reasoning("just a normal answer", "") == ("just a normal answer", "")
+
+    # Both sources combine, native first.
+    content, reasoning = _split_reasoning("<think>b</think>ans", "a")
+    assert content == "ans" and reasoning == "a\nb"
+
+
 async def test_no_reasoning_means_no_reasoning_chunks(db: Sessions) -> None:
     task = await enqueue_agent_task(db)
     llm = ScriptedLLM([final_response("plain answer")])  # a non-thinking model

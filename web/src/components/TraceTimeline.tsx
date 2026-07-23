@@ -155,6 +155,10 @@ function Llm({ step }: { step: LlmStep }) {
   const reasoning =
     step.reasoning.map((e) => String(e.payload.data ?? '')).join('') ||
     ((response?.payload.reasoning as string | undefined) ?? '')
+  // Only a genuine reasoning stream (native reasoning_content or <think> tags,
+  // both surfaced as non-empty reasoning by the client) shows the thinking view.
+  // A standard model's turn has none, so it renders as plain prose.
+  const hasReasoning = reasoning.trim().length > 0
   return (
     <div className="rounded-md border border-zinc-800 bg-zinc-900/40">
       <div className="flex items-center gap-2 border-b border-zinc-800/60 px-3 py-1.5 text-xs text-zinc-500">
@@ -162,7 +166,7 @@ function Llm({ step }: { step: LlmStep }) {
           {stepNo !== undefined ? `Step ${stepNo}` : 'LLM'}
         </span>
         <span className="font-mono">{String(step.request?.payload.model ?? '')}</span>
-        {!response && !reasoning && <span className="animate-pulse text-amber-400">thinking…</span>}
+        {!response && <span className="animate-pulse text-amber-400">working…</span>}
         {usage && (
           <span className="font-mono text-zinc-600">
             {usage.prompt_tokens}→{usage.completion_tokens} tok
@@ -172,7 +176,7 @@ function Llm({ step }: { step: LlmStep }) {
         <span className="grow" />
         {(response ?? step.request) && <Timestamp event={(response ?? step.request)!} />}
       </div>
-      {reasoning && <ReasoningBlock text={reasoning} live={!response} />}
+      {hasReasoning && <ReasoningBlock text={reasoning} live={!response} />}
       {content && (
         <div className="px-3 py-2">
           <Markdown>{content}</Markdown>

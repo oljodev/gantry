@@ -9,6 +9,7 @@ OpenAI-style dict format LiteLLM speaks natively.
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field, replace
 from typing import Any, Protocol
@@ -229,6 +230,26 @@ def _chunk_delta(chunk: Any) -> Any:
     return getattr(choices[0], "delta", None) if choices else None
 
 
+_THINK_RE = re.compile(r"<think>(.*?)</think>", re.DOTALL | re.IGNORECASE)
+
+
+def _split_reasoning(content: str | None, native: str) -> tuple[str | None, str]:
+    """Separate reasoning from answer content.
+
+    A structured ``reasoning_content`` field (DeepSeek R1) is authoritative. Some
+    models instead inline their reasoning as ``<think>...</think>`` in the
+    content; extract those into reasoning and strip them from the answer. A plain
+    model with neither (e.g. a standard Flash turn) is returned untouched, so its
+    prose never renders as a thinking block.
+    """
+    if not content or "<think>" not in content.lower():
+        return content, native
+    extracted = "\n".join(m.strip() for m in _THINK_RE.findall(content))
+    cleaned = _THINK_RE.sub("", content).strip()
+    combined = "\n".join(part for part in (native, extracted) if part)
+    return (cleaned or None), combined
+
+
 def _response_from_raw(raw: Any, model: str) -> LLMResponse:
     """Adapt a LiteLLM (streamed or not) response into our LLMResponse."""
     if raw is None:  # an empty stream — no content, no calls
@@ -243,12 +264,13 @@ def _response_from_raw(raw: Any, model: str) -> LLMResponse:
         )
         for tc in (message.tool_calls or [])
     )
-    reasoning = getattr(message, "reasoning_content", None) or getattr(message, "reasoning", None)
+    native = getattr(message, "reasoning_content", None) or getattr(message, "reasoning", None)
+    content, reasoning = _split_reasoning(message.content, str(native) if native else "")
     return LLMResponse(
-        content=message.content,
+        content=content,
         tool_calls=tool_calls,
         model=str(raw.model or model),
         usage=_usage_from(raw.usage),
         finish_reason=str(choice.finish_reason or "stop"),
-        reasoning=str(reasoning) if reasoning else "",
+        reasoning=reasoning,
     )
