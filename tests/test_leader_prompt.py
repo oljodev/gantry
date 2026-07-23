@@ -29,6 +29,19 @@ def test_leader_prompt_encodes_the_swarm_disciplines() -> None:
     assert prompt.index("merge_child_branches") < prompt.index("qa-reviewer")
 
 
+def test_leader_prompt_forbids_designing_the_solution_itself() -> None:
+    # The recurring failure mode: the leader burns minutes designing the whole
+    # decomposition (line counts, which method goes where) instead of handing a
+    # file and an outcome to a worker. The prompt must forbid that explicitly.
+    prompt = AUTONOMOUS_LEADER_PROMPT.lower()
+    assert "router, not a designer" in prompt
+    assert "delegate outcomes, not implementations" in prompt
+    # Name the specific over-planning tells it must not do.
+    assert "line count" in prompt
+    # Delegate a boundary + outcome, and let the worker design the "how".
+    assert "file boundary" in prompt and "never dictate how" in prompt
+
+
 def test_planner_prompt_is_the_leader_prompt() -> None:
     # The orchestrator config is embedded under the historical name so every
     # existing leader path (API launch, spawn_subtask, team planner nodes) uses it.
