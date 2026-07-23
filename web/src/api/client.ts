@@ -72,6 +72,7 @@ export function listTasks(params?: {
   status?: TaskStatus
   rootTaskId?: string
   projectId?: string
+  rootsOnly?: boolean
   limit?: number
   offset?: number
 }): Promise<Task[]> {
@@ -79,6 +80,7 @@ export function listTasks(params?: {
   if (params?.status) query.set('status', params.status)
   if (params?.rootTaskId) query.set('root_task_id', params.rootTaskId)
   if (params?.projectId) query.set('project_id', params.projectId)
+  if (params?.rootsOnly) query.set('roots_only', '1')
   if (params?.limit) query.set('limit', String(params.limit))
   if (params?.offset) query.set('offset', String(params.offset))
   const suffix = query.size ? `?${query}` : ''

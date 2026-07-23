@@ -380,6 +380,7 @@ async def launch_team(request: Request, team_id: uuid.UUID, body: TeamLaunchRequ
         payload = node_payload_fields(root_node)
         payload["goal"] = body.goal
         payload["team_id"] = str(team_id)
+        payload["team_name"] = team.name
         project = await session.get(Project, team.project_id)
         if project is not None and project.auto_approve:
             payload["auto_approve"] = True

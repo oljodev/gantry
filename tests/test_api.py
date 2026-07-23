@@ -64,6 +64,28 @@ async def test_get_and_list_tasks(client: httpx.AsyncClient) -> None:
     assert (await client.get("/api/tasks", params={"status": "failed"})).json()["tasks"] == []
 
 
+async def test_list_tasks_roots_only_hides_spawned_agents(
+    client: httpx.AsyncClient, db: Sessions
+) -> None:
+    from gantry.core.models import DEFAULT_WORKSPACE_ID, Task, TaskKind
+
+    parent = await create_task(client)  # a root run
+    async with session_scope(db) as session:
+        p = await session.get(Task, uuid.UUID(parent["id"]))
+        assert p is not None
+        await queue.enqueue(
+            session,
+            workspace_id=DEFAULT_WORKSPACE_ID,
+            kind=TaskKind.EXECUTE,
+            payload={"goal": "a spawned agent", "agent_name": "coder"},
+            parent=p,
+        )
+    everything = (await client.get("/api/tasks")).json()["tasks"]
+    assert len(everything) == 2  # parent + child
+    roots = (await client.get("/api/tasks", params={"roots_only": 1})).json()["tasks"]
+    assert [t["id"] for t in roots] == [parent["id"]]  # only the run
+
+
 async def test_get_unknown_task_is_404(client: httpx.AsyncClient) -> None:
     assert (await client.get(f"/api/tasks/{uuid.uuid4()}")).status_code == 404
     assert (await client.get(f"/api/tasks/{uuid.uuid4()}/events")).status_code == 404

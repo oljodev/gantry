@@ -98,6 +98,7 @@ async def list_tasks(
     status: Annotated[TaskStatus | None, Query()] = None,
     root_task_id: Annotated[uuid.UUID | None, Query()] = None,
     project_id: Annotated[uuid.UUID | None, Query()] = None,
+    roots_only: Annotated[bool, Query()] = False,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> TaskListResponse:
@@ -113,6 +114,10 @@ async def list_tasks(
         stmt = stmt.where(Task.status == status)
     if root_task_id is not None:
         stmt = stmt.where(Task.root_task_id == root_task_id)
+    # A "run" is a root task; roots_only hides the spawned agents so the runs
+    # list shows one row per launch (expand it to see the team's agents).
+    if roots_only:
+        stmt = stmt.where(Task.parent_task_id.is_(None))
     if project_id is not None:
         stmt = stmt.where(Task.project_id == project_id)
     async with sessions() as session:
