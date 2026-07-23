@@ -268,7 +268,9 @@ function GoalBlock({ goal }: { goal: string }) {
           </button>
         )}
       </div>
-      <div className={`relative overflow-hidden ${expanded ? '' : 'max-h-16'}`}>
+      <div
+        className={`relative ${expanded ? 'max-h-[50vh] overflow-auto' : 'max-h-16 overflow-hidden'}`}
+      >
         <Markdown>{goal}</Markdown>
         {!expanded && long && (
           <div className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-zinc-900 to-transparent" />
@@ -296,7 +298,7 @@ function AnswerBlock({ text, live }: { text: string; live?: boolean }) {
         {live ? 'LATEST' : 'ANSWER'}
       </button>
       {expanded && (
-        <div className="border-t border-emerald-900/40 px-3 py-2">
+        <div className="max-h-[50vh] overflow-auto border-t border-emerald-900/40 px-3 py-2">
           <Markdown>{text}</Markdown>
         </div>
       )}
