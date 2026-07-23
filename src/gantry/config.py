@@ -52,14 +52,23 @@ class Settings(BaseSettings):
     workspace_root: Path = Path("/tmp/gantry-workspaces")
     #: GitHub token for workers' git operations (vault-managed from Phase 9).
     github_token: str | None = None
-    #: Per-process SQLAlchemy connection-pool bounds. Concurrency comes from
-    #: running many worker processes (GANTRY_WORKERS), so each process keeps a
-    #: small pool — a worker runs one task at a time and needs only a couple of
-    #: concurrent sessions. Total DB connections ~= workers * (pool + overflow + 1
-    #: LISTEN conn); size Postgres's max_connections above that. Override via
-    #: GANTRY_DB_POOL_SIZE / GANTRY_DB_MAX_OVERFLOW.
-    db_pool_size: int = 3
-    db_max_overflow: int = 2
+    #: Concurrent agent task-slots per worker process. The worker drives this
+    #: many agent loops on one asyncio event loop (agents spend ~all their time
+    #: awaiting network I/O), so one lightweight process replaces a fleet of OS
+    #: processes. Override via GANTRY_WORKER_CONCURRENCY.
+    worker_concurrency: int = 100
+    #: Shared async SQLAlchemy pool bounds for the whole process. All task-slots
+    #: share this one lean pool (sessions are opened per-checkpoint and returned
+    #: immediately), so a few dozen backends serve hundreds of concurrent agents.
+    #: Override via GANTRY_DB_POOL_SIZE / GANTRY_DB_MAX_OVERFLOW.
+    db_pool_size: int = 20
+    db_max_overflow: int = 10
+    #: Outbound LLM pacing: sustained requests/second and the burst allowance,
+    #: shared process-wide across every provider client. Keeps a swarm of agents
+    #: from dumping calls into one tick and tripping localized 429s. Override via
+    #: GANTRY_LLM_MAX_RPS / GANTRY_LLM_RPS_BURST.
+    llm_max_rps: float = 12.0
+    llm_rps_burst: int = 15
     #: How often the control plane re-queues tasks whose lease expired.
     reaper_interval_seconds: float = 10.0
     #: Built frontend to serve as the SPA (skipped if index.html is absent).

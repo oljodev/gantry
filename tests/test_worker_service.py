@@ -133,6 +133,65 @@ async def test_worker_delivers_a_coding_task_end_to_end(
     assert not any((tmp_path / "workspaces").iterdir())
 
 
+async def test_from_settings_threads_worker_concurrency() -> None:
+    from gantry.config import Settings
+
+    cfg = WorkerConfig.from_settings(Settings(worker_concurrency=250))
+    assert cfg.concurrency == 250
+
+
+class _BarrierLLM:
+    """Blocks each call until ``n`` calls are in flight at once, then releases
+    them all. If fewer than ``n`` agents run concurrently, the gate never opens
+    and the run stalls — so a green result *proves* real concurrency."""
+
+    def __init__(self, n: int) -> None:
+        self._n = n
+        self.peak = 0
+        self._in_flight = 0
+        self._gate = asyncio.Event()
+
+    async def complete(self, *, model, messages, tools=(), on_delta=None):  # type: ignore[no-untyped-def]
+        self._in_flight += 1
+        self.peak = max(self.peak, self._in_flight)
+        if self._in_flight >= self._n:
+            self._gate.set()
+        await asyncio.wait_for(self._gate.wait(), timeout=10)
+        return final_response("done")
+
+
+async def test_worker_runs_many_agents_concurrently_on_one_loop(
+    db: Sessions, tmp_path: Path
+) -> None:
+    # Co-pilot tasks skip the sandbox, so this isolates the concurrency machinery.
+    tasks = [await enqueue(db, {"copilot": "tree", "goal": f"design team {i}"}) for i in range(3)]
+    llm = _BarrierLLM(len(tasks))
+    config = WorkerConfig(
+        worker_id="conc-worker",
+        workspace_root=tmp_path / "workspaces",
+        lease_seconds=30,
+        poll_interval_seconds=0.05,
+        concurrency=len(tasks),
+    )
+    worker = Worker(db, config, llm)
+    shutdown = asyncio.Event()
+    run = asyncio.create_task(worker.run(shutdown))
+    try:
+        deadline = asyncio.get_running_loop().time() + 20
+        while True:
+            statuses = [(await get_task(db, t)).status for t in tasks]
+            if all(s is TaskStatus.SUCCEEDED for s in statuses):
+                break
+            assert asyncio.get_running_loop().time() < deadline, "tasks never all succeeded"
+            await asyncio.sleep(0.05)
+    finally:
+        shutdown.set()
+        await run
+
+    # All three cleared the barrier => all three ran at the same time.
+    assert llm.peak == len(tasks)
+
+
 async def test_worker_failure_requeues_task_for_retry(db: Sessions, tmp_path: Path) -> None:
     task = await enqueue(db, {"goal": "explode"})
 

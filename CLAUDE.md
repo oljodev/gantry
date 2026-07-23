@@ -3,9 +3,17 @@
 ## Local dev
 
 `./run.sh` starts the whole stack (bundled Postgres via the pgserver wheel,
-migrations, 100 workers, dashboard on `:8400`). `./run.sh dev` adds the Vite dev
-server on `:5173`. No Docker. Gate: `make check` (ruff, mypy strict, pytest) and
-`cd web && npm run check` (tsc, oxlint, vitest).
+migrations, one async worker process driving many agents concurrently —
+`GANTRY_WORKER_CONCURRENCY`, default 100 — dashboard on `:8400`). `./run.sh dev`
+adds the Vite dev server on `:5173`. No Docker. Gate: `make check` (ruff, mypy
+strict, pytest) and `cd web && npm run check` (tsc, oxlint, vitest).
+
+The worker is a single asyncio process: a dispatcher claims tasks and runs up to
+`worker_concurrency` agent loops at once, all sharing one lean DB pool
+(`db_pool_size`/`db_max_overflow`) and one process-wide outbound LLM pacer
+(`llm_max_rps`/`llm_rps_burst`, a token bucket). Agents spend ~all their time
+awaiting network I/O, so one process replaces the old OS-process-per-worker pool.
+`GANTRY_WORKERS` still runs a few processes if ever needed.
 
 ## Deployment (IMPORTANT)
 

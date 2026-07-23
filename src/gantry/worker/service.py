@@ -8,6 +8,7 @@ only as a courtesy: finish the in-flight task, then exit.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import random
 import uuid
 from collections.abc import Callable
@@ -25,6 +26,7 @@ from gantry.logging import get_logger
 from gantry.runtime.compaction import CompactionConfig
 from gantry.runtime.llm import LiteLLMClient, LLMClient
 from gantry.runtime.loop import AgentLoopError, run_agent_task
+from gantry.runtime.ratelimit import AsyncRateLimiter
 from gantry.runtime.tools import TaskParked
 from gantry.skills.store import load_registry
 from gantry.vault import Vault
@@ -71,6 +73,9 @@ class WorkerConfig:
     #: Add Anthropic prompt-cache breakpoints to each LLM request (the loop's
     #: append-only history makes the prefix stable, so this is near-free).
     prompt_caching: bool = True
+    #: How many agent tasks this process runs at once on the shared event loop.
+    #: Default 1 keeps a single-slot worker (the natural unit for tests).
+    concurrency: int = 1
 
     @classmethod
     def from_settings(cls, settings: Settings, worker_id: str | None = None) -> WorkerConfig:
@@ -81,6 +86,7 @@ class WorkerConfig:
             max_subtasks=settings.max_subtasks_per_task,
             skills_root=settings.skills_root,
             prompt_caching=settings.prompt_caching,
+            concurrency=settings.worker_concurrency,
             compaction=CompactionConfig(
                 max_context_tokens=settings.max_context_tokens,
                 keep_recent_messages=settings.keep_recent_messages,
@@ -98,27 +104,60 @@ class Worker:
         *,
         vault: Vault | None = None,
         llm_factory: LLMFactory | None = None,
+        limiter: AsyncRateLimiter | None = None,
     ) -> None:
         self._sessions = sessions
         self._config = config
         self._llm = llm
         self._listener = listener
         self._vault = vault
+        # Per-provider clients built at claim time share the one process-wide
+        # outbound pacer, so the whole fleet throttles as a single stream.
         self._llm_factory: LLMFactory = llm_factory or (
-            lambda key, base: LiteLLMClient(key, base, prompt_caching=config.prompt_caching)
+            lambda key, base: LiteLLMClient(
+                key, base, prompt_caching=config.prompt_caching, limiter=limiter
+            )
         )
         self.processed = 0
 
     async def run(self, shutdown: asyncio.Event) -> None:
-        """Main loop: claim when work exists, doze on NOTIFY/poll otherwise."""
-        logger.info("worker.started", worker_id=self._config.worker_id)
-        while not shutdown.is_set():
-            task = await self._claim()
-            if task is not None:
+        """Dispatcher loop: claim a task whenever a slot is free and run it as a
+        concurrent asyncio task, up to ``concurrency`` at once. One event loop
+        drives every agent; a single poller dozes on NOTIFY when the queue is
+        empty (no idle-poll storm), and each slot shares the one DB pool and the
+        one outbound LLM pacer.
+        """
+        concurrency = max(1, self._config.concurrency)
+        slots = asyncio.Semaphore(concurrency)
+        running: set[asyncio.Task[None]] = set()
+        logger.info("worker.started", worker_id=self._config.worker_id, concurrency=concurrency)
+
+        async def _run_slot(task: Task) -> None:
+            try:
                 await self.process(task)
+            finally:
+                slots.release()
+
+        while not shutdown.is_set():
+            if not await self._acquire_slot(slots, shutdown):
+                break  # shutdown while waiting for a free slot
+            task = await self._claim()
+            if task is None:
+                slots.release()
+                await self._doze(shutdown)
                 continue
-            await self._doze()
-        logger.info("worker.stopped", worker_id=self._config.worker_id)
+            slot = asyncio.create_task(_run_slot(task))
+            running.add(slot)
+            slot.add_done_callback(running.discard)
+
+        # Shutdown: stop claiming and abandon in-flight runs. This is safe by
+        # construction — every step is checkpointed, so an abandoned task's lease
+        # simply lapses and the reaper re-queues it from its log (kill -9 posture).
+        for slot in list(running):
+            slot.cancel()
+        if running:
+            await asyncio.gather(*running, return_exceptions=True)
+        logger.info("worker.stopped", worker_id=self._config.worker_id, processed=self.processed)
 
     async def _claim(self) -> Task | None:
         async with session_scope(self._sessions) as session:
@@ -128,12 +167,35 @@ class Worker:
                 lease_seconds=self._config.lease_seconds,
             )
 
-    async def _doze(self) -> None:
+    async def _acquire_slot(self, slots: asyncio.Semaphore, shutdown: asyncio.Event) -> bool:
+        """Wait for a free slot, staying responsive to shutdown. False if
+        shutdown was requested before a slot came free."""
+        while not shutdown.is_set():
+            try:
+                await asyncio.wait_for(slots.acquire(), timeout=0.2)
+            except TimeoutError:
+                continue
+            return True
+        return False
+
+    async def _doze(self, shutdown: asyncio.Event) -> None:
         timeout = self._config.poll_interval_seconds * random.uniform(0.8, 1.2)
-        if self._listener is not None:
-            await self._listener.wait(timeout_seconds=timeout)
-        else:
-            await asyncio.sleep(timeout)
+
+        async def _wait() -> None:
+            if self._listener is not None:
+                await self._listener.wait(timeout_seconds=timeout)
+            else:
+                await asyncio.sleep(timeout)
+
+        stop = asyncio.ensure_future(shutdown.wait())
+        waiter = asyncio.ensure_future(_wait())
+        try:
+            await asyncio.wait({waiter, stop}, return_when=asyncio.FIRST_COMPLETED)
+        finally:
+            waiter.cancel()
+            stop.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await waiter
 
     async def process(self, task: Task) -> None:
         cfg = self._config

@@ -13,6 +13,7 @@ from gantry.core.db import create_engine
 from gantry.core.notify import QueueListener
 from gantry.logging import configure_logging, get_logger
 from gantry.runtime.llm import LiteLLMClient
+from gantry.runtime.ratelimit import AsyncRateLimiter
 from gantry.vault import Vault
 from gantry.worker.service import Worker, WorkerConfig
 
@@ -32,8 +33,23 @@ async def main() -> None:
         loop.add_signal_handler(sig, shutdown.set)
 
     vault = Vault.from_settings(settings) if settings.vault_key else None
+    # One process-wide outbound pacer, shared by the default client and every
+    # per-provider client the worker builds at claim time.
+    limiter = AsyncRateLimiter(settings.llm_max_rps, burst=settings.llm_rps_burst)
     async with QueueListener(settings.database_url_str) as listener:
-        worker = Worker(sessions, config, LiteLLMClient(), listener=listener, vault=vault)
+        worker = Worker(
+            sessions,
+            config,
+            LiteLLMClient(limiter=limiter),
+            listener=listener,
+            vault=vault,
+            limiter=limiter,
+        )
+        logger.info(
+            "worker.booting",
+            concurrency=config.concurrency,
+            llm_max_rps=settings.llm_max_rps,
+        )
         with contextlib.suppress(asyncio.CancelledError):
             await worker.run(shutdown)
     await engine.dispose()
