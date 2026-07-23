@@ -42,6 +42,17 @@ logger = get_logger(__name__)
 Sessions = async_sessionmaker[AsyncSession]
 
 
+#: HTTP statuses from a provider that a retry can never fix: invalid model /
+#: malformed request (400), bad key (401), forbidden (403), not found (404).
+#: Checked by attribute so we never import the heavy litellm at module load.
+_PERMANENT_PROVIDER_STATUSES = frozenset({400, 401, 403, 404})
+
+
+def _is_permanent_provider_error(exc: Exception) -> bool:
+    status = getattr(exc, "status_code", None)
+    return isinstance(status, int) and status in _PERMANENT_PROVIDER_STATUSES
+
+
 class LeaseLostError(RuntimeError):
     """Another worker owns this task now; abandon all work on it."""
 
@@ -378,8 +389,17 @@ class Worker:
             # The agent can't finish (e.g. max steps): retrying won't help.
             await self._fail(task, str(exc), retryable=False)
         except Exception as exc:
-            logger.warning("worker.task_errored", task_id=str(task.id), error=repr(exc))
-            await self._fail(task, repr(exc), retryable=True)
+            # A client-side provider error (invalid model, bad key, forbidden)
+            # can never succeed on retry — fail it fast with a clear message
+            # instead of burning every attempt (and flooding the log) on it.
+            retryable = not _is_permanent_provider_error(exc)
+            logger.warning(
+                "worker.task_errored",
+                task_id=str(task.id),
+                error=repr(exc),
+                retryable=retryable,
+            )
+            await self._fail(task, repr(exc), retryable=retryable)
         finally:
             heartbeater.cancel()
             if workspace is not None and (succeeded or not cfg.keep_failed_workspaces):

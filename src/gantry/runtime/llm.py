@@ -8,13 +8,31 @@ OpenAI-style dict format LiteLLM speaks natively.
 
 from __future__ import annotations
 
+import contextlib
 import json
+import logging
 import re
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field, replace
 from typing import Any, Protocol
 
 from gantry.runtime.ratelimit import AsyncRateLimiter
+
+_litellm_quieted = False
+
+
+def _quiet_litellm(litellm: Any) -> None:
+    """Silence LiteLLM's per-call INFO spam ('Provider List: ...', 'LiteLLM
+    completion() ...') so a failing model doesn't flood the worker log. Runs
+    once. Real errors still propagate to us as exceptions."""
+    global _litellm_quieted
+    if _litellm_quieted:
+        return
+    with contextlib.suppress(Exception):
+        litellm.suppress_debug_info = True
+    logging.getLogger("LiteLLM").setLevel(logging.WARNING)
+    _litellm_quieted = True
+
 
 #: OpenAI-style chat message dict: {"role": ..., "content": ..., ...}
 Message = dict[str, Any]
@@ -188,6 +206,7 @@ class LiteLLMClient:
     ) -> LLMResponse:
         import litellm
 
+        _quiet_litellm(litellm)
         # Pace the outbound stream before spending any tokens — under high
         # concurrency this queues bursts to avoid provider 429 spikes.
         if self._limiter is not None:

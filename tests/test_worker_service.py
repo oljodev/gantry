@@ -208,6 +208,27 @@ async def test_worker_failure_requeues_task_for_retry(db: Sessions, tmp_path: Pa
     assert refreshed.last_error is not None and "provider melted" in refreshed.last_error
 
 
+async def test_invalid_model_fails_fast_without_retry(db: Sessions, tmp_path: Path) -> None:
+    # An invalid model / bad request from the provider (HTTP 400) can never
+    # succeed on retry, so it fails terminally instead of burning every attempt.
+    task = await enqueue(db, {"goal": "x", "model": "openrouter/qwen/qwen3.7-plus"})
+
+    class ProviderBadRequest(Exception):
+        status_code = 400  # mirrors a litellm/openai BadRequestError
+
+    class BadModelLLM:
+        async def complete(self, **kwargs: object) -> object:
+            raise ProviderBadRequest("BadRequestError: qwen/qwen3.7-plus is not a valid model ID")
+
+    worker = make_worker(db, tmp_path, BadModelLLM())  # type: ignore[arg-type]
+    claimed = await claim_as(db, worker)
+    await worker.process(claimed)
+
+    refreshed = await get_task(db, task)
+    assert refreshed.status is TaskStatus.FAILED  # terminal, not re-queued
+    assert refreshed.last_error is not None and "not a valid model" in refreshed.last_error
+
+
 async def test_agent_loop_error_fails_terminally(db: Sessions, tmp_path: Path) -> None:
     task = await enqueue(db, {"goal": "loop forever", "max_steps": 1})
     worker = make_worker(db, tmp_path, CountingToolLLM(100))
