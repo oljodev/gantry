@@ -95,6 +95,18 @@ async def test_start_copilot_creates_a_restricted_task(client: httpx.AsyncClient
     assert task["payload"]["system_prompt"]  # architect prompt attached
 
 
+async def test_copilot_tasks_are_hidden_from_the_runs_list(client: httpx.AsyncClient) -> None:
+    started = await client.post(
+        "/api/copilot", json={"kind": "skill", "instruction": "a commit skill"}
+    )
+    assert started.status_code == 201
+    copilot_id = started.json()["id"]
+
+    listed = await client.get("/api/tasks")
+    assert listed.status_code == 200
+    assert copilot_id not in [t["id"] for t in listed.json()["tasks"]]
+
+
 async def test_start_copilot_includes_editor_context(client: httpx.AsyncClient) -> None:
     resp = await client.post(
         "/api/copilot",

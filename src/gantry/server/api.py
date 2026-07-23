@@ -115,6 +115,9 @@ async def list_tasks(
         .limit(limit)
         .offset(offset)
     )
+    # Co-pilot tasks (the skill/tree assistants) are not runs — they have their
+    # own session UI, so keep them out of the tasks/runs listing entirely.
+    stmt = stmt.where(Task.payload["copilot"].astext.is_(None))
     if status is not None:
         stmt = stmt.where(Task.status == status)
     if root_task_id is not None:
