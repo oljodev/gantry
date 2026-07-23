@@ -121,6 +121,13 @@ def _tool_names(registry: object) -> set[str]:
     return {s["function"]["name"] for s in registry.schemas()}
 
 
+def test_schemas_are_name_sorted_for_a_stable_cache_prefix() -> None:
+    # A canonical order keeps the tool block of the prompt prefix identical
+    # across steps, so provider prompt caching keeps hitting.
+    names = [s["function"]["name"] for s in build_coding_registry(can_spawn=True).schemas()]
+    assert names == sorted(names)
+
+
 def test_coding_registry_always_has_the_read_only_toolset() -> None:
     names = _tool_names(build_coding_registry())
     # Coding + search + web + ask_user, no git (no auth), no delegation.

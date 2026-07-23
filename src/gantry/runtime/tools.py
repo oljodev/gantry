@@ -138,7 +138,16 @@ class ToolRegistry:
         return self._tools.get(name)
 
     def schemas(self) -> list[ToolSchema]:
-        return [tool.schema() for tool in self._tools.values()]
+        # Name-sorted so the tool block of the request is byte-identical from
+        # one step to the next. The prompt prefix (system + tools) must not
+        # shift for provider prompt caching to hit — Anthropic's breakpoints and
+        # DeepSeek/OpenAI automatic prefix caching alike key off a stable prefix.
+        # Registration order is already deterministic; sorting also makes two
+        # registries with the same tools cache-compatible regardless of build order.
+        return sorted(
+            (tool.schema() for tool in self._tools.values()),
+            key=lambda schema: str(schema.get("function", {}).get("name", "")),
+        )
 
     def __len__(self) -> int:
         return len(self._tools)
