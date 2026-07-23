@@ -113,12 +113,19 @@ class Worker:
         vault: Vault | None = None,
         llm_factory: LLMFactory | None = None,
         limiter: AsyncRateLimiter | None = None,
+        cancel_listener: QueueListener | None = None,
     ) -> None:
         self._sessions = sessions
         self._config = config
         self._llm = llm
         self._listener = listener
+        self._cancel_listener = cancel_listener
         self._vault = vault
+        #: Slots currently running an agent, by task id — the target of a hard
+        #: cancel. ``_stopping`` marks the ones being deliberately stopped so the
+        #: slot records them CANCELLED (vs a shutdown cancel, left for the reaper).
+        self._running: dict[uuid.UUID, asyncio.Task[None]] = {}
+        self._stopping: set[uuid.UUID] = set()
         # Per-provider clients built at claim time share the one process-wide
         # outbound pacer, so the whole fleet throttles as a single stream.
         self._llm_factory: LLMFactory = llm_factory or (
@@ -137,13 +144,24 @@ class Worker:
         """
         concurrency = max(1, self._config.concurrency)
         slots = asyncio.Semaphore(concurrency)
-        running: set[asyncio.Task[None]] = set()
+        # An operator "Stop all" NOTIFYs the cancel channel; interrupt the slot now.
+        if self._cancel_listener is not None:
+            self._cancel_listener.on_payload = self._on_cancel_notify
         logger.info("worker.started", worker_id=self._config.worker_id, concurrency=concurrency)
 
         async def _run_slot(task: Task) -> None:
             try:
                 await self.process(task)
+            except asyncio.CancelledError:
+                # A deliberate operator stop lands the task CANCELLED right now; a
+                # shutdown cancel is abandoned for the reaper to re-queue.
+                if task.id in self._stopping:
+                    await self._finalize_stop(task)
+                    return
+                raise
             finally:
+                self._stopping.discard(task.id)
+                self._running.pop(task.id, None)
                 slots.release()
 
         while not shutdown.is_set():
@@ -155,16 +173,15 @@ class Worker:
                 await self._doze(shutdown)
                 continue
             slot = asyncio.create_task(_run_slot(task))
-            running.add(slot)
-            slot.add_done_callback(running.discard)
+            self._running[task.id] = slot
 
         # Shutdown: stop claiming and abandon in-flight runs. This is safe by
         # construction — every step is checkpointed, so an abandoned task's lease
         # simply lapses and the reaper re-queues it from its log (kill -9 posture).
-        for slot in list(running):
+        for slot in list(self._running.values()):
             slot.cancel()
-        if running:
-            await asyncio.gather(*running, return_exceptions=True)
+        if self._running:
+            await asyncio.gather(*self._running.values(), return_exceptions=True)
         logger.info("worker.stopped", worker_id=self._config.worker_id, processed=self.processed)
 
     async def _claim(self) -> Task | None:
@@ -185,6 +202,38 @@ class Worker:
                 continue
             return True
         return False
+
+    def _on_cancel_notify(self, payload: str) -> None:
+        """Cancel-channel handler (runs on the event loop): stop the named slot."""
+        try:
+            task_id = uuid.UUID(payload)
+        except ValueError:
+            return
+        self._request_hard_cancel(task_id)
+
+    def _request_hard_cancel(self, task_id: uuid.UUID) -> None:
+        """Interrupt a running slot immediately (mid LLM/tool call). A no-op if
+        this worker isn't running that task."""
+        slot = self._running.get(task_id)
+        if slot is not None and not slot.done():
+            self._stopping.add(task_id)
+            slot.cancel()
+            logger.info("worker.hard_cancel", task_id=str(task_id))
+
+    async def _finalize_stop(self, task: Task) -> None:
+        """Record a hard-stopped task as CANCELLED (its cleanup already ran in
+        process()'s finally). Idempotent via the lease compare-and-set."""
+        try:
+            async with session_scope(self._sessions) as session:
+                await queue.mark_cancelled(
+                    session,
+                    task_id=task.id,
+                    worker_id=self._config.worker_id,
+                    attempt=task.attempt,
+                )
+            logger.info("worker.task_stopped", task_id=str(task.id))
+        except Exception as exc:  # the reaper still recovers it if this fails
+            logger.warning("worker.stop_mark_failed", task_id=str(task.id), error=repr(exc))
 
     async def _doze(self, shutdown: asyncio.Event) -> None:
         timeout = self._config.poll_interval_seconds * random.uniform(0.8, 1.2)
@@ -425,7 +474,9 @@ class Worker:
                 lease_lost.set()
                 return
             if beat.cancel_requested:
-                # Signal the run to abort at its next step, but keep heartbeating
-                # so the lease can't lapse (and the reaper re-queue the task)
-                # during a long in-flight LLM/tool call before that step.
+                # Fast path: interrupt the in-flight step now if this task runs
+                # under the dispatcher (a no-op otherwise). Fallback: set the
+                # cooperative flag so a directly-driven process() still aborts at
+                # its next step. Keep heartbeating either way so the lease holds.
+                self._request_hard_cancel(task.id)
                 cancel_requested.set()

@@ -36,7 +36,7 @@ from gantry.core.models import (
     TaskKind,
     TaskStatus,
 )
-from gantry.core.notify import notify_task_ready
+from gantry.core.notify import notify_task_cancel, notify_task_ready
 from gantry.logging import get_logger
 
 logger = get_logger(__name__)
@@ -751,6 +751,9 @@ async def cancel(session: AsyncSession, *, task_id: uuid.UUID) -> CancelResult |
     )
     if requested is None:
         return None  # gone or already terminal
+    # Wake the owning worker now so it interrupts the in-flight step, rather than
+    # waiting for its next heartbeat poll (the cooperative path is the fallback).
+    await notify_task_cancel(session, task_id)
     return CancelResult(task=requested, requested=True)
 
 

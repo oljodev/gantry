@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from gantry.config import get_settings
 from gantry.core.db import create_engine
-from gantry.core.notify import QueueListener
+from gantry.core.notify import TASK_CANCEL_CHANNEL, QueueListener
 from gantry.logging import configure_logging, get_logger
 from gantry.runtime.llm import LiteLLMClient
 from gantry.runtime.ratelimit import AsyncRateLimiter
@@ -36,7 +36,10 @@ async def main() -> None:
     # One process-wide outbound pacer, shared by the default client and every
     # per-provider client the worker builds at claim time.
     limiter = AsyncRateLimiter(settings.llm_max_rps, burst=settings.llm_rps_burst)
-    async with QueueListener(settings.database_url_str) as listener:
+    async with (
+        QueueListener(settings.database_url_str) as listener,
+        QueueListener(settings.database_url_str, channel=TASK_CANCEL_CHANNEL) as cancel_listener,
+    ):
         worker = Worker(
             sessions,
             config,
@@ -44,6 +47,7 @@ async def main() -> None:
             listener=listener,
             vault=vault,
             limiter=limiter,
+            cancel_listener=cancel_listener,
         )
         logger.info(
             "worker.booting",

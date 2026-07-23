@@ -13,6 +13,7 @@ import asyncio
 import contextlib
 import json
 import uuid
+from collections.abc import Callable
 from types import TracebackType
 from typing import Self
 
@@ -25,6 +26,10 @@ TASK_READY_CHANNEL = "gantry_task_ready"
 #: fans out to WebSocket subscribers. The payload is a hint, not the data:
 #: subscribers always re-read the event log from their cursor.
 TASK_EVENTS_CHANNEL = "gantry_task_events"
+#: Fires when an operator cancels a live task — carries the task id so a worker
+#: holding that task can interrupt it immediately, instead of waiting for its
+#: next heartbeat poll and step boundary.
+TASK_CANCEL_CHANNEL = "gantry_task_cancel"
 
 
 def asyncpg_dsn(database_url: str) -> str:
@@ -41,6 +46,12 @@ async def notify_task_event(session: AsyncSession, task_id: uuid.UUID, seq: int)
     await session.execute(sa.select(sa.func.pg_notify(TASK_EVENTS_CHANNEL, payload)))
 
 
+async def notify_task_cancel(session: AsyncSession, task_id: uuid.UUID) -> None:
+    """Signal (on commit) that a live task should stop now — the worker holding
+    it interrupts the in-flight step instead of waiting for its heartbeat poll."""
+    await session.execute(sa.select(sa.func.pg_notify(TASK_CANCEL_CHANNEL, str(task_id))))
+
+
 class QueueListener:
     """LISTENs on the task-ready channel; workers await wakeups with a timeout.
 
@@ -48,11 +59,21 @@ class QueueListener:
     which pooled sessions can't provide reliably.
     """
 
-    def __init__(self, database_url: str, channel: str = TASK_READY_CHANNEL) -> None:
+    def __init__(
+        self,
+        database_url: str,
+        channel: str = TASK_READY_CHANNEL,
+        *,
+        on_payload: Callable[[str], None] | None = None,
+    ) -> None:
         self._dsn = asyncpg_dsn(database_url)
         self._channel = channel
         self._conn: asyncpg.Connection | None = None
         self._wakeup = asyncio.Event()
+        #: Optional per-notification hook (e.g. a worker cancelling a slot). Runs
+        #: on the event loop before the coalesced wakeup is set. Assignable after
+        #: construction so a listener can be wired to its owner once it exists.
+        self.on_payload = on_payload
 
     async def __aenter__(self) -> Self:
         self._conn = await asyncpg.connect(self._dsn)
@@ -78,6 +99,9 @@ class QueueListener:
         channel: str,
         payload: object,
     ) -> None:
+        if self.on_payload is not None:
+            with contextlib.suppress(Exception):
+                self.on_payload(str(payload))
         self._wakeup.set()
 
     async def wait(self, timeout_seconds: float) -> bool:
