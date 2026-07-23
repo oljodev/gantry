@@ -380,7 +380,12 @@ async def _lookup_child(arguments: dict[str, Any], ctx: ToolContext) -> Task | T
     try:
         child_id = uuid.UUID(raw)
     except ValueError:
-        return ToolResult(f"invalid task id {raw!r}", is_error=True)
+        return ToolResult(
+            f"invalid task id {raw!r}: that is not a task id. Pass the exact id (a "
+            "UUID) that spawn_subtask returned when you launched the child — do not "
+            "make up a name. To wait for the whole batch at once, use wait_for_children.",
+            is_error=True,
+        )
     sessions = _sessions_of(ctx)
     async with session_scope(sessions) as session:
         child = await session.get(Task, child_id)

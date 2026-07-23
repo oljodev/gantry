@@ -430,6 +430,18 @@ async def test_agent_status_rejects_a_non_child(db: Sessions) -> None:
     assert result.is_error and "not one of your children" in result.content
 
 
+async def test_agent_status_guides_a_made_up_id_back_to_the_real_one(db: Sessions) -> None:
+    # The leader sometimes invents a readable name (e.g. "survey-board") instead
+    # of the UUID spawn_subtask returned; the error must steer it back, not just
+    # say "invalid".
+    planner = await make_planner(db)
+    result = await AgentStatusTool().execute(
+        {"task_id": "survey-board"}, ctx_for(planner, db, "status_bad")
+    )
+    assert result.is_error
+    assert "spawn_subtask" in result.content and "wait_for_children" in result.content
+
+
 async def test_agent_terminate_stops_a_child(db: Sessions) -> None:
     planner = await make_planner(db)
     child = await spawn(db, planner, "call_A")
