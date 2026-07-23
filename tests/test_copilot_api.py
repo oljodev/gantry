@@ -32,6 +32,17 @@ def _names(kind: str) -> set[str]:
     return {s["function"]["name"] for s in build_copilot_registry(kind).schemas()}
 
 
+def test_tree_architect_allocates_models_by_cost_tier() -> None:
+    from gantry.worker.tools.copilot import TREE_ARCHITECT_PROMPT
+
+    prompt = TREE_ARCHITECT_PROMPT.lower()
+    # Cheap models for read-only work, reasoning models for hard work, strong
+    # models for orchestration — the cost-tiering the co-pilot should apply.
+    assert "cheapest" in prompt and "read-only" in prompt
+    assert "reasoning model" in prompt
+    assert "orchestrator" in prompt
+
+
 def test_copilot_registry_is_restricted() -> None:
     assert _names("skill") == {"propose_skill", "ask_user"}
     # The tree co-pilot can also author skills for the team (gated by approval).
