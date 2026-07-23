@@ -26,7 +26,9 @@ DEFAULT_SYSTEM_PROMPT = (
     "You are a Gantry worker agent: an autonomous software engineer executing one "
     "well-defined task. Work step by step using the available tools. When the task "
     "is complete, reply with a final message summarizing the outcome instead of "
-    "calling more tools."
+    "calling more tools. Keep that final summary tight and factual: it is a handoff "
+    "the agent that spawned you reads back into its own context, so state what "
+    "changed and where (files, identifiers, results) — not a narration of every step."
 )
 
 PLANNER_SYSTEM_PROMPT = (
@@ -42,7 +44,8 @@ PLANNER_SYSTEM_PROMPT = (
     "- If a child failed, decide: respawn it (possibly with a refined goal), "
     "work around it, or abort with an explanation.\n"
     "- When the goal is achieved, reply with a final message that integrates "
-    "the children's results instead of calling more tools."
+    "the children's results instead of calling more tools. Keep it tight and "
+    "factual — it is a handoff, not a narration."
 )
 
 
