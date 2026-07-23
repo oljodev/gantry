@@ -68,6 +68,9 @@ class WorkerConfig:
     compaction: CompactionConfig | None = field(default_factory=CompactionConfig)
     max_subtasks: int = 32
     skills_root: Path | None = None
+    #: Add Anthropic prompt-cache breakpoints to each LLM request (the loop's
+    #: append-only history makes the prefix stable, so this is near-free).
+    prompt_caching: bool = True
 
     @classmethod
     def from_settings(cls, settings: Settings, worker_id: str | None = None) -> WorkerConfig:
@@ -77,6 +80,7 @@ class WorkerConfig:
             github_token=settings.github_token,
             max_subtasks=settings.max_subtasks_per_task,
             skills_root=settings.skills_root,
+            prompt_caching=settings.prompt_caching,
         )
 
 
@@ -96,7 +100,9 @@ class Worker:
         self._llm = llm
         self._listener = listener
         self._vault = vault
-        self._llm_factory: LLMFactory = llm_factory or LiteLLMClient
+        self._llm_factory: LLMFactory = llm_factory or (
+            lambda key, base: LiteLLMClient(key, base, prompt_caching=config.prompt_caching)
+        )
         self.processed = 0
 
     async def run(self, shutdown: asyncio.Event) -> None:

@@ -43,6 +43,11 @@ class Settings(BaseSettings):
     log_format: LogFormat = LogFormat.CONSOLE
     #: LiteLLM model string (provider-prefixed), overridable per task payload.
     default_model: str = "anthropic/claude-opus-4-8"
+    #: Insert Anthropic prompt-cache breakpoints into each LLM request. The
+    #: durable loop's history is append-only, so the prompt prefix is stable
+    #: and re-read at cache rates every step — the main lever against input
+    #: token bloat. Kill-switch: GANTRY_PROMPT_CACHING=false.
+    prompt_caching: bool = True
     #: Root directory for per-task worker workspaces.
     workspace_root: Path = Path("/tmp/gantry-workspaces")
     #: GitHub token for workers' git operations (vault-managed from Phase 9).

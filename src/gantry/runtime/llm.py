@@ -51,6 +51,61 @@ class LLMClient(Protocol):
     ) -> LLMResponse: ...
 
 
+def _model_supports_caching(model: str) -> bool:
+    """Anthropic (incl. Bedrock/Vertex Claude) is what LiteLLM lets us set
+    ``cache_control`` on. Everything else must be left untouched — an unknown
+    key can trip other providers' request validation."""
+    m = model.lower()
+    return "claude" in m or "anthropic" in m
+
+
+def _mark_cache(message: Message) -> Message:
+    """Return a shallow copy of ``message`` with an ephemeral cache breakpoint
+    on its final text block, promoting a plain string body to block form. A
+    message with no cacheable text (e.g. an assistant turn that is only
+    tool_calls) is returned unchanged."""
+    content = message.get("content")
+    if isinstance(content, str):
+        if not content:
+            return message
+        blocks: list[dict[str, Any]] = [{"type": "text", "text": content}]
+    elif isinstance(content, list) and content:
+        blocks = [dict(b) if isinstance(b, dict) else b for b in content]
+    else:
+        return message
+    last = blocks[-1]
+    if not isinstance(last, dict):
+        return message
+    blocks[-1] = {**last, "cache_control": {"type": "ephemeral"}}
+    return {**message, "content": blocks}
+
+
+def with_cache_control(messages: list[Message], model: str) -> list[Message]:
+    """Add Anthropic prompt-cache breakpoints so each loop step re-reads the
+    prompt at cache rates instead of paying full input price.
+
+    Two breakpoints (Anthropic allows four):
+
+    - the **system** message — the static prefix (framework instructions,
+      injected skills). Because Anthropic caches ``tools → system → messages``
+      in order, this breakpoint also covers the tool schemas that precede it.
+    - the **last** message — the rolling prefix. Marking the tail each step
+      writes a cache of the whole conversation so far; the next step reads it
+      as a hit and extends it, so the append-only history stays cached.
+
+    A no-op for providers LiteLLM can't pass ``cache_control`` to, and for the
+    degenerate empty/single-message cases.
+    """
+    if not messages or not _model_supports_caching(model):
+        return messages
+    out = list(messages)
+    if out[0].get("role") == "system":
+        out[0] = _mark_cache(out[0])
+    if len(out) > 1:
+        out[-1] = _mark_cache(out[-1])
+    return out
+
+
 def parse_tool_arguments(raw: str | None) -> dict[str, Any]:
     """Best-effort parse of a tool-call arguments JSON string.
 
@@ -78,9 +133,16 @@ class LiteLLMClient:
     None to fall back to ambient env vars like ``ANTHROPIC_API_KEY``).
     """
 
-    def __init__(self, api_key: str | None = None, api_base: str | None = None) -> None:
+    def __init__(
+        self,
+        api_key: str | None = None,
+        api_base: str | None = None,
+        *,
+        prompt_caching: bool = True,
+    ) -> None:
         self._api_key = api_key
         self._api_base = api_base
+        self._prompt_caching = prompt_caching
 
     async def complete(
         self,
@@ -91,7 +153,8 @@ class LiteLLMClient:
     ) -> LLMResponse:
         import litellm
 
-        kwargs: dict[str, Any] = {"model": model, "messages": messages}
+        payload = with_cache_control(messages, model) if self._prompt_caching else messages
+        kwargs: dict[str, Any] = {"model": model, "messages": payload}
         if tools:
             kwargs["tools"] = list(tools)
         if self._api_key:
