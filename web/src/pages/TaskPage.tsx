@@ -10,7 +10,8 @@ import { TaskTree } from '../components/TaskTree'
 import { TerminalPane } from '../components/TerminalPane'
 import { TraceTimeline } from '../components/TraceTimeline'
 import { Markdown } from '../components/Markdown'
-import { shortId } from '../lib/format'
+import { compactNumber, shortId } from '../lib/format'
+import { runTokens } from '../lib/usage'
 import { finalText, foldTrace, pendingApprovals, pendingQuestions } from '../lib/trace'
 
 type RightTab = 'terminal' | 'diff'
@@ -449,12 +450,11 @@ function RunRollup({ task, tree }: { task: Task | null; tree: Task[] }) {
     ['failed', String(failed), failed ? 'text-red-300' : 'text-zinc-400'],
   ]
   if (typeof result.steps === 'number') stats.push(['steps', String(result.steps), 'text-zinc-300'])
-  if (typeof result.prompt_tokens === 'number')
-    stats.push([
-      'tokens',
-      `${result.prompt_tokens}→${String(result.completion_tokens ?? '?')}`,
-      'text-zinc-300',
-    ])
+  // Tokens sum the whole run tree (every agent), not just the root — so a team
+  // run shows what the team spent, not the thin orchestrator's slice.
+  const { prompt, completion } = runTokens(nodes)
+  if (prompt || completion)
+    stats.push(['tokens', `${compactNumber(prompt)}→${compactNumber(completion)}`, 'text-zinc-300'])
   return (
     <dl className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-xs text-zinc-500">
       <div className="flex gap-1.5">

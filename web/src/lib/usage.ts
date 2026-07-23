@@ -61,3 +61,21 @@ export function densifyDaily(points: UsagePoint[], days: number, endDate: string
 export function maxModelTotal(models: ModelUsage[]): number {
   return models.reduce((max, m) => Math.max(max, totalTokens(m)), 0)
 }
+
+/** Sum the per-task token totals stored in each task's `result` across a run's
+ * whole tree (root + every agent it spawned). A task with no result yet (still
+ * running) contributes nothing — so this reads as tokens-so-far while live. */
+export function runTokens(tasks: Array<{ result: Record<string, unknown> | null }>): {
+  prompt: number
+  completion: number
+} {
+  let prompt = 0
+  let completion = 0
+  for (const t of tasks) {
+    const r = t.result
+    if (!r) continue
+    if (typeof r.prompt_tokens === 'number') prompt += r.prompt_tokens
+    if (typeof r.completion_tokens === 'number') completion += r.completion_tokens
+  }
+  return { prompt, completion }
+}

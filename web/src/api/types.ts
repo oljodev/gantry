@@ -162,6 +162,15 @@ export interface Usage {
   by_model: ModelUsage[]
 }
 
+export interface RunUsage {
+  run_id: string
+  prompt_tokens: number
+  completion_tokens: number
+  cache_read_tokens: number
+  agents: number
+  calls: number
+}
+
 export interface Me {
   auth_enabled: boolean
   email: string | null

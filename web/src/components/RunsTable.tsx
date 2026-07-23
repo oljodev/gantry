@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ChevronDown, ChevronRight, Network, Users } from 'lucide-react'
-import { cancelTask, listTasks, retryTask } from '../api/client'
-import { ACTIVE_STATUSES, type Task, type TaskStatus } from '../api/types'
+import { cancelTask, getRunUsage, listTasks, retryTask } from '../api/client'
+import { ACTIVE_STATUSES, type RunUsage, type Task, type TaskStatus } from '../api/types'
 import { dayKey, dayLabel } from '../lib/day'
-import { duration, relativeTime, shortId } from '../lib/format'
+import { compactNumber, duration, relativeTime, shortId } from '../lib/format'
 import { projectPath, useProjectId } from '../lib/project'
+import { runTokens } from '../lib/usage'
 import { useNow } from '../lib/useNow'
 import { useAppData } from '../state/AppDataProvider'
 import { StatusPill } from './StatusPill'
@@ -50,10 +51,20 @@ export function RunsTable({
   const [actionError, setActionError] = useState<string | null>(null)
   const now = useNow()
 
+  const [usage, setUsage] = useState<Map<string, RunUsage>>(new Map())
+
   const fetchLimit = limit ?? PAGE * pages
   useEffect(() => {
     listTasks({ limit: fetchLimit, projectId, rootsOnly: true }).then(setTasks).catch(console.error)
   }, [fetchLimit, version, projectId])
+
+  // Per-run token totals (each run summed across its whole team tree), keyed by
+  // the run's root task id — looked up per row without an N+1 of fetches.
+  useEffect(() => {
+    getRunUsage(projectId)
+      .then((runs) => setUsage(new Map(runs.map((r) => [r.run_id, r]))))
+      .catch(console.error)
+  }, [version, projectId])
 
   const visible = useMemo(() => {
     const needle = search.trim().toLowerCase()
@@ -116,13 +127,14 @@ export function RunsTable({
               {!compact && <th className="px-3 py-2 font-medium">attempt</th>}
               {!compact && <th className="px-3 py-2 font-medium">worker</th>}
               <th className="px-3 py-2 font-medium">duration</th>
+              <th className="px-3 py-2 font-medium">tokens</th>
               <th className="px-3 py-2 font-medium">created</th>
               {!compact && <th className="px-3 py-2" />}
             </tr>
           </thead>
           <tbody>
             {visible.map((task, i) => {
-              const cols = compact ? 5 : 8
+              const cols = compact ? 6 : 9
               const day = dayKey(task.created_at)
               const showDay = groupByDay && (i === 0 || dayKey(visible[i - 1].created_at) !== day)
               return (
@@ -139,13 +151,19 @@ export function RunsTable({
                       </td>
                     </tr>
                   )}
-                  <Row task={task} now={now} compact={compact} onAction={act} />
+                  <Row
+                    task={task}
+                    now={now}
+                    compact={compact}
+                    onAction={act}
+                    usage={usage.get(task.id)}
+                  />
                 </React.Fragment>
               )
             })}
             {tasks && visible.length === 0 && (
               <tr>
-                <td colSpan={compact ? 5 : 8} className="px-3 py-8 text-center text-zinc-600">
+                <td colSpan={compact ? 6 : 9} className="px-3 py-8 text-center text-zinc-600">
                   {tasks.length === 0 ? 'No runs yet.' : 'Nothing matches.'}
                 </td>
               </tr>
@@ -179,11 +197,13 @@ function Row({
   now,
   compact,
   onAction,
+  usage,
 }: {
   task: Task
   now: number
   compact: boolean
   onAction: (p: Promise<Task>) => void
+  usage?: RunUsage
 }) {
   const [expanded, setExpanded] = useState(false)
   const [children, setChildren] = useState<Task[] | null>(null)
@@ -191,7 +211,7 @@ function Row({
   // A run is a "team" if it launched a team or is a planner that fans out.
   const isTeam = Boolean(teamName) || Boolean(task.payload.team_id) || task.kind === 'plan'
   const expandable = isTeam && !compact
-  const cols = compact ? 5 : 8
+  const cols = compact ? 6 : 9
 
   const toggle = () => {
     const next = !expanded
@@ -258,6 +278,9 @@ function Row({
           <td className="px-3 py-2 font-mono text-xs text-zinc-500">{task.claimed_by ?? '—'}</td>
         )}
         <td className="px-3 py-2 font-mono text-xs text-zinc-500">{taskRuntime(task, now)}</td>
+        <td className="px-3 py-2">
+          <TokenCell prompt={usage?.prompt_tokens} completion={usage?.completion_tokens} />
+        </td>
         <td className="px-3 py-2 text-zinc-500">{relativeTime(task.created_at)}</td>
         {!compact && (
           <td className="px-3 py-2 text-right">
@@ -303,12 +326,14 @@ function ChildRow({ task, now, cols }: { task: Task; now: number; cols: number }
   const agent = String(task.payload.agent_name ?? '').trim()
   const goal = String(task.payload.goal ?? '—')
   const delegates = Boolean(task.payload.can_spawn) || task.kind === 'plan'
+  // This agent's own spend within the run.
+  const { prompt, completion } = runTokens([task])
   return (
     <tr className="bg-zinc-950/40 transition hover:bg-zinc-900/40">
       <td className="px-3 py-1.5">
         <StatusPill status={task.status} />
       </td>
-      <td className="max-w-md px-3 py-1.5" colSpan={cols - 3}>
+      <td className="max-w-md px-3 py-1.5" colSpan={cols - 4}>
         <Link
           to={projectPath(task.project_id, `tasks/${task.id}`)}
           title={goal}
@@ -322,8 +347,23 @@ function ChildRow({ task, now, cols }: { task: Task; now: number; cols: number }
         </Link>
       </td>
       <td className="px-3 py-1.5 font-mono text-xs text-zinc-500">{taskRuntime(task, now)}</td>
+      <td className="px-3 py-1.5">
+        <TokenCell prompt={prompt} completion={completion} />
+      </td>
       <td className="px-3 py-1.5 text-zinc-500">{relativeTime(task.created_at)}</td>
     </tr>
+  )
+}
+
+// input→output tokens, compacted; a dash when nothing is recorded yet.
+function TokenCell({ prompt, completion }: { prompt?: number; completion?: number }) {
+  if (!prompt && !completion) return <span className="text-xs text-zinc-600">—</span>
+  return (
+    <span className="font-mono text-xs whitespace-nowrap text-zinc-400 tabular-nums">
+      {compactNumber(prompt ?? 0)}
+      <span className="text-zinc-600">→</span>
+      {compactNumber(completion ?? 0)}
+    </span>
   )
 }
 

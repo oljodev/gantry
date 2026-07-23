@@ -6,6 +6,7 @@ import {
   densifyDaily,
   maxModelTotal,
   niceCeil,
+  runTokens,
   totalTokens,
 } from './usage'
 
@@ -72,6 +73,21 @@ describe('densifyDaily', () => {
     expect(out[0].prompt_tokens).toBe(500)
     expect(out[1].prompt_tokens).toBe(0)
     expect(out[2].prompt_tokens).toBe(0)
+  })
+})
+
+describe('runTokens', () => {
+  it('sums result tokens across a run tree, skipping unfinished tasks', () => {
+    expect(
+      runTokens([
+        { result: { prompt_tokens: 30, completion_tokens: 5 } },
+        { result: { prompt_tokens: 400, completion_tokens: 90 } },
+        { result: null }, // still running -> contributes nothing
+      ]),
+    ).toEqual({ prompt: 430, completion: 95 })
+  })
+  it('is zero for an empty or all-unfinished run', () => {
+    expect(runTokens([{ result: null }])).toEqual({ prompt: 0, completion: 0 })
   })
 })
 

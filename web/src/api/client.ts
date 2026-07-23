@@ -13,6 +13,7 @@ import type {
   Provider,
   ProviderCreate,
   ProviderTestResult,
+  RunUsage,
   Skill,
   SkillWrite,
   Stats,
@@ -96,6 +97,11 @@ export function getUsage(projectId?: string, days = 30): Promise<Usage> {
   const query = new URLSearchParams({ days: String(days) })
   if (projectId) query.set('project_id', projectId)
   return request<Usage>(`/api/usage?${query}`)
+}
+
+export function getRunUsage(projectId?: string): Promise<RunUsage[]> {
+  const suffix = projectId ? `?project_id=${projectId}` : ''
+  return request<{ runs: RunUsage[] }>(`/api/usage/runs${suffix}`).then((b) => b.runs)
 }
 
 // --- projects ------------------------------------------------------------
