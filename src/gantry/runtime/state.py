@@ -137,11 +137,26 @@ class AgentState:
     #: How many times the loop has nudged this agent to wait for live children
     #: it tried to abandon — bounded so a stuck agent can't loop forever.
     children_reminders: int = 0
+    #: How many times the loop has nudged a leader to stop surveying and spawn
+    #: (see EventType.LEADER_NUDGE) — bounded like children_reminders.
+    leader_nudges: int = 0
     resumed: bool = False
 
     @property
     def messages(self) -> list[Message]:
         return [t.message for t in self.tracked]
+
+    def count_tool_calls(self, *names: str) -> int:
+        """How many times the agent has called any of ``names`` so far, counted
+        from the folded message history (so it is identical after a resume)."""
+        wanted = set(names)
+        return sum(
+            1
+            for t in self.tracked
+            if t.message.get("role") == "assistant"
+            for tc in (t.message.get("tool_calls") or [])
+            if tc["function"]["name"] in wanted
+        )
 
     def pending_tool_calls(self) -> list[ToolCallRequest]:
         """Tool calls of the last assistant message that have no result yet."""
@@ -224,6 +239,33 @@ def children_pending_message(children: Sequence[str]) -> Message:
     }
 
 
+#: The read-only tools a leader surveys the repo with. Counting calls to these
+#: (against SPAWN_TOOL_NAMES) is how the loop detects a leader that keeps
+#: reading instead of delegating.
+SURVEY_TOOL_NAMES = frozenset({"read_file", "list_dir", "glob", "grep"})
+#: The delegation tool whose first use means the leader has started routing
+#: work — once it fires, the survey-budget nudge stops.
+SPAWN_TOOL_NAMES = frozenset({"spawn_subtask"})
+
+
+def leader_nudge_message(surveyed: int) -> Message:
+    """The reminder injected when an autonomous leader has surveyed past its
+    budget without spawning anyone — the over-planning failure mode. Pushes it
+    to stop reading and dispatch the batch now."""
+    return {
+        "role": "user",
+        "content": (
+            f"You have now made {surveyed} read-only survey calls and spawned zero "
+            "workers. That is enough looking. STOP surveying — do not read another "
+            "file, tally line counts, or design the solution. Right now, split the "
+            "goal into independent micro-tasks and call spawn_subtask for each one "
+            "(a whole batch), giving every worker a file boundary and an outcome and "
+            "letting it design the change itself. Then call wait_for_children once. "
+            "Your job is to hand out work, not to study it."
+        ),
+    }
+
+
 def apply_skill_to_system_message(state: AgentState, name: str, content: str) -> None:
     """Append one skill's instructions to the system message, exactly once.
 
@@ -270,6 +312,12 @@ def rehydrate(payload: dict[str, Any], events: Sequence[TaskEvent]) -> AgentStat
                 TrackedMessage(event.seq, children_pending_message(p.get("children") or []))
             )
             state.children_reminders += 1
+            state.resumed = True
+        elif event.event_type is EventType.LEADER_NUDGE:
+            state.tracked.append(
+                TrackedMessage(event.seq, leader_nudge_message(int(p.get("surveyed", 0))))
+            )
+            state.leader_nudges += 1
             state.resumed = True
         elif event.event_type is EventType.APPROVAL_RESOLVED:
             state.approvals[p["tool_call_id"]] = ApprovalState(

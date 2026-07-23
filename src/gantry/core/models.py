@@ -97,6 +97,11 @@ class EventType(enum.StrEnum):
     #: running; the loop injects a durable reminder and steers it to wait rather
     #: than orphaning them. Folds into history as a user message on rehydration.
     CHILDREN_PENDING = "children_pending"
+    #: An autonomous leader has surveyed the repo past its budget without
+    #: spawning any worker (the over-planning failure mode); the loop injects a
+    #: durable "stop surveying, delegate now" nudge. Folds into history as a user
+    #: message on rehydration.
+    LEADER_NUDGE = "leader_nudge"
     #: Skills (Phase 8): full skill content pinned into the run's log.
     SKILL_INJECTED = "skill_injected"
     #: Co-pilot (Phase 5): a proposed skill/tree the UI stages for the user.

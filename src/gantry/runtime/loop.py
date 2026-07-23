@@ -38,11 +38,14 @@ from gantry.logging import get_logger
 from gantry.runtime.compaction import CompactionConfig, plan_compaction, summarize
 from gantry.runtime.llm import DeltaSink, LLMClient, LLMResponse, LLMUsage, ToolCallRequest
 from gantry.runtime.state import (
+    SPAWN_TOOL_NAMES,
+    SURVEY_TOOL_NAMES,
     AgentState,
     TrackedMessage,
     apply_skill_to_system_message,
     assistant_message,
     children_pending_message,
+    leader_nudge_message,
     rehydrate,
     summary_message,
     tool_message,
@@ -97,6 +100,9 @@ async def run_agent_task(
     # NOT step-capped unless it explicitly asked for one. A plain worker agent
     # uses the default budget.
     can_spawn = task.kind is TaskKind.PLAN or bool(payload.get("can_spawn"))
+    # An autonomous leader has no write tools and exists only to delegate, so the
+    # loop budgets how long it may survey before it must start spawning.
+    is_leader = bool(payload.get("autonomous_leader"))
     explicit_steps = payload.get("max_steps")
     max_steps: int | None
     if explicit_steps:
@@ -143,6 +149,11 @@ async def run_agent_task(
             await on_step()
         if max_steps is not None and state.steps >= max_steps:
             raise AgentLoopError(f"exceeded max_steps={max_steps} without a final answer")
+
+        if is_leader:
+            nudge = await _survey_budget_guard(sessions, task, state)
+            if nudge is not None:
+                state.tracked.append(nudge)
 
         if compaction is not None:
             await _maybe_compact(sessions, task, state, llm, model, compaction)
@@ -470,6 +481,40 @@ async def _children_guard(
     state.children_reminders += 1
     logger.info("agent.children_guard", task_id=str(task.id), live=len(live))
     return TrackedMessage(seq, children_pending_message(names))
+
+
+#: How many read-only survey calls a leader may make before the loop starts
+#: pushing it to spawn. A handful of reads is plenty to carve up a goal; past
+#: this the leader is over-planning rather than delegating.
+_LEADER_SURVEY_BUDGET = 12
+#: Extra survey calls required between successive nudges, so a leader that keeps
+#: reading gets pushed again rather than the nudge firing every single step.
+_LEADER_NUDGE_STEP = 3
+#: Backstop so a leader that ignores the nudges can't be pestered forever.
+_MAX_LEADER_NUDGES = 4
+
+
+async def _survey_budget_guard(
+    sessions: Sessions, task: Task, state: AgentState
+) -> TrackedMessage | None:
+    """Push an autonomous leader to stop surveying and start spawning.
+
+    A thinking model will deliberate as long as we let it, so the loop caps the
+    survey: once the leader has made more than its budget of read-only calls
+    without spawning a single worker, durably inject a "delegate now" nudge. The
+    nudge stops the instant it spawns anything, and is bounded so it can't loop.
+    """
+    if state.leader_nudges >= _MAX_LEADER_NUDGES:
+        return None
+    if state.count_tool_calls(*SPAWN_TOOL_NAMES):
+        return None  # already delegating — nothing to nudge
+    surveyed = state.count_tool_calls(*SURVEY_TOOL_NAMES)
+    if surveyed < _LEADER_SURVEY_BUDGET + state.leader_nudges * _LEADER_NUDGE_STEP:
+        return None
+    seq = await _checkpoint(sessions, task, EventType.LEADER_NUDGE, {"surveyed": surveyed})
+    state.leader_nudges += 1
+    logger.info("agent.survey_budget_guard", task_id=str(task.id), surveyed=surveyed)
+    return TrackedMessage(seq, leader_nudge_message(surveyed))
 
 
 async def _maybe_compact(
