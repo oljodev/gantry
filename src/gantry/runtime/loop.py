@@ -27,12 +27,13 @@ from functools import partial
 from pathlib import Path
 from typing import Any
 
+import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from gantry.config import get_settings
 from gantry.core.db import session_scope
 from gantry.core.events import append_event, read_events
-from gantry.core.models import EventType, Project, Task, TaskKind
+from gantry.core.models import TERMINAL_STATUSES, EventType, Project, Task, TaskKind
 from gantry.logging import get_logger
 from gantry.runtime.compaction import CompactionConfig, plan_compaction, summarize
 from gantry.runtime.llm import DeltaSink, LLMClient, LLMResponse, LLMUsage, ToolCallRequest
@@ -41,6 +42,7 @@ from gantry.runtime.state import (
     TrackedMessage,
     apply_skill_to_system_message,
     assistant_message,
+    children_pending_message,
     rehydrate,
     summary_message,
     tool_message,
@@ -174,6 +176,10 @@ async def run_agent_task(
         state.completion_tokens += response.usage.completion_tokens
 
         if not response.tool_calls:
+            reminder = await _children_guard(sessions, task, state)
+            if reminder is not None:
+                state.tracked.append(reminder)
+                continue
             return AgentOutcome(
                 final_text=response.content or "",
                 steps=state.steps,
@@ -432,6 +438,38 @@ async def _execute_tool(tools: ToolRegistry, tc: ToolCallRequest, ctx: ToolConte
     except Exception as exc:
         logger.warning("agent.tool_failed", tool=tc.name, error=repr(exc))
         return ToolResult(f"Tool '{tc.name}' failed: {exc!r}", is_error=True)
+
+
+#: Backstop against a spawning agent that keeps trying to finish while its
+#: children run: after this many nudges the loop lets it finish (a stuck agent
+#: shouldn't hang forever). One nudge is almost always enough to route it to
+#: wait_for_children, which then parks properly until the whole batch settles.
+_MAX_CHILDREN_REMINDERS = 5
+
+
+async def _children_guard(
+    sessions: Sessions, task: Task, state: AgentState
+) -> TrackedMessage | None:
+    """If the agent tries to finish while children it spawned are still running,
+    durably inject a reminder and return it to append — so the loop continues and
+    the agent waits instead of orphaning their work. ``None`` means it may finish.
+    """
+    if state.children_reminders >= _MAX_CHILDREN_REMINDERS:
+        return None
+    async with session_scope(sessions) as session:
+        children = (
+            await session.scalars(
+                sa.select(Task).where(Task.parent_task_id == task.id).order_by(Task.created_at)
+            )
+        ).all()
+    live = [c for c in children if c.status not in TERMINAL_STATUSES]
+    if not live:
+        return None
+    names = [str(c.payload.get("agent_name") or c.payload.get("goal") or c.id) for c in live]
+    seq = await _checkpoint(sessions, task, EventType.CHILDREN_PENDING, {"children": names})
+    state.children_reminders += 1
+    logger.info("agent.children_guard", task_id=str(task.id), live=len(live))
+    return TrackedMessage(seq, children_pending_message(names))
 
 
 async def _maybe_compact(

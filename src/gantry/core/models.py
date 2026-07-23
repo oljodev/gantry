@@ -93,6 +93,10 @@ class EventType(enum.StrEnum):
     #: question and resumes with the operator's answer as the tool result.
     ASK_USER_QUESTION = "ask_user_question"
     ASK_USER_ANSWERED = "ask_user_answered"
+    #: A spawning agent tried to finish while children it launched were still
+    #: running; the loop injects a durable reminder and steers it to wait rather
+    #: than orphaning them. Folds into history as a user message on rehydration.
+    CHILDREN_PENDING = "children_pending"
     #: Skills (Phase 8): full skill content pinned into the run's log.
     SKILL_INJECTED = "skill_injected"
     #: Co-pilot (Phase 5): a proposed skill/tree the UI stages for the user.

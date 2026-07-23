@@ -71,7 +71,13 @@ def roster_text(node: TeamNode) -> str:
         "\n\n## Your team\n\n"
         "Delegate by calling spawn_subtask with the `agent` argument set to one "
         "of these names — the child then runs with that agent's own system "
-        "prompt, model, and permissions:\n" + lines
+        "prompt, model, and permissions:\n" + lines + "\n\n"
+        "After you spawn children you MUST call wait_for_children to sleep until "
+        "every one finishes, then integrate their results before you reply. Never "
+        "report success while a child is still running — its work would be lost. "
+        "Your final message is a handoff that reflects the finished work; if "
+        "committing/pushing the result is your responsibility, do it before you "
+        "finish (your children may be configured not to)."
     )
 
 

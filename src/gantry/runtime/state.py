@@ -80,6 +80,9 @@ class AgentState:
     gated_started_ids: set[str] = field(default_factory=set)
     prompt_tokens: int = 0
     completion_tokens: int = 0
+    #: How many times the loop has nudged this agent to wait for live children
+    #: it tried to abandon — bounded so a stuck agent can't loop forever.
+    children_reminders: int = 0
     resumed: bool = False
 
     @property
@@ -150,6 +153,23 @@ def summary_message(summary: str) -> Message:
     }
 
 
+def children_pending_message(children: Sequence[str]) -> Message:
+    """The reminder injected when a spawning agent tries to finish while children
+    it launched are still running — steer it back to wait_for_children rather
+    than let it report success and orphan their work."""
+    listed = ", ".join(children) if children else "some you spawned"
+    return {
+        "role": "user",
+        "content": (
+            f"You are not done: child agents you spawned are still running ({listed}). "
+            "Do NOT report completion while they work — their results would be lost. "
+            "Call wait_for_children to sleep until they all finish, then integrate what "
+            "they produced (and commit/push if that is your responsibility) before you "
+            "reply with a final message."
+        ),
+    }
+
+
 def apply_skill_to_system_message(state: AgentState, name: str, content: str) -> None:
     """Append one skill's instructions to the system message, exactly once.
 
@@ -190,6 +210,12 @@ def rehydrate(payload: dict[str, Any], events: Sequence[TaskEvent]) -> AgentStat
             state.resumed = True
         elif event.event_type is EventType.SKILL_INJECTED:
             apply_skill_to_system_message(state, str(p["name"]), str(p["content"]))
+            state.resumed = True
+        elif event.event_type is EventType.CHILDREN_PENDING:
+            state.tracked.append(
+                TrackedMessage(event.seq, children_pending_message(p.get("children") or []))
+            )
+            state.children_reminders += 1
             state.resumed = True
         elif event.event_type is EventType.APPROVAL_RESOLVED:
             state.approvals[p["tool_call_id"]] = ApprovalState(
