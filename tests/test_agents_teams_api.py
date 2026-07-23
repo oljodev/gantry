@@ -125,9 +125,21 @@ async def test_delete_agent_in_team_409(client: httpx.AsyncClient) -> None:
     solo = await create_agent(client, "solo")
     team = await create_team(client, "one-person", root={"profile_id": solo["id"], "children": []})
     assert (await client.delete(f"/api/agents/{solo['id']}")).status_code == 409
-    # Deleting the team frees the agent.
+    # A team owns its agents, so deleting the team deletes them too.
     assert (await client.delete(f"/api/teams/{team['id']}")).status_code == 204
-    assert (await client.delete(f"/api/agents/{solo['id']}")).status_code == 204
+    assert (await client.delete(f"/api/agents/{solo['id']}")).status_code == 404
+
+
+async def test_teams_have_separate_libraries(client: httpx.AsyncClient) -> None:
+    # Each team owns its own agents, so two teams may each have a "coder".
+    a1 = await create_agent(client, "coder")
+    team_a = await create_team(client, "team-a", root={"profile_id": a1["id"], "children": []})
+    a2 = await create_agent(client, "coder")  # allowed: a1 is now owned by team-a
+    team_b = await create_team(client, "team-b", root={"profile_id": a2["id"], "children": []})
+    ra = await client.get(f"/api/agents?team_id={team_a['id']}")
+    rb = await client.get(f"/api/agents?team_id={team_b['id']}")
+    assert [a["id"] for a in ra.json()["agents"]] == [a1["id"]]
+    assert [a["id"] for a in rb.json()["agents"]] == [a2["id"]]
 
 
 async def test_team_unknown_profile_422(client: httpx.AsyncClient) -> None:

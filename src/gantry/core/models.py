@@ -292,6 +292,44 @@ class Skill(Base):
     )
 
 
+class CopilotSession(Base):
+    """A saved co-pilot conversation, so a chat can be reopened and continued.
+
+    Each ``turn`` is a ``{"user": str, "task_id": str}`` pair — the transcript
+    itself lives in the referenced tasks' event logs (durable, event-sourced),
+    so a session only needs to remember which tasks made up the conversation.
+    """
+
+    __tablename__ = "copilot_sessions"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        sa.ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+        default=DEFAULT_PROJECT_ID,
+    )
+    #: "skill" or "tree".
+    kind: Mapped[str] = mapped_column(sa.String(20), nullable=False)
+    #: The team a tree co-pilot is scoped to (loose ref — the team may be gone).
+    team_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    title: Mapped[str] = mapped_column(sa.Text, nullable=False, default="")
+    #: [{"user": str, "task_id": str}, ...] in order.
+    turns: Mapped[list[dict[str, str]]] = mapped_column(JSONB, nullable=False, default=list)
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    )
+
+    __table_args__ = (
+        sa.Index("ix_copilot_sessions_project", "project_id"),
+        sa.Index("ix_copilot_sessions_team", "team_id"),
+    )
+
+
 class ProviderType(enum.StrEnum):
     """LLM provider families. ``LOCAL`` is any OpenAI-compatible endpoint."""
 
@@ -391,6 +429,12 @@ class AgentProfile(Base):
         nullable=False,
         default=DEFAULT_PROJECT_ID,
     )
+    #: The team that owns this agent. NULL -> an unassigned/draft agent (a
+    #: project-level template not yet placed in a team). Each team has its OWN
+    #: library, so deleting a team removes its agents (CASCADE).
+    team_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), sa.ForeignKey("teams.id", ondelete="CASCADE"), nullable=True
+    )
     name: Mapped[str] = mapped_column(sa.String(100), nullable=False)
     #: Short human description ("Senior coder", "Reviews diffs for bugs").
     role: Mapped[str] = mapped_column(sa.Text, nullable=False, default="")
@@ -413,10 +457,25 @@ class AgentProfile(Base):
     )
 
     __table_args__ = (
-        # Names are unique per project, so two projects may each have a "coder".
-        sa.UniqueConstraint("project_id", "name", name="uq_agent_profiles_project_name"),
+        # Names are unique within a team, so two teams may each have a "coder";
+        # unassigned (draft) agents are unique per project instead.
+        sa.Index(
+            "uq_agent_profiles_team_name",
+            "team_id",
+            "name",
+            unique=True,
+            postgresql_where=sa.text("team_id IS NOT NULL"),
+        ),
+        sa.Index(
+            "uq_agent_profiles_project_name_draft",
+            "project_id",
+            "name",
+            unique=True,
+            postgresql_where=sa.text("team_id IS NULL"),
+        ),
         sa.Index("ix_agent_profiles_workspace", "workspace_id"),
         sa.Index("ix_agent_profiles_project", "project_id"),
+        sa.Index("ix_agent_profiles_team", "team_id"),
     )
 
 

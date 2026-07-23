@@ -32,12 +32,17 @@ class AskUserTool(Tool):
         "answer, which is returned to you as the tool result. Use this for genuine "
         "decisions only you cannot make: ambiguous requirements, a choice between "
         "approaches, or approval to proceed. Provide up to three suggested options; "
-        "the operator may pick one or type a custom answer."
+        "the operator may pick one or type a custom answer. Always give a short "
+        "one- or two-word `label` naming the question, used as its tab title in the UI."
     )
     parameters: ClassVar[dict[str, Any]] = {
         "type": "object",
         "properties": {
             "question": {"type": "string", "description": "The question to ask the operator."},
+            "label": {
+                "type": "string",
+                "description": "A one- or two-word name for this question (its UI tab title).",
+            },
             "options": {
                 "type": "array",
                 "items": {"type": "string"},
@@ -53,6 +58,7 @@ class AskUserTool(Tool):
         question = str(arguments.get("question") or "").strip()
         if not question:
             return ToolResult("ask_user: a non-empty question is required", is_error=True)
+        label = str(arguments.get("label") or "").strip()
         if ctx.tool_call_id is None:
             return ToolResult("ask_user requires a tool call id", is_error=True)
         if ctx.sessions is None:
@@ -67,7 +73,12 @@ class AskUserTool(Tool):
         if not already_asked and ctx.emit_event is not None:
             await ctx.emit_event(
                 EventType.ASK_USER_QUESTION,
-                {"tool_call_id": ctx.tool_call_id, "question": question, "options": options},
+                {
+                    "tool_call_id": ctx.tool_call_id,
+                    "question": question,
+                    "label": label,
+                    "options": options,
+                },
             )
         raise TaskParked(TaskStatus.WAITING_INPUT.value, tool_call_id=ctx.tool_call_id)
 

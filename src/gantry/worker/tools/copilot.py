@@ -29,12 +29,21 @@ TREE_ARCHITECT_PROMPT = (
     "You are an expert multi-agent operations architect. Design a complete, upside-"
     "down agent team tree for the user's goal. Each node is an agent with: name "
     "(kebab-case), role (short), system_prompt (deep and specific — responsibilities, "
-    "constraints, and when to delegate), can_spawn (true if it delegates to children), "
-    "gated_tools (tools needing human approval, e.g. git_commit_push), skills, and "
-    "children. A parent that has children MUST have can_spawn=true. Keep it as small "
-    "as the goal requires. Ask a clarifying question with ask_user only if genuinely "
-    "needed. When ready, call propose_tree EXACTLY ONCE with the whole tree, then give "
-    "a one-sentence summary."
+    "constraints, and when to delegate), model (the LLM the agent uses), can_spawn "
+    "(true if it delegates to children), gated_tools (tools needing human approval, "
+    "e.g. git_commit_push), skills, and children. A parent that has children MUST have "
+    "can_spawn=true. Keep it as small as the goal requires. If the current editor state "
+    "contains an existing team, you are REVISING that team: keep its exact name (unless "
+    "the user explicitly asks to rename it) and return the FULL updated tree, preserving "
+    "nodes the user did not ask to change.\n"
+    "MODEL: before proposing, use ask_user to ask which model the agents should use, "
+    "offering the entries from '## Available models' as options (label the question "
+    "'model'). Set that chosen model string on EVERY node's `model`. If revising and "
+    "the agents already have a model, keep it unless the user asks to change it.\n"
+    "STEPS: never set a step limit (max_steps) on any agent unless the user explicitly "
+    "asks for one; if you believe a cap is genuinely warranted, ask via ask_user first.\n"
+    "Ask other clarifying questions with ask_user only if genuinely needed. When ready, "
+    "call propose_tree EXACTLY ONCE with the whole tree, then give a one-sentence summary."
 )
 
 
@@ -91,8 +100,9 @@ class ProposeTreeTool(Tool):
                 "type": "object",
                 "description": (
                     "The root agent node, with nested children[]. Each node has "
-                    "name, role, system_prompt, can_spawn (bool), gated_tools[], "
-                    "skills[], children[]."
+                    "name, role, system_prompt, model (chosen LLM string), can_spawn "
+                    "(bool), gated_tools[], skills[], children[]. Do NOT include "
+                    "max_steps unless the user explicitly asked for a step cap."
                 ),
             },
         },

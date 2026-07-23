@@ -3,6 +3,7 @@ import { apiUrl, BackendUnreachableError } from './base'
 import type {
   AgentProfile,
   AgentProfileCreate,
+  CopilotSession,
   GithubRepo,
   GithubStatus,
   Me,
@@ -194,10 +195,46 @@ export interface CopilotStart {
   context?: string
   provider_id?: string
   model?: string
+  session_id?: string
 }
 
 export function startCopilot(body: CopilotStart): Promise<Task> {
   return request<Task>('/api/copilot', { method: 'POST', body: JSON.stringify(body) })
+}
+
+export function createCopilotSession(body: {
+  kind: 'skill' | 'tree'
+  project_id?: string
+  team_id?: string | null
+  title?: string
+}): Promise<CopilotSession> {
+  return request<CopilotSession>('/api/copilot/sessions', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })
+}
+
+export function listCopilotSessions(params: {
+  projectId?: string
+  kind?: 'skill' | 'tree'
+  teamId?: string
+}): Promise<CopilotSession[]> {
+  const query = new URLSearchParams()
+  if (params.projectId) query.set('project_id', params.projectId)
+  if (params.kind) query.set('kind', params.kind)
+  if (params.teamId) query.set('team_id', params.teamId)
+  const suffix = query.size ? `?${query}` : ''
+  return request<{ sessions: CopilotSession[] }>(`/api/copilot/sessions${suffix}`).then(
+    (body) => body.sessions,
+  )
+}
+
+export function getCopilotSession(id: string): Promise<CopilotSession> {
+  return request<CopilotSession>(`/api/copilot/sessions/${id}`)
+}
+
+export function deleteCopilotSession(id: string): Promise<void> {
+  return request<void>(`/api/copilot/sessions/${id}`, { method: 'DELETE' })
 }
 
 // --- auth / me -----------------------------------------------------------
@@ -247,8 +284,15 @@ export function listGithubRepos(): Promise<GithubRepo[]> {
 
 // --- agents --------------------------------------------------------------
 
-export function listAgents(projectId?: string): Promise<AgentProfile[]> {
-  const suffix = projectId ? `?project_id=${projectId}` : ''
+export function listAgents(
+  projectId?: string,
+  opts?: { teamId?: string; unassigned?: boolean },
+): Promise<AgentProfile[]> {
+  const query = new URLSearchParams()
+  if (projectId) query.set('project_id', projectId)
+  if (opts?.teamId) query.set('team_id', opts.teamId)
+  if (opts?.unassigned) query.set('unassigned', '1')
+  const suffix = query.size ? `?${query}` : ''
   return request<{ agents: AgentProfile[] }>(`/api/agents${suffix}`).then((body) => body.agents)
 }
 

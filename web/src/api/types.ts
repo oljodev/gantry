@@ -111,6 +111,22 @@ export interface SkillWrite {
   body?: string
 }
 
+export interface CopilotTurn {
+  user: string
+  task_id: string
+}
+
+export interface CopilotSession {
+  id: string
+  project_id: string
+  kind: 'skill' | 'tree'
+  team_id: string | null
+  title: string
+  turns: CopilotTurn[]
+  created_at: string
+  updated_at: string
+}
+
 export interface Stats {
   total: number
   statuses: Partial<Record<TaskStatus, number>>
@@ -171,6 +187,7 @@ export interface GithubRepo {
 export interface AgentProfile {
   id: string
   project_id: string
+  team_id: string | null
   name: string
   role: string
   system_prompt: string | null
@@ -186,8 +203,8 @@ export interface AgentProfile {
 
 export type AgentProfileCreate = Omit<
   AgentProfile,
-  'id' | 'project_id' | 'created_at' | 'updated_at'
-> & { project_id?: string }
+  'id' | 'project_id' | 'team_id' | 'created_at' | 'updated_at'
+> & { project_id?: string; team_id?: string | null }
 
 export interface TeamNode {
   profile_id: string

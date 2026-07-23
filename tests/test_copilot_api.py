@@ -84,3 +84,29 @@ async def test_start_copilot_includes_editor_context(client: httpx.AsyncClient) 
     )
     assert resp.status_code == 201
     assert "EXISTING TREE JSON" in resp.json()["payload"]["goal"]
+
+
+async def test_saved_session_records_turns(client: httpx.AsyncClient) -> None:
+    created = await client.post("/api/copilot/sessions", json={"kind": "tree"})
+    assert created.status_code == 201, created.text
+    session_id = created.json()["id"]
+    assert created.json()["turns"] == []
+
+    started = await client.post(
+        "/api/copilot",
+        json={"kind": "tree", "instruction": "design a review crew", "session_id": session_id},
+    )
+    assert started.status_code == 201
+    task_id = started.json()["id"]
+
+    got = await client.get(f"/api/copilot/sessions/{session_id}")
+    body = got.json()
+    assert [t["task_id"] for t in body["turns"]] == [task_id]
+    assert body["turns"][0]["user"] == "design a review crew"
+    assert body["title"]  # auto-titled from the first message
+
+    listed = await client.get("/api/copilot/sessions?kind=tree")
+    assert session_id in [s["id"] for s in listed.json()["sessions"]]
+
+    assert (await client.delete(f"/api/copilot/sessions/{session_id}")).status_code == 204
+    assert (await client.get(f"/api/copilot/sessions/{session_id}")).status_code == 404

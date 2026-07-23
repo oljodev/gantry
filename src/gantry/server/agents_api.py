@@ -84,6 +84,7 @@ async def create_agent(request: Request, body: AgentProfileIn) -> AgentProfileOu
         profile = AgentProfile(
             workspace_id=DEFAULT_WORKSPACE_ID,
             project_id=body.project_id or DEFAULT_PROJECT_ID,
+            team_id=body.team_id,
         )
         _apply_profile(profile, body)
         session.add(profile)
@@ -101,6 +102,8 @@ async def create_agent(request: Request, body: AgentProfileIn) -> AgentProfileOu
 async def list_agents(
     request: Request,
     project_id: Annotated[uuid.UUID | None, Query()] = None,
+    team_id: Annotated[uuid.UUID | None, Query()] = None,
+    unassigned: Annotated[bool, Query()] = False,
 ) -> AgentsResponse:
     sessions = get_sessions(request)
     stmt = (
@@ -110,6 +113,11 @@ async def list_agents(
     )
     if project_id is not None:
         stmt = stmt.where(AgentProfile.project_id == project_id)
+    # Each team owns its library; `unassigned` selects the project-level drafts.
+    if team_id is not None:
+        stmt = stmt.where(AgentProfile.team_id == team_id)
+    elif unassigned:
+        stmt = stmt.where(AgentProfile.team_id.is_(None))
     async with sessions() as session:
         rows = (await session.scalars(stmt)).all()
     return AgentsResponse(agents=[AgentProfileOut.model_validate(p) for p in rows])
@@ -217,6 +225,29 @@ async def _replace_members(session: AsyncSession, team_id: uuid.UUID, root: Team
     await session.flush()
 
 
+async def _claim_members(session: AsyncSession, team_id: uuid.UUID, root: TeamNodeIn) -> None:
+    """Make every profile the team uses owned by it — a team's library is its
+    own, so wiring an agent into a team transfers ownership to that team."""
+    ids = {node.profile_id for node, _ in _walk(root)}
+    if not ids:
+        return
+    await session.execute(
+        sa.update(AgentProfile)
+        .where(
+            AgentProfile.id.in_(ids),
+            AgentProfile.workspace_id == DEFAULT_WORKSPACE_ID,
+        )
+        .values(team_id=team_id)
+    )
+    try:
+        await session.flush()
+    except IntegrityError as exc:  # two same-named agents claimed into one team
+        raise HTTPException(
+            status_code=409,
+            detail="this team already has an agent with that name",
+        ) from exc
+
+
 @router.post("/teams", response_model=TeamOut, status_code=201)
 async def create_team(request: Request, body: TeamWriteRequest) -> TeamOut:
     sessions = get_sessions(request)
@@ -236,6 +267,7 @@ async def create_team(request: Request, body: TeamWriteRequest) -> TeamOut:
                 status_code=409, detail=f"a team named {body.name!r} already exists"
             ) from exc
         await _replace_members(session, team.id, body.root)
+        await _claim_members(session, team.id, body.root)
         return await _team_out(session, team)
 
 
@@ -292,6 +324,7 @@ async def update_team(request: Request, team_id: uuid.UUID, body: TeamWriteReque
         team.name = body.name
         team.description = body.description
         await _replace_members(session, team_id, body.root)
+        await _claim_members(session, team_id, body.root)
         return await _team_out(session, team)
 
 
@@ -302,7 +335,12 @@ async def delete_team(request: Request, team_id: uuid.UUID) -> None:
         team = await session.get(Team, team_id)
         if team is None or team.workspace_id != DEFAULT_WORKSPACE_ID:
             raise HTTPException(status_code=404, detail="team not found")
-        await session.delete(team)  # members cascade
+        # Delete in FK-safe order: the wiring (RESTRICT on profile_id) first,
+        # then the team's owned agents, then the team. Doing it explicitly
+        # avoids racing the two cascade paths (members vs. owned agents).
+        await session.execute(sa.delete(TeamMember).where(TeamMember.team_id == team_id))
+        await session.execute(sa.delete(AgentProfile).where(AgentProfile.team_id == team_id))
+        await session.delete(team)
 
 
 @router.post("/teams/{team_id}/launch", response_model=TaskOut, status_code=201)

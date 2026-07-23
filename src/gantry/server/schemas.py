@@ -56,6 +56,37 @@ class CopilotStartRequest(BaseModel):
     context: str = ""
     provider_id: uuid.UUID | None = None
     model: str | None = None
+    #: When set, the launched task's turn is appended to this saved session.
+    session_id: uuid.UUID | None = None
+
+
+class CopilotTurn(BaseModel):
+    user: str = ""
+    task_id: str = ""
+
+
+class CopilotSessionCreate(BaseModel):
+    kind: Literal["skill", "tree"]
+    project_id: uuid.UUID | None = None
+    team_id: uuid.UUID | None = None
+    title: str = ""
+
+
+class CopilotSessionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    project_id: uuid.UUID
+    kind: str
+    team_id: uuid.UUID | None
+    title: str
+    turns: list[CopilotTurn]
+    created_at: datetime
+    updated_at: datetime
+
+
+class CopilotSessionsResponse(BaseModel):
+    sessions: list[CopilotSessionOut]
 
 
 class TaskCreateRequest(BaseModel):
@@ -282,6 +313,8 @@ class GithubReposResponse(BaseModel):
 class AgentProfileIn(BaseModel):
     #: The project this profile belongs to (defaults to the Default project).
     project_id: uuid.UUID | None = None
+    #: The team that owns this agent. NULL -> an unassigned/draft agent.
+    team_id: uuid.UUID | None = None
     name: str = Field(min_length=1, max_length=100)
     role: str = ""
     system_prompt: str | None = None
