@@ -35,6 +35,7 @@ from gantry.worker import workspace as ws
 from gantry.worker.git import CloneError
 from gantry.worker.policy import policy_for_payload
 from gantry.worker.tools import build_coding_registry, build_copilot_registry
+from gantry.worker.tools.integrate import make_conflict_resolver
 
 logger = get_logger(__name__)
 
@@ -76,6 +77,11 @@ class WorkerConfig:
     #: How many agent tasks this process runs at once on the shared event loop.
     #: Default 1 keeps a single-slot worker (the natural unit for tests).
     concurrency: int = 1
+    #: Fallback model when a task pins none — mirrors the loop's resolution so the
+    #: conflict resolver targets the same model the leader runs.
+    default_model: str = "anthropic/claude-opus-4-8"
+    #: Optional cheaper model for merge-conflict resolution (None = leader's model).
+    conflict_resolver_model: str | None = None
 
     @classmethod
     def from_settings(cls, settings: Settings, worker_id: str | None = None) -> WorkerConfig:
@@ -87,6 +93,8 @@ class WorkerConfig:
             skills_root=settings.skills_root,
             prompt_caching=settings.prompt_caching,
             concurrency=settings.worker_concurrency,
+            default_model=settings.default_model,
+            conflict_resolver_model=settings.conflict_resolver_model,
             compaction=CompactionConfig(
                 max_context_tokens=settings.max_context_tokens,
                 keep_recent_messages=settings.keep_recent_messages,
@@ -210,6 +218,7 @@ class Worker:
                 await queue.mark_running(
                     session, task_id=task.id, worker_id=cfg.worker_id, attempt=task.attempt
                 )
+            llm = await self._llm_for_task(task)
             copilot = task.payload.get("copilot")
             if copilot:
                 # Co-pilot tasks propose a skill/tree for the UI; no sandbox.
@@ -227,11 +236,16 @@ class Worker:
                     github_token=await self._github_token(task),
                 )
                 can_spawn = task.kind is TaskKind.PLAN or bool(task.payload.get("can_spawn"))
+                resolver_model = (
+                    cfg.conflict_resolver_model or task.payload.get("model") or cfg.default_model
+                )
                 registry = build_coding_registry(
                     workspace.auth,
                     can_spawn=can_spawn,
                     max_subtasks=cfg.max_subtasks,
                     team=task.payload.get("team"),
+                    trunk_branch=workspace.branch,
+                    conflict_resolver=make_conflict_resolver(llm, str(resolver_model)),
                 )
 
             async def on_step() -> None:
@@ -249,7 +263,7 @@ class Worker:
             outcome = await run_agent_task(
                 self._sessions,
                 task,
-                await self._llm_for_task(task),
+                llm,
                 registry,
                 workspace=workspace.path if workspace else None,
                 compaction=cfg.compaction,

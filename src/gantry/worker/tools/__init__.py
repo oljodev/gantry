@@ -12,11 +12,13 @@ from __future__ import annotations
 from gantry.runtime.tools import Tool, ToolRegistry
 from gantry.teams import TeamNode
 from gantry.worker.git import GitAuth
+from gantry.worker.merge import ConflictResolver
 from gantry.worker.tools.ask import AskUserTool
 from gantry.worker.tools.bash import BashTool
 from gantry.worker.tools.copilot import CreateSkillTool, ProposeSkillTool, ProposeTreeTool
 from gantry.worker.tools.files import EditFileTool, ListDirTool, ReadFileTool, WriteFileTool
 from gantry.worker.tools.gittool import GitCommitPushTool
+from gantry.worker.tools.integrate import MergeChildBranchesTool
 from gantry.worker.tools.orchestration import (
     DEFAULT_MAX_SUBTASKS,
     build_planner_registry,
@@ -43,6 +45,8 @@ def build_coding_registry(
     can_spawn: bool = False,
     max_subtasks: int = DEFAULT_MAX_SUBTASKS,
     team: TeamNode | None = None,
+    trunk_branch: str | None = None,
+    conflict_resolver: ConflictResolver | None = None,
 ) -> ToolRegistry:
     registry = ToolRegistry(
         [
@@ -63,4 +67,7 @@ def build_coding_registry(
     if can_spawn:
         for tool in orchestration_tools(max_subtasks, team=team):
             registry.register(tool)
+        # A repo-backed leader can also integrate the branches its workers push.
+        if auth is not None and trunk_branch is not None:
+            registry.register(MergeChildBranchesTool(auth, trunk_branch, conflict_resolver))
     return registry

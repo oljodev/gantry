@@ -63,6 +63,11 @@ class Settings(BaseSettings):
     #: Override via GANTRY_DB_POOL_SIZE / GANTRY_DB_MAX_OVERFLOW.
     db_pool_size: int = 20
     db_max_overflow: int = 10
+    #: Model used to resolve git merge conflicts when integrating swarm branches
+    #: — one lightweight turn per conflicted file. None = reuse the leader's own
+    #: model. Point it at a cheap/fast model (e.g. a Qwen3/flash) via
+    #: GANTRY_CONFLICT_RESOLVER_MODEL; it must be served by the run's provider.
+    conflict_resolver_model: str | None = None
     #: Outbound LLM pacing: sustained requests/second and the burst allowance,
     #: shared process-wide across every provider client. Keeps a swarm of agents
     #: from dumping calls into one tick and tripping localized 429s. Override via
