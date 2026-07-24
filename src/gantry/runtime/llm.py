@@ -30,6 +30,11 @@ def _quiet_litellm(litellm: Any) -> None:
         return
     with contextlib.suppress(Exception):
         litellm.suppress_debug_info = True
+        # Providers that don't accept a param (e.g. parallel_tool_calls on some
+        # OpenRouter models) drop it rather than 400. The only optional param we
+        # add is parallel_tool_calls; tools/api_base/api_key are universally
+        # supported, so this can't silently mask a genuinely-needed field.
+        litellm.drop_params = True
     logging.getLogger("LiteLLM").setLevel(logging.WARNING)
     _litellm_quieted = True
 
@@ -155,6 +160,28 @@ def with_cache_control(messages: list[Message], model: str) -> list[Message]:
     return out
 
 
+def _request_kwargs(
+    model: str,
+    messages: list[Message],
+    tools: Sequence[ToolSchema],
+    api_key: str | None,
+    api_base: str | None,
+) -> dict[str, Any]:
+    """Build the litellm.acompletion kwargs (pure — testable without litellm)."""
+    kwargs: dict[str, Any] = {"model": model, "messages": messages}
+    if tools:
+        kwargs["tools"] = list(tools)
+        # Let a model emit several tool calls in one turn (e.g. a leader firing a
+        # whole spawn batch, or a worker batching reads). Providers that don't
+        # support it drop it via litellm.drop_params.
+        kwargs["parallel_tool_calls"] = True
+    if api_key:
+        kwargs["api_key"] = api_key
+    if api_base:
+        kwargs["api_base"] = api_base
+    return kwargs
+
+
 def parse_tool_arguments(raw: str | None) -> dict[str, Any]:
     """Best-effort parse of a tool-call arguments JSON string.
 
@@ -213,13 +240,7 @@ class LiteLLMClient:
             await self._limiter.acquire()
 
         payload = with_cache_control(messages, model) if self._prompt_caching else messages
-        kwargs: dict[str, Any] = {"model": model, "messages": payload}
-        if tools:
-            kwargs["tools"] = list(tools)
-        if self._api_key:
-            kwargs["api_key"] = self._api_key
-        if self._api_base:
-            kwargs["api_base"] = self._api_base
+        kwargs = _request_kwargs(model, payload, tools, self._api_key, self._api_base)
 
         if on_delta is None:
             raw: Any = await litellm.acompletion(**kwargs)

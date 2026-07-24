@@ -6,9 +6,22 @@ re-read at Anthropic cache rates instead of full input price every step.
 
 from __future__ import annotations
 
-from gantry.runtime.llm import Message, with_cache_control
+from gantry.runtime.llm import Message, _request_kwargs, with_cache_control
 
 CLAUDE = "anthropic/claude-opus-4-8"
+
+
+def test_request_kwargs_requests_parallel_tool_calls_only_with_tools() -> None:
+    msgs: list[Message] = [{"role": "user", "content": "hi"}]
+    # With tools, parallel_tool_calls is requested so a model can emit many calls.
+    with_tools = _request_kwargs("m", msgs, [{"type": "function"}], None, None)
+    assert with_tools["parallel_tool_calls"] is True and with_tools["tools"]
+    # Without tools, it is absent (meaningless) — and no credentials leak in.
+    no_tools = _request_kwargs("m", msgs, (), None, None)
+    assert "parallel_tool_calls" not in no_tools and "api_key" not in no_tools
+    # Credentials are threaded when present.
+    keyed = _request_kwargs("m", msgs, (), "sk-x", "https://base")
+    assert keyed["api_key"] == "sk-x" and keyed["api_base"] == "https://base"
 
 
 def _cc(message: Message) -> dict[str, object] | None:

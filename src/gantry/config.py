@@ -70,10 +70,13 @@ class Settings(BaseSettings):
     conflict_resolver_model: str | None = None
     #: Outbound LLM pacing: sustained requests/second and the burst allowance,
     #: shared process-wide across every provider client. Keeps a swarm of agents
-    #: from dumping calls into one tick and tripping localized 429s. Override via
-    #: GANTRY_LLM_MAX_RPS / GANTRY_LLM_RPS_BURST.
-    llm_max_rps: float = 12.0
-    llm_rps_burst: int = 15
+    #: from dumping calls into one tick and tripping localized 429s. This is a HARD
+    #: process-wide throughput ceiling (a 100-child burst can't exceed it), so size
+    #: it to the provider key's real budget. Override via GANTRY_LLM_MAX_RPS /
+    #: GANTRY_LLM_RPS_BURST (keep burst ~2x rps so a spike can't exceed the key's
+    #: instant limit).
+    llm_max_rps: float = 40.0
+    llm_rps_burst: int = 80
     #: How often the control plane re-queues tasks whose lease expired.
     reaper_interval_seconds: float = 10.0
     #: Built frontend to serve as the SPA (skipped if index.html is absent).
