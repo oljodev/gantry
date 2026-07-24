@@ -29,6 +29,7 @@ from gantry.worker.tools.orchestration import (
     SpawnBatchTool,
     SpawnSubtaskTool,
     WaitForChildrenTool,
+    _is_unclonable_local_repo,
     batch_child_id,
     child_task_id,
 )
@@ -477,6 +478,37 @@ async def test_blank_repo_url_falls_through_to_inheritance(db: Sessions) -> None
     planner = await _planner_with(db, repo_url="https://github.com/oljodev/real.git")
     child = await spawn(db, planner, "call_A", repo_url="   ")
     assert child.payload["repo_url"] == "https://github.com/oljodev/real.git"
+
+
+async def test_local_repo_url_falls_through_to_inheritance(db: Sessions) -> None:
+    """A leader that fabricates a local/self-referential repo_url (e.g. the
+    hallucinated ``file:///app/.git``) for a child must not fail the child at clone
+    time: the bogus local path is dropped and the child inherits the parent's real
+    repo, exactly as a blank repo_url does."""
+    planner = await _planner_with(db, repo_url="https://github.com/oljodev/real.git")
+    child = await spawn(db, planner, "call_A", repo_url="file:///app/.git")
+    assert child.payload["repo_url"] == "https://github.com/oljodev/real.git"
+
+
+def test_is_unclonable_local_repo_flags_local_but_not_real_remotes() -> None:
+    for bad in (
+        "file:///app/.git",
+        "file:///home/olav/dev/gantry-testing/.git",
+        "/app/.git",
+        "./repo",
+        "~/code/chess",
+        "http://localhost:8400/repo.git",
+        "ssh://127.0.0.1/srv/git/x",
+        "localhost:some/path",
+    ):
+        assert _is_unclonable_local_repo(bad), bad
+    for ok in (
+        "https://github.com/oljodev/gantry-testing.git",
+        "git@github.com:oljodev/real.git",
+        "ssh://git@github.com/oljodev/real.git",
+        "https://github.com/foo/localhost-tools.git",  # 'localhost' only in the path
+    ):
+        assert not _is_unclonable_local_repo(ok), ok
 
 
 async def test_placeholder_repo_url_is_rejected(db: Sessions) -> None:

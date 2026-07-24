@@ -93,6 +93,32 @@ def _looks_like_placeholder(url: str) -> bool:
     return any(marker in low for marker in _PLACEHOLDER_REPO_MARKERS)
 
 
+def _is_unclonable_local_repo(url: str) -> bool:
+    """True for a repo_url no isolated worker could clone: a ``file://`` URL, a bare
+    local filesystem path, or a loopback remote.
+
+    A dynamic leader that means "the repo I'm working in" sometimes fabricates one
+    of these (e.g. ``file:///app/.git``, a hallucinated container path) instead of
+    omitting repo_url. But each child runs in its OWN fresh workspace with no access
+    to another task's checkout, so such a URL always fails at clone time. The caller
+    (``_child_payload``) treats it like a blank repo_url — dropped so the child
+    inherits the parent's real remote — but only when the parent HAS one to inherit,
+    so an explicit local repo that is a child's only source is still honored.
+    """
+    low = url.strip().lower()
+    if not low:
+        return False
+    # file:// URLs and bare local filesystem paths (/app/.git, ./x, ~/x, C:\...).
+    if low.startswith(("file:", "/", "~", ".")) or low[1:3] == ":\\":
+        return True
+    # A loopback host over any scheme (http://localhost/…, ssh://127.0.0.1/…) or the
+    # scheme-less scp form (localhost:path) — never reachable from another worker.
+    return any(
+        f"//{h}" in low or low.startswith((f"{h}:", f"{h}/"))
+        for h in ("localhost", "127.0.0.1", "0.0.0.0", "::1")
+    )
+
+
 def _inherit_parent_context(payload: dict[str, Any], parent_payload: dict[str, Any]) -> None:
     """Fill a child's unset execution context from the parent (planner).
 
@@ -129,11 +155,13 @@ _CHILD_SPEC_PROPERTIES: dict[str, Any] = {
     "repo_url": {
         "type": "string",
         "description": (
-            "Only for an EXISTING repo the child should clone and push to. Omit it "
-            "for a brand-new/greenfield project — the child then starts in an empty "
-            "workspace and can `git init` there. Never invent a placeholder URL "
-            "(e.g. github.com/your-org/...): a repo that can't be cloned fails the "
-            "child immediately."
+            "Only for an EXISTING repo the child should clone and push to. To make a "
+            "child work on the SAME repo you're in, just OMIT this — it inherits yours; "
+            "never pass a local path or file:// URL to your own checkout, as the child "
+            "runs in a separate workspace and can't reach it. Omit it for a brand-new/"
+            "greenfield project too — the child then starts in an empty workspace and "
+            "can `git init` there. Never invent a placeholder URL (e.g. "
+            "github.com/your-org/...): a repo that can't be cloned fails the child."
         ),
     },
     "base_branch": {"type": "string"},
@@ -246,11 +274,25 @@ class _SpawnBase(Tool):
             payload.update(node_payload_fields(node))
         payload["goal"] = str(spec.get("goal") or "").strip()
         # Explicit tool args win over the profile snapshot. A blank string is treated
-        # as "not provided" so it falls through to inheritance.
+        # as "not provided" so it falls through to inheritance — as is a local/
+        # self-referential repo_url (file://, a bare path) WHEN the parent has a real
+        # repo to inherit: a leader working in repo X sometimes fabricates a local path
+        # to "the repo I'm in" (e.g. file:///app/.git) that no isolated child can clone,
+        # so the child inherits X instead of failing at clone time. (With no parent
+        # repo, an explicit local path is the child's only repo, so it is kept.)
+        parent_has_repo = bool(parent.payload.get("repo_url"))
         for key in ("repo_url", "base_branch", "model", "max_steps"):
             value = spec.get(key)
-            if value is not None and not (isinstance(value, str) and not value.strip()):
-                payload[key] = value
+            if value is None or (isinstance(value, str) and not value.strip()):
+                continue
+            if (
+                key == "repo_url"
+                and parent_has_repo
+                and isinstance(value, str)
+                and _is_unclonable_local_repo(value)
+            ):
+                continue
+            payload[key] = value
         _inherit_parent_context(payload, parent.payload)
         payload["depth"] = child_depth
         kind = (
