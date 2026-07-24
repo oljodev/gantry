@@ -45,6 +45,15 @@ def test_leader_prompt_forbids_designing_the_solution_itself() -> None:
     assert "file boundary" in prompt and "never dictate how" in prompt
 
 
+def test_leader_prompt_tiers_the_child_model_by_cost() -> None:
+    # Children should run on the cheapest model that fits, not inherit the
+    # leader's expensive model for mechanical work.
+    prompt = AUTONOMOUS_LEADER_PROMPT.lower()
+    assert "match the model to the work" in prompt
+    assert "cheapest model" in prompt
+    assert "spawn_subtask" in prompt and "`model`" in prompt
+
+
 def test_planner_prompt_is_the_leader_prompt() -> None:
     # The orchestrator config is embedded under the historical name so every
     # existing leader path (API launch, spawn_subtask, team planner nodes) uses it.
