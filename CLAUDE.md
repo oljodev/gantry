@@ -10,10 +10,24 @@ strict, pytest) and `cd web && npm run check` (tsc, oxlint, vitest).
 
 The worker is a single asyncio process: a dispatcher claims tasks and runs up to
 `worker_concurrency` agent loops at once, all sharing one lean DB pool
-(`db_pool_size`/`db_max_overflow`) and one process-wide outbound LLM pacer
-(`llm_max_rps`/`llm_rps_burst`, a token bucket). Agents spend ~all their time
-awaiting network I/O, so one process replaces the old OS-process-per-worker pool.
-`GANTRY_WORKERS` still runs a few processes if ever needed.
+(`db_pool_size`/`db_max_overflow`) and outbound LLM pacers (`llm_max_rps`/
+`llm_rps_burst`, a non-blocking GCRA limiter **per provider base_url**, so a
+throttled provider never stalls another). Agents spend ~all their time awaiting
+network I/O, so one process replaces the old OS-process-per-worker pool.
+
+**Scale one process** (raise `worker_concurrency` + `llm_max_rps`), not many
+processes: each worker PROCESS has its OWN pacers and DB pool, so `GANTRY_WORKERS`
+> 1 silently multiplies both the global rps (`N x llm_max_rps`) and DB
+connections. Budget `(worker + API pools) x GANTRY_WORKERS` well under pgserver's
+`max_connections` (~100, minus reserved/NOTIFY/reaper); the API can size its own
+pool via `api_db_pool_size`/`api_db_max_overflow`. `GANTRY_WORKERS` stays 1 by
+default and is only for deliberately wanting that multiplication.
+
+Per-task tuning is role-aware: a leaf EXECUTE worker compacts at a tighter budget
+(`execute_max_context_tokens`) so a small task never compacts and its prompt cache
+stays warm; a delegating leader gets a larger one (`leader_max_context_tokens`).
+When a run's root task settles, the worker logs a `worker.run_rollup` line (spend,
+cache-hit ratio, compactions, per-status counts) for the whole tree.
 
 ## Deployment (IMPORTANT)
 

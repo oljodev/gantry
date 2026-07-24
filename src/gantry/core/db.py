@@ -20,12 +20,22 @@ class Base(DeclarativeBase):
     """Root of Gantry's ORM metadata; Alembic autogenerate targets this."""
 
 
-def create_engine(settings: Settings) -> AsyncEngine:
+def create_engine(
+    settings: Settings,
+    *,
+    pool_size: int | None = None,
+    max_overflow: int | None = None,
+) -> AsyncEngine:
+    """An async engine. The worker and the API each create their own, so pass
+    role-specific ``pool_size``/``max_overflow`` to size them independently (the
+    API is request-driven and usually needs fewer than the worker's agent fleet);
+    ``None`` falls back to the shared ``db_pool_size``/``db_max_overflow``. Budget
+    ``(worker + API pools) x GANTRY_WORKERS`` well under pgserver max_connections."""
     return create_async_engine(
         settings.database_url_str,
         pool_pre_ping=True,
-        pool_size=settings.db_pool_size,
-        max_overflow=settings.db_max_overflow,
+        pool_size=pool_size if pool_size is not None else settings.db_pool_size,
+        max_overflow=max_overflow if max_overflow is not None else settings.db_max_overflow,
     )
 
 

@@ -63,7 +63,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         logger.info("server.starting", env=settings.env, version=__version__)
-        engine = create_engine(settings)
+        engine = create_engine(
+            settings,
+            pool_size=settings.api_db_pool_size,
+            max_overflow=settings.api_db_max_overflow,
+        )
         sessions = create_session_factory(engine)
         app.state.sessions = sessions
         async with EventBroker(settings.database_url_str) as broker:

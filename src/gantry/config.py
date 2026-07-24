@@ -57,12 +57,22 @@ class Settings(BaseSettings):
     #: awaiting network I/O), so one lightweight process replaces a fleet of OS
     #: processes. Override via GANTRY_WORKER_CONCURRENCY.
     worker_concurrency: int = 100
-    #: Shared async SQLAlchemy pool bounds for the whole process. All task-slots
-    #: share this one lean pool (sessions are opened per-checkpoint and returned
-    #: immediately), so a few dozen backends serve hundreds of concurrent agents.
+    #: Async SQLAlchemy pool bounds for ONE process. All task-slots share this one
+    #: lean pool (sessions are opened per-checkpoint and returned immediately), so a
+    #: few dozen backends serve hundreds of concurrent agents. The worker AND the API
+    #: each open their own engine, and running N worker PROCESSES (GANTRY_WORKERS)
+    #: multiplies connections: budget ``(worker + API pools) x GANTRY_WORKERS`` well
+    #: under pgserver's max_connections (~100, minus reserved/NOTIFY/reaper). Prefer
+    #: scaling one process via worker_concurrency + llm_max_rps over many processes.
     #: Override via GANTRY_DB_POOL_SIZE / GANTRY_DB_MAX_OVERFLOW.
     db_pool_size: int = 20
     db_max_overflow: int = 10
+    #: Optional API-only pool bounds (the API is request-driven and usually needs
+    #: fewer connections than the worker's agent fleet). None -> use the shared
+    #: db_pool_size/db_max_overflow. Override via GANTRY_API_DB_POOL_SIZE /
+    #: GANTRY_API_DB_MAX_OVERFLOW to size the two engines independently.
+    api_db_pool_size: int | None = None
+    api_db_max_overflow: int | None = None
     #: Model used to resolve git merge conflicts when integrating swarm branches
     #: — one lightweight turn per conflicted file. None = reuse the leader's own
     #: model. Point it at a cheap/fast model (e.g. a Qwen3/flash) via
