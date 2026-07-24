@@ -177,6 +177,15 @@ class AgentState:
     def messages(self) -> list[Message]:
         return [t.message for t in self.tracked]
 
+    def projected_messages(self) -> list[Message]:
+        """The message list actually SENT to the model: raw history with
+        already-resolved write_file/edit_file arguments elided (see
+        ``elide_resolved_writes``). A pure, deterministic projection — it never
+        mutates ``self.tracked`` or the event log, so live and rehydrated states
+        project byte-identically, and a pending/unresolved write keeps its real
+        args for ``recover()``/re-execution (which read from ``tracked``)."""
+        return [elide_resolved_writes(t.message, self.resolved_tool_ids) for t in self.tracked]
+
     def count_tool_calls(self, *names: str) -> int:
         """How many times the agent has called any of ``names`` so far, counted
         from the folded message history (so it is identical after a resume)."""
@@ -251,6 +260,66 @@ def summary_message(summary: str) -> Message:
         "role": "user",
         "content": ("[Context compacted — summary of the conversation so far]\n" + summary),
     }
+
+
+#: Tools whose (large) file-body arguments needn't recirculate in context once
+#: the write has executed — the file is on disk; the agent re-reads if it needs it.
+_ELIDABLE_TOOLS = frozenset({"write_file", "edit_file"})
+#: The bulky argument fields those tools carry.
+_ELIDABLE_ARG_KEYS = ("content", "new_str", "old_str")
+
+
+def elide_resolved_writes(message: Message, resolved: set[str]) -> Message:
+    """Return the message to SEND, with an already-resolved write_file/edit_file
+    tool-call's bulky file-body args replaced by a compact ``[gantry: …]`` note.
+
+    This is a pure prompt-assembly projection — it copies, never mutating the
+    input — so it is deterministic given ``(message, resolved)`` and byte-identical
+    live vs. rehydrated. Only tool-calls in ``resolved`` are elided: a pending or
+    crash-interrupted write keeps real args (``recover()``/re-execution read them
+    from the untouched history). The placeholder is an unambiguous system
+    annotation, never plausible as the file's contents, and it tells the agent to
+    re-read the file if it needs the bytes."""
+    if message.get("role") != "assistant":
+        return message
+    calls = message.get("tool_calls")
+    if not calls:
+        return message
+    new_calls: list[dict[str, Any]] | None = None
+    for idx, tc in enumerate(calls):
+        fn = tc.get("function") or {}
+        if fn.get("name") not in _ELIDABLE_TOOLS or tc.get("id") not in resolved:
+            continue
+        try:
+            args = json.loads(fn.get("arguments") or "{}")
+        except ValueError:
+            continue
+        if not isinstance(args, dict):
+            continue
+        written = sum(len(args[k]) for k in _ELIDABLE_ARG_KEYS if isinstance(args.get(k), str))
+        if written == 0:
+            continue
+        path = args.get("path", "?")
+        kept = {k: v for k, v in args.items() if k not in _ELIDABLE_ARG_KEYS}
+        kept["_gantry_elided"] = (
+            f"[gantry: file written — {written} chars to {path}; "
+            "re-read the file if you need its contents]"
+        )
+        if new_calls is None:
+            new_calls = [dict(c) for c in calls]
+        new_calls[idx] = {**tc, "function": {**fn, "arguments": json.dumps(kept)}}
+    if new_calls is None:
+        return message
+    return {**message, "tool_calls": new_calls}
+
+
+def compaction_anchors(tracked: list[TrackedMessage]) -> list[TrackedMessage]:
+    """The head every compaction keeps VERBATIM: the system prompt (index 0) and
+    the root goal/spec (index 1). Both are payload-derived (``seq=None``) and must
+    survive every fold — normal, size-aware, or emergency — so a long run never
+    summarizes away its own instructions or specification. Used identically by the
+    live fold and by rehydration, so a resume reconstructs byte-identical history."""
+    return tracked[:2]
 
 
 def children_pending_message(children: Sequence[str]) -> Message:
@@ -383,8 +452,11 @@ def rehydrate(payload: dict[str, Any], events: Sequence[TaskEvent]) -> AgentStat
             state.resumed = True
         elif event.event_type is EventType.COMPACTION:
             kept = set(p["kept_seqs"])
+            # System (0) and goal (1) are untouchable anchors — kept verbatim so a
+            # long run never summarizes away its own instructions/spec. Must mirror
+            # the live fold in loop.py exactly, or a resume diverges.
             head = [
-                state.tracked[0],  # system message is always payload-derived
+                *compaction_anchors(state.tracked),
                 TrackedMessage(event.seq, summary_message(p["summary"])),
             ]
             tail = [t for t in state.tracked if t.seq is not None and t.seq in kept]

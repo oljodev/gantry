@@ -35,8 +35,15 @@ from gantry.core.db import session_scope
 from gantry.core.events import append_event, read_events
 from gantry.core.models import TERMINAL_STATUSES, EventType, Project, Task, TaskKind
 from gantry.logging import get_logger
-from gantry.runtime.compaction import CompactionConfig, plan_compaction, summarize
-from gantry.runtime.llm import DeltaSink, LLMClient, LLMResponse, LLMUsage, ToolCallRequest
+from gantry.runtime.compaction import CompactionConfig, CompactionPlan, plan_compaction, summarize
+from gantry.runtime.llm import (
+    DeltaSink,
+    LLMClient,
+    LLMResponse,
+    LLMUsage,
+    Message,
+    ToolCallRequest,
+)
 from gantry.runtime.state import (
     SPAWN_TOOL_NAMES,
     SURVEY_TOOL_NAMES,
@@ -45,6 +52,7 @@ from gantry.runtime.state import (
     apply_skill_to_system_message,
     assistant_message,
     children_pending_message,
+    compaction_anchors,
     leader_land_message,
     leader_nudge_message,
     rehydrate,
@@ -166,8 +174,15 @@ async def run_agent_task(
             {"step": state.steps + 1, "model": model, "message_count": len(state.tracked)},
         )
         on_delta, flush_reasoning = _reasoning_streamer(sessions, task)
+        # Send the PROJECTED history: resolved write/edit bodies elided so a
+        # write-heavy worker doesn't recirculate multi-MB args every step (the
+        # bloat + per-step-compaction/cache-thrash linchpin). Pure projection —
+        # tracked/events keep full args for recover()/replay.
         response = await llm.complete(
-            model=model, messages=state.messages, tools=tools.schemas(), on_delta=on_delta
+            model=model,
+            messages=state.projected_messages(),
+            tools=tools.schemas(),
+            on_delta=on_delta,
         )
         await flush_reasoning()
         seq = await _checkpoint(sessions, task, EventType.LLM_RESPONSE, _response_payload(response))
@@ -544,18 +559,24 @@ async def _landing_guard(
     return TrackedMessage(seq, leader_land_message())
 
 
-async def _maybe_compact(
+#: Backstop bound on emergency (forced) compactions in a single step, so a
+#: pathological over-ceiling state that can't shrink further can't spin.
+_MAX_EMERGENCY_COMPACTIONS = 3
+
+
+async def _apply_compaction(
     sessions: Sessions,
     task: Task,
     state: AgentState,
     llm: LLMClient,
     model: str,
-    config: CompactionConfig,
+    plan: CompactionPlan,
+    projected: list[Message],
 ) -> None:
-    plan = plan_compaction(state.tracked, config)
-    if plan is None:
-        return
-    result = await summarize(llm, model, state.tracked, plan)
+    """Summarize the head, checkpoint the COMPACTION event, and fold the live
+    history — keeping the [system, goal] anchors verbatim. ``projected`` is the
+    elided message list (summarized head + sizing come from it)."""
+    result = await summarize(llm, model, state.tracked, plan, projected)
     seq = await _checkpoint(
         sessions,
         task,
@@ -567,8 +588,11 @@ async def _maybe_compact(
             "usage": _usage_payload(result.usage),
         },
     )
+    # System (0) and goal (1) are untouchable anchors — kept verbatim so a long
+    # run never summarizes away its own instructions/spec. Mirrors the rehydrate
+    # fold in state.py exactly (compaction_anchors), or a resume diverges.
     state.tracked = [
-        state.tracked[0],
+        *compaction_anchors(state.tracked),
         TrackedMessage(seq, summary_message(result.summary)),
         *state.tracked[plan.cut_index :],
     ]
@@ -580,6 +604,37 @@ async def _maybe_compact(
         summarized=result.summarized_messages,
         kept=len(result.kept_seqs),
     )
+
+
+async def _maybe_compact(
+    sessions: Sessions,
+    task: Task,
+    state: AgentState,
+    llm: LLMClient,
+    model: str,
+    config: CompactionConfig,
+) -> None:
+    # Size on the PROJECTED (elided) messages — the bytes actually sent — so
+    # elision reduces compaction frequency (and thus prefix-cache thrash).
+    projected = state.projected_messages()
+    plan = plan_compaction(state.tracked, config, projected)
+    if plan is not None:
+        await _apply_compaction(sessions, task, state, llm, model, plan, projected)
+    # Hard per-step ceiling (make a 971K step impossible by invariant): if the
+    # projected context still exceeds hard_ceiling, force minimal compactions.
+    for _ in range(_MAX_EMERGENCY_COMPACTIONS):
+        projected = state.projected_messages()
+        if config.token_counter(projected) <= config.hard_ceiling:
+            return
+        plan = plan_compaction(state.tracked, config, projected, force=True)
+        before = len(state.tracked)
+        if plan is None:
+            break
+        await _apply_compaction(sessions, task, state, llm, model, plan, projected)
+        if len(state.tracked) >= before:  # couldn't shrink further — stop, don't spin
+            break
+    if config.token_counter(state.projected_messages()) > config.hard_ceiling:
+        logger.warning("agent.compaction_hard_ceiling_exceeded", task_id=str(task.id))
 
 
 async def _checkpoint(

@@ -57,21 +57,25 @@ async def test_compaction_summarizes_and_rehydrates_identically(db: Sessions) ->
     assert any("Summarize the conversation" in c for c in contents)
     assert summarize_call["tools"] == []
 
-    # The final LLM call ran on the compacted history.
+    # The final LLM call ran on the compacted history. The system prompt (0) and
+    # the root goal (1) are untouchable anchors kept verbatim; the summary follows.
     final_call = llm.calls[4]
     roles = [m["role"] for m in final_call["messages"]]
-    assert roles == ["system", "user", "assistant", "tool"]
-    assert "SUMMARY-OF-EARLIER-WORK" in final_call["messages"][1]["content"]
+    assert roles == ["system", "user", "user", "assistant", "tool"]
+    assert final_call["messages"][1]["content"] == "count things"  # goal anchor survived
+    assert "SUMMARY-OF-EARLIER-WORK" in final_call["messages"][2]["content"]
 
     # Crash-consistency: rehydrating from the log reproduces the same view.
     state = rehydrate(task.payload, events)
     assert [m["role"] for m in state.messages] == [
         "system",
         "user",
+        "user",
         "assistant",
         "tool",
         "assistant",
     ]
-    assert "SUMMARY-OF-EARLIER-WORK" in state.messages[1]["content"]
+    assert state.messages[1]["content"] == "count things"  # goal anchor
+    assert "SUMMARY-OF-EARLIER-WORK" in state.messages[2]["content"]
     assert state.messages[-1]["content"] == "all done"
     assert state.pending_tool_calls() == []

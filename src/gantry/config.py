@@ -93,6 +93,15 @@ class Settings(BaseSettings):
     #: is summarized). Keep max_context_tokens >= ~2x the tail's token size or
     #: compaction re-fires every step. Override via GANTRY_KEEP_RECENT_MESSAGES.
     keep_recent_messages: int = 6
+    #: Token budget for the verbatim recent tail a size-aware compaction keeps. It
+    #: bounds the post-compaction floor so compaction fires every N steps (letting
+    #: the provider's implicit prefix cache re-warm) instead of possibly every step.
+    #: ~a third of the soft cap. Override via GANTRY_KEEP_RECENT_TOKENS.
+    keep_recent_tokens: int = 16_000
+    #: Absolute per-step input ceiling. A step whose (elided) context still exceeds
+    #: this after normal compaction triggers emergency compaction — making a
+    #: 971K-token step impossible by invariant. Override via GANTRY_HARD_MAX_CONTEXT_TOKENS.
+    hard_max_context_tokens: int = 96_000
     #: Directory of SKILL.md files loaded by workers and the API.
     skills_root: Path = Path("skills")
     #: Origins allowed to call the API from a browser. Includes the Cloudflare

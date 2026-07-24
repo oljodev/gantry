@@ -110,6 +110,8 @@ class WorkerConfig:
             compaction=CompactionConfig(
                 max_context_tokens=settings.max_context_tokens,
                 keep_recent_messages=settings.keep_recent_messages,
+                keep_recent_tokens=settings.keep_recent_tokens,
+                hard_max_context_tokens=settings.hard_max_context_tokens,
             ),
         )
 
