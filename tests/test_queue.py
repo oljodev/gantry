@@ -46,6 +46,38 @@ async def get_task(db: Sessions, task_id: uuid.UUID) -> Task:
         return task
 
 
+async def test_park_wake_lifts_the_ceiling_without_burning_the_retry_budget(
+    db: Sessions,
+) -> None:
+    # A parent with a tight retry budget, claimed once (attempt -> 1).
+    parent = await enqueue_one(db, max_attempts=3)
+    async with session_scope(db) as session:
+        claimed = await queue.claim(session, worker_id="w")
+    assert claimed is not None and claimed.id == parent.id
+    # A child that is already terminal, so parking wakes the parent immediately.
+    async with session_scope(db) as session:
+        child = await queue.enqueue(
+            session,
+            workspace_id=DEFAULT_WORKSPACE_ID,
+            kind=TaskKind.EXECUTE,
+            payload={},
+            parent=parent,
+        )
+        await session.execute(
+            sa.update(Task).where(Task.id == child.id).values(status=TaskStatus.SUCCEEDED)
+        )
+    async with session_scope(db) as session:
+        status = await queue.park_for_children(session, task_id=parent.id, worker_id="w", attempt=1)
+    assert status is TaskStatus.PENDING  # woke on the spot
+
+    woke = await get_task(db, parent.id)
+    # The wake lifted max_attempts past the current attempt, so a many-wave leader
+    # never terminally FAILs from park/wake — but attempt still incremented on the
+    # claim, so the fencing token is intact.
+    assert woke.attempt == 1
+    assert woke.max_attempts == woke.attempt + 3  # greatest(3, 1+3) = 4
+
+
 async def test_enqueue_sets_root_and_logs_event(db: Sessions) -> None:
     task = await enqueue_one(db, payload={"goal": "x"})
     assert task.root_task_id == task.id

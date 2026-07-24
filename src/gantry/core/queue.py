@@ -54,6 +54,28 @@ def _now_plus(seconds: float) -> sa.ColumnElement[datetime]:
     return sa.func.now() + sa.func.make_interval(0, 0, 0, 0, 0, 0, seconds)
 
 
+#: Extra max_attempts headroom granted on a park/wake resume. Waking a parked
+#: task re-queues it PENDING; the next claim bumps `attempt` (the fencing token).
+#: Because `attempt` doubles as the error-retry counter (will_retry = attempt <
+#: max_attempts), every park/wake would otherwise burn a retry — so a many-wave
+#: leader hits max_attempts and terminally FAILs, orphaning its whole subtree.
+#: Lifting the ceiling on wake decouples the two: `attempt` still increments
+#: (fencing intact), but the wake never consumes the error budget.
+_WAKE_ATTEMPT_HEADROOM = 3
+
+
+def _wake_to_pending() -> dict[str, Any]:
+    """The UPDATE values that re-queue a parked task, lifting max_attempts so the
+    wake doesn't erode the error-retry budget. Monotonic ``greatest()`` is
+    idempotent under concurrent sibling wakes (the row is locked first)."""
+    return {
+        "status": TaskStatus.PENDING,
+        "scheduled_at": sa.func.now(),
+        "updated_at": sa.func.now(),
+        "max_attempts": sa.func.greatest(Task.max_attempts, Task.attempt + _WAKE_ATTEMPT_HEADROOM),
+    }
+
+
 def retry_backoff_seconds(
     attempt: int,
     base: float = DEFAULT_RETRY_BACKOFF_BASE_SECONDS,
@@ -403,11 +425,7 @@ async def _try_wake_parent(session: AsyncSession, parent_id: uuid.UUID | None) -
     )
     if unfinished:
         return False
-    await session.execute(
-        sa.update(Task)
-        .where(Task.id == parent_id)
-        .values(status=TaskStatus.PENDING, scheduled_at=sa.func.now(), updated_at=sa.func.now())
-    )
+    await session.execute(sa.update(Task).where(Task.id == parent_id).values(**_wake_to_pending()))
     await append_event(session, parent_id, EventType.TASK_RESUMED, {"reason": "children_settled"})
     await notify_task_ready(session, parent_id)
     logger.info("queue.parent_woken", parent_id=str(parent_id))
@@ -450,9 +468,7 @@ async def park_for_approval(
     await append_event(session, task_id, EventType.TASK_PARKED, {"reason": "waiting_approval"})
     if not await _unresolved_approval_ids(session, task_id):
         await session.execute(
-            sa.update(Task)
-            .where(Task.id == task_id)
-            .values(status=TaskStatus.PENDING, scheduled_at=sa.func.now(), updated_at=sa.func.now())
+            sa.update(Task).where(Task.id == task_id).values(**_wake_to_pending())
         )
         await append_event(
             session, task_id, EventType.TASK_RESUMED, {"reason": "approval_resolved"}
@@ -501,9 +517,7 @@ async def resolve_approval(
         session, task_id
     ):
         await session.execute(
-            sa.update(Task)
-            .where(Task.id == task_id)
-            .values(status=TaskStatus.PENDING, scheduled_at=sa.func.now(), updated_at=sa.func.now())
+            sa.update(Task).where(Task.id == task_id).values(**_wake_to_pending())
         )
         await append_event(
             session, task_id, EventType.TASK_RESUMED, {"reason": "approval_resolved"}
@@ -577,9 +591,7 @@ async def park_for_input(
     await append_event(session, task_id, EventType.TASK_PARKED, {"reason": "waiting_input"})
     if not await _unresolved_question_ids(session, task_id):
         await session.execute(
-            sa.update(Task)
-            .where(Task.id == task_id)
-            .values(status=TaskStatus.PENDING, scheduled_at=sa.func.now(), updated_at=sa.func.now())
+            sa.update(Task).where(Task.id == task_id).values(**_wake_to_pending())
         )
         await append_event(session, task_id, EventType.TASK_RESUMED, {"reason": "input_answered"})
         await notify_task_ready(session, task_id)
@@ -620,9 +632,7 @@ async def resolve_input(
         session, task_id
     ):
         await session.execute(
-            sa.update(Task)
-            .where(Task.id == task_id)
-            .values(status=TaskStatus.PENDING, scheduled_at=sa.func.now(), updated_at=sa.func.now())
+            sa.update(Task).where(Task.id == task_id).values(**_wake_to_pending())
         )
         await append_event(session, task_id, EventType.TASK_RESUMED, {"reason": "input_answered"})
         await notify_task_ready(session, task_id)
