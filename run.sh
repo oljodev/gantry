@@ -156,6 +156,13 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 echo "==> starting $WORKERS worker process(es) (concurrency: ${GANTRY_WORKER_CONCURRENCY:-100} agents each)"
+# Each worker PROCESS has its OWN LLM pacer and DB pool, so N processes multiply
+# both the global outbound rps (N x GANTRY_LLM_MAX_RPS) and DB connections. Prefer
+# scaling one process via GANTRY_WORKER_CONCURRENCY + GANTRY_LLM_MAX_RPS; only raise
+# GANTRY_WORKERS if you deliberately want that multiplication.
+if [ "$WORKERS" -gt 1 ]; then
+  echo "    note: $WORKERS processes => effective global rps is ${WORKERS}x GANTRY_LLM_MAX_RPS; size the DB pool accordingly"
+fi
 for _ in $(seq 1 "$WORKERS"); do
   uv run python -m gantry.worker &
   PIDS+=($!)

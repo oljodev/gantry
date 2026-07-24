@@ -26,7 +26,7 @@ from gantry.logging import get_logger
 from gantry.runtime.compaction import CompactionConfig
 from gantry.runtime.llm import LiteLLMClient, LLMClient
 from gantry.runtime.loop import AgentLoopError, run_agent_task
-from gantry.runtime.ratelimit import AsyncRateLimiter
+from gantry.runtime.ratelimit import AsyncRateLimiter, LimiterRegistry
 from gantry.runtime.tools import TaskParked
 from gantry.skills.store import load_registry
 from gantry.vault import Vault
@@ -127,6 +127,7 @@ class Worker:
         vault: Vault | None = None,
         llm_factory: LLMFactory | None = None,
         limiter: AsyncRateLimiter | None = None,
+        limiter_registry: LimiterRegistry | None = None,
         cancel_listener: QueueListener | None = None,
     ) -> None:
         self._sessions = sessions
@@ -140,11 +141,17 @@ class Worker:
         #: slot records them CANCELLED (vs a shutdown cancel, left for the reaper).
         self._running: dict[uuid.UUID, asyncio.Task[None]] = {}
         self._stopping: set[uuid.UUID] = set()
-        # Per-provider clients built at claim time share the one process-wide
-        # outbound pacer, so the whole fleet throttles as a single stream.
+
+        # Per-provider clients built at claim time each pace on THEIR provider's
+        # limiter (keyed by base_url), so one throttled provider can't stall
+        # another; the keyless default client shares the "" limiter. Falls back to
+        # a single shared limiter when no registry is supplied (tests).
+        def _limiter_for(base: str | None) -> AsyncRateLimiter | None:
+            return limiter_registry.get(base) if limiter_registry is not None else limiter
+
         self._llm_factory: LLMFactory = llm_factory or (
             lambda key, base: LiteLLMClient(
-                key, base, prompt_caching=config.prompt_caching, limiter=limiter
+                key, base, prompt_caching=config.prompt_caching, limiter=_limiter_for(base)
             )
         )
         self.processed = 0

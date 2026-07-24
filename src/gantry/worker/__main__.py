@@ -13,7 +13,7 @@ from gantry.core.db import create_engine
 from gantry.core.notify import TASK_CANCEL_CHANNEL, QueueListener
 from gantry.logging import configure_logging, get_logger
 from gantry.runtime.llm import LiteLLMClient
-from gantry.runtime.ratelimit import AsyncRateLimiter
+from gantry.runtime.ratelimit import LimiterRegistry
 from gantry.vault import Vault
 from gantry.worker.service import Worker, WorkerConfig
 
@@ -33,9 +33,10 @@ async def main() -> None:
         loop.add_signal_handler(sig, shutdown.set)
 
     vault = Vault.from_settings(settings) if settings.vault_key else None
-    # One process-wide outbound pacer, shared by the default client and every
-    # per-provider client the worker builds at claim time.
-    limiter = AsyncRateLimiter(settings.llm_max_rps, burst=settings.llm_rps_burst)
+    # One pacer per provider (keyed by base_url), each at the configured rate, so a
+    # slow/throttled provider never stalls another. The keyless default client uses
+    # the "" limiter; per-provider clients built at claim time reuse this registry.
+    limiters = LimiterRegistry(settings.llm_max_rps, burst=settings.llm_rps_burst)
     async with (
         QueueListener(settings.database_url_str) as listener,
         QueueListener(settings.database_url_str, channel=TASK_CANCEL_CHANNEL) as cancel_listener,
@@ -43,10 +44,10 @@ async def main() -> None:
         worker = Worker(
             sessions,
             config,
-            LiteLLMClient(limiter=limiter),
+            LiteLLMClient(limiter=limiters.get(None)),
             listener=listener,
             vault=vault,
-            limiter=limiter,
+            limiter_registry=limiters,
             cancel_listener=cancel_listener,
         )
         logger.info(
