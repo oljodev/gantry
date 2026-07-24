@@ -230,10 +230,17 @@ export interface AgentProfile {
   max_steps: number | null
   can_spawn: boolean
   autonomous_leader: boolean
+  model_options: ModelOption[]
   gated_tools: string[]
   skills: string[]
   created_at: string
   updated_at: string
+}
+
+/** One entry in an Autonomous Leader's model menu: a slug plus a when-to-use note. */
+export interface ModelOption {
+  model: string
+  description: string
 }
 
 export type AgentProfileCreate = Omit<

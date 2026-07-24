@@ -79,6 +79,7 @@ function toProfileBody(
     max_steps: null,
     can_spawn: Boolean(node.can_spawn) || strList(node.children).length > 0,
     autonomous_leader: Boolean(node.autonomous_leader),
+    model_options: [],
     gated_tools: strList(node.gated_tools),
     skills: strList(node.skills),
   }
@@ -97,6 +98,7 @@ function profileToBody(p: AgentProfile): AgentProfileCreate {
     max_steps: p.max_steps,
     can_spawn: p.can_spawn,
     autonomous_leader: p.autonomous_leader,
+    model_options: p.model_options,
     gated_tools: p.gated_tools,
     skills: p.skills,
   }

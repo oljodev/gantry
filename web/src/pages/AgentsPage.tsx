@@ -1,3 +1,4 @@
+import { Plus, X } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import {
   createAgent,
@@ -7,7 +8,7 @@ import {
   listSkills,
   updateAgent,
 } from '../api/client'
-import type { AgentProfile, AgentProfileCreate, Provider, Skill } from '../api/types'
+import type { AgentProfile, AgentProfileCreate, ModelOption, Provider, Skill } from '../api/types'
 import { field, primaryButton, secondaryButton } from '../components/forms'
 import { SkillChips } from '../components/SkillChips'
 import { GATEABLE_TOOLS } from '../lib/permissions'
@@ -173,6 +174,7 @@ function AgentForm({
   const [maxSteps, setMaxSteps] = useState(agent?.max_steps ? String(agent.max_steps) : '')
   const [canSpawn, setCanSpawn] = useState(agent?.can_spawn ?? false)
   const [autonomousLeader, setAutonomousLeader] = useState(agent?.autonomous_leader ?? false)
+  const [modelOptions, setModelOptions] = useState<ModelOption[]>(agent?.model_options ?? [])
   const [gated, setGated] = useState<Set<string>>(new Set(agent?.gated_tools ?? []))
   const [chosenSkills, setChosenSkills] = useState<Set<string>>(new Set(agent?.skills ?? []))
   const [busy, setBusy] = useState(false)
@@ -203,6 +205,9 @@ function AgentForm({
       max_steps: maxSteps.trim() ? Number(maxSteps) : null,
       can_spawn: canSpawn,
       autonomous_leader: autonomousLeader,
+      model_options: autonomousLeader
+        ? modelOptions.filter((o) => o.model.trim()).map((o) => ({ ...o, model: o.model.trim() }))
+        : [],
       gated_tools: [...gated],
       skills: [...chosenSkills],
     }
@@ -291,6 +296,9 @@ function AgentForm({
             sub-tasks dynamically even with no fixed children.
           </span>
         </label>
+        {autonomousLeader && (
+          <ModelMenuEditor options={modelOptions} onChange={setModelOptions} />
+        )}
         <label className="flex items-center gap-2 text-sm text-zinc-300">
           <input
             type="checkbox"
@@ -331,5 +339,59 @@ function AgentForm({
         {error && <span className="text-xs text-red-400">{error}</span>}
       </div>
     </form>
+  )
+}
+
+/** Editor for a leader's model menu: rows of {model slug, when-to-use note} the
+ *  leader reads to assign a cost-appropriate model to each worker it spawns. */
+function ModelMenuEditor({
+  options,
+  onChange,
+}: {
+  options: ModelOption[]
+  onChange: (next: ModelOption[]) => void
+}) {
+  const update = (i: number, patch: Partial<ModelOption>) =>
+    onChange(options.map((o, j) => (j === i ? { ...o, ...patch } : o)))
+  const remove = (i: number) => onChange(options.filter((_, j) => j !== i))
+  const add = () => onChange([...options, { model: '', description: '' }])
+
+  return (
+    <div className="ml-6 flex flex-col gap-2 rounded border border-zinc-800 bg-zinc-950/40 p-3">
+      <p className="text-xs text-zinc-400">
+        Models this leader may assign to the workers it spawns. It only sees these slugs and your
+        notes (never your API key); they run on this agent&apos;s provider key. Tell it when to use
+        each so it spends the cheap model on mechanical work.
+      </p>
+      {options.map((opt, i) => (
+        <div key={i} className="flex flex-col gap-1 sm:flex-row sm:items-start">
+          <input
+            className={`${field} sm:w-2/5`}
+            placeholder="model slug (e.g. deepseek/deepseek-chat)"
+            value={opt.model}
+            onChange={(e) => update(i, { model: e.target.value })}
+            aria-label={`Model slug ${i + 1}`}
+          />
+          <input
+            className={`${field} sm:flex-1`}
+            placeholder="when to use it (e.g. cheap; splitting, reading, QA)"
+            value={opt.description}
+            onChange={(e) => update(i, { description: e.target.value })}
+            aria-label={`When to use model ${i + 1}`}
+          />
+          <button
+            type="button"
+            onClick={() => remove(i)}
+            className={secondaryButton}
+            aria-label={`Remove model ${i + 1}`}
+          >
+            <X className="h-4 w-4" aria-hidden />
+          </button>
+        </div>
+      ))}
+      <button type="button" onClick={add} className={`${secondaryButton} self-start`}>
+        <Plus className="mr-1 h-4 w-4" aria-hidden /> Add model
+      </button>
+    </div>
   )
 }
