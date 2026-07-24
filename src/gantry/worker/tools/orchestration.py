@@ -52,6 +52,16 @@ MAX_SPAWN_DEPTH = 5
 
 _RESULT_TEXT_CAP = 2000
 
+#: The batch report (wait_for_children) is read straight into the leader's context,
+#: so it must stay small even with ~100 children — otherwise it alone forces a leader
+#: compaction (2000 chars x 100 ~= 75K tokens). A succeeded child is compressed to its
+#: BRANCH + a short closing tail (the leader integrates by branch, not by re-reading
+#: each worker's prose), while a FAILED child keeps its full error (the actionable
+#: signal). The whole report is then hard-bounded so one wait can't blow the context.
+_SUCCESS_TAIL_CHARS = 240
+_ERROR_CHARS = 6000
+_REPORT_CHAR_CAP = 48_000
+
 #: Each park/wake cycle re-claims the planner (attempt += 1 — it's the fencing
 #: token), so planners need generous max_attempts headroom.
 DEFAULT_PLANNER_MAX_ATTEMPTS = 20
@@ -533,7 +543,7 @@ class WaitForChildrenTool(Tool):
 
 
 def _children_report(children: list[Task]) -> str:
-    report = []
+    report: list[dict[str, Any]] = []
     for child in children:
         result = child.result or {}
         entry: dict[str, Any] = {
@@ -542,18 +552,53 @@ def _children_report(children: list[Task]) -> str:
             "status": child.status.value,
         }
         if child.status is TaskStatus.SUCCEEDED:
-            entry["final_text"] = str(result.get("final_text") or "")[:_RESULT_TEXT_CAP]
             if result.get("branch"):
                 entry["branch"] = result["branch"]
+            tail = str(result.get("final_text") or "").strip()
+            if tail:
+                # Just the closing tail — enough to see how the worker finished; the
+                # integratable artifact is the branch, not the prose.
+                entry["result_tail"] = tail[-_SUCCESS_TAIL_CHARS:]
         elif child.last_error:
-            entry["error"] = child.last_error[:_RESULT_TEXT_CAP]
+            entry["error"] = child.last_error[:_ERROR_CHARS]
         report.append(entry)
     counts = {
         status.value: n
         for status in TERMINAL_STATUSES
         if (n := sum(1 for c in children if c.status is status))
     }
-    return json.dumps({"summary": counts, "children": report}, indent=2)
+
+    def _render(entries: list[dict[str, Any]], note: str | None = None) -> str:
+        body: dict[str, Any] = {"summary": counts, "children": entries}
+        if note is not None:
+            body["note"] = note
+        return json.dumps(body, indent=2)
+
+    text = _render(report)
+    if len(text) <= _REPORT_CHAR_CAP:
+        return text
+    # A very large wave still over the ceiling: drop success tails (keeping every
+    # branch + full error). If STILL too big, keep all failures and as many succeeded
+    # entries as fit, and say how many were omitted — the counts remain exact and
+    # merge_child_branches auto-discovers every child branch from the DB, so trimming
+    # succeeded entries here loses nothing the leader needs. Always valid JSON.
+    for entry in report:
+        entry.pop("result_tail", None)
+    failures = [e for e in report if "error" in e]
+    successes = [e for e in report if "error" not in e]
+    kept: list[dict[str, Any]] = []
+    for entry in successes:
+        if len(_render(failures + kept + [entry])) > _REPORT_CHAR_CAP:
+            break
+        kept.append(entry)
+    omitted = len(successes) - len(kept)
+    note = "success tails dropped to fit; statuses, branches, and errors kept."
+    if omitted:
+        note = (
+            f"{omitted} succeeded children omitted to fit (summary counts are exact); "
+            "merge_child_branches finds every child branch automatically."
+        )
+    return _render(failures + kept, note)
 
 
 class AgentStatusTool(Tool):

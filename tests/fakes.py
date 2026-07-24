@@ -145,7 +145,7 @@ class OrchestratorLLM:
             import json
 
             children = json.loads(report)["children"]
-            joined = " | ".join(c.get("final_text", c["status"]) for c in children)
+            joined = " | ".join(c.get("result_tail", c["status"]) for c in children)
             return final_response(f"INTEGRATED: {joined}")
         if len(tool_contents) >= len(self.subtask_goals):
             return response_with_tool_call("wait_1", "wait_for_children", {})

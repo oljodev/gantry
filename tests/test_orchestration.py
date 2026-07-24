@@ -29,6 +29,7 @@ from gantry.worker.tools.orchestration import (
     SpawnBatchTool,
     SpawnSubtaskTool,
     WaitForChildrenTool,
+    _children_report,
     _is_unclonable_local_repo,
     batch_child_id,
     child_task_id,
@@ -229,8 +230,50 @@ async def test_wait_parks_while_children_run_and_reports_when_settled(db: Sessio
     assert not result.is_error
     report = json.loads(result.content)
     assert report["summary"] == {"succeeded": 1}
-    assert report["children"][0]["final_text"] == "child says hi"
+    assert report["children"][0]["result_tail"] == "child says hi"
     assert report["children"][0]["branch"] == "gantry/task-x"
+
+
+def test_children_report_slims_successes_but_keeps_full_errors() -> None:
+    ok = Task(
+        payload={"goal": "split file"},
+        status=TaskStatus.SUCCEEDED,
+        result={"final_text": "X" * 5000, "branch": "gantry/task-ok"},
+    )
+    bad = Task(
+        payload={"goal": "compile it"},
+        status=TaskStatus.FAILED,
+        result={},
+    )
+    bad.last_error = "Traceback: " + "boom " * 300  # a long, actionable error
+    report = json.loads(_children_report([ok, bad]))
+    good, failed = report["children"]
+    # A success keeps its branch + only a short closing tail (not the 5000-char body).
+    assert good["branch"] == "gantry/task-ok"
+    assert len(good["result_tail"]) <= 240 and "final_text" not in good
+    # A failure keeps its full error text — the leader needs it to react.
+    assert failed["error"] == bad.last_error
+    assert report["summary"] == {"succeeded": 1, "failed": 1}
+
+
+def test_children_report_is_hard_bounded_for_a_huge_wave() -> None:
+    # A huge wave: 400 succeeded children each with a long final_text. Even after
+    # dropping every success tail the report would exceed the per-wait cap, so it
+    # keeps as many as fit and omits the rest — but stays VALID JSON and bounded,
+    # with exact summary counts, so one wait can never blow the leader's context.
+    kids = [
+        Task(
+            payload={"goal": f"goal number {i}"},
+            status=TaskStatus.SUCCEEDED,
+            result={"final_text": "Y" * 2000, "branch": f"gantry/task-{i:06d}"},
+        )
+        for i in range(400)
+    ]
+    report = json.loads(_children_report(kids))  # must parse -> always valid JSON
+    assert report["summary"] == {"succeeded": 400}  # counts stay exact
+    assert len(report["children"]) < 400  # some omitted to fit
+    assert "omitted to fit" in report["note"]
+    assert len(json.dumps(report)) <= 48_000 + 200
 
 
 async def test_last_finishing_child_wakes_the_parked_parent(db: Sessions) -> None:
