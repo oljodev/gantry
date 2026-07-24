@@ -54,6 +54,18 @@ def test_leader_prompt_tiers_the_child_model_by_cost() -> None:
     assert "spawn_subtask" in prompt and "`model`" in prompt
 
 
+def test_leader_prompt_guards_against_collisions_and_thrash() -> None:
+    # The hour-long chess-split failure: coupled work fanned out to blind
+    # workers collided at merge, then the leader thrashed with fixup rounds.
+    prompt = AUTONOMOUS_LEADER_PROMPT.lower()
+    # Disjoint file ownership + a single owner for shared glue.
+    assert "disjoint" in prompt and "glue" in prompt
+    # Sequence coupled steps instead of parallelizing them.
+    assert "not parallel" in prompt
+    # Anti-thrash: converge, targeted fixes, don't redo whole modules.
+    assert "converge" in prompt and "thrash" in prompt
+
+
 def test_planner_prompt_is_the_leader_prompt() -> None:
     # The orchestrator config is embedded under the historical name so every
     # existing leader path (API launch, spawn_subtask, team planner nodes) uses it.
