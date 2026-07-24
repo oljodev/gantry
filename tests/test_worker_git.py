@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import uuid
 from pathlib import Path
@@ -13,10 +14,31 @@ from gantry.worker.git import GitAuth, current_branch
 from gantry.worker.tools.gittool import GitCommitPushTool
 from gantry.worker.workspace import destroy, prepare_workspace
 
+# Give test git a fixed identity via env, and isolate it from the host's
+# global/system config. A fresh `git clone` in a test carries no local identity,
+# and a CI runner has no global one either, so a raw `git commit` would fail with
+# "Author identity unknown" (exit 128) — passing locally only because the dev's
+# ~/.gitconfig supplies one. Making the helper self-sufficient fixes that whole
+# class AND makes local runs reproduce CI exactly (no dependence on ~/.gitconfig).
+_GIT_ENV = {
+    "GIT_AUTHOR_NAME": "Gantry Test",
+    "GIT_AUTHOR_EMAIL": "test@gantry.local",
+    "GIT_COMMITTER_NAME": "Gantry Test",
+    "GIT_COMMITTER_EMAIL": "test@gantry.local",
+    "GIT_CONFIG_GLOBAL": os.devnull,
+    "GIT_CONFIG_SYSTEM": os.devnull,
+    "GIT_TERMINAL_PROMPT": "0",
+}
+
 
 def git(*args: str, cwd: Path | None = None) -> str:
     return subprocess.run(
-        ["git", *args], cwd=cwd, check=True, capture_output=True, text=True
+        ["git", *args],
+        cwd=cwd,
+        check=True,
+        capture_output=True,
+        text=True,
+        env={**os.environ, **_GIT_ENV},
     ).stdout.strip()
 
 
