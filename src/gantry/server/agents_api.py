@@ -29,6 +29,7 @@ from gantry.core.models import (
     Team,
     TeamMember,
 )
+from gantry.prompts import DEFAULT_AUTONOMOUS_LEADER_PROMPT
 from gantry.server.auth import require_user
 from gantry.server.providers_api import get_sessions
 from gantry.server.schemas import (
@@ -123,6 +124,14 @@ async def list_agents(
     async with sessions() as session:
         rows = (await session.scalars(stmt)).all()
     return AgentsResponse(agents=[AgentProfileOut.model_validate(p) for p in rows])
+
+
+@router.get("/agents/leader-default-prompt")
+async def leader_default_prompt() -> dict[str, str]:
+    """The built-in default Autonomous Leader system prompt, so the dashboard can
+    load it into the editable prompt field (the one source of truth for the
+    leader's behavior) and let the operator customize it."""
+    return {"system_prompt": DEFAULT_AUTONOMOUS_LEADER_PROMPT}
 
 
 @router.put("/agents/{agent_id}", response_model=AgentProfileOut)

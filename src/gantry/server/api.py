@@ -30,8 +30,8 @@ from gantry.core.models import (
     TaskKind,
     TaskStatus,
 )
+from gantry.prompts import PLANNER_SYSTEM_PROMPT
 from gantry.providers import resolve_model
-from gantry.runtime.state import PLANNER_SYSTEM_PROMPT
 from gantry.server.auth import require_user
 from gantry.server.schemas import (
     ApprovalItem,

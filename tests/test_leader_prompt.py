@@ -3,11 +3,11 @@ delegate in tiny parallel micro-tasks and gate on a sequential qa-reviewer."""
 
 from __future__ import annotations
 
-from gantry.runtime.state import AUTONOMOUS_LEADER_PROMPT, PLANNER_SYSTEM_PROMPT
+from gantry.prompts import DEFAULT_AUTONOMOUS_LEADER_PROMPT, PLANNER_SYSTEM_PROMPT
 
 
 def test_leader_prompt_encodes_the_swarm_disciplines() -> None:
-    prompt = AUTONOMOUS_LEADER_PROMPT.lower()
+    prompt = DEFAULT_AUTONOMOUS_LEADER_PROMPT.lower()
     # Survey the codebase before delegating — read, don't plan blind.
     assert "read_file" in prompt and "survey" in prompt
     # Survey comes before the delegation section — read before delegating.
@@ -36,7 +36,7 @@ def test_leader_prompt_forbids_designing_the_solution_itself() -> None:
     # The recurring failure mode: the leader burns minutes designing the whole
     # decomposition (line counts, which method goes where) instead of handing a
     # file and an outcome to a worker. The prompt must forbid that explicitly.
-    prompt = AUTONOMOUS_LEADER_PROMPT.lower()
+    prompt = DEFAULT_AUTONOMOUS_LEADER_PROMPT.lower()
     assert "router, not a designer" in prompt
     assert "delegate outcomes, not implementations" in prompt
     # Name the specific over-planning tells it must not do.
@@ -48,7 +48,7 @@ def test_leader_prompt_forbids_designing_the_solution_itself() -> None:
 def test_leader_prompt_tiers_the_child_model_by_cost() -> None:
     # Children should run on the cheapest model that fits, not inherit the
     # leader's expensive model for mechanical work.
-    prompt = AUTONOMOUS_LEADER_PROMPT.lower()
+    prompt = DEFAULT_AUTONOMOUS_LEADER_PROMPT.lower()
     assert "match the model to the work" in prompt
     assert "cheapest model" in prompt
     assert "spawn_subtask" in prompt and "`model`" in prompt
@@ -57,7 +57,7 @@ def test_leader_prompt_tiers_the_child_model_by_cost() -> None:
 def test_leader_prompt_guards_against_collisions_and_thrash() -> None:
     # The hour-long chess-split failure: coupled work fanned out to blind
     # workers collided at merge, then the leader thrashed with fixup rounds.
-    prompt = AUTONOMOUS_LEADER_PROMPT.lower()
+    prompt = DEFAULT_AUTONOMOUS_LEADER_PROMPT.lower()
     # Disjoint file ownership + a single owner for shared glue.
     assert "disjoint" in prompt and "glue" in prompt
     # Sequence coupled steps instead of parallelizing them.
@@ -69,4 +69,4 @@ def test_leader_prompt_guards_against_collisions_and_thrash() -> None:
 def test_planner_prompt_is_the_leader_prompt() -> None:
     # The orchestrator config is embedded under the historical name so every
     # existing leader path (API launch, spawn_subtask, team planner nodes) uses it.
-    assert PLANNER_SYSTEM_PROMPT == AUTONOMOUS_LEADER_PROMPT
+    assert PLANNER_SYSTEM_PROMPT == DEFAULT_AUTONOMOUS_LEADER_PROMPT

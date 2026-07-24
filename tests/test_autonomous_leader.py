@@ -1,5 +1,6 @@
-"""The Autonomous Leader flag: it forces the swarm-master prompt and unlocks
-delegation at snapshot time, and survives the API round-trip."""
+"""The Autonomous Leader flag: it unlocks delegation at snapshot time and uses the
+operator's editable system prompt as the leader's core (falling back to the built-in
+default only when blank), and survives the API round-trip."""
 
 from __future__ import annotations
 
@@ -8,7 +9,7 @@ import uuid
 import httpx
 
 from gantry.core.models import AgentProfile, Provider, ProviderType, TaskKind
-from gantry.runtime.state import AUTONOMOUS_LEADER_PROMPT
+from gantry.prompts import DEFAULT_AUTONOMOUS_LEADER_PROMPT
 from gantry.teams import model_menu_text, node_kind, node_payload_fields, snapshot_node
 
 from .test_agents_teams_api import create_agent
@@ -27,25 +28,40 @@ def _node(**overrides: object) -> dict[str, object]:
     return node
 
 
-def test_leader_forces_prompt_and_unlocks_delegation_without_children() -> None:
-    fields = node_payload_fields(_node(autonomous_leader=True))
+def test_leader_falls_back_to_the_default_prompt_and_unlocks_delegation() -> None:
+    fields = node_payload_fields(_node(autonomous_leader=True))  # no system_prompt set
     # Delegation is unlocked even though there are no fixed children...
     assert fields["can_spawn"] is True
     # ...the run is marked so the worker gives it the restricted (no-write) toolset...
     assert fields["autonomous_leader"] is True
-    # ...and the leader prompt is the core instruction.
-    assert fields["system_prompt"] == AUTONOMOUS_LEADER_PROMPT
+    # ...and with a BLANK profile prompt the built-in default is the fallback.
+    assert fields["system_prompt"] == DEFAULT_AUTONOMOUS_LEADER_PROMPT
     # A leader is always a planner (generous park/wake attempt budget).
     assert node_kind(_node(autonomous_leader=True)) is TaskKind.PLAN
 
 
-def test_leader_prompt_overrides_a_custom_prompt_but_keeps_it_as_context() -> None:
+def test_leader_uses_the_editable_system_prompt_as_its_core() -> None:
+    # There is ONE leader prompt and it is dashboard-managed: the operator's own
+    # system prompt REPLACES the built-in default (it is no longer forced on top).
     fields = node_payload_fields(
-        _node(autonomous_leader=True, system_prompt="Only touch the parser.")
+        _node(autonomous_leader=True, system_prompt="You are a parser specialist. Delegate.")
     )
-    prompt = fields["system_prompt"]
-    assert prompt.startswith(AUTONOMOUS_LEADER_PROMPT)  # leader discipline dominates
-    assert "Only touch the parser." in prompt  # custom instruction not lost
+    assert fields["system_prompt"] == "You are a parser specialist. Delegate."
+    assert DEFAULT_AUTONOMOUS_LEADER_PROMPT not in fields["system_prompt"]
+
+
+def test_editable_prompt_still_gets_the_dynamic_menu_and_roster_appended() -> None:
+    # The live model menu (from model_options) is still appended to whatever core
+    # prompt the operator wrote — it is generated, not hand-typed.
+    fields = node_payload_fields(
+        _node(
+            autonomous_leader=True,
+            system_prompt="Custom leader brain.",
+            model_options=[{"model": "openrouter/x", "description": "cheap"}],
+        )
+    )
+    assert fields["system_prompt"].startswith("Custom leader brain.")
+    assert "## Models you can assign" in fields["system_prompt"]
 
 
 def test_non_leader_is_unchanged() -> None:
@@ -112,6 +128,14 @@ async def test_flag_round_trips_through_the_api(client: httpx.AsyncClient) -> No
     # Defaults to false when omitted.
     plain = await create_agent(client, "plain")
     assert plain["autonomous_leader"] is False
+
+
+async def test_leader_default_prompt_endpoint(client: httpx.AsyncClient) -> None:
+    # The dashboard fetches this to load the built-in default into the editable
+    # prompt field so the operator can start from it and customize.
+    resp = await client.get("/api/agents/leader-default-prompt")
+    assert resp.status_code == 200
+    assert resp.json()["system_prompt"] == DEFAULT_AUTONOMOUS_LEADER_PROMPT
 
 
 async def test_model_options_round_trip_through_the_api(client: httpx.AsyncClient) -> None:

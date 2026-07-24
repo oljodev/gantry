@@ -16,7 +16,7 @@ Snapshot node shape (recursive)::
       "model": "openrouter/..." | null,  # ALREADY LiteLLM-mapped
       "max_steps": 40 | null,
       "can_spawn": true,
-      "autonomous_leader": false,       # true -> forced swarm-leader prompt + spawn
+      "autonomous_leader": false,       # true -> editable prompt is core + unlocks spawn
       "gated_tools": ["git_commit_push"],
       "skills": ["test-first"],
       "children": [ <node>, ... ]
@@ -28,8 +28,8 @@ from __future__ import annotations
 from typing import Any
 
 from gantry.core.models import AgentProfile, Provider, TaskKind
+from gantry.prompts import DEFAULT_AUTONOMOUS_LEADER_PROMPT, PLANNER_SYSTEM_PROMPT
 from gantry.providers import resolve_model
-from gantry.runtime.state import AUTONOMOUS_LEADER_PROMPT, PLANNER_SYSTEM_PROMPT
 
 TeamNode = dict[str, Any]
 
@@ -136,12 +136,13 @@ def node_payload_fields(node: TeamNode) -> dict[str, Any]:
         fields["agent_name"] = node["name"]
     prompt = node.get("system_prompt")
     if node.get("autonomous_leader"):
-        # The Autonomous Leader flag FORCES the swarm-master prompt as the core
-        # instruction, overriding any standard/custom prompt (which rides along
-        # as extra context so it isn't lost), and unlocks delegation even with
-        # no fixed children (dynamic swarm). Named children still get a roster.
-        extra = f"\n\n## Additional instructions\n{prompt}" if prompt else ""
-        prompt = AUTONOMOUS_LEADER_PROMPT + extra
+        # The leader's behavioral prompt is the operator's own system prompt (edited
+        # in the dashboard), falling back to the built-in default only when left
+        # blank — there is ONE leader prompt and it is dashboard-managed. The live
+        # model menu and team roster are appended dynamically (they are generated
+        # from the profile's model_options/children, not hand-typed). The flag also
+        # unlocks delegation even with no fixed children (dynamic swarm).
+        prompt = prompt or DEFAULT_AUTONOMOUS_LEADER_PROMPT
         if node.get("model_options"):
             prompt += model_menu_text(node["model_options"])
         if node.get("children"):

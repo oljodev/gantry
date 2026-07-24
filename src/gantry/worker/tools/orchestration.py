@@ -27,7 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from gantry.core import queue
 from gantry.core.db import session_scope
 from gantry.core.models import TERMINAL_STATUSES, Task, TaskKind, TaskStatus
-from gantry.runtime.state import PLANNER_SYSTEM_PROMPT
+from gantry.prompts import PLANNER_SYSTEM_PROMPT
 from gantry.runtime.tools import (
     TaskParked,
     Tool,
