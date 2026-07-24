@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react'
 import {
   createAgent,
   deleteAgent,
+  getLeaderDefaultPrompt,
   listAgents,
   listProviders,
   listSkills,
@@ -179,9 +180,24 @@ function AgentForm({
   const [chosenSkills, setChosenSkills] = useState<Set<string>>(new Set(agent?.skills ?? []))
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [loadingDefault, setLoadingDefault] = useState(false)
   const projectId = useProjectId()
 
   const provider = providers.find((p) => p.id === providerId)
+
+  // Pull the built-in leader prompt into the editable field so the operator can
+  // start from it and customize — there is one leader prompt and it lives here.
+  const loadLeaderDefault = async () => {
+    setLoadingDefault(true)
+    setError(null)
+    try {
+      setSystemPrompt(await getLeaderDefaultPrompt())
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setLoadingDefault(false)
+    }
+  }
 
   const toggle = (set: Set<string>, update: (s: Set<string>) => void, name: string) => {
     const next = new Set(set)
@@ -245,14 +261,33 @@ function AgentForm({
           onChange={(e) => setRole(e.target.value)}
         />
       </div>
-      <textarea
-        className={`${field} min-h-32 font-mono`}
-        placeholder={
-          'System prompt — who is this agent, how should it work?\n(leave empty for the built-in default)'
-        }
-        value={systemPrompt}
-        onChange={(e) => setSystemPrompt(e.target.value)}
-      />
+      <div className="flex flex-col gap-1">
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-zinc-500">
+            System prompt{autonomousLeader ? ' — the leader’s behavior' : ''}
+          </span>
+          {autonomousLeader && (
+            <button
+              type="button"
+              className="text-xs text-amber-300 hover:underline disabled:opacity-50"
+              onClick={loadLeaderDefault}
+              disabled={loadingDefault}
+            >
+              {loadingDefault ? 'loading…' : 'Load built-in leader default'}
+            </button>
+          )}
+        </div>
+        <textarea
+          className={`${field} min-h-32 font-mono`}
+          placeholder={
+            autonomousLeader
+              ? 'The Autonomous Leader’s system prompt — edit its full behavior here.\nClick “Load built-in leader default” to start from the built-in, or leave empty to use it as-is.'
+              : 'System prompt — who is this agent, how should it work?\n(leave empty for the built-in default)'
+          }
+          value={systemPrompt}
+          onChange={(e) => setSystemPrompt(e.target.value)}
+        />
+      </div>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
         <select
           className={field}
@@ -292,8 +327,9 @@ function AgentForm({
           />
           <span>
             <span className="text-amber-300">Autonomous Leader</span> — run as a swarm
-            master: forces the leader system prompt and unlocks delegation, spinning up
-            sub-tasks dynamically even with no fixed children.
+            master: unlocks delegation (spinning up sub-tasks dynamically even with no
+            fixed children). Its behavior is the system prompt above — edit it, or load
+            the built-in default to start from.
           </span>
         </label>
         {autonomousLeader && (

@@ -326,6 +326,14 @@ export function deleteAgent(agentId: string): Promise<void> {
   return request<void>(`/api/agents/${agentId}`, { method: 'DELETE' })
 }
 
+// The built-in default Autonomous Leader prompt, so the editor can load it into
+// the (editable, source-of-truth) system-prompt field for the operator to tweak.
+export function getLeaderDefaultPrompt(): Promise<string> {
+  return request<{ system_prompt: string }>('/api/agents/leader-default-prompt').then(
+    (body) => body.system_prompt,
+  )
+}
+
 // --- teams ---------------------------------------------------------------
 
 export function listTeams(projectId?: string): Promise<TeamSummary[]> {
