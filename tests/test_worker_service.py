@@ -74,6 +74,28 @@ async def get_task(db: Sessions, task: Task) -> Task:
         return refreshed
 
 
+def _ws(branch: str | None) -> Any:
+    from gantry.worker.git import GitAuth
+    from gantry.worker.workspace import Workspace
+
+    return Workspace(root=Path("/x"), path=Path("/x"), auth=GitAuth(env={}), branch=branch)
+
+
+def test_only_top_level_non_leader_git_tasks_land_on_main() -> None:
+    root = Task(parent_task_id=None, payload={})
+    child = Task(parent_task_id=uuid.uuid4(), payload={})
+
+    # The one case that lands: a top-level, git-backed, non-leader task.
+    assert Worker._should_land_on_main(root, _ws("gantry/task-1"), is_leader=False)
+    # A spawned child never lands — its branch feeds the leader's staging merge.
+    assert not Worker._should_land_on_main(child, _ws("gantry/task-2"), is_leader=False)
+    # A leader never lands its own (empty) branch — it lands staging via land_branch.
+    assert not Worker._should_land_on_main(root, _ws("gantry/task-3"), is_leader=True)
+    # A repo-less task has no branch to land.
+    assert not Worker._should_land_on_main(root, _ws(None), is_leader=False)
+    assert not Worker._should_land_on_main(root, None, is_leader=False)
+
+
 async def test_worker_delivers_a_coding_task_end_to_end(
     db: Sessions,
     origin: Path,  # noqa: F811
@@ -110,8 +132,10 @@ async def test_worker_delivers_a_coding_task_end_to_end(
     assert branch.startswith("gantry/task-")
     assert final.result["final_text"] == "delivered the greeting file"
 
-    # Work actually landed on the remote.
+    # Work actually landed on the remote...
     assert git("--git-dir", str(origin), "show", f"{branch}:hello.txt") == "hello from gantry"
+    # ...and auto-landed on main, so there is no side branch to merge by hand.
+    assert git("--git-dir", str(origin), "show", "main:hello.txt") == "hello from gantry"
 
     # The bash run was durably streamed as terminal chunks.
     async with session_scope(db) as session:

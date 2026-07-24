@@ -33,6 +33,7 @@ from gantry.vault import Vault
 from gantry.vault.store import GITHUB_TOKEN_SECRET, get_secret, provider_secret_name
 from gantry.worker import workspace as ws
 from gantry.worker.git import CloneError
+from gantry.worker.merge import default_branch, promote_branch
 from gantry.worker.policy import policy_for_payload
 from gantry.worker.tools import build_coding_registry, build_copilot_registry
 from gantry.worker.tools.integrate import make_conflict_resolver
@@ -352,6 +353,9 @@ class Worker:
                     },
                 )
             logger.info("worker.task_succeeded", task_id=str(task.id), steps=outcome.steps)
+            if succeeded and self._should_land_on_main(task, workspace, is_leader):
+                assert workspace is not None
+                await self._land_task_on_main(task, workspace)
         except TaskParked as parked:
             async with session_scope(self._sessions) as session:
                 if parked.reason == TaskStatus.WAITING_APPROVAL.value:
@@ -410,6 +414,49 @@ class Worker:
             if workspace is not None and (succeeded or not cfg.keep_failed_workspaces):
                 await ws.destroy(workspace.root)
             self.processed += 1
+
+    @staticmethod
+    def _should_land_on_main(task: Task, workspace: ws.Workspace | None, is_leader: bool) -> bool:
+        """Whether a succeeded task should auto-land its branch on main.
+
+        Only a top-level, git-backed, non-leader task does: a user launched it and
+        wants the result live on main, not on a side branch. Spawned children
+        (parent set) feed the leader's staging merge — landing them straight to
+        main would bypass integration and QA. A leader's own branch is empty (it
+        lands the integrated staging branch via land_branch), so it never lands
+        here either.
+        """
+        return (
+            workspace is not None
+            and workspace.branch is not None
+            and task.parent_task_id is None
+            and not is_leader
+        )
+
+    async def _land_task_on_main(self, task: Task, workspace: ws.Workspace) -> None:
+        """Land a finished top-level task's branch on the repo's main branch.
+
+        Best-effort and never fatal to the run: it pushes without --force, so if
+        main moved since the task branched the push is rejected and the work
+        simply stays on its branch (logged), rather than clobbering main. The
+        agent already committed its work with its own message; this just makes it
+        live on the default branch instead of a side branch.
+        """
+        assert workspace.branch is not None
+        target = task.payload.get("base_branch") or await default_branch(
+            workspace.path, workspace.auth
+        )
+        try:
+            landed, detail = await promote_branch(
+                workspace.path, branch=workspace.branch, target=str(target), auth=workspace.auth
+            )
+        except Exception as exc:  # never let landing failure fail a succeeded task
+            logger.warning("worker.land_errored", task_id=str(task.id), error=repr(exc))
+            return
+        if landed:
+            logger.info("worker.landed_on_main", task_id=str(task.id), target=str(target))
+        else:
+            logger.info("worker.land_skipped", task_id=str(task.id), detail=detail)
 
     async def _llm_for_task(self, task: Task) -> LLMClient:
         """The task's LLM client: vault-backed provider config, or the default.
