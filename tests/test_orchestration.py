@@ -26,8 +26,10 @@ from gantry.worker.tools.orchestration import (
     MAX_SPAWN_DEPTH,
     AgentStatusTool,
     AgentTerminateTool,
+    SpawnBatchTool,
     SpawnSubtaskTool,
     WaitForChildrenTool,
+    batch_child_id,
     child_task_id,
 )
 
@@ -83,6 +85,86 @@ async def event_types_of(db: Sessions, task_id: uuid.UUID) -> list[str]:
             .order_by(TaskEvent.seq)
         )
     return [str(r) for r in rows]
+
+
+async def _batch(
+    db: Sessions, parent: Task, call_id: str, children: list[dict[str, Any]]
+) -> dict[str, Any]:
+    result = await SpawnBatchTool().execute({"children": children}, ctx_for(parent, db, call_id))
+    assert not result.is_error, result.content
+    return json.loads(result.content)  # type: ignore[no-any-return]
+
+
+async def _children_of(db: Sessions, parent_id: uuid.UUID) -> list[Task]:
+    async with db() as session:
+        return list(
+            (await session.scalars(sa.select(Task).where(Task.parent_task_id == parent_id))).all()
+        )
+
+
+async def test_spawn_batch_creates_the_whole_burst_in_one_call(db: Sessions) -> None:
+    planner = await make_planner(db)
+    report = await _batch(db, planner, "call_B", [{"goal": "g0"}, {"goal": "g1"}, {"goal": "g2"}])
+    assert report["count"] == 3
+    kids = await _children_of(db, planner.id)
+    assert len(kids) == 3
+    # Each id is the nested batch id — distinct, and non-aliasing with a spawn_subtask id.
+    expected = {batch_child_id(planner.id, "call_B", i) for i in range(3)}
+    assert {k.id for k in kids} == expected
+    assert child_task_id(planner.id, "call_B") not in expected
+    # All created in one transaction -> a tight created_at window.
+    assert len({k.payload["goal"] for k in kids}) == 3
+
+
+async def test_spawn_batch_is_exactly_once_and_converges_on_replay(db: Sessions) -> None:
+    planner = await make_planner(db)
+    children = [{"goal": "g0"}, {"goal": "g1"}]
+    first = await _batch(db, planner, "call_B", children)
+    # A crash-recovery re-run (same call id) re-derives the same ids and inserts
+    # nothing new — converges, no duplicates.
+    again = await _batch(db, planner, "call_B", children)
+    assert first["spawned"] == again["spawned"]
+    assert len(await _children_of(db, planner.id)) == 2
+
+
+async def test_spawn_batch_cap_is_a_pure_function_of_pre_batch_state(db: Sessions) -> None:
+    planner = await make_planner(db)
+    # A cap of 2, batch of 4: only the first 2 (base_count 0 + i < 2) are created.
+    tool = SpawnBatchTool(max_subtasks=2)
+    result = await tool.execute(
+        {"children": [{"goal": f"g{i}"} for i in range(4)]}, ctx_for(planner, db, "call_B")
+    )
+    report = json.loads(result.content)
+    assert report["count"] == 2
+    assert report["skipped"]["indices"] == [2, 3]
+    # Replaying the identical batch accepts the identical prefix (the two already
+    # exist; the cap still rejects 2 and 3) — no drift.
+    again = json.loads(
+        (
+            await tool.execute(
+                {"children": [{"goal": f"g{i}"} for i in range(4)]}, ctx_for(planner, db, "call_B")
+            )
+        ).content
+    )
+    assert again["count"] == 2 and again["skipped"]["indices"] == [2, 3]
+
+
+async def test_spawn_batch_child_carries_no_parent_history_and_honors_model(db: Sessions) -> None:
+    planner = await make_planner(db)
+    await _batch(db, planner, "call_B", [{"goal": "g0", "model": "deepseek/deepseek-chat"}])
+    child = (await _children_of(db, planner.id))[0]
+    assert child.payload["goal"] == "g0"
+    assert child.payload["model"] == "deepseek/deepseek-chat"
+    assert "team" not in child.payload and "tracked" not in child.payload
+
+
+async def test_spawn_batch_rejects_a_bad_spec_without_partial_spawn(db: Sessions) -> None:
+    planner = await make_planner(db)
+    result = await SpawnBatchTool().execute(
+        {"children": [{"goal": "ok"}, {"goal": ""}]}, ctx_for(planner, db, "call_B")
+    )
+    assert result.is_error and "children[1]" in result.content
+    assert await _children_of(db, planner.id) == []  # nothing spawned
 
 
 async def test_spawn_subtask_is_exactly_once(db: Sessions) -> None:

@@ -174,6 +174,7 @@ def test_can_spawn_adds_delegation_tools() -> None:
     # Hybrid: a coder that can also delegate to a reviewer and manage it.
     assert {
         "spawn_subtask",
+        "spawn_batch",
         "wait_for_children",
         "agent_status",
         "agent_terminate",
@@ -192,6 +193,7 @@ def test_leader_registry_can_only_survey_and_delegate() -> None:
     assert {"read_file", "glob", "grep", "list_dir", "ask_user"} <= names
     assert {
         "spawn_subtask",
+        "spawn_batch",
         "wait_for_children",
         "merge_child_branches",
         "land_branch",

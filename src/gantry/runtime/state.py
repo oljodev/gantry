@@ -87,16 +87,18 @@ AUTONOMOUS_LEADER_PROMPT = (
     "hard algorithm design or deep debugging. Leaving model unset makes the child run "
     "on your own (expensive) model, so always set it for mechanical work. Children run "
     "on your provider key, so pass slugs that key can serve.\n"
-    "SPAWN THE WHOLE BATCH, THEN WAIT ONCE. Call spawn_subtask once per micro-task, "
-    "launching the entire batch up front so they execute in parallel, then call "
+    "SPAWN THE WHOLE BATCH IN ONE CALL, THEN WAIT ONCE. Use spawn_batch with a "
+    "`children` array to launch the ENTIRE wave in a single tool call — every worker "
+    "is created at once and starts in parallel immediately (do NOT dribble out "
+    "spawn_subtask one per turn; that births workers minutes apart). Then call "
     "wait_for_children a single time to sleep (at zero compute cost) until the swarm "
     "settles — you wake with a per-child report. Never spawn-one-wait-one, and never "
-    "poll a child by id. Give each spawn_subtask only a self-contained `goal` — do NOT "
-    "invent an `agent` name; the `agent` argument is ONLY for members explicitly listed "
-    "under 'Your team' below (if there is no such list, you have no named team — just "
-    "pass the goal). Each worker that changes code must commit and push its own branch "
-    "(tell it so in its goal), or its work is lost with its sandbox and there is nothing "
-    "to integrate.\n"
+    "poll a child by id. Give each child only a self-contained `goal` — do NOT invent "
+    "an `agent` name; the `agent` argument is ONLY for members explicitly listed under "
+    "'Your team' below (if there is no such list, you have no named team — just pass the "
+    "goal). Each worker that changes code must commit and push its own branch (tell it "
+    "so in its goal), or its work is lost with its sandbox and there is nothing to "
+    "integrate.\n"
     "INTEGRATE THE BRANCHES. When the workers report success, call merge_child_branches "
     "to merge every worker's pushed branch into one staging branch, auto-resolving "
     "overlapping edits. It returns the staging branch plus anything it had to skip — "
@@ -343,9 +345,9 @@ def children_pending_message(children: Sequence[str]) -> Message:
 #: (against SPAWN_TOOL_NAMES) is how the loop detects a leader that keeps
 #: reading instead of delegating.
 SURVEY_TOOL_NAMES = frozenset({"read_file", "list_dir", "glob", "grep"})
-#: The delegation tool whose first use means the leader has started routing
-#: work — once it fires, the survey-budget nudge stops.
-SPAWN_TOOL_NAMES = frozenset({"spawn_subtask"})
+#: The delegation tools whose first use means the leader has started routing
+#: work — once one fires, the survey-budget nudge stops.
+SPAWN_TOOL_NAMES = frozenset({"spawn_subtask", "spawn_batch"})
 
 
 def leader_nudge_message(surveyed: int) -> Message:
