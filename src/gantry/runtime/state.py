@@ -168,6 +168,10 @@ class AgentState:
     #: sums so cost can be priced correctly (cache reads are cheap) on resume.
     cache_read_tokens: int = 0
     cache_write_tokens: int = 0
+    #: How many times this run compacted its history (folded from COMPACTION
+    #: events). An observability signal: frequent compaction means the prefix cache
+    #: keeps resetting, so per-step input is climbing.
+    compactions: int = 0
     #: How many times the loop has nudged this agent to wait for live children
     #: it tried to abandon — bounded so a stuck agent can't loop forever.
     children_reminders: int = 0
@@ -474,6 +478,7 @@ def rehydrate(payload: dict[str, Any], events: Sequence[TaskEvent]) -> AgentStat
             state.completion_tokens += int(usage.get("completion_tokens", 0))
             state.cache_read_tokens += int(usage.get("cache_read_tokens", 0))
             state.cache_write_tokens += int(usage.get("cache_write_tokens", 0))
+            state.compactions += 1  # observability counter; folded live in loop too
             state.resumed = True
         # llm_request and queue-lifecycle events don't contribute messages.
     return state

@@ -93,6 +93,15 @@ class AgentOutcome:
     #: Estimated USD spent by this task across all its attempts (priced from the
     #: folded token usage). Recorded on the terminal transition for the run ledger.
     cost_usd: float = 0.0
+    #: How many times this run compacted its history — an observability signal
+    #: (frequent compaction => the prefix cache keeps resetting).
+    compactions: int = 0
+
+    @property
+    def cache_hit_ratio(self) -> float:
+        """Fraction of input tokens served from the provider's prompt cache — the
+        headline cache-warmth signal (0.0 when nothing was cached)."""
+        return self.cache_read_tokens / self.prompt_tokens if self.prompt_tokens else 0.0
 
 
 def _run_cost(state: AgentState, model: str) -> float:
@@ -117,6 +126,7 @@ def _outcome(state: AgentState, model: str, final_text: str) -> AgentOutcome:
         cache_read_tokens=state.cache_read_tokens,
         cache_write_tokens=state.cache_write_tokens,
         cost_usd=_run_cost(state, model),
+        compactions=state.compactions,
     )
 
 
@@ -647,6 +657,7 @@ async def _apply_compaction(
     state.completion_tokens += result.usage.completion_tokens
     state.cache_read_tokens += result.usage.cache_read_tokens
     state.cache_write_tokens += result.usage.cache_write_tokens
+    state.compactions += 1  # mirrors the rehydrate fold in state.py
     logger.info(
         "agent.compacted",
         task_id=str(task.id),

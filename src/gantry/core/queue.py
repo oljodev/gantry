@@ -77,6 +77,48 @@ async def run_spend_usd(session: AsyncSession, root_task_id: uuid.UUID) -> float
     return float(total or 0.0)
 
 
+async def run_rollup(session: AsyncSession, root_task_id: uuid.UUID) -> dict[str, Any]:
+    """A run-level observability rollup over a whole tree: per-status task counts,
+    settled spend, folded token sums, prompt-cache hit ratio, and total compactions.
+    Read-only and derived from committed rows/result JSON — never a replay input."""
+
+    def _jsum(field: str) -> Any:
+        # SUM ignores NULLs, so tasks without a result (or that key) contribute 0.
+        return sa.func.coalesce(sa.func.sum(sa.cast(Task.result[field].astext, sa.Float)), 0.0)
+
+    agg = (
+        await session.execute(
+            sa.select(
+                sa.func.count().label("tasks"),
+                sa.func.coalesce(sa.func.sum(Task.cost_usd), 0.0).label("spent_usd"),
+                _jsum("prompt_tokens").label("prompt_tokens"),
+                _jsum("completion_tokens").label("completion_tokens"),
+                _jsum("cache_read_tokens").label("cache_read_tokens"),
+                _jsum("compactions").label("compactions"),
+            ).where(Task.root_task_id == root_task_id)
+        )
+    ).one()
+    status_rows = (
+        await session.execute(
+            sa.select(Task.status, sa.func.count())
+            .where(Task.root_task_id == root_task_id)
+            .group_by(Task.status)
+        )
+    ).all()
+    prompt = float(agg.prompt_tokens)
+    cache_read = float(agg.cache_read_tokens)
+    return {
+        "tasks": int(agg.tasks),
+        "statuses": {getattr(s, "value", str(s)): int(n) for s, n in status_rows},
+        "spent_usd": round(float(agg.spent_usd), 4),
+        "prompt_tokens": int(prompt),
+        "completion_tokens": int(agg.completion_tokens),
+        "cache_read_tokens": int(cache_read),
+        "cache_hit_ratio": round(cache_read / prompt, 3) if prompt else 0.0,
+        "compactions": int(agg.compactions),
+    }
+
+
 def _wake_to_pending() -> dict[str, Any]:
     """The UPDATE values that re-queue a parked task, lifting max_attempts so the
     wake doesn't erode the error-retry budget. Monotonic ``greatest()`` is

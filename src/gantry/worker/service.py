@@ -393,10 +393,19 @@ class Worker:
                         "cache_read_tokens": outcome.cache_read_tokens,
                         "cache_write_tokens": outcome.cache_write_tokens,
                         "cost_usd": round(outcome.cost_usd, 6),
+                        "compactions": outcome.compactions,
                     },
                     cost_usd=outcome.cost_usd,
                 )
-            logger.info("worker.task_succeeded", task_id=str(task.id), steps=outcome.steps)
+            logger.info(
+                "worker.task_succeeded",
+                task_id=str(task.id),
+                steps=outcome.steps,
+                compactions=outcome.compactions,
+                cache_hit=round(outcome.cache_hit_ratio, 3),
+                cost_usd=round(outcome.cost_usd, 4),
+            )
+            await self._maybe_log_run_rollup(task)
             if succeeded and self._should_land_on_main(task, workspace, is_leader):
                 assert workspace is not None
                 await self._land_task_on_main(task, workspace)
@@ -458,6 +467,21 @@ class Worker:
             if workspace is not None and (succeeded or not cfg.keep_failed_workspaces):
                 await ws.destroy(workspace.root)
             self.processed += 1
+
+    async def _maybe_log_run_rollup(self, task: Task) -> None:
+        """When a run's ROOT task settles, log a one-line rollup for the whole tree
+        (spend, cache-hit ratio, compactions, per-status counts) — the signal an
+        operator watches to see a run's cost/cache health. Best-effort: a rollup
+        query failure never affects the task's own outcome."""
+        if task.parent_task_id is not None:
+            return  # only the root task rolls up the tree; children are summed into it
+        try:
+            async with self._sessions() as session:
+                rollup = await queue.run_rollup(session, task.root_task_id)
+        except Exception as exc:
+            logger.warning("worker.run_rollup_failed", task_id=str(task.id), error=repr(exc))
+            return
+        logger.info("worker.run_rollup", root_task_id=str(task.root_task_id), **rollup)
 
     @staticmethod
     def _should_land_on_main(task: Task, workspace: ws.Workspace | None, is_leader: bool) -> bool:
@@ -562,6 +586,8 @@ class Worker:
                     retryable=retryable,
                 )
             logger.info("worker.task_failed", task_id=str(task.id), new_status=status)
+            if status is TaskStatus.FAILED:  # terminal (not re-queued) — roll a root up
+                await self._maybe_log_run_rollup(task)
         except Exception as exc:  # the reaper will recover the task either way
             logger.warning("worker.fail_report_failed", task_id=str(task.id), error=repr(exc))
 

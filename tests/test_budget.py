@@ -59,6 +59,53 @@ async def test_run_spend_covers_children(db: Sessions) -> None:
         assert await queue.run_spend_usd(session, parent.id) == 4.0
 
 
+async def test_run_rollup_aggregates_the_tree(db: Sessions) -> None:
+    parent = await make_planner(db)
+    async with session_scope(db) as session:
+        # Two succeeded children with folded token/compaction stats, one failed.
+        for i in range(2):
+            child = await queue.enqueue(
+                session,
+                workspace_id=DEFAULT_WORKSPACE_ID,
+                kind=TaskKind.EXECUTE,
+                payload={},
+                parent=parent,
+            )
+            await session.execute(
+                sa.update(Task)
+                .where(Task.id == child.id)
+                .values(
+                    status=TaskStatus.SUCCEEDED,
+                    cost_usd=1.5,
+                    result={
+                        "prompt_tokens": 1000,
+                        "completion_tokens": 200,
+                        "cache_read_tokens": 800,
+                        "compactions": i,  # 0 then 1
+                    },
+                )
+            )
+        boom = await queue.enqueue(
+            session,
+            workspace_id=DEFAULT_WORKSPACE_ID,
+            kind=TaskKind.EXECUTE,
+            payload={},
+            parent=parent,
+        )
+        await session.execute(
+            sa.update(Task).where(Task.id == boom.id).values(status=TaskStatus.FAILED, cost_usd=0.0)
+        )
+    async with session_scope(db) as session:
+        rollup = await queue.run_rollup(session, parent.id)
+    assert rollup["tasks"] == 4  # the planner + 3 children
+    assert rollup["statuses"] == {"succeeded": 2, "failed": 1, "claimed": 1}
+    assert rollup["spent_usd"] == 3.0
+    assert rollup["prompt_tokens"] == 2000
+    assert rollup["cache_read_tokens"] == 1600
+    assert rollup["cache_hit_ratio"] == 0.8  # 1600 / 2000
+    assert rollup["compactions"] == 1  # 0 + 1
+
+
 async def test_spawn_is_refused_once_the_run_budget_is_exhausted(db: Sessions) -> None:
     # A leader whose already-finished child spent past the $1 budget.
     parent = await make_planner(db)

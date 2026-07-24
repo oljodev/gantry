@@ -128,3 +128,4 @@ def test_compaction_event_folds_identically() -> None:
     # Kept tail is the second step, not the first.
     assert state.messages[4]["content"] == "r2"
     assert state.messages[-1]["content"] == "finished"
+    assert state.compactions == 1  # the observability counter folded from the event
