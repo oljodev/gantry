@@ -47,6 +47,26 @@ def test_from_settings_threads_the_compaction_thresholds() -> None:
     assert cfg.compaction.keep_recent_messages == 4
 
 
+def test_compaction_for_picks_a_per_role_budget() -> None:
+    from gantry.config import Settings
+
+    cfg = WorkerConfig.from_settings(Settings())  # execute 30k / leader 80k defaults
+
+    leaf = cfg.compaction_for(Task(kind=TaskKind.EXECUTE, payload={}))
+    leader = cfg.compaction_for(Task(kind=TaskKind.EXECUTE, payload={"autonomous_leader": True}))
+    planner = cfg.compaction_for(Task(kind=TaskKind.PLAN, payload={}))
+    assert leaf is not None and leaf.max_context_tokens == 30_000
+    assert leader is not None and leader.max_context_tokens == 80_000
+    assert planner is not None and planner.max_context_tokens == 80_000  # delegating -> leader cap
+    # The tighter role caps its recent tail to <= a third of its cap, so a small
+    # soft cap can't re-fire compaction every step.
+    assert leaf.recent_token_budget <= 30_000 // 3
+
+    # A per-task payload override wins over the role default.
+    pinned = cfg.compaction_for(Task(kind=TaskKind.EXECUTE, payload={"max_context_tokens": 12_000}))
+    assert pinned is not None and pinned.max_context_tokens == 12_000
+
+
 def make_worker(db: Sessions, tmp_path: Path, llm: LLMClient) -> Worker:
     config = WorkerConfig(
         worker_id="svc-worker-1",

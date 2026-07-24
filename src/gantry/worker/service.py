@@ -12,7 +12,7 @@ import contextlib
 import random
 import uuid
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -94,6 +94,11 @@ class WorkerConfig:
     default_model: str = "anthropic/claude-opus-4-8"
     #: Optional cheaper model for merge-conflict resolution (None = leader's model).
     conflict_resolver_model: str | None = None
+    #: Per-role compaction soft caps (None -> use ``compaction``'s cap for every
+    #: role). ``compaction_for(task)`` picks between them from the durable kind/
+    #: payload so a resume selects the identical threshold.
+    execute_max_context_tokens: int | None = None
+    leader_max_context_tokens: int | None = None
 
     @classmethod
     def from_settings(cls, settings: Settings, worker_id: str | None = None) -> WorkerConfig:
@@ -107,6 +112,8 @@ class WorkerConfig:
             concurrency=settings.worker_concurrency,
             default_model=settings.default_model,
             conflict_resolver_model=settings.conflict_resolver_model,
+            execute_max_context_tokens=settings.execute_max_context_tokens,
+            leader_max_context_tokens=settings.leader_max_context_tokens,
             compaction=CompactionConfig(
                 max_context_tokens=settings.max_context_tokens,
                 keep_recent_messages=settings.keep_recent_messages,
@@ -114,6 +121,30 @@ class WorkerConfig:
                 hard_max_context_tokens=settings.hard_max_context_tokens,
             ),
         )
+
+    def compaction_for(self, task: Task) -> CompactionConfig | None:
+        """The compaction config for one task, its soft cap chosen by role from the
+        durable kind/payload (delegating leader vs leaf EXECUTE worker). A per-task
+        ``max_context_tokens`` payload value overrides the role default. The tail
+        budget is capped at a third of the soft cap so a tighter role can't re-fire
+        compaction every step (see CompactionConfig's keep_recent_tokens note)."""
+        base = self.compaction
+        if base is None:
+            return None
+        override = task.payload.get("max_context_tokens")
+        if override:
+            cap: int | None = int(override)
+        else:
+            delegates = (
+                task.kind is TaskKind.PLAN
+                or bool(task.payload.get("can_spawn"))
+                or bool(task.payload.get("autonomous_leader"))
+            )
+            cap = self.leader_max_context_tokens if delegates else self.execute_max_context_tokens
+        if not cap or cap == base.max_context_tokens:
+            return base
+        tail = base.keep_recent_tokens if base.keep_recent_tokens is not None else cap // 3
+        return replace(base, max_context_tokens=cap, keep_recent_tokens=min(tail, max(1, cap // 3)))
 
 
 class Worker:
@@ -341,7 +372,7 @@ class Worker:
                 llm,
                 registry,
                 workspace=workspace.path if workspace else None,
-                compaction=cfg.compaction,
+                compaction=cfg.compaction_for(task),
                 on_step=on_step,
                 approval_policy=policy_for_payload(task.payload),
                 skills=skills,

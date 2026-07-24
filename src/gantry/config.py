@@ -90,8 +90,19 @@ class Settings(BaseSettings):
     #: Estimated-token ceiling before the durable loop compacts history into a
     #: summary checkpoint. Lower than the old hardcoded 120_000 so per-call input
     #: stays bounded on long runs (compaction fires ~every 10-15 steps instead of
-    #: almost never). Override via GANTRY_MAX_CONTEXT_TOKENS.
+    #: almost never). The fallback for any role without its own budget below.
+    #: Override via GANTRY_MAX_CONTEXT_TOKENS.
     max_context_tokens: int = 50_000
+    #: Per-role compaction budgets, selected from the durable task kind/payload so a
+    #: resume picks the same threshold. A leaf EXECUTE worker runs a small, bounded
+    #: micro-task (read a slice, write a file, test) whose live context stays under a
+    #: tight cap — so it NEVER compacts and its implicit prefix cache stays warm the
+    #: whole task. A delegating leader legitimately accumulates (children reports,
+    #: successive waves), so it gets a larger cap and compacts infrequently rather
+    #: than every step. A per-task ``max_context_tokens`` payload value overrides
+    #: both. Override via GANTRY_EXECUTE_MAX_CONTEXT_TOKENS / GANTRY_LEADER_MAX_CONTEXT_TOKENS.
+    execute_max_context_tokens: int = 30_000
+    leader_max_context_tokens: int = 80_000
     #: Messages kept verbatim as the recent tail when compaction fires (the rest
     #: is summarized). Keep max_context_tokens >= ~2x the tail's token size or
     #: compaction re-fires every step. Override via GANTRY_KEEP_RECENT_MESSAGES.
