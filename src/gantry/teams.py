@@ -34,6 +34,26 @@ from gantry.runtime.state import AUTONOMOUS_LEADER_PROMPT, PLANNER_SYSTEM_PROMPT
 TeamNode = dict[str, Any]
 
 
+def _snapshot_model_options(
+    profile: AgentProfile, provider: Provider | None
+) -> list[dict[str, Any]]:
+    """Resolve each menu slug to its full LiteLLM string via the leader's
+    provider, so the model the leader names in a spawn is one a worker can run
+    directly. Descriptions ride along; keys never do."""
+    options: list[dict[str, Any]] = []
+    for opt in profile.model_options or []:
+        raw = str(opt.get("model") or "").strip()
+        if not raw:
+            continue
+        options.append(
+            {
+                "model": resolve_model(provider, raw, "") or raw,
+                "description": str(opt.get("description") or "").strip(),
+            }
+        )
+    return options
+
+
 def snapshot_node(
     profile: AgentProfile,
     provider: Provider | None,
@@ -50,6 +70,7 @@ def snapshot_node(
         "max_steps": profile.max_steps,
         "can_spawn": profile.can_spawn,
         "autonomous_leader": profile.autonomous_leader,
+        "model_options": _snapshot_model_options(profile, provider),
         "gated_tools": list(profile.gated_tools),
         "skills": list(profile.skills),
         "children": children,
@@ -87,6 +108,23 @@ def roster_text(node: TeamNode) -> str:
     )
 
 
+def model_menu_text(options: list[dict[str, Any]]) -> str:
+    """Appendix listing the models a leader may assign to workers, with the
+    operator's when-to-use guidance. The leader passes one of these slugs as
+    spawn_subtask's `model` argument; they run on its own provider key."""
+    lines = "\n".join(
+        f"- {opt['model']}" + (f" — {opt['description']}" if opt.get("description") else "")
+        for opt in options
+    )
+    return (
+        "\n\n## Models you can assign\n\n"
+        "Pass one of these exact slugs as the `model` argument of spawn_subtask to "
+        "run that worker on it (they all use your provider key). Follow the guidance "
+        "on when to use each — assign the cheapest model that fits the micro-task:\n"
+        + lines
+    )
+
+
 def node_payload_fields(node: TeamNode) -> dict[str, Any]:
     """The payload keys a task derives from its snapshot node.
 
@@ -105,6 +143,8 @@ def node_payload_fields(node: TeamNode) -> dict[str, Any]:
         # no fixed children (dynamic swarm). Named children still get a roster.
         extra = f"\n\n## Additional instructions\n{prompt}" if prompt else ""
         prompt = AUTONOMOUS_LEADER_PROMPT + extra
+        if node.get("model_options"):
+            prompt += model_menu_text(node["model_options"])
         if node.get("children"):
             prompt += roster_text(node)
     elif node_kind(node) is TaskKind.PLAN:
@@ -123,6 +163,9 @@ def node_payload_fields(node: TeamNode) -> dict[str, Any]:
         # Marks the run for the restricted, read-only + delegation toolset: a
         # pure leader has no write/edit/bash/commit tools, so it must delegate.
         fields["autonomous_leader"] = True
+        if node.get("model_options"):
+            # Durable copy of the menu (already in the prompt) for inspection.
+            fields["model_options"] = node["model_options"]
     if node.get("gated_tools"):
         fields["gated_tools"] = list(node["gated_tools"])
     if node.get("skills"):

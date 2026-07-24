@@ -358,7 +358,18 @@ class GithubReposResponse(BaseModel):
     repos: list[GithubRepo]
 
 
+class ModelOption(BaseModel):
+    """One entry in an Autonomous Leader's model menu: a model slug plus a
+    when-to-use note. No API key — the slug runs on the leader's provider key."""
+
+    model: str = Field(min_length=1, max_length=200)
+    description: str = ""
+
+
 class AgentProfileIn(BaseModel):
+    # `model_options` starts with the protected `model_` namespace; allow it.
+    model_config = ConfigDict(protected_namespaces=())
+
     #: The project this profile belongs to (defaults to the Default project).
     project_id: uuid.UUID | None = None
     #: The team that owns this agent. NULL -> an unassigned/draft agent.
@@ -374,12 +385,15 @@ class AgentProfileIn(BaseModel):
     #: Run this agent as an Autonomous Leader (swarm master): forces the leader
     #: system prompt and unlocks spawn_subtask even with no fixed children.
     autonomous_leader: bool = False
+    #: The leader's model menu (see ModelOption). Advisory guidance the leader
+    #: reads to pick a cost-appropriate model per spawned worker.
+    model_options: list[ModelOption] = Field(default_factory=list)
     gated_tools: list[str] = Field(default_factory=list)
     skills: list[str] = Field(default_factory=list)
 
 
 class AgentProfileOut(AgentProfileIn):
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, protected_namespaces=())
 
     id: uuid.UUID
     created_at: datetime
