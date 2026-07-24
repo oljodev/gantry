@@ -97,10 +97,11 @@ class EventType(enum.StrEnum):
     #: running; the loop injects a durable reminder and steers it to wait rather
     #: than orphaning them. Folds into history as a user message on rehydration.
     CHILDREN_PENDING = "children_pending"
-    #: An autonomous leader has surveyed the repo past its budget without
-    #: spawning any worker (the over-planning failure mode); the loop injects a
-    #: durable "stop surveying, delegate now" nudge. Folds into history as a user
-    #: message on rehydration.
+    #: A durable nudge to keep an autonomous leader on the swarm workflow, folded
+    #: into history as a user message on rehydration. Two kinds, by payload:
+    #: survey-budget ({"surveyed": n}) pushes a leader that keeps reading without
+    #: spawning to delegate now; landing ({"land": true}) stops a leader finishing
+    #: with the integrated work still on a staging branch instead of on main.
     LEADER_NUDGE = "leader_nudge"
     #: Skills (Phase 8): full skill content pinned into the run's log.
     SKILL_INJECTED = "skill_injected"

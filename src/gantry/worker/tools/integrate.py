@@ -20,7 +20,12 @@ from gantry.core.models import Task, TaskStatus
 from gantry.runtime.llm import LLMClient
 from gantry.runtime.tools import Tool, ToolContext, ToolIdempotency, ToolResult
 from gantry.worker.git import GitAuth
-from gantry.worker.merge import ConflictResolver, merge_branches
+from gantry.worker.merge import (
+    ConflictResolver,
+    default_branch,
+    merge_branches,
+    promote_branch,
+)
 
 Sessions = async_sessionmaker[AsyncSession]
 
@@ -162,3 +167,53 @@ class MergeChildBranchesTool(Tool):
             if branch:
                 branches.append(str(branch))
         return branches
+
+
+class LandBranchTool(Tool):
+    name = "land_branch"
+    description = (
+        "Land the validated staging branch on the repository's main branch — the "
+        "FINAL step, so the swarm's work actually reaches main instead of sitting on "
+        "a side branch that a human has to merge by hand. Call this ONLY after your "
+        "qa-reviewer has confirmed the integrated staging branch is good. It "
+        "fast-forwards the main branch to the staging branch and pushes. Pass the "
+        "staging branch merge_child_branches returned; omit `target` to use the "
+        "repo's default branch. It pushes WITHOUT force: if it reports the push was "
+        "rejected because main moved, re-run merge_child_branches (it rebuilds off "
+        "the trunk) and land again."
+    )
+    parameters: ClassVar[dict[str, Any]] = {
+        "type": "object",
+        "properties": {
+            "branch": {
+                "type": "string",
+                "description": (
+                    "The staging branch to land (from merge_child_branches). "
+                    "Defaults to gantry/staging-<your task id>."
+                ),
+            },
+            "target": {
+                "type": "string",
+                "description": "Branch to land on (default: the repo's main/default branch).",
+            },
+        },
+    }
+    #: Landing is a fast-forward push; re-running it is a harmless no-op.
+    idempotency = ToolIdempotency.IDEMPOTENT
+
+    def __init__(self, auth: GitAuth, target_branch: str | None = None) -> None:
+        self._auth = auth
+        self._target = (target_branch or "").strip()
+
+    async def execute(self, arguments: dict[str, Any], ctx: ToolContext) -> ToolResult:
+        repo = ctx.workspace
+        if repo is None or not (repo / ".git").exists():
+            return ToolResult("this agent has no git workspace to land from", is_error=True)
+        branch = (
+            str(arguments.get("branch") or "").strip() or f"gantry/staging-{ctx.task_id.hex[:12]}"
+        )
+        target = str(arguments.get("target") or "").strip() or self._target
+        if not target:
+            target = await default_branch(repo, self._auth)
+        ok, detail = await promote_branch(repo, branch=branch, target=target, auth=self._auth)
+        return ToolResult(detail, is_error=not ok)

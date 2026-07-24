@@ -18,7 +18,7 @@ from gantry.worker.tools.bash import BashTool
 from gantry.worker.tools.copilot import CreateSkillTool, ProposeSkillTool, ProposeTreeTool
 from gantry.worker.tools.files import EditFileTool, ListDirTool, ReadFileTool, WriteFileTool
 from gantry.worker.tools.gittool import GitCommitPushTool
-from gantry.worker.tools.integrate import MergeChildBranchesTool
+from gantry.worker.tools.integrate import LandBranchTool, MergeChildBranchesTool
 from gantry.worker.tools.orchestration import (
     DEFAULT_MAX_SUBTASKS,
     build_planner_registry,
@@ -45,13 +45,16 @@ def _add_delegation_tools(
     team: TeamNode | None,
     auth: GitAuth | None,
     trunk_branch: str | None,
+    base_branch: str | None,
     conflict_resolver: ConflictResolver | None,
 ) -> None:
     for tool in orchestration_tools(max_subtasks, team=team):
         registry.register(tool)
-    # A repo-backed leader can also integrate the branches its workers push.
+    # A repo-backed leader can integrate the branches its workers push, then land
+    # the validated result on main so the work reaches the default branch.
     if auth is not None and trunk_branch is not None:
         registry.register(MergeChildBranchesTool(auth, trunk_branch, conflict_resolver))
+        registry.register(LandBranchTool(auth, base_branch))
 
 
 def build_coding_registry(
@@ -62,6 +65,7 @@ def build_coding_registry(
     max_subtasks: int = DEFAULT_MAX_SUBTASKS,
     team: TeamNode | None = None,
     trunk_branch: str | None = None,
+    base_branch: str | None = None,
     conflict_resolver: ConflictResolver | None = None,
 ) -> ToolRegistry:
     if leader:
@@ -71,7 +75,9 @@ def build_coding_registry(
         registry = ToolRegistry(
             [ReadFileTool(), ListDirTool(), GlobTool(), GrepTool(), AskUserTool()]
         )
-        _add_delegation_tools(registry, max_subtasks, team, auth, trunk_branch, conflict_resolver)
+        _add_delegation_tools(
+            registry, max_subtasks, team, auth, trunk_branch, base_branch, conflict_resolver
+        )
         return registry
 
     registry = ToolRegistry(
@@ -91,5 +97,7 @@ def build_coding_registry(
     if auth is not None:
         registry.register(GitCommitPushTool(auth))
     if can_spawn:
-        _add_delegation_tools(registry, max_subtasks, team, auth, trunk_branch, conflict_resolver)
+        _add_delegation_tools(
+            registry, max_subtasks, team, auth, trunk_branch, base_branch, conflict_resolver
+        )
     return registry

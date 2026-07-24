@@ -45,6 +45,7 @@ from gantry.runtime.state import (
     apply_skill_to_system_message,
     assistant_message,
     children_pending_message,
+    leader_land_message,
     leader_nudge_message,
     rehydrate,
     summary_message,
@@ -188,6 +189,8 @@ async def run_agent_task(
 
         if not response.tool_calls:
             reminder = await _children_guard(sessions, task, state)
+            if reminder is None and is_leader:
+                reminder = await _landing_guard(sessions, task, state)
             if reminder is not None:
                 state.tracked.append(reminder)
                 continue
@@ -515,6 +518,30 @@ async def _survey_budget_guard(
     state.leader_nudges += 1
     logger.info("agent.survey_budget_guard", task_id=str(task.id), surveyed=surveyed)
     return TrackedMessage(seq, leader_nudge_message(surveyed))
+
+
+#: Backstop so a leader that can't (or won't) land can still finish eventually.
+_MAX_LANDING_REMINDERS = 3
+
+
+async def _landing_guard(
+    sessions: Sessions, task: Task, state: AgentState
+) -> TrackedMessage | None:
+    """If a leader integrated the workers' branches but tries to finish without
+    landing them on main, durably remind it to land — so the result reaches the
+    default branch instead of sitting on a staging branch. ``None`` lets it
+    finish (never merged, already landed, or the reminder cap is reached).
+    """
+    if state.landing_reminders >= _MAX_LANDING_REMINDERS:
+        return None
+    if not state.count_tool_calls("merge_child_branches"):
+        return None  # nothing was integrated — no staging branch to land
+    if state.count_tool_calls("land_branch"):
+        return None  # it already tried to land; the tool result guides any retry
+    seq = await _checkpoint(sessions, task, EventType.LEADER_NUDGE, {"land": True})
+    state.landing_reminders += 1
+    logger.info("agent.landing_guard", task_id=str(task.id))
+    return TrackedMessage(seq, leader_land_message())
 
 
 async def _maybe_compact(

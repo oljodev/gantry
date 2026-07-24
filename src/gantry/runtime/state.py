@@ -88,8 +88,13 @@ AUTONOMOUS_LEADER_PROMPT = (
     "QUALITY CONTROL IS SEQUENTIAL. Only after the branches are integrated, spawn a "
     "separate, temporary qa-reviewer sub-agent pointed at the staging branch to run the "
     "tests and validate the combined changes BEFORE you treat the work as done. If it "
-    "finds problems, spawn focused fix micro-tasks and re-integrate. Finish only once "
+    "finds problems, spawn focused fix micro-tasks and re-integrate. Proceed only once "
     "QA passes.\n"
+    "LAND ON MAIN — THE LAST STEP. Once QA passes, call land_branch to land the "
+    "validated staging branch on the repository's main branch and push. This is what "
+    "makes the swarm's work actually reach main; skip it and everything sits on a side "
+    "branch that the user must merge by hand. You are NOT done until land_branch "
+    "succeeds — never report completion with the work still only on a staging branch.\n"
     "If a child failed, decide: respawn it with a refined goal, work around it, or "
     "abort with an explanation. Pass repo_url only to work on an EXISTING repo; for a "
     "new project omit it so the child gets an empty workspace to `git init` — never "
@@ -140,6 +145,9 @@ class AgentState:
     #: How many times the loop has nudged a leader to stop surveying and spawn
     #: (see EventType.LEADER_NUDGE) — bounded like children_reminders.
     leader_nudges: int = 0
+    #: How many times the loop has reminded a leader to land its staging branch
+    #: on main before finishing — bounded.
+    landing_reminders: int = 0
     resumed: bool = False
 
     @property
@@ -266,6 +274,22 @@ def leader_nudge_message(surveyed: int) -> Message:
     }
 
 
+def leader_land_message() -> Message:
+    """The reminder injected when a leader tries to finish after integrating the
+    workers' branches but without landing them on main — so the result would sit
+    on a staging branch a human then has to merge by hand."""
+    return {
+        "role": "user",
+        "content": (
+            "You are not done: you merged the workers' branches into a staging branch "
+            "but never landed it on main. The user's work is stuck on a side branch. "
+            "If QA validated the integrated result, call land_branch NOW to land the "
+            "staging branch on main and push. If you are deliberately abandoning this "
+            "work, say so explicitly instead."
+        ),
+    }
+
+
 def apply_skill_to_system_message(state: AgentState, name: str, content: str) -> None:
     """Append one skill's instructions to the system message, exactly once.
 
@@ -314,10 +338,14 @@ def rehydrate(payload: dict[str, Any], events: Sequence[TaskEvent]) -> AgentStat
             state.children_reminders += 1
             state.resumed = True
         elif event.event_type is EventType.LEADER_NUDGE:
-            state.tracked.append(
-                TrackedMessage(event.seq, leader_nudge_message(int(p.get("surveyed", 0))))
-            )
-            state.leader_nudges += 1
+            if p.get("land"):
+                state.tracked.append(TrackedMessage(event.seq, leader_land_message()))
+                state.landing_reminders += 1
+            else:
+                state.tracked.append(
+                    TrackedMessage(event.seq, leader_nudge_message(int(p.get("surveyed", 0))))
+                )
+                state.leader_nudges += 1
             state.resumed = True
         elif event.event_type is EventType.APPROVAL_RESOLVED:
             state.approvals[p["tool_call_id"]] = ApprovalState(

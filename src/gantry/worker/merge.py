@@ -87,6 +87,39 @@ async def _resolve_conflicts(repo: Path, resolver: ConflictResolver | None) -> t
     return True, f"auto-resolved {len(files)} file(s): {', '.join(files)}"
 
 
+async def default_branch(repo: Path, auth: GitAuth) -> str:
+    """The remote's default branch (main/master), best-effort. Falls back to
+    ``main`` when origin/HEAD is not set locally."""
+    code, out = await run_git(["rev-parse", "--abbrev-ref", "origin/HEAD"], cwd=repo, check=False)
+    ref = out.strip()
+    if code == 0 and ref.startswith("origin/"):
+        return ref[len("origin/") :]
+    return "main"
+
+
+async def promote_branch(
+    repo: Path, *, branch: str, target: str, auth: GitAuth
+) -> tuple[bool, str]:
+    """Land the validated staging ``branch`` on ``target`` (e.g. main).
+
+    Fetches the staging branch from origin (so it works even after a resume that
+    rebuilt the workspace) and pushes it to the target WITHOUT --force: if the
+    target moved since staging was cut, the push is rejected rather than
+    clobbering anyone's commits, and the caller reports that so the leader can
+    re-integrate off the latest instead of overwriting the branch.
+    """
+    try:
+        await run_git(["fetch", "origin", branch], cwd=repo, auth=auth)
+    except GitError as exc:
+        return False, f"could not fetch staging branch {branch}: {exc}"
+    code, out = await run_git(
+        ["push", "origin", f"FETCH_HEAD:refs/heads/{target}"], cwd=repo, auth=auth, check=False
+    )
+    if code == 0:
+        return True, f"landed {branch} on {target}"
+    return False, out.strip() or f"push to {target} was rejected (did {target} move?)"
+
+
 async def merge_branches(
     repo: Path,
     branches: list[str],

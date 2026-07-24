@@ -309,6 +309,7 @@ class Worker:
                     max_subtasks=cfg.max_subtasks,
                     team=task.payload.get("team"),
                     trunk_branch=workspace.branch,
+                    base_branch=task.payload.get("base_branch"),
                     conflict_resolver=make_conflict_resolver(llm, str(resolver_model)),
                 )
 

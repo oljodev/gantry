@@ -27,6 +27,9 @@ def test_leader_prompt_encodes_the_swarm_disciplines() -> None:
     # ...then sequential quality control on the integrated staging branch.
     assert "qa-reviewer" in prompt
     assert prompt.index("merge_child_branches") < prompt.index("qa-reviewer")
+    # ...and finally landing the validated result on main is the last step.
+    assert "land_branch" in prompt and "land on main" in prompt
+    assert prompt.index("qa-reviewer") < prompt.index("land_branch")
 
 
 def test_leader_prompt_forbids_designing_the_solution_itself() -> None:

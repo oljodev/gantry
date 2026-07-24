@@ -6,7 +6,12 @@ from __future__ import annotations
 import uuid
 from pathlib import Path
 
-from gantry.worker.merge import ConflictResolver, merge_branches
+from gantry.worker.merge import (
+    ConflictResolver,
+    default_branch,
+    merge_branches,
+    promote_branch,
+)
 from gantry.worker.tools.integrate import _strip_code_fences
 from gantry.worker.workspace import Workspace, prepare_workspace
 
@@ -127,6 +132,58 @@ async def test_resolver_that_leaves_markers_is_rejected(
         resolver=bad_resolver,
     )
     assert report.skipped == [branch_b]  # guarded: not committed with markers
+
+
+async def test_land_lands_the_staging_branch_on_main(origin: Path, tmp_path: Path) -> None:  # noqa: F811
+    branch_a = await _worker_pushes(origin, tmp_path, "a", {"a.txt": "alpha\n"})
+    leader = await _leader(origin, tmp_path)
+    await merge_branches(
+        leader.path,
+        [branch_a],
+        into="gantry/staging-x",
+        trunk=leader.branch or "main",
+        auth=leader.auth,
+    )
+
+    # The remote's default branch is discovered, then staging fast-forwards it.
+    assert await default_branch(leader.path, leader.auth) == "main"
+    ok, detail = await promote_branch(
+        leader.path, branch="gantry/staging-x", target="main", auth=leader.auth
+    )
+    assert ok, detail
+    # origin/main now carries the worker's file — no manual merge needed.
+    assert git("--git-dir", str(origin), "show", "main:a.txt").strip() == "alpha"
+
+
+async def test_land_is_rejected_when_main_moved_instead_of_forcing(
+    origin: Path,  # noqa: F811
+    tmp_path: Path,
+) -> None:
+    branch_a = await _worker_pushes(origin, tmp_path, "a", {"a.txt": "alpha\n"})
+    leader = await _leader(origin, tmp_path)
+    await merge_branches(
+        leader.path,
+        [branch_a],
+        into="gantry/staging-x",
+        trunk=leader.branch or "main",
+        auth=leader.auth,
+    )
+
+    # Someone advances main after staging was cut, so landing is not a
+    # fast-forward. It must be rejected — never force-clobber main.
+    advance = tmp_path / "advance"
+    git("clone", str(origin), str(advance))
+    (advance / "hotfix.txt").write_text("urgent\n")
+    git("add", "-A", cwd=advance)
+    git("commit", "-m", "hotfix on main", cwd=advance)
+    git("push", "origin", "main", cwd=advance)
+
+    ok, _ = await promote_branch(
+        leader.path, branch="gantry/staging-x", target="main", auth=leader.auth
+    )
+    assert not ok
+    # The hotfix survives; staging did not overwrite it.
+    assert git("--git-dir", str(origin), "show", "main:hotfix.txt").strip() == "urgent"
 
 
 def test_strip_code_fences_unwraps_a_fenced_file() -> None:

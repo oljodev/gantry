@@ -188,9 +188,14 @@ def test_leader_registry_can_only_survey_and_delegate() -> None:
     names = _tool_names(
         build_coding_registry(GitAuth(env={}), leader=True, trunk_branch="gantry/task-abc")
     )
-    # Read-only survey + delegation + merge — its only way to change code.
+    # Read-only survey + delegation + merge + land — its only way to change code.
     assert {"read_file", "glob", "grep", "list_dir", "ask_user"} <= names
-    assert {"spawn_subtask", "wait_for_children", "merge_child_branches"} <= names
+    assert {
+        "spawn_subtask",
+        "wait_for_children",
+        "merge_child_branches",
+        "land_branch",
+    } <= names
     # No way to do the work itself: no write/edit/bash/commit.
     assert not ({"write_file", "edit_file", "bash", "git_commit_push"} & names), (
         "a leader must not be able to write code itself"
