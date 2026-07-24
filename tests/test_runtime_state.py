@@ -121,8 +121,10 @@ def test_compaction_event_folds_identically() -> None:
     ]
     state = rehydrate(PAYLOAD, events)
     roles = [m["role"] for m in state.messages]
-    assert roles == ["system", "user", "assistant", "tool", "assistant"]
-    assert "did step one" in state.messages[1]["content"]
+    # System (0) and the goal (1) are untouchable anchors; the summary follows.
+    assert roles == ["system", "user", "user", "assistant", "tool", "assistant"]
+    assert state.messages[1]["content"] == "count to two"  # goal anchor survived
+    assert "did step one" in state.messages[2]["content"]
     # Kept tail is the second step, not the first.
-    assert state.messages[3]["content"] == "r2"
+    assert state.messages[4]["content"] == "r2"
     assert state.messages[-1]["content"] == "finished"

@@ -7,6 +7,7 @@ from __future__ import annotations
 import copy
 import json
 from pathlib import Path
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -30,7 +31,7 @@ from .test_agent_loop import enqueue_agent_task
 Sessions = async_sessionmaker[AsyncSession]
 
 
-def _assistant_call(call_id: str, name: str, arguments: dict) -> dict:
+def _assistant_call(call_id: str, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
     return assistant_message(None, [{"id": call_id, "name": name, "arguments": arguments}])
 
 
@@ -84,7 +85,7 @@ def test_projected_messages_shrinks_only_resolved_writes() -> None:
     assert "y" * 9000 in projected[4]["tool_calls"][0]["function"]["arguments"]  # pending kept
 
 
-def _pair(i: int, name: str, args: dict) -> list[TrackedMessage]:
+def _pair(i: int, name: str, args: dict[str, Any]) -> list[TrackedMessage]:
     cid = f"c{i}"
     return [
         TrackedMessage(2 * i, _assistant_call(cid, name, args)),
