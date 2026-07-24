@@ -361,16 +361,34 @@ async def test_child_inherits_parent_repo_url(db: Sessions) -> None:
     assert child.payload["repo_url"] == "https://github.com/oljodev/real.git"
 
 
-async def test_child_pinning_its_own_model_does_not_inherit_provider(db: Sessions) -> None:
-    """provider_id and model inherit only as a matched pair: a child that
-    chose its own model must not silently borrow the parent's provider_id
-    (whose key belongs to a different model family)."""
+async def test_child_pinning_its_own_model_keeps_the_gateway_provider(db: Sessions) -> None:
+    """A child that pins a cheaper model still inherits the parent's provider_id
+    (the account/gateway key), so cost-tiered spawns run on the same key instead
+    of falling off to the keyless server default. This is what makes per-child
+    model override actually usable for a multi-model gateway like OpenRouter."""
     planner = await _planner_with(
-        db, provider_id="11111111-1111-4111-8111-111111111111", model="openrouter/deepseek/x"
+        db, provider_id="11111111-1111-4111-8111-111111111111", model="deepseek/deepseek-r1"
     )
-    child = await spawn(db, planner, "call_A", model="anthropic/claude-opus-4-8")
+    child = await spawn(db, planner, "call_A", model="deepseek/deepseek-chat")
+    # Its own (cheaper) model wins, but it runs on the parent's key.
+    assert child.payload["model"] == "deepseek/deepseek-chat"
+    assert child.payload["provider_id"] == "11111111-1111-4111-8111-111111111111"
+
+
+async def test_child_can_pin_its_own_provider_and_model(db: Sessions) -> None:
+    # A child that explicitly names a different provider keeps both — no inherit.
+    planner = await _planner_with(
+        db, provider_id="11111111-1111-4111-8111-111111111111", model="deepseek/deepseek-r1"
+    )
+    child = await spawn(
+        db,
+        planner,
+        "call_A",
+        model="anthropic/claude-opus-4-8",
+        payload={"provider_id": "22222222-2222-4222-8222-222222222222"},
+    )
     assert child.payload["model"] == "anthropic/claude-opus-4-8"
-    assert "provider_id" not in child.payload
+    assert child.payload["provider_id"] == "22222222-2222-4222-8222-222222222222"
 
 
 async def test_blank_repo_url_falls_through_to_inheritance(db: Sessions) -> None:

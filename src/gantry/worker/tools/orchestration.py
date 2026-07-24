@@ -90,21 +90,23 @@ def _inherit_parent_context(payload: dict[str, Any], parent_payload: dict[str, A
 
     A delegated child works the SAME repo and — crucially — must use the SAME
     LLM credentials as the planner, or it falls back to the keyless server
-    default and fails with an auth error. ``repo_url``/``base_branch`` inherit
-    independently; ``provider_id`` and ``model`` inherit only as a matched pair
-    (a model string is provider-specific) and only when the child pinned
-    neither itself.
+    default and fails with an auth error. So ``provider_id`` (the account/gateway
+    key) inherits INDEPENDENTLY, like ``repo_url``/``base_branch``: a leader on an
+    OpenRouter key can spawn a child on a cheaper model over that same key. Only
+    ``model`` is conditional — a child that pinned its own model keeps it and runs
+    it on the inherited provider, which for a multi-model gateway is one key
+    across every model.
     """
-    for key in ("repo_url", "base_branch"):
+    for key in ("repo_url", "base_branch", "provider_id"):
         if payload.get(key) is None and parent_payload.get(key) is not None:
             payload[key] = parent_payload[key]
     # A run-wide setting: auto-accept flows down to every descendant.
     if parent_payload.get("auto_approve") and payload.get("auto_approve") is None:
         payload["auto_approve"] = True
-    if "provider_id" not in payload and "model" not in payload:
-        for key in ("provider_id", "model"):
-            if parent_payload.get(key) is not None:
-                payload[key] = parent_payload[key]
+    # The child's own model (e.g. a cheap one for mechanical work) wins; only
+    # borrow the parent's when the child pinned none.
+    if payload.get("model") is None and parent_payload.get("model") is not None:
+        payload["model"] = parent_payload["model"]
 
 
 def _sessions_of(ctx: ToolContext) -> Sessions:
@@ -138,7 +140,19 @@ class SpawnSubtaskTool(Tool):
                 ),
             },
             "base_branch": {"type": "string"},
-            "model": {"type": "string", "description": "Override the child's LLM model"},
+            "model": {
+                "type": "string",
+                "description": (
+                    "The model this child runs on, as a provider slug (e.g. "
+                    "'deepseek/deepseek-chat'). Set it to match the task's difficulty so "
+                    "you don't burn an expensive model on cheap work: use a fast, cheap "
+                    "model for mechanical tasks (splitting files, reading, edits, QA "
+                    "testing) and reserve a strong reasoning model (e.g. "
+                    "'deepseek/deepseek-r1') ONLY for hard algorithm design or deep "
+                    "debugging. Omit it to inherit your own model. It runs on your "
+                    "provider key, so pass a slug that key can serve."
+                ),
+            },
             "max_steps": {"type": "integer"},
             "priority": {"type": "integer", "description": "Higher runs earlier (default 0)"},
             "max_attempts": {"type": "integer"},
