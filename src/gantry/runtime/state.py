@@ -164,6 +164,10 @@ class AgentState:
     gated_started_ids: set[str] = field(default_factory=set)
     prompt_tokens: int = 0
     completion_tokens: int = 0
+    #: Cached-input tokens served/written across the run — folded like the token
+    #: sums so cost can be priced correctly (cache reads are cheap) on resume.
+    cache_read_tokens: int = 0
+    cache_write_tokens: int = 0
     #: How many times the loop has nudged this agent to wait for live children
     #: it tried to abandon — bounded so a stuck agent can't loop forever.
     children_reminders: int = 0
@@ -412,6 +416,8 @@ def rehydrate(payload: dict[str, Any], events: Sequence[TaskEvent]) -> AgentStat
             usage = p.get("usage") or {}
             state.prompt_tokens += int(usage.get("prompt_tokens", 0))
             state.completion_tokens += int(usage.get("completion_tokens", 0))
+            state.cache_read_tokens += int(usage.get("cache_read_tokens", 0))
+            state.cache_write_tokens += int(usage.get("cache_write_tokens", 0))
             state.resumed = True
         elif event.event_type is EventType.TOOL_CALL:
             state.started_tool_ids.add(p["tool_call_id"])
@@ -466,6 +472,8 @@ def rehydrate(payload: dict[str, Any], events: Sequence[TaskEvent]) -> AgentStat
             usage = p.get("usage") or {}
             state.prompt_tokens += int(usage.get("prompt_tokens", 0))
             state.completion_tokens += int(usage.get("completion_tokens", 0))
+            state.cache_read_tokens += int(usage.get("cache_read_tokens", 0))
+            state.cache_write_tokens += int(usage.get("cache_write_tokens", 0))
             state.resumed = True
         # llm_request and queue-lifecycle events don't contribute messages.
     return state

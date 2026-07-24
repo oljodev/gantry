@@ -445,6 +445,9 @@ class TeamLaunchRequest(BaseModel):
     repo_url: str | None = None
     base_branch: str | None = None
     priority: int = 0
+    #: Optional per-run USD budget. When the run's settled spend crosses it, the
+    #: leader is told to stop spawning and converge, and any task gracefully halts.
+    budget_usd: float | None = Field(default=None, gt=0)
 
 
 TeamNodeIn.model_rebuild()

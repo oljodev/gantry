@@ -64,6 +64,19 @@ def _now_plus(seconds: float) -> sa.ColumnElement[datetime]:
 _WAKE_ATTEMPT_HEADROOM = 3
 
 
+async def run_spend_usd(session: AsyncSession, root_task_id: uuid.UUID) -> float:
+    """Total USD spent by every task in a run (its whole tree), read from the
+    committed per-task ``cost_usd`` — the signal the per-run budget brake consults
+    before a leader fans out another wave. In-flight tasks contribute 0 until they
+    reach a terminal transition, so this is the settled spend (conservative)."""
+    total = await session.scalar(
+        sa.select(sa.func.coalesce(sa.func.sum(Task.cost_usd), 0.0)).where(
+            Task.root_task_id == root_task_id
+        )
+    )
+    return float(total or 0.0)
+
+
 def _wake_to_pending() -> dict[str, Any]:
     """The UPDATE values that re-queue a parked task, lifting max_attempts so the
     wake doesn't erode the error-retry budget. Monotonic ``greatest()`` is
@@ -257,8 +270,12 @@ async def complete(
     worker_id: str,
     attempt: int,
     result: dict[str, Any] | None = None,
+    cost_usd: float = 0.0,
 ) -> bool:
-    """Mark succeeded. Transactional with its event — completion is exactly-once."""
+    """Mark succeeded. Transactional with its event — completion is exactly-once.
+
+    ``cost_usd`` is SET (not incremented) inside this fenced terminal UPDATE, so a
+    re-claim/zombie can never double-count the run's spend."""
     res = await session.execute(
         sa.update(Task)
         .where(
@@ -270,6 +287,7 @@ async def complete(
         .values(
             status=TaskStatus.SUCCEEDED,
             result=result,
+            cost_usd=cost_usd,
             claimed_by=None,
             lease_expires_at=None,
             updated_at=sa.func.now(),

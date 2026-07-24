@@ -44,6 +44,7 @@ from gantry.runtime.llm import (
     Message,
     ToolCallRequest,
 )
+from gantry.runtime.pricing import cost_usd
 from gantry.runtime.state import (
     SPAWN_TOOL_NAMES,
     SURVEY_TOOL_NAMES,
@@ -87,6 +88,36 @@ class AgentOutcome:
     resumed: bool
     prompt_tokens: int
     completion_tokens: int
+    cache_read_tokens: int = 0
+    cache_write_tokens: int = 0
+    #: Estimated USD spent by this task across all its attempts (priced from the
+    #: folded token usage). Recorded on the terminal transition for the run ledger.
+    cost_usd: float = 0.0
+
+
+def _run_cost(state: AgentState, model: str) -> float:
+    return cost_usd(
+        LLMUsage(
+            prompt_tokens=state.prompt_tokens,
+            completion_tokens=state.completion_tokens,
+            cache_read_tokens=state.cache_read_tokens,
+            cache_write_tokens=state.cache_write_tokens,
+        ),
+        model,
+    )
+
+
+def _outcome(state: AgentState, model: str, final_text: str) -> AgentOutcome:
+    return AgentOutcome(
+        final_text=final_text,
+        steps=state.steps,
+        resumed=state.resumed,
+        prompt_tokens=state.prompt_tokens,
+        completion_tokens=state.completion_tokens,
+        cache_read_tokens=state.cache_read_tokens,
+        cache_write_tokens=state.cache_write_tokens,
+        cost_usd=_run_cost(state, model),
+    )
 
 
 async def run_agent_task(
@@ -112,6 +143,11 @@ async def run_agent_task(
     # An autonomous leader has no write tools and exists only to delegate, so the
     # loop budgets how long it may survey before it must start spawning.
     is_leader = bool(payload.get("autonomous_leader"))
+    # Optional per-run USD budget (inherited into every task of the run). When
+    # this task's own spend crosses it, the loop halts GRACEFULLY at a step
+    # boundary (never mid-tool) — the run-level brake that stops a leader fanning
+    # out more work lives in the spawn tools.
+    budget_usd = payload.get("budget_usd")
     explicit_steps = payload.get("max_steps")
     max_steps: int | None
     if explicit_steps:
@@ -158,6 +194,21 @@ async def run_agent_task(
             await on_step()
         if max_steps is not None and state.steps >= max_steps:
             raise AgentLoopError(f"exceeded max_steps={max_steps} without a final answer")
+        # Graceful budget halt: at a step boundary (any in-flight tool has already
+        # settled and flushed its git/file state), if this task's own spend crossed
+        # the run budget, finish CLEANLY — never a mid-tool kill or a retryable FAIL.
+        if budget_usd is not None and _run_cost(state, model) >= float(budget_usd):
+            logger.info(
+                "agent.budget_halt",
+                task_id=str(task.id),
+                cost_usd=round(_run_cost(state, model), 4),
+            )
+            return _outcome(
+                state,
+                model,
+                "Halted: the run's cost budget is exhausted. Stopping cleanly without "
+                "starting more work.",
+            )
 
         if is_leader:
             nudge = await _survey_budget_guard(sessions, task, state)
@@ -201,6 +252,8 @@ async def run_agent_task(
         state.steps += 1
         state.prompt_tokens += response.usage.prompt_tokens
         state.completion_tokens += response.usage.completion_tokens
+        state.cache_read_tokens += response.usage.cache_read_tokens
+        state.cache_write_tokens += response.usage.cache_write_tokens
 
         if not response.tool_calls:
             reminder = await _children_guard(sessions, task, state)
@@ -209,13 +262,7 @@ async def run_agent_task(
             if reminder is not None:
                 state.tracked.append(reminder)
                 continue
-            return AgentOutcome(
-                final_text=response.content or "",
-                steps=state.steps,
-                resumed=state.resumed,
-                prompt_tokens=state.prompt_tokens,
-                completion_tokens=state.completion_tokens,
-            )
+            return _outcome(state, model, response.content or "")
 
         await _settle_tool_calls(
             sessions, task, state, tools, ctx, approval_policy, response.tool_calls
@@ -598,6 +645,8 @@ async def _apply_compaction(
     ]
     state.prompt_tokens += result.usage.prompt_tokens
     state.completion_tokens += result.usage.completion_tokens
+    state.cache_read_tokens += result.usage.cache_read_tokens
+    state.cache_write_tokens += result.usage.cache_write_tokens
     logger.info(
         "agent.compacted",
         task_id=str(task.id),

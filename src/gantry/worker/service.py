@@ -352,7 +352,11 @@ class Worker:
                         "branch": workspace.branch if workspace else None,
                         "prompt_tokens": outcome.prompt_tokens,
                         "completion_tokens": outcome.completion_tokens,
+                        "cache_read_tokens": outcome.cache_read_tokens,
+                        "cache_write_tokens": outcome.cache_write_tokens,
+                        "cost_usd": round(outcome.cost_usd, 6),
                     },
+                    cost_usd=outcome.cost_usd,
                 )
             logger.info("worker.task_succeeded", task_id=str(task.id), steps=outcome.steps)
             if succeeded and self._should_land_on_main(task, workspace, is_leader):

@@ -390,6 +390,8 @@ async def launch_team(request: Request, team_id: uuid.UUID, body: TeamLaunchRequ
             payload["repo_url"] = body.repo_url
         if body.base_branch:
             payload["base_branch"] = body.base_branch
+        if body.budget_usd is not None:
+            payload["budget_usd"] = body.budget_usd
         payload.setdefault("model", settings.default_model)
 
         max_attempts = DEFAULT_PLANNER_MAX_ATTEMPTS if kind is TaskKind.PLAN else 3

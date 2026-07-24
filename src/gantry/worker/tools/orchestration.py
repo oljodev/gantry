@@ -105,7 +105,7 @@ def _inherit_parent_context(payload: dict[str, Any], parent_payload: dict[str, A
     it on the inherited provider, which for a multi-model gateway is one key
     across every model.
     """
-    for key in ("repo_url", "base_branch", "provider_id"):
+    for key in ("repo_url", "base_branch", "provider_id", "budget_usd"):
         if payload.get(key) is None and parent_payload.get(key) is not None:
             payload[key] = parent_payload[key]
     # A run-wide setting: auto-accept flows down to every descendant.
@@ -201,6 +201,21 @@ class _SpawnBase(Tool):
     def _team_child(self, name: str) -> TeamNode | None:
         children = (self._team or {}).get("children") or []
         return next((c for c in children if c.get("name") == name), None)
+
+    async def _budget_exhausted(self, session: AsyncSession, parent: Task) -> str | None:
+        """The run-level GRACEFUL brake: if the run's settled spend crossed its
+        budget, refuse to spawn MORE work (the leader then converges — integrate,
+        land, finish — rather than fanning out). ``None`` means there is headroom."""
+        budget = parent.payload.get("budget_usd")
+        if budget is None:
+            return None
+        spent = await queue.run_spend_usd(session, parent.root_task_id)
+        if spent >= float(budget):
+            return (
+                f"run budget exhausted (${spent:.2f} of ${float(budget):.2f} spent). Do NOT "
+                "spawn more work — integrate and land what you already have, then finish."
+            )
+        return None
 
     def _resolve_node(
         self, spec: dict[str, Any]
@@ -304,6 +319,9 @@ class SpawnSubtaskTool(_SpawnBase):
             parent = await session.get(Task, ctx.task_id)
             if parent is None:
                 return ToolResult("parent task not found", is_error=True)
+            budget_msg = await self._budget_exhausted(session, parent)
+            if budget_msg is not None:
+                return ToolResult(budget_msg, is_error=True)
             if len(await _child_ids_of(session, parent.id)) >= self._max_subtasks:
                 return ToolResult(
                     f"subtask cap reached ({self._max_subtasks}); integrate existing "
@@ -382,6 +400,9 @@ class SpawnBatchTool(_SpawnBase):
                     parent = await session.get(Task, ctx.task_id)
                     if parent is None:
                         return ToolResult("parent task not found", is_error=True)
+                    budget_msg = await self._budget_exhausted(session, parent)
+                    if budget_msg is not None:
+                        return ToolResult(budget_msg, is_error=True)
                     child_depth = int(parent.payload.get("depth") or 0) + 1
                     if child_depth > MAX_SPAWN_DEPTH:
                         return ToolResult(_depth_cap_message(), is_error=True)
