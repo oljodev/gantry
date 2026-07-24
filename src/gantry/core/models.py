@@ -468,9 +468,7 @@ class AgentProfile(Base):
     #: An Autonomous Leader's model menu: [{"model": slug, "description": when to
     #: use it}]. Injected into the leader prompt and snapshotted so it can assign
     #: a cost-appropriate model per spawned worker. Only model slugs, never keys.
-    model_options: Mapped[list[dict[str, Any]]] = mapped_column(
-        JSONB, nullable=False, default=list
-    )
+    model_options: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False, default=list)
     gated_tools: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
     skills: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
     created_at: Mapped[datetime] = mapped_column(

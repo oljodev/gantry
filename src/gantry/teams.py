@@ -120,8 +120,7 @@ def model_menu_text(options: list[dict[str, Any]]) -> str:
         "\n\n## Models you can assign\n\n"
         "Pass one of these exact slugs as the `model` argument of spawn_subtask to "
         "run that worker on it (they all use your provider key). Follow the guidance "
-        "on when to use each — assign the cheapest model that fits the micro-task:\n"
-        + lines
+        "on when to use each — assign the cheapest model that fits the micro-task:\n" + lines
     )
 
 
