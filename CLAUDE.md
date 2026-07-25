@@ -59,16 +59,6 @@ stays warm; a delegating leader gets a larger one (`leader_max_context_tokens`).
 When a run's root task settles, the worker logs a `worker.run_rollup` line (spend,
 cache-hit ratio, compactions, per-status counts) for the whole tree.
 
-Death-loop circuit breakers make a runaway impossible by invariant, each a pure
-function of durable state (so a resume decides identically): per-agent step caps
-are **always finite** and role-aware — a delegating agent (`leader_max_steps`, 150)
-halts *gracefully* with a report instead of looping forever, a spawned
-non-interactive micro-task (`execute_max_steps`, 25) *fails* fast so its leader
-learns it's stuck, a standalone task keeps `default_max_steps`. And the spawn tools
-refuse to fan out once a leader has too many terminally-FAILED direct children
-(`max_repair_failures`, the repair-wave brake) or the run's whole tree hits
-`run_task_ceiling` — so a leader can't fund fixer wave after fixer wave.
-
 ## Deployment (IMPORTANT)
 
 **`gantry.oljo.dev` is a Cloudflare Pages site that auto-deploys the frontend
