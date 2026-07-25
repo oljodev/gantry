@@ -487,6 +487,23 @@ async def test_child_inherits_parent_repo_url(db: Sessions) -> None:
     assert child.payload["repo_url"] == "https://github.com/oljodev/real.git"
 
 
+async def test_autonomous_run_is_non_interactive_top_to_bottom(db: Sessions) -> None:
+    # A leader's whole swarm runs unattended: the autonomous flag flows down as
+    # `non_interactive` to every descendant, so no spawned worker gets ask_user.
+    leader = await _planner_with(db, autonomous_leader=True)
+    child = await spawn(db, leader, "call_A")
+    assert child.payload["non_interactive"] is True
+    # ...and it keeps flowing: a grandchild of a non_interactive parent inherits too.
+    grandchild = await spawn(db, child, "call_B")
+    assert grandchild.payload["non_interactive"] is True
+
+
+async def test_ordinary_run_stays_interactive(db: Sessions) -> None:
+    planner = await make_planner(db)  # no autonomous_leader
+    child = await spawn(db, planner, "call_A")
+    assert "non_interactive" not in child.payload
+
+
 async def test_child_pinning_its_own_model_keeps_the_gateway_provider(db: Sessions) -> None:
     """A child that pins a cheaper model still inherits the parent's provider_id
     (the account/gateway key), so cost-tiered spawns run on the same key instead

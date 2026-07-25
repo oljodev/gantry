@@ -153,6 +153,13 @@ def _inherit_parent_context(payload: dict[str, Any], parent_payload: dict[str, A
     # A run-wide setting: auto-accept flows down to every descendant.
     if parent_payload.get("auto_approve") and payload.get("auto_approve") is None:
         payload["auto_approve"] = True
+    # An autonomous swarm is non-interactive top to bottom: the flag flows from an
+    # autonomous leader (or any already-non-interactive parent) to every descendant,
+    # so no spawned worker can park the run on ask_user either.
+    if (
+        parent_payload.get("non_interactive") or parent_payload.get("autonomous_leader")
+    ) and payload.get("non_interactive") is None:
+        payload["non_interactive"] = True
     # The child's own model (e.g. a cheap one for mechanical work) wins; only
     # borrow the parent's when the child pinned none.
     if payload.get("model") is None and parent_payload.get("model") is not None:
