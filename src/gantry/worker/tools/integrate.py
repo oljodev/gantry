@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from gantry.core.db import session_scope
 from gantry.core.models import Task, TaskStatus
+from gantry.runtime.diagnostics import Diagnostic, Severity
 from gantry.runtime.llm import LLMClient
 from gantry.runtime.tools import Tool, ToolContext, ToolIdempotency, ToolResult
 from gantry.worker.git import GitAuth
@@ -175,6 +176,39 @@ class MergeChildBranchesTool(Tool):
                 if m.status == "skipped"
             ],
         }
+        # Delivery gate: a branch that is not on origin (its worker never pushed)
+        # contributed nothing to staging. Refuse — loudly and with structured
+        # diagnostics — to publish an integration that silently dropped a whole
+        # child's work, so the leader re-runs after the workers deliver instead of
+        # assuming success over a near-empty tree and panicking into a rewrite. The
+        # diagnostics also feed the repair-loop breaker: re-merging the same missing
+        # branch trips the stall/escalate path rather than looping.
+        if report.missing:
+            summary["missing"] = [{"branch": m.branch, "reason": m.detail} for m in report.missing]
+            summary["pushed"] = False
+            diagnostics = tuple(
+                Diagnostic(
+                    file=m.branch,
+                    line=None,
+                    column=None,
+                    message="branch is not on origin — its worker did not push its commits",
+                    severity=Severity.ERROR,
+                    code="MissingBranch",
+                    source="merge",
+                )
+                for m in report.missing
+            )
+            names = ", ".join(m.branch for m in report.missing)
+            return ToolResult(
+                f"Integration is INCOMPLETE: {len(report.missing)} child branch(es) were "
+                f"not on origin ({names}) — those workers did not push their commits, so "
+                "their work is NOT in staging. Do NOT land this and do NOT rewrite their "
+                "work from scratch. Re-run those children (or wait for them to deliver), "
+                "then re-run merge_child_branches.\n"
+                f"{json.dumps(summary, indent=2)}",
+                is_error=True,
+                diagnostics=diagnostics,
+            )
         # Post-merge verification gate: run the configured check on the integrated
         # staging branch. This catches breakage no per-file/per-worker check can —
         # circular imports that only exist once the split modules coexist, two

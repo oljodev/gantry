@@ -30,8 +30,12 @@ _CONFLICT_MARKERS = ("<<<<<<<", "=======", ">>>>>>>")
 @dataclass(frozen=True)
 class BranchMerge:
     branch: str
-    #: "clean" (git merged it), "resolved" (a conflict was auto-resolved), or
-    #: "skipped" (fetch failed or the conflict could not be resolved).
+    #: "clean" (git merged it), "resolved" (a conflict was auto-resolved),
+    #: "skipped" (the conflict could not be resolved), or "missing" (the branch
+    #: is not on origin — its worker never pushed its commits, so there was
+    #: nothing to fetch). "missing" is kept distinct from "skipped" because it is
+    #: a delivery failure, not a merge overlap: the leader must not treat an
+    #: integration that dropped a whole child's work as successful.
     status: str
     detail: str = ""
 
@@ -54,6 +58,12 @@ class MergeReport:
     @property
     def skipped(self) -> list[str]:
         return [m.branch for m in self.merges if m.status == "skipped"]
+
+    @property
+    def missing(self) -> list[BranchMerge]:
+        """Branches that were not on origin — their worker never pushed. Returned
+        whole (not just names) so the caller can surface each one's detail."""
+        return [m for m in self.merges if m.status == "missing"]
 
 
 def _has_conflict_markers(text: str) -> bool:
@@ -157,7 +167,11 @@ async def merge_branches(
         try:
             await run_git(["fetch", "origin", branch], cwd=repo, auth=auth)
         except GitError as exc:
-            merges.append(BranchMerge(branch, "skipped", f"fetch failed: {exc}"))
+            # The branch is not on origin: its worker never pushed its commits, so
+            # there is nothing to integrate. This is a delivery failure, not a
+            # mergeable overlap — flag it "missing" so the caller can refuse to
+            # publish an integration that silently dropped a child's whole result.
+            merges.append(BranchMerge(branch, "missing", f"not on origin: {exc}"))
             continue
         code, _ = await run_git(
             ["merge", "--no-ff", "-m", f"gantry: merge {branch}", "FETCH_HEAD"],

@@ -97,6 +97,24 @@ async def test_a_circular_import_is_caught_by_an_import_verify(
     assert _STAGING not in _remote_heads(leader)
 
 
+async def test_a_branch_missing_from_origin_blocks_integration(
+    origin: Path,  # noqa: F811
+    tmp_path: Path,
+) -> None:
+    # The board.py incident: a worker "succeeded" but never pushed its branch, so
+    # the leader tries to merge a ref that is not on origin. That must be a loud,
+    # structured failure — not a silently-empty staging the leader lands or panics
+    # over.
+    leader = await _leader(origin, tmp_path)
+    result = await _merge(leader, "gantry/task-neverpushed")
+    assert result.is_error
+    assert "INCOMPLETE" in result.content
+    assert result.diagnostics  # structured feedback the leader (and breaker) can key on
+    assert result.diagnostics[0].code == "MissingBranch"
+    # A staging that dropped a whole child's work is never published.
+    assert _STAGING not in _remote_heads(leader)
+
+
 async def test_verification_can_be_disabled(origin: Path, tmp_path: Path) -> None:  # noqa: F811
     branch = await _worker_pushes(origin, tmp_path, "a", {"mod.py": "def broken(\n"})
     leader = await _leader(origin, tmp_path)
