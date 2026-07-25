@@ -349,6 +349,38 @@ class CopilotSession(Base):
     )
 
 
+class WorkspaceControl(Base):
+    """The workspace's emergency stop — the swarm-wide kill switch.
+
+    One row per workspace, created on demand. When ``stopped`` is true every
+    worker dispatcher refuses to claim new work and halts the tasks it is already
+    running, so an operator can stop a runaway swarm (and its spend) without
+    chasing individual task ids.
+
+    This is durable control-plane state rather than an event: workers must be
+    able to read "may I claim?" cheaply on every dispatch loop, and a worker that
+    boots (or reconnects) after the stop was tripped must observe it immediately
+    without replaying a log. NOTIFY on the control channel makes propagation
+    instant; the row is what makes it *true*.
+    """
+
+    __tablename__ = "workspace_controls"
+
+    workspace_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    stopped: Mapped[bool] = mapped_column(
+        sa.Boolean, nullable=False, server_default=sa.false(), default=False
+    )
+    #: Why the stop was tripped, shown in the dashboard and logged by workers.
+    reason: Mapped[str] = mapped_column(sa.Text, nullable=False, default="")
+    #: Who tripped it ("operator", an email, an automated guard).
+    actor: Mapped[str] = mapped_column(sa.String(200), nullable=False, default="")
+    #: When it was last tripped — NULL once cleared.
+    stopped_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    )
+
+
 class ProviderType(enum.StrEnum):
     """LLM provider families. ``LOCAL`` is any OpenAI-compatible endpoint."""
 

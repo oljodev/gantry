@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from gantry.config import Settings
 from gantry.core import queue
+from gantry.core.control import get_control, set_emergency_stop
 from gantry.core.db import session_scope
 from gantry.core.events import read_events
 from gantry.core.models import (
@@ -37,6 +38,8 @@ from gantry.server.schemas import (
     ApprovalItem,
     ApprovalResolveRequest,
     ApprovalsResponse,
+    EmergencyStopRequest,
+    EmergencyStopResponse,
     ModelUsage,
     QuestionAnswerRequest,
     QuestionItem,
@@ -574,3 +577,44 @@ async def cancel_task(request: Request, task_id: uuid.UUID) -> TaskOut:
         status_code=409,
         detail=f"task is {task.status.value}; already finished",
     )
+
+
+async def _control_response(sessions: Sessions) -> EmergencyStopResponse:
+    async with sessions() as session:
+        state = await get_control(session, DEFAULT_WORKSPACE_ID)
+    return EmergencyStopResponse(
+        workspace_id=state.workspace_id,
+        stopped=state.stopped,
+        reason=state.reason,
+        actor=state.actor,
+    )
+
+
+@router.get("/control/emergency-stop", response_model=EmergencyStopResponse)
+async def get_emergency_stop(request: Request) -> EmergencyStopResponse:
+    return await _control_response(get_sessions(request))
+
+
+@router.post("/control/emergency-stop", response_model=EmergencyStopResponse)
+async def set_emergency_stop_route(
+    request: Request, body: EmergencyStopRequest
+) -> EmergencyStopResponse:
+    """Trip or clear the workspace-wide kill switch.
+
+    Tripping it stops every worker from claiming new work and halts what they
+    are already running — the "stop everything now" an operator needs when a
+    swarm misbehaves, without having to find each root task. Halted tasks land
+    CANCELLED with their event logs intact, so they can be retried once the
+    stop is cleared.
+    """
+    sessions = get_sessions(request)
+    actor = getattr(getattr(request.state, "user", None), "email", None) or "operator"
+    async with session_scope(sessions) as session:
+        await set_emergency_stop(
+            session,
+            workspace_id=DEFAULT_WORKSPACE_ID,
+            stopped=body.stopped,
+            reason=body.reason,
+            actor=str(actor),
+        )
+    return await _control_response(sessions)

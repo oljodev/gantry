@@ -106,7 +106,8 @@ async def engine(database_url: str) -> AsyncIterator[AsyncEngine]:
         await conn.execute(
             sa.text(
                 "TRUNCATE tasks, task_events, secrets, providers, agent_profiles, "
-                "teams, team_members, skills, copilot_sessions, projects "
+                "teams, team_members, skills, copilot_sessions, projects, "
+                "workspace_controls "
                 "RESTART IDENTITY CASCADE"
             )
         )

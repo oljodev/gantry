@@ -19,8 +19,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from gantry.config import Settings
 from gantry.core import queue
+from gantry.core.control import get_control
 from gantry.core.db import session_scope
-from gantry.core.models import Provider, Task, TaskKind, TaskStatus
+from gantry.core.models import DEFAULT_WORKSPACE_ID, Provider, Task, TaskKind, TaskStatus
 from gantry.core.notify import QueueListener
 from gantry.logging import get_logger
 from gantry.runtime.compaction import CompactionConfig
@@ -99,6 +100,11 @@ class WorkerConfig:
     #: payload so a resume selects the identical threshold.
     execute_max_context_tokens: int | None = None
     leader_max_context_tokens: int | None = None
+    #: How often the dispatcher re-reads the workspace emergency stop from the
+    #: database. NOTIFY makes a trip propagate instantly; this is the durable
+    #: fallback that bounds how long a worker with a dead listener keeps
+    #: claiming, so it stays short.
+    control_refresh_seconds: float = 2.0
 
     @classmethod
     def from_settings(cls, settings: Settings, worker_id: str | None = None) -> WorkerConfig:
@@ -160,13 +166,23 @@ class Worker:
         limiter: AsyncRateLimiter | None = None,
         limiter_registry: LimiterRegistry | None = None,
         cancel_listener: QueueListener | None = None,
+        control_listener: QueueListener | None = None,
+        workspace_id: uuid.UUID = DEFAULT_WORKSPACE_ID,
     ) -> None:
         self._sessions = sessions
         self._config = config
         self._llm = llm
         self._listener = listener
         self._cancel_listener = cancel_listener
+        self._control_listener = control_listener
+        self._workspace_id = workspace_id
         self._vault = vault
+        #: Cached emergency-stop gate. Refreshed on a timer (durable fallback)
+        #: and flipped instantly by the control NOTIFY. ``_control_checked_at``
+        #: is loop-clock time, so it never depends on the host wall clock.
+        self._stopped = False
+        self._stop_reason = ""
+        self._control_checked_at = 0.0
         #: Slots currently running an agent, by task id — the target of a hard
         #: cancel. ``_stopping`` marks the ones being deliberately stopped so the
         #: slot records them CANCELLED (vs a shutdown cancel, left for the reaper).
@@ -199,6 +215,9 @@ class Worker:
         # An operator "Stop all" NOTIFYs the cancel channel; interrupt the slot now.
         if self._cancel_listener is not None:
             self._cancel_listener.on_payload = self._on_cancel_notify
+        # The workspace kill switch: force an immediate re-read on any change.
+        if self._control_listener is not None:
+            self._control_listener.on_payload = self._on_control_notify
         logger.info("worker.started", worker_id=self._config.worker_id, concurrency=concurrency)
 
         async def _run_slot(task: Task) -> None:
@@ -219,6 +238,14 @@ class Worker:
         while not shutdown.is_set():
             if not await self._acquire_slot(slots, shutdown):
                 break  # shutdown while waiting for a free slot
+            # The kill switch is checked BEFORE every claim, so a tripped stop
+            # cannot admit even one more task — the whole point is that spend
+            # stops immediately, not after the current wave drains.
+            if await self._emergency_stopped():
+                slots.release()
+                await self._halt_running()
+                await self._doze(shutdown)
+                continue
             task = await self._claim()
             if task is None:
                 slots.release()
@@ -263,9 +290,72 @@ class Worker:
             return
         self._request_hard_cancel(task_id)
 
+    def _on_control_notify(self, payload: str) -> None:
+        """Control-channel handler: invalidate the cached gate so the next
+        dispatch iteration re-reads it from the database immediately."""
+        if payload and payload != str(self._workspace_id):
+            return
+        self._control_checked_at = 0.0
+
+    async def _emergency_stopped(self) -> bool:
+        """Whether this workspace's kill switch is tripped.
+
+        Cached for ``control_refresh_seconds`` so a 100-slot dispatcher spinning
+        through free slots does not issue a query per iteration; the control
+        NOTIFY zeroes the cache, so a real trip is observed immediately rather
+        than up to one interval later. A failed read is deliberately treated as
+        "not stopped": the queue's own guards (budgets, leases) still bound a
+        run, and refusing to work because a status query blipped would turn a
+        transient DB hiccup into a fleet-wide outage.
+        """
+        now = asyncio.get_running_loop().time()
+        if now - self._control_checked_at < self._config.control_refresh_seconds:
+            return self._stopped
+        self._control_checked_at = now
+        try:
+            async with self._sessions() as session:
+                state = await get_control(session, self._workspace_id)
+        except Exception as exc:
+            logger.warning("worker.control_read_failed", error=repr(exc))
+            return self._stopped
+        if state.stopped and not self._stopped:
+            logger.warning(
+                "worker.emergency_stop_engaged",
+                worker_id=self._config.worker_id,
+                reason=state.reason,
+                running=len(self._running),
+            )
+        elif self._stopped and not state.stopped:
+            logger.info("worker.emergency_stop_cleared", worker_id=self._config.worker_id)
+        self._stopped, self._stop_reason = state.stopped, state.reason
+        return self._stopped
+
+    async def _halt_running(self) -> None:
+        """Stop every agent this worker is running, for an emergency stop.
+
+        Uses the same hard-cancel path as an operator "stop this task": each slot
+        is interrupted mid-step and lands CANCELLED, so its event log survives
+        and the task can be retried once the stop is cleared. Draining instead —
+        letting in-flight agents finish — would keep the exact spend the switch
+        exists to stop, sometimes for many minutes.
+        """
+        for task_id in list(self._running):
+            self._request_hard_cancel(task_id)
+
     def _request_hard_cancel(self, task_id: uuid.UUID) -> None:
         """Interrupt a running slot immediately (mid LLM/tool call). A no-op if
-        this worker isn't running that task."""
+        this worker isn't running that task, or is already stopping it.
+
+        The already-stopping guard is load-bearing: a slot that has been
+        cancelled is running its cleanup (``_finalize_stop``, which awaits the
+        CANCELLED write), and a SECOND ``cancel()`` lands on that await and
+        aborts it — so the task never records its terminal state and the reaper
+        later re-queues a task an operator explicitly stopped. Every cancel path
+        funnels through here (cancel NOTIFY, heartbeat poll, emergency halt), so
+        one guard covers them all.
+        """
+        if task_id in self._stopping:
+            return
         slot = self._running.get(task_id)
         if slot is not None and not slot.done():
             self._stopping.add(task_id)

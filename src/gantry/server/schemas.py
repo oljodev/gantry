@@ -283,6 +283,20 @@ class QuestionsResponse(BaseModel):
     questions: list[QuestionItem]
 
 
+class EmergencyStopRequest(BaseModel):
+    stopped: bool
+    reason: str = ""
+
+
+class EmergencyStopResponse(BaseModel):
+    """The workspace kill switch's current state."""
+
+    workspace_id: uuid.UUID
+    stopped: bool
+    reason: str = ""
+    actor: str = ""
+
+
 class TaskMessage(BaseModel):
     """WS: a task snapshot — sent on connect and after status transitions."""
 

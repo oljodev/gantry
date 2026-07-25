@@ -30,6 +30,12 @@ TASK_EVENTS_CHANNEL = "gantry_task_events"
 #: holding that task can interrupt it immediately, instead of waiting for its
 #: next heartbeat poll and step boundary.
 TASK_CANCEL_CHANNEL = "gantry_task_cancel"
+#: Fires when a workspace's emergency stop is tripped or cleared — carries the
+#: workspace id so every worker flips its local gate in the same instant rather
+#: than at its next refresh. Like every NOTIFY here it is a HINT: the durable
+#: ``workspace_controls`` row is the truth, and dispatchers re-read it on a timer
+#: so a worker that missed the notification still stops within one interval.
+WORKSPACE_CONTROL_CHANNEL = "gantry_workspace_control"
 
 
 def asyncpg_dsn(database_url: str) -> str:
@@ -50,6 +56,14 @@ async def notify_task_cancel(session: AsyncSession, task_id: uuid.UUID) -> None:
     """Signal (on commit) that a live task should stop now — the worker holding
     it interrupts the in-flight step instead of waiting for its heartbeat poll."""
     await session.execute(sa.select(sa.func.pg_notify(TASK_CANCEL_CHANNEL, str(task_id))))
+
+
+async def notify_workspace_control(session: AsyncSession, workspace_id: uuid.UUID) -> None:
+    """Signal (on commit) that a workspace's emergency stop changed, so every
+    worker re-reads the control row now instead of at its next refresh."""
+    await session.execute(
+        sa.select(sa.func.pg_notify(WORKSPACE_CONTROL_CHANNEL, str(workspace_id)))
+    )
 
 
 class QueueListener:

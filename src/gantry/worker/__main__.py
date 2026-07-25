@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from gantry.config import get_settings
 from gantry.core.db import create_engine
-from gantry.core.notify import TASK_CANCEL_CHANNEL, QueueListener
+from gantry.core.notify import TASK_CANCEL_CHANNEL, WORKSPACE_CONTROL_CHANNEL, QueueListener
 from gantry.logging import configure_logging, get_logger
 from gantry.runtime.llm import LiteLLMClient
 from gantry.runtime.ratelimit import LimiterRegistry
@@ -40,6 +40,9 @@ async def main() -> None:
     async with (
         QueueListener(settings.database_url_str) as listener,
         QueueListener(settings.database_url_str, channel=TASK_CANCEL_CHANNEL) as cancel_listener,
+        QueueListener(
+            settings.database_url_str, channel=WORKSPACE_CONTROL_CHANNEL
+        ) as control_listener,
     ):
         worker = Worker(
             sessions,
@@ -49,6 +52,7 @@ async def main() -> None:
             vault=vault,
             limiter_registry=limiters,
             cancel_listener=cancel_listener,
+            control_listener=control_listener,
         )
         logger.info(
             "worker.booting",
