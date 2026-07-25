@@ -120,6 +120,21 @@ async def promote_branch(
     return False, out.strip() or f"push to {target} was rejected (did {target} move?)"
 
 
+async def push_staging(repo: Path, branch: str, auth: GitAuth) -> bool:
+    """Force-push a Gantry staging branch to origin, returning whether it succeeded.
+
+    Force is safe here: staging is a Gantry-generated, regenerable branch (only ever
+    ``gantry/staging-*``), so a re-run whose resolver differs can always replace it —
+    it never touches a user's own branch. Split out from ``merge_branches`` so a
+    caller can build staging, verify it locally, and push ONLY if it passed.
+    """
+    try:
+        await run_git(["push", "--force", "-u", "origin", branch], cwd=repo, auth=auth)
+        return True
+    except GitError:
+        return False
+
+
 async def merge_branches(
     repo: Path,
     branches: list[str],
@@ -161,14 +176,5 @@ async def merge_branches(
             merges.append(BranchMerge(branch, "skipped", detail))
 
     _, head = await run_git(["rev-parse", "HEAD"], cwd=repo)
-    pushed = False
-    if push:
-        try:
-            # Staging is a Gantry-generated, regenerable branch — force so a
-            # re-run (whose resolver may differ) can always replace it. Only ever
-            # touches gantry/staging-*, never the user's own branches.
-            await run_git(["push", "--force", "-u", "origin", into], cwd=repo, auth=auth)
-            pushed = True
-        except GitError:
-            pushed = False
+    pushed = await push_staging(repo, into, auth) if push else False
     return MergeReport(staging_branch=into, head=head.strip(), merges=merges, pushed=pushed)

@@ -52,6 +52,7 @@ def _add_delegation_tools(
     *,
     max_repair_failures: int,
     run_task_ceiling: int,
+    staging_verify_command: str | None = None,
 ) -> None:
     for tool in orchestration_tools(
         max_subtasks,
@@ -63,7 +64,11 @@ def _add_delegation_tools(
     # A repo-backed leader can integrate the branches its workers push, then land
     # the validated result on main so the work reaches the default branch.
     if auth is not None and trunk_branch is not None:
-        registry.register(MergeChildBranchesTool(auth, trunk_branch, conflict_resolver))
+        registry.register(
+            MergeChildBranchesTool(
+                auth, trunk_branch, conflict_resolver, verify_command=staging_verify_command
+            )
+        )
         registry.register(LandBranchTool(auth, base_branch))
 
 
@@ -79,6 +84,7 @@ def build_coding_registry(
     trunk_branch: str | None = None,
     base_branch: str | None = None,
     conflict_resolver: ConflictResolver | None = None,
+    staging_verify_command: str | None = None,
 ) -> ToolRegistry:
     if leader:
         # A pure Autonomous Leader surveys read-only and delegates ALL writing.
@@ -97,6 +103,7 @@ def build_coding_registry(
             conflict_resolver,
             max_repair_failures=max_repair_failures,
             run_task_ceiling=run_task_ceiling,
+            staging_verify_command=staging_verify_command,
         )
         return registry
 
@@ -127,5 +134,6 @@ def build_coding_registry(
             conflict_resolver,
             max_repair_failures=max_repair_failures,
             run_task_ceiling=run_task_ceiling,
+            staging_verify_command=staging_verify_command,
         )
     return registry

@@ -25,13 +25,24 @@ from gantry.worker.merge import (
     default_branch,
     merge_branches,
     promote_branch,
+    push_staging,
 )
+from gantry.worker.tools.bash import BashTool
 
 Sessions = async_sessionmaker[AsyncSession]
 
 #: Cap the file text handed to the resolver — a conflict is local, and this
 #: keeps the "lightweight turn" genuinely light.
 _MAX_CONFLICT_CHARS = 40_000
+
+#: When a run configures no ``staging_verify_command``, byte-compile the merged tree:
+#: a cheap, dependency-free floor that catches syntax errors across every merged file
+#: — including ones the conflict RESOLVER wrote directly (those bypass write_file's
+#: syntax check). A run should set a stronger command (e.g. ``python -c "import
+#: src.board"`` or its test cmd) to also catch cross-file breakage like circular
+#: imports that only exist once the split modules coexist. Empty disables the gate.
+_DEFAULT_VERIFY_COMMAND = "python3 -m compileall -q ."
+_VERIFY_TIMEOUT_SECONDS = 180.0
 
 _RESOLVER_SYSTEM = (
     "You resolve git merge conflicts. The file below contains conflict markers "
@@ -105,10 +116,27 @@ class MergeChildBranchesTool(Tool):
         auth: GitAuth,
         trunk_branch: str,
         resolver: ConflictResolver | None = None,
+        *,
+        verify_command: str | None = None,
     ) -> None:
         self._auth = auth
         self._trunk = trunk_branch
         self._resolver = resolver
+        # None -> the cheap default floor; "" -> verification explicitly disabled.
+        self._verify_command = (
+            _DEFAULT_VERIFY_COMMAND if verify_command is None else verify_command.strip()
+        )
+        self._verifier = BashTool()
+
+    async def _verify_staging(self, ctx: ToolContext) -> ToolResult | None:
+        """Run the configured verify command on the freshly-merged staging checkout.
+        Returns the bash ToolResult (its ``is_error``/``diagnostics`` drive the gate),
+        or None when verification is disabled (empty command)."""
+        if not self._verify_command:
+            return None
+        return await self._verifier.execute(
+            {"command": self._verify_command, "timeout_seconds": _VERIFY_TIMEOUT_SECONDS}, ctx
+        )
 
     async def execute(self, arguments: dict[str, Any], ctx: ToolContext) -> ToolResult:
         repo = ctx.workspace
@@ -124,6 +152,9 @@ class MergeChildBranchesTool(Tool):
                 is_error=True,
             )
         into = str(arguments.get("into") or "").strip() or f"gantry/staging-{ctx.task_id.hex[:12]}"
+        # Build staging locally but do NOT push yet: it is published only after it
+        # passes verification, so a broken integration never reaches origin and so
+        # can never be landed.
         report = await merge_branches(
             repo,
             branches,
@@ -131,11 +162,11 @@ class MergeChildBranchesTool(Tool):
             trunk=self._trunk,
             auth=self._auth,
             resolver=self._resolver,
+            push=False,
         )
-        summary = {
+        summary: dict[str, Any] = {
             "staging_branch": report.staging_branch,
             "head": report.head,
-            "pushed": report.pushed,
             "merged_clean": report.clean,
             "auto_resolved": report.resolved,
             "skipped": [
@@ -144,6 +175,27 @@ class MergeChildBranchesTool(Tool):
                 if m.status == "skipped"
             ],
         }
+        # Post-merge verification gate: run the configured check on the integrated
+        # staging branch. This catches breakage no per-file/per-worker check can —
+        # circular imports that only exist once the split modules coexist, two
+        # children editing the same file, or a resolver-introduced error.
+        verify = await self._verify_staging(ctx)
+        if verify is not None and verify.is_error:
+            summary["verified"] = {"command": self._verify_command, "passed": False}
+            summary["pushed"] = False
+            return ToolResult(
+                "The staging branch was built but FAILED verification "
+                f"(`{self._verify_command}`), so it was NOT pushed — do NOT land it. "
+                "Fix the integration (spawn a fixer or edit the offending file) and "
+                "re-run merge_child_branches.\n"
+                f"{json.dumps(summary, indent=2)}\n--- verify output ---\n{verify.content}",
+                is_error=True,
+                diagnostics=verify.diagnostics,
+            )
+        # Verified (or verification disabled) -> publish the staging branch.
+        summary["pushed"] = await push_staging(repo, into, self._auth)
+        if verify is not None:
+            summary["verified"] = {"command": self._verify_command, "passed": True}
         return ToolResult(json.dumps(summary, indent=2))
 
     async def _discover_child_branches(self, ctx: ToolContext) -> list[str]:

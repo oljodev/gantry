@@ -451,6 +451,7 @@ class Worker:
                     trunk_branch=workspace.branch,
                     base_branch=task.payload.get("base_branch"),
                     conflict_resolver=make_conflict_resolver(llm, str(resolver_model)),
+                    staging_verify_command=task.payload.get("staging_verify_command"),
                 )
 
             async def on_step() -> None:
