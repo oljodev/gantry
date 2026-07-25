@@ -6,13 +6,57 @@ Every path is resolved and verified to stay inside the workspace — an agent
 
 from __future__ import annotations
 
+import ast
+import json
 from pathlib import Path
 from typing import Any, ClassVar
 
+from gantry.runtime.diagnostics import Diagnostic
 from gantry.runtime.tools import Tool, ToolContext, ToolIdempotency, ToolResult
 
 _MAX_READ_CHARS = 40_000
 _MAX_LIST_ENTRIES = 200
+
+
+def _syntax_diagnostic(rel: str, text: str) -> Diagnostic | None:
+    """Validate a just-written file by extension and return a structured Diagnostic
+    for a syntax error, or None when it parses (or the type isn't validated).
+
+    This is the write-time half of the repair-loop machinery: a broken write is
+    otherwise invisible until some later command fails, which is exactly what feeds
+    the spawn->test->fail->repair cycles. Emitting a ``Diagnostic`` here means the
+    error is surfaced the same step it was written AND — because the loop records
+    every ToolResult's diagnostics — it gets a stable fingerprint, so an agent that
+    keeps re-writing the same broken syntax trips the same stall/escalation breaker
+    as a repeated build failure. Syntax only: semantic and circular-import errors
+    need the code to actually run (that is the post-merge staging gate's job).
+    """
+    ext = rel.rsplit(".", 1)[-1].lower() if "." in rel else ""
+    if ext in ("py", "pyi"):
+        try:
+            ast.parse(text)
+        except SyntaxError as exc:
+            return Diagnostic(
+                file=rel,
+                line=exc.lineno,
+                column=exc.offset,
+                message=exc.msg or "invalid syntax",
+                code="SyntaxError",
+                source="write",
+            )
+    elif ext == "json":
+        try:
+            json.loads(text)
+        except json.JSONDecodeError as exc:
+            return Diagnostic(
+                file=rel,
+                line=exc.lineno,
+                column=exc.colno,
+                message=exc.msg,
+                code="JSONDecodeError",
+                source="write",
+            )
+    return None
 
 
 def _resolve(ctx: ToolContext, rel_path: str) -> Path | None:
@@ -107,6 +151,17 @@ class WriteFileTool(Tool):
         content = str(arguments.get("content", ""))
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content)
+        # Warn-but-write: the file is persisted (partial progress is kept), but a
+        # syntax error is reported immediately as a structured diagnostic so the
+        # agent fixes it this step instead of discovering it in a later test run.
+        diagnostic = _syntax_diagnostic(rel, content)
+        if diagnostic is not None:
+            return ToolResult(
+                f"wrote {len(content)} chars to {rel}, but it has a syntax error: "
+                f"{diagnostic.render()}. Fix it before relying on this file.",
+                is_error=True,
+                diagnostics=(diagnostic,),
+            )
         return ToolResult(f"wrote {len(content)} chars to {rel}")
 
 
@@ -142,7 +197,17 @@ class EditFileTool(Tool):
                 f"old_str occurs {count} times in {rel}; it must occur exactly once",
                 is_error=True,
             )
-        path.write_text(text.replace(old_str, new_str, 1))
+        new_text = text.replace(old_str, new_str, 1)
+        path.write_text(new_text)
+        # Validate the WHOLE post-edit file (an edit can break syntax elsewhere).
+        diagnostic = _syntax_diagnostic(rel, new_text)
+        if diagnostic is not None:
+            return ToolResult(
+                f"edited {rel}, but the result has a syntax error: {diagnostic.render()}. "
+                "Fix it before relying on this file.",
+                is_error=True,
+                diagnostics=(diagnostic,),
+            )
         return ToolResult(f"edited {rel}")
 
     async def recover(self, arguments: dict[str, Any], ctx: ToolContext) -> ToolResult | None:
