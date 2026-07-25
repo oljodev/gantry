@@ -77,6 +77,26 @@ async def run_spend_usd(session: AsyncSession, root_task_id: uuid.UUID) -> float
     return float(total or 0.0)
 
 
+async def failed_child_count(session: AsyncSession, parent_id: uuid.UUID) -> int:
+    """How many of a task's DIRECT children have terminally FAILED — the repair-wave
+    breaker's signal. Committed rows only, so a crash-replay reads the same count.
+    Cancellations don't count: a deliberately stopped child is not a failing approach.
+    """
+    n = await session.scalar(
+        sa.select(sa.func.count()).where(
+            Task.parent_task_id == parent_id, Task.status == TaskStatus.FAILED
+        )
+    )
+    return int(n or 0)
+
+
+async def run_task_count(session: AsyncSession, root_task_id: uuid.UUID) -> int:
+    """Total tasks in a run's whole tree — the structural fan-out backstop the spawn
+    tools consult so a deeply nested swarm can't exceed the run-wide task ceiling."""
+    n = await session.scalar(sa.select(sa.func.count()).where(Task.root_task_id == root_task_id))
+    return int(n or 0)
+
+
 async def run_rollup(session: AsyncSession, root_task_id: uuid.UUID) -> dict[str, Any]:
     """A run-level observability rollup over a whole tree: per-status task counts,
     settled spend, folded token sums, prompt-cache hit ratio, and total compactions.
@@ -415,6 +435,53 @@ async def fail(
     )
     await _try_wake_parent(session, await _parent_of(session, task_id))
     return TaskStatus.FAILED
+
+
+async def escalate(
+    session: AsyncSession,
+    *,
+    task_id: uuid.UUID,
+    worker_id: str,
+    attempt: int,
+    fingerprint: str,
+    history: list[str],
+    model: str | None,
+) -> TaskStatus | None:
+    """Record a stalled task's escalation and re-queue it. Returns the new status.
+
+    The escalation is an EVENT, not a payload edit: the payload is the immutable
+    launch snapshot, and rewriting it would make a task's history disagree with
+    what it was launched as. Rehydration folds the event into both the model
+    choice and the opening context, so the escalation survives a crash and a
+    re-claim exactly like every other decision this engine makes.
+
+    ``max_attempts`` gets headroom for the same reason a park/wake does: the
+    re-claim increments ``attempt`` (the fencing token), and without headroom a
+    stalled task would spend an error retry just to be handed to a better model.
+    """
+    res = await session.execute(
+        sa.update(Task)
+        .where(
+            Task.id == task_id,
+            Task.claimed_by == worker_id,
+            Task.attempt == attempt,
+            Task.status.in_(LEASED_STATUSES),
+        )
+        .values(**_wake_to_pending(), claimed_by=None, lease_expires_at=None)
+    )
+    if _rowcount(res) != 1:
+        return None
+    await append_event(
+        session,
+        task_id,
+        EventType.TASK_ESCALATED,
+        {"fingerprint": fingerprint, "history": history, "model": model},
+    )
+    await notify_task_ready(session, task_id)
+    logger.warning(
+        "queue.task_escalated", task_id=str(task_id), fingerprint=fingerprint, model=model
+    )
+    return TaskStatus.PENDING
 
 
 async def park_for_children(

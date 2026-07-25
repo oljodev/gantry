@@ -46,6 +46,12 @@ _SPAWN_NAMESPACE = uuid.UUID("6a1a9f5e-0000-4000-8000-67616e747279")
 #: Runaway-planner guard: hard cap on children per task.
 DEFAULT_MAX_SUBTASKS = 32
 
+#: Repair-wave breaker: refuse to spawn once this many of a parent's DIRECT children
+#: have terminally FAILED (a leader stuck re-spawning fixers must converge or report).
+DEFAULT_MAX_REPAIR_FAILURES = 5
+#: Structural backstop: refuse once the whole run tree holds this many tasks.
+DEFAULT_RUN_TASK_CEILING = 50
+
 #: Recursion guard: how deep the spawn tree may go (root is depth 0). Stops a
 #: delegating agent from spawning delegating agents without bound.
 MAX_SPAWN_DEPTH = 5
@@ -231,14 +237,50 @@ class _SpawnBase(Tool):
     idempotency = ToolIdempotency.IDEMPOTENT
 
     def __init__(
-        self, max_subtasks: int = DEFAULT_MAX_SUBTASKS, team: TeamNode | None = None
+        self,
+        max_subtasks: int = DEFAULT_MAX_SUBTASKS,
+        team: TeamNode | None = None,
+        *,
+        max_repair_failures: int = DEFAULT_MAX_REPAIR_FAILURES,
+        run_task_ceiling: int = DEFAULT_RUN_TASK_CEILING,
     ) -> None:
         self._max_subtasks = max_subtasks
         self._team = team
+        self._max_repair_failures = max_repair_failures
+        self._run_task_ceiling = run_task_ceiling
 
     def _team_child(self, name: str) -> TeamNode | None:
         children = (self._team or {}).get("children") or []
         return next((c for c in children if c.get("name") == name), None)
+
+    async def _swarm_health_block(self, session: AsyncSession, parent: Task) -> str | None:
+        """Two hard spawn breakers beyond the per-parent subtask cap, both derived from
+        committed rows (so a crash-replay makes the identical decision):
+
+        - **Repair-wave**: once ``max_repair_failures`` of this parent's DIRECT children
+          have terminally FAILED, refuse — a leader spawning fixer wave after fixer wave
+          is funding an approach that keeps failing; it must integrate/land whatever
+          already works or abort and report, not keep spending.
+        - **Run capacity**: once the whole tree holds ``run_task_ceiling`` tasks, refuse
+          — a structural bound on total fan-out regardless of nesting depth.
+
+        ``None`` means there is headroom to spawn.
+        """
+        failed = await queue.failed_child_count(session, parent.id)
+        if failed >= self._max_repair_failures:
+            return (
+                f"{failed} of your child tasks have already FAILED. Stop spawning fixers — "
+                "the same approach keeps failing. Integrate and land whatever already "
+                "works, or abort and report the failure with what you learned. Do NOT "
+                "spawn more."
+            )
+        total = await queue.run_task_count(session, parent.root_task_id)
+        if total >= self._run_task_ceiling:
+            return (
+                f"this run already has {total} tasks (ceiling {self._run_task_ceiling}). "
+                "Do NOT spawn more — integrate and land what exists, then finish."
+            )
+        return None
 
     async def _budget_exhausted(self, session: AsyncSession, parent: Task) -> str | None:
         """The run-level GRACEFUL brake: if the run's settled spend crossed its
@@ -374,6 +416,9 @@ class SpawnSubtaskTool(_SpawnBase):
             budget_msg = await self._budget_exhausted(session, parent)
             if budget_msg is not None:
                 return ToolResult(budget_msg, is_error=True)
+            block = await self._swarm_health_block(session, parent)
+            if block is not None:
+                return ToolResult(block, is_error=True)
             if len(await _child_ids_of(session, parent.id)) >= self._max_subtasks:
                 return ToolResult(
                     f"subtask cap reached ({self._max_subtasks}); integrate existing "
@@ -455,6 +500,9 @@ class SpawnBatchTool(_SpawnBase):
                     budget_msg = await self._budget_exhausted(session, parent)
                     if budget_msg is not None:
                         return ToolResult(budget_msg, is_error=True)
+                    block = await self._swarm_health_block(session, parent)
+                    if block is not None:
+                        return ToolResult(block, is_error=True)
                     child_depth = int(parent.payload.get("depth") or 0) + 1
                     if child_depth > MAX_SPAWN_DEPTH:
                         return ToolResult(_depth_cap_message(), is_error=True)
@@ -687,13 +735,18 @@ def _child_entry(child: Task) -> dict[str, Any]:
 
 
 def orchestration_tools(
-    max_subtasks: int = DEFAULT_MAX_SUBTASKS, team: TeamNode | None = None
+    max_subtasks: int = DEFAULT_MAX_SUBTASKS,
+    team: TeamNode | None = None,
+    *,
+    max_repair_failures: int = DEFAULT_MAX_REPAIR_FAILURES,
+    run_task_ceiling: int = DEFAULT_RUN_TASK_CEILING,
 ) -> list[Tool]:
     """The delegation toolset: spawn (one or a batch)/wait plus per-child
-    status/terminate."""
+    status/terminate. The two spawn tools share the same circuit-breaker limits."""
+    limits = {"max_repair_failures": max_repair_failures, "run_task_ceiling": run_task_ceiling}
     return [
-        SpawnSubtaskTool(max_subtasks, team=team),
-        SpawnBatchTool(max_subtasks, team=team),
+        SpawnSubtaskTool(max_subtasks, team=team, **limits),
+        SpawnBatchTool(max_subtasks, team=team, **limits),
         WaitForChildrenTool(),
         AgentStatusTool(),
         AgentTerminateTool(),
@@ -701,10 +754,21 @@ def orchestration_tools(
 
 
 def build_planner_registry(
-    max_subtasks: int = DEFAULT_MAX_SUBTASKS, team: TeamNode | None = None
+    max_subtasks: int = DEFAULT_MAX_SUBTASKS,
+    team: TeamNode | None = None,
+    *,
+    max_repair_failures: int = DEFAULT_MAX_REPAIR_FAILURES,
+    run_task_ceiling: int = DEFAULT_RUN_TASK_CEILING,
 ) -> ToolRegistry:
     from gantry.worker.tools.ask import AskUserTool
 
-    registry = ToolRegistry(orchestration_tools(max_subtasks, team=team))
+    registry = ToolRegistry(
+        orchestration_tools(
+            max_subtasks,
+            team=team,
+            max_repair_failures=max_repair_failures,
+            run_task_ceiling=run_task_ceiling,
+        )
+    )
     registry.register(AskUserTool())
     return registry

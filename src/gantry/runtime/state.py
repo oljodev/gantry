@@ -80,6 +80,20 @@ class AgentState:
     #: How many times the loop has reminded a leader to land its staging branch
     #: on main before finishing — bounded.
     landing_reminders: int = 0
+    #: Error fingerprints per diagnostic-producing tool result, oldest first —
+    #: the loop detector's rolling evidence. Folded from DIAGNOSTICS events so a
+    #: resumed task keeps counting where it left off instead of forgetting that
+    #: it is stuck (which is how a "stuck" task used to survive its own retries).
+    diagnostic_batches: list[list[str]] = field(default_factory=list)
+    #: Human-readable renderings of the same errors ("src/x.rs:4:20: error[E0308]:
+    #: ..."), so an escalation can show WHAT kept failing rather than a hash.
+    diagnostic_lines: list[str] = field(default_factory=list)
+    #: Model this task was escalated to after stalling, or None. Overrides the
+    #: payload's model, so the escalation is durable and survives a re-claim.
+    escalated_model: str | None = None
+    #: How many times this task has been escalated — bounded so a task that
+    #: stalls again under the stronger model fails loudly instead of ping-ponging.
+    escalations: int = 0
     resumed: bool = False
 
     @property
@@ -291,6 +305,90 @@ def leader_land_message() -> Message:
     }
 
 
+#: How many diagnostic-producing results back the detector looks. A plain
+#: three-in-a-row repeat is the case in the spec; the window also catches the
+#: alternating form ("fix A, break B, fix B, break A"), which is the same
+#: stagnation wearing a different shape and would otherwise never show three
+#: CONSECUTIVE identical results.
+LOOP_WINDOW = 6
+#: Occurrences of one fingerprint within that window that mean "stuck".
+LOOP_THRESHOLD = 3
+
+
+def _rendered(payload: Sequence[Any]) -> list[str]:
+    """Render DIAGNOSTICS event entries back to their one-line form.
+
+    Only ERRORs: warnings are not what the detector acts on, so showing them in
+    an escalation would dilute the evidence.
+    """
+    lines: list[str] = []
+    for entry in payload:
+        if not isinstance(entry, dict) or entry.get("severity") != "error":
+            continue
+        where = ":".join(
+            str(part) for part in (entry.get("file"), entry.get("line")) if part is not None
+        )
+        code = f" [{entry['code']}]" if entry.get("code") else ""
+        lines.append(f"{where}{code}: {entry.get('message', '')}")
+    return lines
+
+
+def repeated_error(
+    batches: list[list[str]],
+    *,
+    window: int = LOOP_WINDOW,
+    threshold: int = LOOP_THRESHOLD,
+) -> str | None:
+    """The fingerprint of an error that keeps coming back, or None.
+
+    Counts DISTINCT results containing each fingerprint, not raw occurrences: a
+    single compile that reports the same error five times across targets is one
+    failure, and must not look like five attempts at it.
+    """
+    if len(batches) < threshold:
+        return None
+    counts: dict[str, int] = {}
+    for batch in batches[-window:]:
+        for fingerprint in set(batch):
+            counts[fingerprint] = counts.get(fingerprint, 0) + 1
+    stuck = [f for f, n in counts.items() if n >= threshold]
+    if not stuck:
+        return None
+    # Deterministic pick, so a resumed run escalates on the identical error.
+    return min(stuck)
+
+
+def escalation_message(model: str | None, history: Sequence[str]) -> Message:
+    """The context handed to the escalated (stronger) run.
+
+    Deliberately blunt about the failure mode. An agent that has been looping has
+    a context full of near-identical attempts, all of which look reasonable; a
+    polite note gets pattern-matched into "try again". This states the evidence
+    (the same error, N times), forbids the move that failed, and asks for a
+    different approach — with the structured error list rather than the logs it
+    already failed to learn from.
+    """
+    listed = "\n".join(f"  - {line}" for line in history)
+    switched = (
+        f"You are a stronger model ({model}) brought in to break the deadlock. " if model else ""
+    )
+    return {
+        "role": "user",
+        "content": (
+            "STOP. You are in a repair loop: the same error has now been produced "
+            f"repeatedly by your last several attempts.\n{listed}\n\n"
+            f"{switched}Repeating the previous edit — or any small variation of it — "
+            "will fail the same way. Do not try it again. Instead: re-read the "
+            "relevant code and the error above, work out WHY the fix keeps failing "
+            "(a wrong assumption about a type, an API, or a file's actual contents "
+            "is the usual cause), and take a different approach. If the goal cannot "
+            "be met as specified, say so explicitly in your final message and "
+            "explain what blocks it — that is a useful result; another identical "
+            "attempt is not."
+        ),
+    }
+
+
 def apply_skill_to_system_message(state: AgentState, name: str, content: str) -> None:
     """Append one skill's instructions to the system message, exactly once.
 
@@ -349,6 +447,27 @@ def rehydrate(payload: dict[str, Any], events: Sequence[TaskEvent]) -> AgentStat
                     TrackedMessage(event.seq, leader_nudge_message(int(p.get("surveyed", 0))))
                 )
                 state.leader_nudges += 1
+            state.resumed = True
+        elif event.event_type is EventType.DIAGNOSTICS:
+            # Evidence only — contributes no message. The agent already saw the
+            # errors in the tool result; re-injecting them would double the very
+            # tokens this layer exists to save.
+            state.diagnostic_batches.append([str(f) for f in p.get("fingerprints") or []])
+            state.diagnostic_lines.extend(_rendered(p.get("diagnostics") or []))
+            state.resumed = True
+        elif event.event_type is EventType.TASK_ESCALATED:
+            state.escalations += 1
+            state.escalated_model = p.get("model") or state.escalated_model
+            state.tracked.append(
+                TrackedMessage(
+                    event.seq, escalation_message(p.get("model"), p.get("history") or [])
+                )
+            )
+            # The escalated run starts a fresh evidence window: the point is to
+            # judge the NEW approach on its own, not to re-fire the breaker on
+            # the history that triggered it.
+            state.diagnostic_batches.clear()
+            state.diagnostic_lines.clear()
             state.resumed = True
         elif event.event_type is EventType.APPROVAL_RESOLVED:
             state.approvals[p["tool_call_id"]] = ApprovalState(

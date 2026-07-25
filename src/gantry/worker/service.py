@@ -28,7 +28,7 @@ from gantry.runtime.compaction import CompactionConfig
 from gantry.runtime.llm import LiteLLMClient, LLMClient
 from gantry.runtime.loop import AgentLoopError, run_agent_task
 from gantry.runtime.ratelimit import AsyncRateLimiter, LimiterRegistry
-from gantry.runtime.tools import TaskParked
+from gantry.runtime.tools import TaskParked, TaskStalled
 from gantry.skills.store import load_registry
 from gantry.vault import Vault
 from gantry.vault.store import GITHUB_TOKEN_SECRET, get_secret, provider_secret_name
@@ -83,6 +83,11 @@ class WorkerConfig:
     keep_failed_workspaces: bool = False
     compaction: CompactionConfig | None = field(default_factory=CompactionConfig)
     max_subtasks: int = 32
+    #: Spawn circuit breakers (see config): refuse to spawn once a parent has this
+    #: many terminally-FAILED direct children (repair-wave loop), or once the whole
+    #: run tree hits this many tasks (structural fan-out backstop).
+    max_repair_failures: int = 5
+    run_task_ceiling: int = 50
     skills_root: Path | None = None
     #: Add Anthropic prompt-cache breakpoints to each LLM request (the loop's
     #: append-only history makes the prefix stable, so this is near-free).
@@ -113,6 +118,8 @@ class WorkerConfig:
             workspace_root=settings.workspace_root,
             github_token=settings.github_token,
             max_subtasks=settings.max_subtasks_per_task,
+            max_repair_failures=settings.max_repair_failures,
+            run_task_ceiling=settings.run_task_ceiling,
             skills_root=settings.skills_root,
             prompt_caching=settings.prompt_caching,
             concurrency=settings.worker_concurrency,
@@ -438,6 +445,8 @@ class Worker:
                     can_spawn=can_spawn,
                     leader=is_leader,
                     max_subtasks=cfg.max_subtasks,
+                    max_repair_failures=cfg.max_repair_failures,
+                    run_task_ceiling=cfg.run_task_ceiling,
                     team=task.payload.get("team"),
                     trunk_branch=workspace.branch,
                     base_branch=task.payload.get("base_branch"),
@@ -518,6 +527,29 @@ class Worker:
                 "worker.task_parked",
                 task_id=str(task.id),
                 reason=parked.reason,
+                status=str(status),
+            )
+        except TaskStalled as stalled:
+            # The loop detector broke a repair loop. Re-queue for escalation
+            # rather than fail: the event log survives, so the next claim resumes
+            # this exact task on a stronger model with the error history in
+            # context — no work is redone and no duplicate agent is spawned.
+            async with session_scope(self._sessions) as session:
+                status = await queue.escalate(
+                    session,
+                    task_id=task.id,
+                    worker_id=cfg.worker_id,
+                    attempt=task.attempt,
+                    fingerprint=stalled.fingerprint,
+                    history=stalled.history,
+                    model=stalled.model,
+                )
+            succeeded = True  # a clean hand-off, not a failure; drop the workspace
+            logger.warning(
+                "worker.task_escalated",
+                task_id=str(task.id),
+                fingerprint=stalled.fingerprint,
+                model=stalled.model,
                 status=str(status),
             )
         except TaskCancelledError:

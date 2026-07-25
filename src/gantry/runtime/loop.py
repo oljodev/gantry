@@ -30,11 +30,12 @@ from typing import Any
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from gantry.config import get_settings
+from gantry.config import Settings, get_settings
 from gantry.core.db import session_scope
 from gantry.core.events import append_event, read_events
 from gantry.core.models import TERMINAL_STATUSES, EventType, Project, Task, TaskKind
 from gantry.logging import get_logger
+from gantry.runtime import diagnostics
 from gantry.runtime.compaction import CompactionConfig, CompactionPlan, plan_compaction, summarize
 from gantry.runtime.llm import (
     DeltaSink,
@@ -57,6 +58,7 @@ from gantry.runtime.state import (
     leader_land_message,
     leader_nudge_message,
     rehydrate,
+    repeated_error,
     summary_message,
     tool_message,
 )
@@ -64,6 +66,7 @@ from gantry.runtime.tools import (
     INTERRUPTED_RESULT,
     ApprovalPolicy,
     TaskParked,
+    TaskStalled,
     ToolContext,
     ToolIdempotency,
     ToolRegistry,
@@ -79,6 +82,37 @@ StepCallback = Callable[[], Awaitable[None]]
 
 class AgentLoopError(RuntimeError):
     """The loop cannot make progress (e.g. max steps exceeded)."""
+
+
+def _delegates(task: Task) -> bool:
+    """A delegating agent — a planner, a can_spawn profile, or an autonomous leader.
+    The same role predicate ``WorkerConfig.compaction_for`` uses, so the step cap and
+    the compaction budget always agree on a task's role (and pick it identically on a
+    resume, since it is a pure function of the durable kind/payload)."""
+    payload = task.payload
+    return (
+        task.kind is TaskKind.PLAN
+        or bool(payload.get("can_spawn"))
+        or bool(payload.get("autonomous_leader"))
+    )
+
+
+def max_steps_for(task: Task, settings: Settings) -> int:
+    """The always-finite per-agent step ceiling, by role. An explicit per-task
+    ``max_steps`` wins. Otherwise a DELEGATING agent gets a generous but finite budget
+    (never unbounded — even an unattended leader must halt); an autonomous-swarm LEAF
+    (a non-interactive spawned micro-task) gets a tight one, because a worker handed
+    one file + one outcome that needs dozens of steps is stuck; a standalone /
+    interactive leaf keeps the default budget. Pure function of the durable kind/
+    payload, so a resume selects the identical cap."""
+    explicit = task.payload.get("max_steps")
+    if explicit:
+        return int(explicit)
+    if _delegates(task):
+        return settings.leader_max_steps
+    if task.payload.get("non_interactive"):
+        return settings.execute_max_steps
+    return settings.default_max_steps
 
 
 @dataclass(frozen=True)
@@ -144,12 +178,9 @@ async def run_agent_task(
 ) -> AgentOutcome:
     payload: dict[str, Any] = task.payload
     settings = get_settings()
-    model = payload.get("model") or settings.default_model
     # An orchestrator (a planner, or a profile that can spawn) coordinates and
     # parks while its children work — it legitimately takes many steps, so it is
-    # NOT step-capped unless it explicitly asked for one. A plain worker agent
-    # uses the default budget.
-    can_spawn = task.kind is TaskKind.PLAN or bool(payload.get("can_spawn"))
+    # NOT step-capped as tightly as a leaf, but still finite (see max_steps_for).
     # An autonomous leader has no write tools and exists only to delegate, so the
     # loop budgets how long it may survey before it must start spawning.
     is_leader = bool(payload.get("autonomous_leader"))
@@ -158,14 +189,12 @@ async def run_agent_task(
     # boundary (never mid-tool) — the run-level brake that stops a leader fanning
     # out more work lives in the spawn tools.
     budget_usd = payload.get("budget_usd")
-    explicit_steps = payload.get("max_steps")
-    max_steps: int | None
-    if explicit_steps:
-        max_steps = int(explicit_steps)
-    elif can_spawn:
-        max_steps = None  # unlimited for delegating agents
-    else:
-        max_steps = settings.default_max_steps
+    # Always-finite step ceiling (circuit breaker): a delegating agent is no longer
+    # unbounded, so a thrashing leader can't loop forever, and a stuck micro-task
+    # dies fast. When a delegating agent hits it, we halt GRACEFULLY (below); a leaf
+    # raises AgentLoopError so its parent learns it failed.
+    delegates = _delegates(task)
+    max_steps = max_steps_for(task, settings)
     ctx = ToolContext(
         task_id=task.id,
         workspace=workspace,
@@ -176,10 +205,16 @@ async def run_agent_task(
     async with session_scope(sessions) as session:
         events = await read_events(session, task.id)
     state = rehydrate(payload, events)
+    # An escalation (recorded as an event, never a payload edit) overrides the
+    # launch model, so a task handed to a stronger reasoner after stalling keeps
+    # that model across every later resume.
+    model = state.escalated_model or payload.get("model") or settings.default_model
     if state.resumed:
         logger.info(
             "agent.resumed", task_id=str(task.id), steps=state.steps, messages=len(state.tracked)
         )
+    if state.escalated_model:
+        logger.info("agent.escalated_model", task_id=str(task.id), model=model)
 
     if skills is not None:
         # Deterministic selection; injection is idempotent per skill name, so
@@ -202,7 +237,25 @@ async def run_agent_task(
     while True:
         if on_step is not None:
             await on_step()
-        if max_steps is not None and state.steps >= max_steps:
+        if state.steps >= max_steps:
+            # A delegating agent that burned its (finite) step budget has been
+            # thrashing — halt CLEANLY with a report, not a hard FAIL that would
+            # read as the orchestration itself erroring. A leaf instead fails
+            # (non-retryably, via the caller) so its parent learns it got stuck.
+            if delegates:
+                logger.info(
+                    "agent.step_halt",
+                    task_id=str(task.id),
+                    steps=state.steps,
+                    max_steps=max_steps,
+                )
+                return _outcome(
+                    state,
+                    model,
+                    f"Halted: reached the step budget ({max_steps}) without finishing. "
+                    "Stopping cleanly instead of spending more. Integrate and land any "
+                    "usable work; if the goal is too large, re-launch it split smaller.",
+                )
             raise AgentLoopError(f"exceeded max_steps={max_steps} without a final answer")
         # Graceful budget halt: at a step boundary (any in-flight tool has already
         # settled and flushed its git/file state), if this task's own spend crossed
@@ -219,6 +272,11 @@ async def run_agent_task(
                 "Halted: the run's cost budget is exhausted. Stopping cleanly without "
                 "starting more work.",
             )
+
+        # Logical stagnation check, at a step boundary so nothing is interrupted
+        # mid-tool. Runs before the LLM call: the whole value is NOT spending
+        # another turn on an approach already proven to fail.
+        _check_repair_loop(task, state, settings)
 
         if is_leader:
             nudge = await _survey_budget_guard(sessions, task, state)
@@ -508,6 +566,44 @@ async def _record_tool_result(
     )
     state.tracked.append(TrackedMessage(seq, tool_message(tc.id, result.content)))
     state.resolved_tool_ids.add(tc.id)
+    await _record_diagnostics(sessions, task, state, tc, result)
+
+
+async def _record_diagnostics(
+    sessions: Sessions,
+    task: Task,
+    state: AgentState,
+    tc: ToolCallRequest,
+    result: ToolResult,
+) -> None:
+    """Checkpoint the structured errors a tool reported, as loop-detector evidence.
+
+    Durable rather than in-memory because the repetition worth catching happens
+    across steps AND across attempts: an in-memory counter resets on every crash
+    or re-claim, which is exactly when a stuck task gets another chance to be
+    stuck. Only ERROR-severity fingerprints are recorded — a build that warns
+    identically while genuinely progressing is not looping.
+    """
+    found = list(result.diagnostics)
+    marks = diagnostics.fingerprints(found)
+    if not marks:
+        return
+    await _checkpoint(
+        sessions,
+        task,
+        EventType.DIAGNOSTICS,
+        {
+            "tool_call_id": tc.id,
+            "tool": tc.name,
+            "fingerprints": marks,
+            "diagnostics": diagnostics.to_payload(found),
+        },
+    )
+    # Must mirror the DIAGNOSTICS fold in state.rehydrate exactly, or a resumed
+    # task's evidence diverges from a live one's and the two disagree about
+    # whether the task is stuck.
+    state.diagnostic_batches.append(marks)
+    state.diagnostic_lines.extend(d.render() for d in diagnostics.errors(found))
 
 
 async def _execute_tool(tools: ToolRegistry, tc: ToolCallRequest, ctx: ToolContext) -> ToolResult:
@@ -524,6 +620,61 @@ async def _execute_tool(tools: ToolRegistry, tc: ToolCallRequest, ctx: ToolConte
     except Exception as exc:
         logger.warning("agent.tool_failed", tool=tc.name, error=repr(exc))
         return ToolResult(f"Tool '{tc.name}' failed: {exc!r}", is_error=True)
+
+
+def _check_repair_loop(task: Task, state: AgentState, settings: Any) -> None:
+    """Break a repair loop: stall the task rather than fund another identical try.
+
+    Fires when one error fingerprint recurs across the recent diagnostic window
+    (see ``state.repeated_error``). The task is then routed for escalation — a
+    stronger reasoning model, with the structured error history as its opening
+    context — instead of the current model burning steps on the edit it has
+    already made three times.
+
+    Escalation happens at most once. A task that stalls AGAIN under the stronger
+    model is not going to be fixed by a third opinion: it fails terminally with
+    the offending error in the message, which is a far better signal for the
+    leader (respawn with a different decomposition) than a task quietly grinding
+    to its step cap.
+    """
+    fingerprint = repeated_error(state.diagnostic_batches)
+    if fingerprint is None:
+        return
+    history = _diagnostic_history(state)
+    if state.escalations >= _MAX_ESCALATIONS:
+        raise AgentLoopError(
+            "repair loop persisted after escalation: the same error keeps "
+            f"recurring ({fingerprint}). Last errors:\n" + "\n".join(history)
+        )
+    logger.warning(
+        "agent.repair_loop_detected",
+        task_id=str(task.id),
+        fingerprint=fingerprint,
+        batches=len(state.diagnostic_batches),
+    )
+    raise TaskStalled(
+        fingerprint=fingerprint,
+        history=history,
+        model=getattr(settings, "escalation_model", None),
+    )
+
+
+#: A single escalation. Beyond this the problem is the plan, not the model.
+_MAX_ESCALATIONS = 1
+#: How many recent distinct errors to hand the escalated run.
+_HISTORY_LIMIT = 10
+
+
+def _diagnostic_history(state: AgentState) -> list[str]:
+    """Recent distinct error renderings, newest last — the escalation's evidence."""
+    seen: set[str] = set()
+    lines: list[str] = []
+    for event_line in state.diagnostic_lines[-_HISTORY_LIMIT:]:
+        if event_line in seen:
+            continue
+        seen.add(event_line)
+        lines.append(event_line)
+    return lines
 
 
 #: Backstop against a spawning agent that keeps trying to finish while its

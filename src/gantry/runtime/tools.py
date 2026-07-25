@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any, ClassVar, Protocol
 
 from gantry.core.models import EventType
+from gantry.runtime.diagnostics import Diagnostic
 from gantry.runtime.llm import ToolSchema
 
 #: Appends an event to the task's log (bound to the loop's checkpoint writer).
@@ -39,6 +40,12 @@ class ToolIdempotency(enum.StrEnum):
 class ToolResult:
     content: str
     is_error: bool = False
+    #: Structured problems parsed out of this result (compiler/test/runtime
+    #: diagnostics). Carried alongside ``content`` rather than re-parsed by the
+    #: loop: the tool has the RAW output, while ``content`` has already been
+    #: pruned for the prompt, so parsing downstream would work from the lossy
+    #: copy. Empty for tools that produce no diagnostics.
+    diagnostics: tuple[Diagnostic, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -69,6 +76,25 @@ class TaskParked(Exception):
         super().__init__(reason)
         self.reason = reason
         self.tool_call_id = tool_call_id
+
+
+class TaskStalled(Exception):
+    """Raised to stop a task that is looping and route it for escalation.
+
+    Control flow, not failure: the same shape as :class:`TaskParked`. The loop
+    detector has established that one error keeps recurring, so continuing would
+    spend another turn on an approach already disproven. The worker records the
+    escalation and re-queues the task; the next claim rehydrates with the
+    escalated model and the error history in context.
+    """
+
+    def __init__(self, *, fingerprint: str, history: list[str], model: str | None) -> None:
+        super().__init__(f"repair loop on {fingerprint}")
+        self.fingerprint = fingerprint
+        self.history = history
+        #: Model to escalate to, or None to retry under the same one with the
+        #: loop-break context (still worth doing — the context is the fix).
+        self.model = model
 
 
 @dataclass(frozen=True)

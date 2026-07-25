@@ -93,10 +93,36 @@ class Settings(BaseSettings):
     frontend_dist: Path = Path("web/dist")
     #: Runaway-planner guard: max children one task may spawn.
     max_subtasks_per_task: int = 32
-    #: Default per-agent step budget when a task/profile doesn't set its own.
-    #: The ceiling before a run fails with "exceeded max_steps"; override via
-    #: GANTRY_DEFAULT_MAX_STEPS or per-agent max_steps.
+    #: Repair-wave breaker: once this many of a leader's DIRECT children have
+    #: terminally FAILED, the spawn tools refuse to launch more — a leader stuck
+    #: spawning fixer wave after fixer wave must integrate/land what already works,
+    #: or abort and report, never keep funding the same failing approach. Counts
+    #: failures only, so a healthy build of many succeeding children never trips it.
+    #: Override via GANTRY_MAX_REPAIR_FAILURES.
+    max_repair_failures: int = 5
+    #: Run-wide structural backstop: the spawn tools refuse once the whole tree
+    #: (root_task_id) already holds this many tasks — bounding total fan-out
+    #: regardless of nesting depth (max_subtasks_per_task is per-parent and
+    #: multiplies with the tree). Raise it with the budget for a large build.
+    #: Override via GANTRY_RUN_TASK_CEILING.
+    run_task_ceiling: int = 50
+    #: Default per-agent step budget for a STANDALONE / interactive leaf worker (a
+    #: user's single task, not a spawned micro-task). The ceiling before the run
+    #: fails with "exceeded max_steps"; override via GANTRY_DEFAULT_MAX_STEPS or a
+    #: per-agent max_steps.
     default_max_steps: int = 300
+    #: Circuit-breaker step caps, selected by role from the durable kind/payload so a
+    #: resume picks the same ceiling (mirrors the per-role compaction budgets below).
+    #: A spawned autonomous-swarm LEAF (non-interactive micro-task) is handed one
+    #: file + one outcome, so anything past a handful of steps is stuck — fail it so
+    #: the leader learns rather than letting it grind. A DELEGATING agent (plan task /
+    #: can_spawn / autonomous leader) gets a generous but FINITE budget (never
+    #: unbounded — even unattended it must halt); when it trips it halts GRACEFULLY
+    #: with a report, not a FAIL. The run's live cost/emergency-stop budget is the
+    #: primary spend bound; these are structural backstops. Override via
+    #: GANTRY_EXECUTE_MAX_STEPS / GANTRY_LEADER_MAX_STEPS.
+    execute_max_steps: int = 25
+    leader_max_steps: int = 150
     #: Estimated-token ceiling before the durable loop compacts history into a
     #: summary checkpoint. Lower than the old hardcoded 120_000 so per-call input
     #: stays bounded on long runs (compaction fires ~every 10-15 steps instead of
@@ -128,6 +154,13 @@ class Settings(BaseSettings):
     hard_max_context_tokens: int = 96_000
     #: Directory of SKILL.md files loaded by workers and the API.
     skills_root: Path = Path("skills")
+    #: Model a stalled task is escalated to. When the loop detector sees the same
+    #: structured error recur across a task's recent tool results, the task is
+    #: re-queued to run on THIS model with the error history as opening context —
+    #: the "route it to a stronger reasoner" step. None keeps the task's own model
+    #: and relies on the injected loop-break context alone. Point it at a strong
+    #: reasoning model (e.g. a DeepSeek-R1 slug) served by the run's provider.
+    escalation_model: str | None = None
     #: --- Agent shell sandbox -------------------------------------------------
     #: An agent's `bash` command is model-authored, i.e. untrusted. These bound
     #: what it can reach and consume; see `worker/sandbox.py` for the layering.

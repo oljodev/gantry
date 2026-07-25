@@ -107,6 +107,16 @@ class EventType(enum.StrEnum):
     SKILL_INJECTED = "skill_injected"
     #: Co-pilot (Phase 5): a proposed skill/tree the UI stages for the user.
     COPILOT_PROPOSAL = "copilot_proposal"
+    #: Structured problems parsed from a tool result (compiler/test/runtime).
+    #: Durable so the loop detector's evidence survives a resume — the whole
+    #: point is to notice repetition ACROSS steps and attempts, which an
+    #: in-memory counter would lose on every crash or re-claim.
+    DIAGNOSTICS = "diagnostics"
+    #: The loop detector fired: the same error kept recurring, so the task was
+    #: stalled and re-queued for a higher-tier model. Carries the offending
+    #: fingerprint and the error history, and is folded back into the escalated
+    #: run's context so the stronger model starts with the full picture.
+    TASK_ESCALATED = "task_escalated"
 
 
 def _status_column() -> sa.Enum:
@@ -374,11 +384,65 @@ class WorkspaceControl(Base):
     reason: Mapped[str] = mapped_column(sa.Text, nullable=False, default="")
     #: Who tripped it ("operator", an email, an automated guard).
     actor: Mapped[str] = mapped_column(sa.String(200), nullable=False, default="")
+    #: Workspace spend ceiling in USD. NULL -> fall back to the deployment-wide
+    #: ``Settings.workspace_budget_usd``. When live spend crosses it the budget
+    #: sentinel trips ``stopped`` itself, so the ceiling and the kill switch are
+    #: the same mechanism — an automated stop is indistinguishable from an
+    #: operator one, and clears the same way.
+    budget_usd: Mapped[float | None] = mapped_column(sa.Float, nullable=True)
     #: When it was last tripped — NULL once cleared.
     stopped_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
     )
+
+
+class RunSpend(Base):
+    """Live token/cost ledger, one row per run (``root_task_id`` == the swarm).
+
+    The settled ``Task.cost_usd`` is only written when a task reaches a terminal
+    state, so a leader with 32 children mid-flight reads $0.00 for all of them —
+    at swarm scale the settled figure lags reality by the entire in-flight fleet
+    and a budget brake reading it overshoots without bound. This table is
+    incremented the moment a provider reports usage, so "what has this run spent"
+    is answerable *during* execution.
+
+    Rows are keyed by run rather than by workspace on purpose: a single
+    workspace-wide counter would serialize every agent in the fleet on one row,
+    while per-run rows spread the contention and give swarm-level budgets for
+    free. The workspace total is an indexed SUM over these rows.
+    """
+
+    __tablename__ = "run_spend"
+
+    root_task_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    prompt_tokens: Mapped[int] = mapped_column(
+        sa.BigInteger, nullable=False, server_default=sa.text("0"), default=0
+    )
+    completion_tokens: Mapped[int] = mapped_column(
+        sa.BigInteger, nullable=False, server_default=sa.text("0"), default=0
+    )
+    cache_read_tokens: Mapped[int] = mapped_column(
+        sa.BigInteger, nullable=False, server_default=sa.text("0"), default=0
+    )
+    cache_write_tokens: Mapped[int] = mapped_column(
+        sa.BigInteger, nullable=False, server_default=sa.text("0"), default=0
+    )
+    #: Estimated USD, priced per call as usage arrives (see runtime/pricing.py).
+    cost_usd: Mapped[float] = mapped_column(
+        sa.Float, nullable=False, server_default=sa.text("0"), default=0.0
+    )
+    #: Provider calls counted — includes the summarizer and conflict-resolver
+    #: turns, which spend real money but are not agent steps.
+    calls: Mapped[int] = mapped_column(
+        sa.BigInteger, nullable=False, server_default=sa.text("0"), default=0
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    )
+
+    __table_args__ = (sa.Index("ix_run_spend_workspace", "workspace_id"),)
 
 
 class ProviderType(enum.StrEnum):
