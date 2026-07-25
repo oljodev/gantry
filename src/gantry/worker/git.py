@@ -201,3 +201,18 @@ async def remote_branch_commit(repo: Path, branch: str, auth: GitAuth) -> str | 
 async def is_worktree_clean(repo: Path) -> bool:
     _, out = await run_git(["status", "--porcelain"], cwd=repo)
     return out.strip() == ""
+
+
+async def ensure_pushed(repo: Path, auth: GitAuth) -> None:
+    """Convergently deliver the checkout's current branch to origin: stage and
+    commit any outstanding changes, then push HEAD.
+
+    Idempotent — a no-op when the branch is already committed and pushed, so it is
+    safe to call at task finalize regardless of whether the agent already ran
+    ``git_commit_push``. Raises ``GitError`` if the push itself is rejected, which
+    the caller treats as a delivery failure.
+    """
+    if not await is_worktree_clean(repo):
+        await run_git(["add", "-A"], cwd=repo)
+        await run_git(["commit", "-m", "gantry: deliver outstanding work"], cwd=repo, check=False)
+    await run_git(["push", "-u", "origin", "HEAD"], cwd=repo, auth=auth)

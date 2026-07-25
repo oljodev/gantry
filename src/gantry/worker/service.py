@@ -33,7 +33,7 @@ from gantry.skills.store import load_registry
 from gantry.vault import Vault
 from gantry.vault.store import GITHUB_TOKEN_SECRET, get_secret, provider_secret_name
 from gantry.worker import workspace as ws
-from gantry.worker.git import CloneError
+from gantry.worker.git import CloneError, GitError, ensure_pushed
 from gantry.worker.merge import default_branch, promote_branch
 from gantry.worker.policy import policy_for_payload
 from gantry.worker.tools import build_coding_registry, build_copilot_registry
@@ -477,6 +477,12 @@ class Worker:
                 approval_policy=policy_for_payload(task.payload),
                 skills=skills,
             )
+            # Before the task counts as succeeded, guarantee its branch reached
+            # origin — the swarm's only rendezvous. A child that finished with work
+            # committed locally but never pushed would otherwise look succeeded yet
+            # deliver nothing to the leader's merge.
+            if workspace is not None:
+                await self._deliver_branch(task, workspace)
             async with session_scope(self._sessions) as session:
                 succeeded = await queue.complete(
                     session,
@@ -623,6 +629,27 @@ class Worker:
             and task.parent_task_id is None
             and not is_leader
         )
+
+    async def _deliver_branch(self, task: Task, workspace: ws.Workspace) -> None:
+        """Ensure a repo-backed task's branch and its commits reach origin before it
+        is marked succeeded.
+
+        The swarm's ONLY rendezvous is origin: a leader integrates its children by
+        fetching their pushed branches — it cannot read a child's isolated,
+        throwaway workspace. So a child that finished with work committed locally
+        but never pushed (it forgot ``git_commit_push``, or a push failed) looks
+        succeeded yet contributes nothing to the merge, which then integrates an
+        empty tree. This convergently commits any outstanding changes and pushes
+        HEAD, so "succeeded" implies "delivered". Best-effort and never fatal: if
+        the push is rejected the leader's merge tool reports the missing branch as a
+        structured diagnostic rather than assuming success.
+        """
+        if workspace.branch is None:
+            return
+        try:
+            await ensure_pushed(workspace.path, workspace.auth)
+        except GitError as exc:
+            logger.warning("worker.deliver_failed", task_id=str(task.id), error=repr(exc))
 
     async def _land_task_on_main(self, task: Task, workspace: ws.Workspace) -> None:
         """Land a finished top-level task's branch on the repo's main branch.

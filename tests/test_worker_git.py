@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from gantry.runtime.tools import ToolContext
-from gantry.worker.git import GitAuth, current_branch
+from gantry.worker.git import GitAuth, current_branch, ensure_pushed, remote_branch_commit
 from gantry.worker.tools.gittool import GitCommitPushTool
 from gantry.worker.workspace import destroy, prepare_workspace
 
@@ -125,6 +125,44 @@ async def test_commit_push_delivers_work_to_origin(origin: Path, tmp_path: Path)
     # Convergent re-run: nothing new, push is a no-op, still success.
     again = await tool.execute({"message": "add feature"}, ctx)
     assert not again.is_error and "nothing new to commit" in again.content
+
+
+async def test_ensure_pushed_delivers_committed_but_unpushed_work(
+    origin: Path, tmp_path: Path
+) -> None:
+    # The board.py incident: an agent committed its work locally but never pushed
+    # (it skipped git_commit_push). Its branch is therefore absent from origin, so
+    # a leader's merge would find nothing. ensure_pushed, run at task finalize,
+    # closes that gap so "succeeded" implies "delivered to origin".
+    workspace = await prepare_workspace(tmp_path / "ws", uuid.uuid4(), 1, {"repo_url": str(origin)})
+    assert workspace.branch is not None
+    (workspace.path / "board.py").write_text("SIZE = 8\n")
+    git("add", "-A", cwd=workspace.path)
+    git("commit", "-m", "local work", cwd=workspace.path)
+    # Nothing on origin yet — exactly the incident's state.
+    assert await remote_branch_commit(workspace.path, workspace.branch, workspace.auth) is None
+
+    await ensure_pushed(workspace.path, workspace.auth)
+
+    assert await remote_branch_commit(workspace.path, workspace.branch, workspace.auth) is not None
+    shown = git("--git-dir", str(origin), "show", f"{workspace.branch}:board.py")
+    assert shown == "SIZE = 8"
+
+
+async def test_ensure_pushed_commits_outstanding_changes_then_delivers(
+    origin: Path, tmp_path: Path
+) -> None:
+    # Even uncommitted work in the worktree is delivered, not silently lost.
+    workspace = await prepare_workspace(tmp_path / "ws", uuid.uuid4(), 1, {"repo_url": str(origin)})
+    assert workspace.branch is not None
+    (workspace.path / "board.py").write_text("SIZE = 8\n")  # written, never committed
+
+    await ensure_pushed(workspace.path, workspace.auth)
+
+    shown = git("--git-dir", str(origin), "show", f"{workspace.branch}:board.py")
+    assert shown == "SIZE = 8"
+    # Idempotent: a second call with a clean, already-pushed tree is a harmless no-op.
+    await ensure_pushed(workspace.path, workspace.auth)
 
 
 async def test_commit_push_emits_a_durable_diff_event(origin: Path, tmp_path: Path) -> None:
