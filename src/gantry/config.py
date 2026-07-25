@@ -121,7 +121,7 @@ class Settings(BaseSettings):
     #: with a report, not a FAIL. The run's live cost/emergency-stop budget is the
     #: primary spend bound; these are structural backstops. Override via
     #: GANTRY_EXECUTE_MAX_STEPS / GANTRY_LEADER_MAX_STEPS.
-    execute_max_steps: int = 25
+    execute_max_steps: int = 35
     leader_max_steps: int = 150
     #: Estimated-token ceiling before the durable loop compacts history into a
     #: summary checkpoint. Lower than the old hardcoded 120_000 so per-call input
