@@ -128,6 +128,42 @@ class Settings(BaseSettings):
     hard_max_context_tokens: int = 96_000
     #: Directory of SKILL.md files loaded by workers and the API.
     skills_root: Path = Path("skills")
+    #: --- Agent shell sandbox -------------------------------------------------
+    #: An agent's `bash` command is model-authored, i.e. untrusted. These bound
+    #: what it can reach and consume; see `worker/sandbox.py` for the layering.
+    #: Layer-2 confinement: an argv prefix that wraps every agent shell command
+    #: in real mount/network namespaces (bubblewrap, nsjail, systemd-run, a site
+    #: helper). `{workspace}` and `{home}` are substituted per command. This is
+    #: the ONLY thing that stops one task reading another task's workspace —
+    #: same-uid processes can always read each other's files — so configure it on
+    #: any multi-tenant or high-fan-out deployment. Empty (the default) leaves
+    #: layer 1 only: secrets and resource ceilings are still enforced, filesystem
+    #: isolation is not, and the worker logs a warning at boot saying so.
+    #: Example: GANTRY_SANDBOX_WRAPPER="bwrap --unshare-all --share-net
+    #: --die-with-parent --ro-bind /usr /usr --ro-bind /etc /etc --proc /proc
+    #: --dev /dev --bind {workspace} {workspace} --bind {home} {home} --"
+    sandbox_wrapper: str | None = None
+    #: RLIMIT_AS ceiling per agent shell, in MiB (0 = unlimited). The portable
+    #: memory bound without cgroups; keeps a thousand concurrent builds from
+    #: OOMing the host. Raise it for runtimes that reserve large sparse address
+    #: space (JVM, Go, ASAN builds).
+    sandbox_memory_mb: int = 2048
+    #: RLIMIT_FSIZE ceiling per agent shell, in MiB (0 = unlimited) — one runaway
+    #: log or `yes > file` can otherwise fill the host's disk.
+    sandbox_file_size_mb: int = 2048
+    #: RLIMIT_NOFILE per agent shell (0 = leave the host default).
+    sandbox_open_files: int = 4096
+    #: RLIMIT_NPROC per agent shell (0 = disabled, the default). Only meaningful
+    #: when each worker runs as its OWN uid: the limit is per-user, so with many
+    #: agents sharing one uid a low value throttles every sibling instead of the
+    #: offender. Real fork-bomb containment is cgroup pids.max, i.e. the wrapper.
+    sandbox_max_processes: int = 0
+    #: Extra environment variable names agent shells may inherit. Everything
+    #: outside this list plus `sandbox.DEFAULT_ENV_ALLOWLIST` is stripped — that
+    #: is what keeps GANTRY_VAULT_KEY, GANTRY_DATABASE_URL and provider API keys
+    #: out of untrusted shells. Names that look like credentials are flagged at
+    #: boot; add toolchain paths here, never secrets.
+    sandbox_env_passthrough: list[str] = Field(default_factory=list)
     #: Origins allowed to call the API from a browser. Includes the Cloudflare
     #: Pages production origin so a split deploy (static frontend + remote
     #: backend) works out of the box; override via GANTRY_CORS_ORIGINS.

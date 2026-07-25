@@ -98,7 +98,13 @@ def _ws(branch: str | None) -> Any:
     from gantry.worker.git import GitAuth
     from gantry.worker.workspace import Workspace
 
-    return Workspace(root=Path("/x"), path=Path("/x"), auth=GitAuth(env={}), branch=branch)
+    return Workspace(
+        root=Path("/x"),
+        path=Path("/x"),
+        auth=GitAuth(env={}),
+        home=Path("/x/.gantry-home"),
+        branch=branch,
+    )
 
 
 def test_only_top_level_non_leader_git_tasks_land_on_main() -> None:

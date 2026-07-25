@@ -24,9 +24,14 @@ def default_branch_name(task_id: uuid.UUID) -> str:
 
 @dataclass(frozen=True)
 class Workspace:
-    root: Path  # container dir: repo/ + .gantry-meta/
+    root: Path  # container dir: repo/ + .gantry-meta/ + .gantry-home/
     path: Path  # the agent-visible directory (the checkout, or an empty dir)
     auth: git.GitAuth
+    #: HOME/TMPDIR for this task's agent shells. Deliberately NOT the operator's
+    #: real home (which holds ~/.ssh, ~/.aws, ~/.config/gh) and deliberately
+    #: OUTSIDE the checkout, so toolchain caches never dirty the git worktree.
+    #: Destroyed with the workspace, so a task leaves no scratch behind.
+    home: Path
     branch: str | None = None
     repo_url: str | None = None
 
@@ -44,19 +49,28 @@ async def prepare_workspace(
         await destroy(root)
     meta_dir = root / ".gantry-meta"
     work_dir = root / "repo"
+    home_dir = root / ".gantry-home"
     meta_dir.mkdir(parents=True)
+    home_dir.mkdir()
     auth = git.GitAuth.build(meta_dir, github_token)
 
     repo_url = payload.get("repo_url")
     if not repo_url:
         work_dir.mkdir()
-        return Workspace(root=root, path=work_dir, auth=auth)
+        return Workspace(root=root, path=work_dir, auth=auth, home=home_dir)
 
     base_branch = payload.get("base_branch")
     branch = payload.get("branch") or default_branch_name(task_id)
     await git.clone(repo_url, work_dir, auth=auth, base_branch=base_branch)
     await git.create_branch(work_dir, branch)
-    return Workspace(root=root, path=work_dir, auth=auth, branch=branch, repo_url=repo_url)
+    return Workspace(
+        root=root,
+        path=work_dir,
+        auth=auth,
+        home=home_dir,
+        branch=branch,
+        repo_url=repo_url,
+    )
 
 
 async def destroy(root: Path) -> None:

@@ -23,6 +23,16 @@ connections. Budget `(worker + API pools) x GANTRY_WORKERS` well under pgserver'
 pool via `api_db_pool_size`/`api_db_max_overflow`. `GANTRY_WORKERS` stays 1 by
 default and is only for deliberately wanting that multiplication.
 
+## Safety invariants (do not regress these)
+
+- **Agent shells are confined** (`worker/sandbox.py`). Every `bash` command runs
+  with an allowlisted environment (no vault key, DB URL, or provider key ever
+  reaches it), rlimit ceilings, a private `HOME`/`TMPDIR`, and its **own process
+  group** so a timeout or a cancel kills the whole tree. Filesystem isolation
+  *between* tasks needs `GANTRY_SANDBOX_WRAPPER` (bubblewrap/nsjail) — without it
+  same-uid tasks can read each other's workspaces, and the worker says so at boot.
+  If you add a way to run a subprocess for an agent, route it through `sandbox`.
+
 Per-task tuning is role-aware: a leaf EXECUTE worker compacts at a tighter budget
 (`execute_max_context_tokens`) so a small task never compacts and its prompt cache
 stays warm; a delegating leader gets a larger one (`leader_max_context_tokens`).
