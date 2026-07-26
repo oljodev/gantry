@@ -47,6 +47,8 @@ from gantry.runtime.llm import (
 )
 from gantry.runtime.pricing import cost_usd
 from gantry.runtime.state import (
+    PRODUCTIVE_TOOL_NAMES,
+    READ_ONLY_TOOL_NAMES,
     SPAWN_TOOL_NAMES,
     SURVEY_TOOL_NAMES,
     AgentState,
@@ -277,6 +279,7 @@ async def run_agent_task(
         # mid-tool. Runs before the LLM call: the whole value is NOT spending
         # another turn on an approach already proven to fail.
         _check_repair_loop(task, state, settings)
+        _check_passive_read_loop(task, state, settings, delegates=delegates)
 
         if is_leader:
             nudge = await _survey_budget_guard(sessions, task, state)
@@ -609,7 +612,24 @@ async def _record_diagnostics(
 async def _execute_tool(tools: ToolRegistry, tc: ToolCallRequest, ctx: ToolContext) -> ToolResult:
     tool = tools.get(tc.name)
     if tool is None:
-        return ToolResult(f"Unknown tool: {tc.name}", is_error=True)
+        # A hallucinated tool is structured like any other failure so it feeds the
+        # repair-loop breaker: an agent that keeps calling the same non-existent
+        # tool produces the same fingerprint each turn and is stalled/escalated,
+        # instead of burning its whole step budget on a tool that will never exist.
+        diagnostic = diagnostics.Diagnostic(
+            file=tc.name,
+            line=None,
+            column=None,
+            message=f"no tool named {tc.name!r} exists — call only tools in your toolset",
+            severity=diagnostics.Severity.ERROR,
+            code="UnknownTool",
+            source="tool-validation",
+        )
+        return ToolResult(
+            f"Unknown tool: {tc.name}. It is not in your toolset — do not call it again.",
+            is_error=True,
+            diagnostics=(diagnostic,),
+        )
     try:
         return await tool.execute(tc.arguments, replace(ctx, tool_call_id=tc.id))
     except TaskParked:
@@ -620,6 +640,38 @@ async def _execute_tool(tools: ToolRegistry, tc: ToolCallRequest, ctx: ToolConte
     except Exception as exc:
         logger.warning("agent.tool_failed", tool=tc.name, error=repr(exc))
         return ToolResult(f"Tool '{tc.name}' failed: {exc!r}", is_error=True)
+
+
+def _check_passive_read_loop(
+    task: Task, state: AgentState, settings: Any, *, delegates: bool
+) -> None:
+    """Break a passive read loop: fail a leaf worker that only ever reads.
+
+    A leaf (non-delegating) worker is handed one file and one outcome. If it makes
+    many read-only calls (read_file/glob/grep/...) and not a SINGLE productive one
+    (edit/write/bash/commit), it is circling the problem instead of solving it —
+    stuck in a way the repair-loop breaker (which needs a recurring *diagnostic*)
+    never sees, because reading never errors. Fail it fast so its leader learns and
+    can respawn with a sharper task, well before it grinds to the step cap.
+
+    A delegating agent surveys legitimately before spawning (the leader survey guard
+    governs that), so this never applies to it. A pure function of durable state, so
+    a resume decides identically. ``passive_read_max`` <= 0 disables it.
+    """
+    limit = int(getattr(settings, "passive_read_max", 0) or 0)
+    if limit <= 0 or delegates:
+        return
+    if state.count_tool_calls(*PRODUCTIVE_TOOL_NAMES):
+        return  # it has done real work — not a passive reader
+    reads = state.count_tool_calls(*READ_ONLY_TOOL_NAMES)
+    if reads < limit:
+        return
+    logger.warning("agent.passive_read_loop_detected", task_id=str(task.id), reads=reads)
+    raise AgentLoopError(
+        f"passive read loop: {reads} read-only tool calls with no edit, write, "
+        "command, or delegation. A worker that only reads is stuck — failing so the "
+        "leader can respawn with a sharper task."
+    )
 
 
 def _check_repair_loop(task: Task, state: AgentState, settings: Any) -> None:

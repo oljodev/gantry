@@ -270,6 +270,28 @@ SURVEY_TOOL_NAMES = frozenset({"read_file", "list_dir", "glob", "grep"})
 #: work — once one fires, the survey-budget nudge stops.
 SPAWN_TOOL_NAMES = frozenset({"spawn_subtask", "spawn_batch"})
 
+#: Read-only tools: they observe the repo but change nothing. A leaf worker that
+#: makes many of these and NONE of the productive tools below is passively looping
+#: (reading forever) rather than doing the work it was handed.
+READ_ONLY_TOOL_NAMES = frozenset(
+    {"read_file", "list_dir", "glob", "grep", "web_search", "web_fetch"}
+)
+#: Tools that make real progress — mutate the workspace, run a command, or
+#: delegate. One call to any of these means the worker is not merely reading, so
+#: the passive-read breaker stays silent.
+PRODUCTIVE_TOOL_NAMES = frozenset(
+    {
+        "write_file",
+        "edit_file",
+        "git_commit_push",
+        "bash",
+        "spawn_subtask",
+        "spawn_batch",
+        "merge_child_branches",
+        "land_branch",
+    }
+)
+
 
 def leader_nudge_message(surveyed: int) -> Message:
     """The reminder injected when an autonomous leader has surveyed past its

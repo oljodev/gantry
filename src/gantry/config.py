@@ -123,6 +123,14 @@ class Settings(BaseSettings):
     #: GANTRY_EXECUTE_MAX_STEPS / GANTRY_LEADER_MAX_STEPS.
     execute_max_steps: int = 35
     leader_max_steps: int = 150
+    #: Passive-read circuit breaker: a leaf (non-delegating) worker that makes this
+    #: many read-only tool calls (read_file/glob/grep/...) without a SINGLE
+    #: productive one (edit/write/bash/commit/delegate) is stuck reading rather than
+    #: doing its one handed task — fail it fast so its leader learns, well before
+    #: the step cap. Delegating agents survey legitimately (the leader survey guard
+    #: governs them), so this never applies to them. 0 disables. Override via
+    #: GANTRY_PASSIVE_READ_MAX.
+    passive_read_max: int = 25
     #: Estimated-token ceiling before the durable loop compacts history into a
     #: summary checkpoint. Lower than the old hardcoded 120_000 so per-call input
     #: stays bounded on long runs (compaction fires ~every 10-15 steps instead of
