@@ -114,11 +114,78 @@ def budget_runaway(step: int, messages: list[Message]) -> Turn:
     )
 
 
+# --- hallucinated-tool --------------------------------------------------------
+# Call a tool that does not exist, every step. The loop returns a structured
+# UnknownTool diagnostic (same fingerprint each time), so the repair-wave breaker
+# escalates instead of letting the agent burn its budget on a phantom tool.
+HALLUCINATED_TOOL_NAME = "frobnicate"
+
+
+def hallucinated_tool(step: int, messages: list[Message]) -> Turn:
+    return Turn(tool_calls=(ToolCall(HALLUCINATED_TOOL_NAME, {"target": "everything"}),))
+
+
+# --- passive-read-loop --------------------------------------------------------
+# Only ever read (never edit/write/commit). A leaf worker doing this is stuck
+# circling the problem; the passive-read breaker fails it fast so its leader learns.
+def passive_read_loop(step: int, messages: list[Message]) -> Turn:
+    return Turn(tool_calls=(ToolCall("list_dir", {"path": "."}),))
+
+
+# --- git-conflict (conflict RESOLVER) -----------------------------------------
+# Used as Gantry's LLM conflict resolver: when two workers edit colliding lines,
+# merge_child_branches hands the conflicted file (with markers) to this model and
+# expects the reconciled content back. The mock union-merges deterministically.
+def _resolve_conflict_markers(text: str) -> str:
+    """Drop the ``<<<<<<<`` / ``=======`` / ``>>>>>>>`` lines, keeping BOTH sides —
+    a naive but real resolution the mock can compute without an LLM."""
+    kept = [
+        line for line in text.splitlines() if not line.startswith(("<<<<<<<", "=======", ">>>>>>>"))
+    ]
+    return "\n".join(kept) + ("\n" if text.endswith("\n") else "")
+
+
+def git_conflict(step: int, messages: list[Message]) -> Turn:
+    # The resolver prompt is "File: <path>\n\n<conflicted content>"; return the
+    # reconciled file (markers removed, both edits kept).
+    raw = str(messages[-1].get("content", "")) if messages else ""
+    body = raw.split("\n\n", 1)[1] if "\n\n" in raw else raw
+    return Turn(content=_resolve_conflict_markers(body))
+
+
+# --- missing-branch -----------------------------------------------------------
+# A worker "claiming success". Delivery to origin is now guaranteed by
+# ensure_pushed at finalize, so a missing branch can no longer be manufactured by
+# the LLM — the MissingBranch diagnostic is exercised at the merge layer (see the
+# merge-layer chaos test). This turn documents the scenario in the switcher.
+def missing_branch(step: int, messages: list[Message]) -> Turn:
+    return Turn(content="Work complete.")
+
+
+# --- transport-level chaos (handled in app.py, not as token scenarios) --------
+#: Return HTTP 429 for this many requests, then a clean success. The provider
+#: client (LiteLLM) retries transient 429s with its own backoff, so the run
+#: recovers; Gantry's queue backoff is the second line if the client exhausts.
+RATE_LIMIT_MODEL = "mock/rate-limit-429"
+RATE_LIMIT_FAILURES = 2
+#: Emit a malformed SSE chunk this many times, then a clean stream — the client
+#: raises on the bad chunk and the run recovers on retry, never a hard failure.
+CORRUPTED_SSE_MODEL = "mock/corrupted-sse"
+CORRUPTED_SSE_FAILURES = 2
+#: Models whose chaos is at the HTTP/stream layer (status codes, aborted bodies)
+#: rather than in the emitted tokens — app.py special-cases these.
+TRANSPORT_CHAOS_MODELS = frozenset({RATE_LIMIT_MODEL, CORRUPTED_SSE_MODEL})
+
+
 #: Registry keyed by the raw ``model`` string in the request body.
 SCENARIOS: dict[str, Scenario] = {
     "mock/happy-path": happy_path,
     "mock/repair-loop": repair_loop,
     "mock/budget-runaway": budget_runaway,
+    "mock/hallucinated-tool": hallucinated_tool,
+    "mock/passive-read-loop": passive_read_loop,
+    "mock/git-conflict": git_conflict,
+    "mock/missing-branch": missing_branch,
 }
 
 #: Prefixes LiteLLM may leave on the model when routing an OpenAI-compatible base.

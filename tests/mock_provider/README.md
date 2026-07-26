@@ -39,8 +39,23 @@ Model strings map to scenarios; LiteLLM routes an OpenAI-compatible base with th
 | `mock/repair-loop` | writes the same broken Python every step | Repair-wave breaker escalates (`TaskStalled`) after 3 identical diagnostics. |
 | `mock/budget-runaway` | streams an unbounded token wall + periodic usage, never finishes | Finite step-cap halt today; the mid-stream `$`-sentinel once that lands. |
 
+### Phase 2 — chaos scenarios
+
+| Model | Behavior | What it verifies |
+|---|---|---|
+| `mock/hallucinated-tool` | calls a non-existent tool every step | Unknown-tool diagnostic feeds the repair-wave breaker (`TaskStalled`). |
+| `mock/passive-read-loop` | only ever reads, never edits | The passive-read breaker fails a leaf worker before the step cap. |
+| `mock/git-conflict` | serves as the LLM conflict **resolver** (union-merges markers) | Two colliding branches are resolved, staging verifies + publishes. |
+| `mock/missing-branch` | a worker "claiming success" | The `MissingBranch` gate blocks an integration with an undelivered branch (exercised at the merge layer). |
+| `mock/rate-limit-429` | HTTP 429 for N requests, then success | Transient 429s are retried transparently (client-layer backoff); the run recovers. |
+| `mock/corrupted-sse` | a malformed SSE chunk for N requests, then a clean stream | A corrupted stream raises and is retried, never a hard failure. |
+
+`mock/rate-limit-429` and `mock/corrupted-sse` are transport-level (status codes /
+malformed bodies), handled in `app.py` with a per-app request counter (see
+`GET /counters`); the rest are token scenarios in `scenarios.py`.
+
 The registry in `scenarios.py` is a `dict[model -> (step, messages) -> Turn]`; add a
-new scenario (e.g. `mock/git-conflict`) by adding one function and one dict entry.
+new token scenario by adding one function and one dict entry.
 
 ## In tests
 

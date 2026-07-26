@@ -18,11 +18,28 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from starlette.responses import Response
 
-from .scenarios import Turn, select, step_of
+from .scenarios import (
+    CORRUPTED_SSE_FAILURES,
+    CORRUPTED_SSE_MODEL,
+    RATE_LIMIT_FAILURES,
+    RATE_LIMIT_MODEL,
+    TRANSPORT_CHAOS_MODELS,
+    Turn,
+    select,
+    step_of,
+)
+
+#: The clean turn a transport-chaos scenario returns once it has failed its quota
+#: of times — proving the retry eventually gets through.
+_RECOVERED = Turn(content="Recovered after a transient provider failure.")
 
 
 def _sse(payload: dict[str, Any]) -> str:
     return f"data: {json.dumps(payload)}\n\n"
+
+
+def _strip_route_prefix(model: str) -> str:
+    return model[len("openai/") :] if model.startswith("openai/") else model
 
 
 def _usage(turn: Turn, completion_tokens: int) -> dict[str, int]:
@@ -119,12 +136,71 @@ def _completion_body(model: str, turn: Turn) -> dict[str, Any]:
     }
 
 
+async def _corrupted_stream(model: str) -> AsyncIterator[str]:
+    """A valid opening frame, then a malformed (unparseable) SSE chunk mid-stream.
+    LiteLLM raises on the bad chunk — the faithful "corrupted stream" — without a
+    server-side exception (a truncated body, by contrast, LiteLLM silently tolerates
+    by returning the partial content, so it would never exercise the retry path)."""
+    cid = f"chatcmpl-mock-{uuid.uuid4().hex[:12]}"
+    base = {
+        "id": cid,
+        "object": "chat.completion.chunk",
+        "created": int(time.time()),
+        "model": model,
+    }
+    yield _sse({**base, "choices": [{"index": 0, "delta": {"role": "assistant"}}]})
+    yield "data: {this is not valid json\n\n"
+    yield _sse({**base, "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]})
+    yield "data: [DONE]\n\n"
+
+
+def _bump(app: FastAPI, key: str) -> int:
+    """Per-app request count for a transport-chaos model (1-based). Per-app so each
+    freshly-started server (one per test) begins with clean counters."""
+    counters: dict[str, int] = app.state.counters
+    counters[key] = counters.get(key, 0) + 1
+    return counters[key]
+
+
+def _transport_chaos(
+    app: FastAPI, key: str, model: str, *, stream: bool, include_usage: bool
+) -> Response:
+    """HTTP/stream-layer chaos: fail the first N requests, then recover cleanly."""
+    count = _bump(app, key)
+    if key == RATE_LIMIT_MODEL and count <= RATE_LIMIT_FAILURES:
+        return JSONResponse(
+            status_code=429,
+            content={
+                "error": {
+                    "message": "rate limit exceeded (mock)",
+                    "type": "rate_limit_error",
+                    "code": "rate_limit_exceeded",
+                }
+            },
+            headers={"retry-after": "0"},
+        )
+    if key == CORRUPTED_SSE_MODEL and count <= CORRUPTED_SSE_FAILURES:
+        return StreamingResponse(_corrupted_stream(model), media_type="text/event-stream")
+    if stream:
+        return StreamingResponse(
+            _stream_turn(model, _RECOVERED, include_usage), media_type="text/event-stream"
+        )
+    return JSONResponse(_completion_body(model, _RECOVERED))
+
+
 def create_app() -> FastAPI:
     app = FastAPI(title="Gantry Mock Provider")
+    app.state.counters = {}
 
     @app.get("/health")
     async def health() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.get("/counters")
+    async def counters() -> dict[str, int]:
+        # How many times each transport-chaos model has been requested — lets a test
+        # confirm the client layer actually retried through the injected failures.
+        return dict(app.state.counters)
 
     @app.post("/v1/chat/completions")
     async def chat_completions(request: Request) -> Response:
@@ -132,8 +208,16 @@ def create_app() -> FastAPI:
         model = str(body.get("model") or "mock/happy-path")
         messages = list(body.get("messages") or [])
         include_usage = bool((body.get("stream_options") or {}).get("include_usage"))
+        stream = bool(body.get("stream"))
+
+        key = _strip_route_prefix(model)
+        if key in TRANSPORT_CHAOS_MODELS:
+            return _transport_chaos(
+                request.app, key, model, stream=stream, include_usage=include_usage
+            )
+
         turn = select(model)(step_of(messages), messages)
-        if body.get("stream"):
+        if stream:
             return StreamingResponse(
                 _stream_turn(model, turn, include_usage), media_type="text/event-stream"
             )
