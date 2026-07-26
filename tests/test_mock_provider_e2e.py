@@ -17,9 +17,11 @@ from gantry.core import queue
 from gantry.core.db import session_scope
 from gantry.core.models import TaskStatus
 from gantry.core.queue import retry_backoff_seconds
+from gantry.runtime.compaction import CompactionConfig
 from gantry.runtime.llm import LiteLLMClient
 from gantry.runtime.loop import AgentLoopError, run_agent_task
 from gantry.runtime.tools import TaskStalled
+from gantry.worker.git import GitAuth
 from gantry.worker.service import _is_permanent_provider_error
 from gantry.worker.tools import build_coding_registry
 from gantry.worker.tools.integrate import MergeChildBranchesTool, make_conflict_resolver
@@ -29,8 +31,10 @@ from .mock_provider.scenarios import (
     HAPPY_WRITE_BODY,
     HAPPY_WRITE_PATH,
     RATE_LIMIT_FAILURES,
+    WORKER_HANG_FAILURES,
 )
 from .mock_provider.server import running_server
+from .test_agent_compaction import count_messages
 from .test_agent_loop import enqueue_agent_task
 from .test_staging_gate import _STAGING, _ctx, _leader, _remote_heads, _worker_pushes
 from .test_worker_git import git, origin  # noqa: F401  (fixture re-export)
@@ -38,9 +42,14 @@ from .test_worker_git import git, origin  # noqa: F401  (fixture re-export)
 Sessions = async_sessionmaker[AsyncSession]
 
 
-def _client(base_url: str) -> LiteLLMClient:
+def _client(base_url: str, request_timeout: float | None = None) -> LiteLLMClient:
     # A dummy key satisfies the OpenAI route; prompt caching off (not Anthropic).
-    return LiteLLMClient(api_key="mock-key", api_base=base_url, prompt_caching=False)
+    return LiteLLMClient(
+        api_key="mock-key",
+        api_base=base_url,
+        prompt_caching=False,
+        request_timeout=request_timeout,
+    )
 
 
 async def test_happy_path_completes_in_two_steps(db: Sessions, tmp_path: Path) -> None:
@@ -151,14 +160,20 @@ async def test_missing_branch_blocks_even_a_partial_delivery(origin: Path, tmp_p
 
 
 async def _drive_until_settled(
-    db: Sessions, base_url: str, model: str, workspace: Path, *, backoff_base: float
+    db: Sessions,
+    base_url: str,
+    model: str,
+    workspace: Path,
+    *,
+    backoff_base: float,
+    request_timeout: float | None = None,
 ) -> tuple[str, int, object]:
     """Mimic the worker's real retry path against the live mock: claim, run, and on
     a retryable provider error re-queue with backoff and re-claim, until the task
     succeeds or fails terminally. Uses the REAL queue + the real retryable/permanent
     classification, so it exercises Gantry's actual resilience, not a stand-in."""
     task = await enqueue_agent_task(db, {"model": model})
-    client = _client(base_url)
+    client = _client(base_url, request_timeout=request_timeout)
     attempts = 0
     while True:
         async with session_scope(db) as session:
@@ -237,3 +252,75 @@ async def test_corrupted_sse_stream_is_transparently_retried(db: Sessions, tmp_p
     # The mock served exactly N corrupted streams, then a clean one — proof the
     # corruption really happened and was recovered, at whichever layer.
     assert served == CORRUPTED_SSE_FAILURES + 1
+
+
+# --- Real-world edge cases ----------------------------------------------------
+
+
+async def test_lazy_leader_fast_exit_is_rejected(db: Sessions, tmp_path: Path) -> None:
+    # An autonomous leader reads one file and reports success without spawning any
+    # workers. It has no write tools, so it delivered nothing — the leader delivery
+    # gate rejects the premature exit.
+    (tmp_path / "input.txt").write_text("hello\n")
+    registry = build_coding_registry(GitAuth(env={}), leader=True, trunk_branch="main")
+    async with running_server() as base_url:
+        task = await enqueue_agent_task(
+            db, {"model": "openai/mock/lazy-leader-fast-exit", "autonomous_leader": True}
+        )
+        with pytest.raises(AgentLoopError, match="without delegating"):
+            await run_agent_task(db, task, _client(base_url), registry, workspace=tmp_path)
+
+
+async def test_partial_tool_json_truncation_is_reported_not_crashing(
+    db: Sessions, tmp_path: Path
+) -> None:
+    # A tool call whose JSON arguments are cut off mid-stream must not crash the
+    # loop: the parser turns each into a MalformedToolCall diagnostic, and repeating
+    # the same broken call trips the repair-wave breaker.
+    async with running_server() as base_url:
+        task = await enqueue_agent_task(db, {"model": "openai/mock/partial-tool-json-truncation"})
+        with pytest.raises(TaskStalled):
+            await run_agent_task(
+                db, task, _client(base_url), build_coding_registry(), workspace=tmp_path
+            )
+
+
+async def test_worker_timeout_hang_recovers_via_reclaim(db: Sessions, tmp_path: Path) -> None:
+    # The provider stops sending bytes mid-stream. A bounded request timeout makes
+    # the call fail (instead of pinning the worker forever), and the run recovers.
+    async with running_server() as base_url:
+        status, _, _ = await _drive_until_settled(
+            db,
+            base_url,
+            "openai/mock/worker-timeout-hang",
+            tmp_path,
+            backoff_base=0.0,
+            request_timeout=2.0,
+        )
+        served = await _served(base_url, "mock/worker-timeout-hang")
+    assert status == "succeeded"
+    assert served == WORKER_HANG_FAILURES + 1
+
+
+async def test_context_window_overflow_recovers_via_compaction(
+    db: Sessions, tmp_path: Path
+) -> None:
+    # After some history, the provider rejects the prompt as too long (400
+    # context_length_exceeded). Gantry force-compacts the history and retries in the
+    # same step, so the run recovers instead of failing on a permanent 400.
+    config = CompactionConfig(
+        max_context_tokens=10_000, keep_recent_messages=2, token_counter=count_messages
+    )
+    async with running_server() as base_url:
+        task = await enqueue_agent_task(db, {"model": "openai/mock/context-window-overflow"})
+        outcome = await run_agent_task(
+            db,
+            task,
+            _client(base_url),
+            build_coding_registry(),
+            workspace=tmp_path,
+            compaction=config,
+        )
+    # The overflow forced at least one compaction, and the run still finished.
+    assert outcome.compactions >= 1
+    assert outcome.final_text
