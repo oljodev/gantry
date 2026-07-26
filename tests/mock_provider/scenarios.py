@@ -153,6 +153,16 @@ def git_conflict(step: int, messages: list[Message]) -> Turn:
     return Turn(content=_resolve_conflict_markers(body))
 
 
+# --- lazy-leader-fast-exit ----------------------------------------------------
+# An autonomous leader that reads one file then reports success WITHOUT spawning
+# any workers. The leader delivery gate rejects this empty exit (a leader has no
+# write tools, so delegating nothing means delivering nothing).
+def lazy_leader_fast_exit(step: int, messages: list[Message]) -> Turn:
+    if step == 0:
+        return Turn(tool_calls=(ToolCall("read_file", {"path": HAPPY_READ_PATH}),))
+    return Turn(content="Task succeeded.")
+
+
 # --- missing-branch -----------------------------------------------------------
 # A worker "claiming success". Delivery to origin is now guaranteed by
 # ensure_pushed at finalize, so a missing branch can no longer be manufactured by
@@ -172,9 +182,21 @@ RATE_LIMIT_FAILURES = 2
 #: raises on the bad chunk and the run recovers on retry, never a hard failure.
 CORRUPTED_SSE_MODEL = "mock/corrupted-sse"
 CORRUPTED_SSE_FAILURES = 2
-#: Models whose chaos is at the HTTP/stream layer (status codes, aborted bodies)
-#: rather than in the emitted tokens — app.py special-cases these.
-TRANSPORT_CHAOS_MODELS = frozenset({RATE_LIMIT_MODEL, CORRUPTED_SSE_MODEL})
+#: Stop sending bytes after the opening frame this many times, then a clean
+#: stream — the client's request timeout fires and the queue re-claims the task.
+WORKER_HANG_MODEL = "mock/worker-timeout-hang"
+WORKER_HANG_FAILURES = 1
+#: Return a few read turns to build history, then a 400 context_length_exceeded,
+#: then (after Gantry force-compacts and retries) a clean success.
+CONTEXT_OVERFLOW_MODEL = "mock/context-window-overflow"
+CONTEXT_OVERFLOW_READS = 3
+#: Always stream a tool call whose JSON arguments are truncated — Gantry's parser
+#: turns each into a MalformedToolCall diagnostic (no crash) and, on repeat, the
+#: repair breaker escalates. Handled specially in app.py (not counter-based).
+MALFORMED_TOOL_MODEL = "mock/partial-tool-json-truncation"
+#: Models whose chaos is at the HTTP/stream layer (status codes, aborted or stalled
+#: bodies) rather than in the emitted tokens — app.py special-cases these.
+TRANSPORT_CHAOS_MODELS = frozenset({RATE_LIMIT_MODEL, CORRUPTED_SSE_MODEL, WORKER_HANG_MODEL})
 
 
 #: Registry keyed by the raw ``model`` string in the request body.
@@ -186,6 +208,7 @@ SCENARIOS: dict[str, Scenario] = {
     "mock/passive-read-loop": passive_read_loop,
     "mock/git-conflict": git_conflict,
     "mock/missing-branch": missing_branch,
+    "mock/lazy-leader-fast-exit": lazy_leader_fast_exit,
 }
 
 #: Prefixes LiteLLM may leave on the model when routing an OpenAI-compatible base.

@@ -8,6 +8,7 @@ frames.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import time
 import uuid
@@ -19,11 +20,17 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from starlette.responses import Response
 
 from .scenarios import (
+    CONTEXT_OVERFLOW_MODEL,
+    CONTEXT_OVERFLOW_READS,
     CORRUPTED_SSE_FAILURES,
     CORRUPTED_SSE_MODEL,
+    MALFORMED_TOOL_MODEL,
     RATE_LIMIT_FAILURES,
     RATE_LIMIT_MODEL,
     TRANSPORT_CHAOS_MODELS,
+    WORKER_HANG_FAILURES,
+    WORKER_HANG_MODEL,
+    ToolCall,
     Turn,
     select,
     step_of,
@@ -154,6 +161,57 @@ async def _corrupted_stream(model: str) -> AsyncIterator[str]:
     yield "data: [DONE]\n\n"
 
 
+async def _hanging_stream(model: str) -> AsyncIterator[str]:
+    """Send the opening frame, then never send another byte. The worker's request
+    timeout must fire and the queue re-claim the task."""
+    cid = f"chatcmpl-mock-{uuid.uuid4().hex[:12]}"
+    base = {
+        "id": cid,
+        "object": "chat.completion.chunk",
+        "created": int(time.time()),
+        "model": model,
+    }
+    yield _sse({**base, "choices": [{"index": 0, "delta": {"role": "assistant"}}]})
+    await asyncio.sleep(3600)  # hang until the client times out and disconnects
+
+
+async def _truncated_tool_call_stream(model: str) -> AsyncIterator[str]:
+    """Stream a tool call whose JSON arguments are cut off mid-string, so the
+    reassembled arguments don't parse — Gantry turns it into a MalformedToolCall
+    diagnostic instead of crashing."""
+    cid = f"chatcmpl-mock-{uuid.uuid4().hex[:12]}"
+    base = {
+        "id": cid,
+        "object": "chat.completion.chunk",
+        "created": int(time.time()),
+        "model": model,
+    }
+    yield _sse({**base, "choices": [{"index": 0, "delta": {"role": "assistant"}}]})
+    truncated = '{"path": "out.py", "content": "x = '  # no closing quote/brace
+    yield _sse(
+        {
+            **base,
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {
+                        "tool_calls": [
+                            {
+                                "index": 0,
+                                "id": "call_trunc",
+                                "type": "function",
+                                "function": {"name": "write_file", "arguments": truncated},
+                            }
+                        ]
+                    },
+                }
+            ],
+        }
+    )
+    yield _sse({**base, "choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}]})
+    yield "data: [DONE]\n\n"
+
+
 def _bump(app: FastAPI, key: str) -> int:
     """Per-app request count for a transport-chaos model (1-based). Per-app so each
     freshly-started server (one per test) begins with clean counters."""
@@ -181,11 +239,49 @@ def _transport_chaos(
         )
     if key == CORRUPTED_SSE_MODEL and count <= CORRUPTED_SSE_FAILURES:
         return StreamingResponse(_corrupted_stream(model), media_type="text/event-stream")
+    if key == WORKER_HANG_MODEL and count <= WORKER_HANG_FAILURES:
+        return StreamingResponse(_hanging_stream(model), media_type="text/event-stream")
     if stream:
         return StreamingResponse(
             _stream_turn(model, _RECOVERED, include_usage), media_type="text/event-stream"
         )
     return JSONResponse(_completion_body(model, _RECOVERED))
+
+
+def _turn_response(model: str, turn: Turn, *, stream: bool, include_usage: bool) -> Response:
+    """One turn as SSE (streaming request) or a JSON body (non-streaming, e.g. the
+    compaction summarize call), so the mock answers each in the shape it expects."""
+    if stream:
+        return StreamingResponse(
+            _stream_turn(model, turn, include_usage), media_type="text/event-stream"
+        )
+    return JSONResponse(_completion_body(model, turn))
+
+
+def _context_overflow_response(
+    app: FastAPI, model: str, *, stream: bool, include_usage: bool
+) -> Response:
+    """Build history with a few read turns, then reject the prompt as too long
+    (400 context_length_exceeded), then — after Gantry force-compacts and retries —
+    return a clean success. The compaction's summarize call is non-streaming, so
+    honor the ``stream`` flag."""
+    count = _bump(app, CONTEXT_OVERFLOW_MODEL)
+    if count <= CONTEXT_OVERFLOW_READS:
+        turn = Turn(tool_calls=(ToolCall("list_dir", {"path": "."}),))
+        return _turn_response(model, turn, stream=stream, include_usage=include_usage)
+    if count == CONTEXT_OVERFLOW_READS + 1:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "error": {
+                    "message": "This model's maximum context length is 8192 tokens, "
+                    "however your messages resulted in more",
+                    "type": "invalid_request_error",
+                    "code": "context_length_exceeded",
+                }
+            },
+        )
+    return _turn_response(model, _RECOVERED, stream=stream, include_usage=include_usage)
 
 
 def create_app() -> FastAPI:
@@ -211,6 +307,14 @@ def create_app() -> FastAPI:
         stream = bool(body.get("stream"))
 
         key = _strip_route_prefix(model)
+        if key == MALFORMED_TOOL_MODEL:
+            return StreamingResponse(
+                _truncated_tool_call_stream(model), media_type="text/event-stream"
+            )
+        if key == CONTEXT_OVERFLOW_MODEL:
+            return _context_overflow_response(
+                request.app, model, stream=stream, include_usage=include_usage
+            )
         if key in TRANSPORT_CHAOS_MODELS:
             return _transport_chaos(
                 request.app, key, model, stream=stream, include_usage=include_usage

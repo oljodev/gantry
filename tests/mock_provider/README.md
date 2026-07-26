@@ -54,6 +54,19 @@ Model strings map to scenarios; LiteLLM routes an OpenAI-compatible base with th
 malformed bodies), handled in `app.py` with a per-app request counter (see
 `GET /counters`); the rest are token scenarios in `scenarios.py`.
 
+### Phase 3 — real-world edge cases
+
+| Model | Behavior | What it verifies |
+|---|---|---|
+| `mock/context-window-overflow` | a few reads, then 400 `context_length_exceeded`, then success | Gantry force-compacts the history and retries in the same step (a 400 is otherwise permanent). |
+| `mock/lazy-leader-fast-exit` | leader reads one file, reports success, spawns nothing | The leader delivery gate rejects the premature empty exit. |
+| `mock/partial-tool-json-truncation` | a tool call with cut-off JSON arguments | The parser emits a `MalformedToolCall` diagnostic (no crash); repeats trip the repair breaker. |
+| `mock/worker-timeout-hang` | stops sending bytes after the opening frame | A bounded request timeout fails the call and the queue re-claims the task. |
+
+These four ship with new `src/` safeguards: a per-request LLM timeout
+(`llm_request_timeout_seconds`), a `MalformedToolCall` diagnostic in the loop,
+in-loop context-overflow recovery (compact + retry), and the leader delivery gate.
+
 The registry in `scenarios.py` is a `dict[model -> (step, messages) -> Turn]`; add a
 new token scenario by adding one function and one dict entry.
 
