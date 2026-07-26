@@ -11,9 +11,11 @@ import httpx
 from .mock_provider.app import create_app
 from .mock_provider.scenarios import (
     HAPPY_WRITE_PATH,
+    RATE_LIMIT_FAILURES,
     REPAIR_BODY,
     REPAIR_PATH,
     RUNAWAY_CHUNKS,
+    git_conflict,
 )
 
 Message = dict[str, Any]
@@ -143,6 +145,27 @@ async def test_openai_route_prefix_is_tolerated() -> None:
     # LiteLLM may leave an "openai/" route prefix on the model name.
     calls = _tool_calls(await _stream("openai/mock/repair-loop", _history(0)))
     assert [c["function"]["name"] for c in calls] == ["write_file"]
+
+
+async def test_rate_limit_scenario_returns_429_then_recovers() -> None:
+    transport = httpx.ASGITransport(app=create_app())
+    body = {"model": "mock/rate-limit-429", "messages": _history(0), "stream": False}
+    async with httpx.AsyncClient(transport=transport, base_url="http://mock") as client:
+        for _ in range(RATE_LIMIT_FAILURES):
+            assert (await client.post("/v1/chat/completions", json=body)).status_code == 429
+        recovered = await client.post("/v1/chat/completions", json=body)
+        assert recovered.status_code == 200
+        assert (await client.get("/counters")).json()[
+            "mock/rate-limit-429"
+        ] == RATE_LIMIT_FAILURES + 1
+
+
+def test_git_conflict_scenario_union_merges_both_sides() -> None:
+    conflicted = "File: x.py\n\nA = 1\n<<<<<<< HEAD\nB = 2\n=======\nC = 3\n>>>>>>> other\n"
+    turn = git_conflict(0, [{"role": "user", "content": conflicted}])
+    assert "B = 2" in turn.content and "C = 3" in turn.content
+    assert "<<<<<<<" not in turn.content and ">>>>>>>" not in turn.content
+    assert "File: x.py" not in turn.content  # the resolver prompt prefix is dropped
 
 
 async def test_non_streaming_completion_body_is_well_formed() -> None:
