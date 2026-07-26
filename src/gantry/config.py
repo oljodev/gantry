@@ -87,6 +87,11 @@ class Settings(BaseSettings):
     #: instant limit).
     llm_max_rps: float = 40.0
     llm_rps_burst: int = 80
+    #: Per-request LLM timeout (seconds). Bounds a hung provider — a stream that
+    #: stops sending bytes — so a stalled call raises instead of pinning a worker
+    #: slot forever; the timeout is a retryable error, so the queue re-claims the
+    #: task. Override via GANTRY_LLM_REQUEST_TIMEOUT_SECONDS.
+    llm_request_timeout_seconds: float = 600.0
     #: How often the control plane re-queues tasks whose lease expired.
     reaper_interval_seconds: float = 10.0
     #: Built frontend to serve as the SPA (skipped if index.html is absent).

@@ -166,6 +166,7 @@ def _request_kwargs(
     tools: Sequence[ToolSchema],
     api_key: str | None,
     api_base: str | None,
+    request_timeout: float | None = None,
 ) -> dict[str, Any]:
     """Build the litellm.acompletion kwargs (pure — testable without litellm)."""
     kwargs: dict[str, Any] = {"model": model, "messages": messages}
@@ -179,7 +180,19 @@ def _request_kwargs(
         kwargs["api_key"] = api_key
     if api_base:
         kwargs["api_base"] = api_base
+    if request_timeout is not None:
+        # Bounds a hung provider (a stream that stalls mid-body): litellm raises a
+        # (retryable) timeout instead of blocking the worker slot indefinitely.
+        kwargs["timeout"] = request_timeout
     return kwargs
+
+
+#: Sentinel keys marking a tool call whose arguments could not be parsed into a
+#: JSON object (e.g. a stream that truncated the arguments mid-string). Kept as an
+#: inspectable payload rather than raised, so the loop can turn it into a
+#: structured diagnostic instead of crashing.
+MALFORMED_JSON_KEY = "__malformed_json__"
+NON_OBJECT_ARGS_KEY = "__non_object_arguments__"
 
 
 def parse_tool_arguments(raw: str | None) -> dict[str, Any]:
@@ -193,10 +206,20 @@ def parse_tool_arguments(raw: str | None) -> dict[str, Any]:
     try:
         parsed = json.loads(raw)
     except ValueError:
-        return {"__malformed_json__": raw}
+        return {MALFORMED_JSON_KEY: raw}
     if not isinstance(parsed, dict):
-        return {"__non_object_arguments__": parsed}
+        return {NON_OBJECT_ARGS_KEY: parsed}
     return parsed
+
+
+def malformed_arguments(arguments: dict[str, Any]) -> str | None:
+    """If ``arguments`` is a parse sentinel (not real tool arguments), return the
+    unparseable raw payload as text; otherwise None."""
+    if MALFORMED_JSON_KEY in arguments:
+        return str(arguments[MALFORMED_JSON_KEY])
+    if NON_OBJECT_ARGS_KEY in arguments:
+        return repr(arguments[NON_OBJECT_ARGS_KEY])
+    return None
 
 
 class LiteLLMClient:
@@ -216,12 +239,15 @@ class LiteLLMClient:
         *,
         prompt_caching: bool = True,
         limiter: AsyncRateLimiter | None = None,
+        request_timeout: float | None = None,
     ) -> None:
         self._api_key = api_key
         self._api_base = api_base
         self._prompt_caching = prompt_caching
         #: Shared, process-wide outbound pacer (None = unthrottled, e.g. tests).
         self._limiter = limiter
+        #: Per-request timeout passed to litellm (None = litellm's default).
+        self._request_timeout = request_timeout
 
     async def complete(
         self,
@@ -240,7 +266,9 @@ class LiteLLMClient:
             await self._limiter.acquire()
 
         payload = with_cache_control(messages, model) if self._prompt_caching else messages
-        kwargs = _request_kwargs(model, payload, tools, self._api_key, self._api_base)
+        kwargs = _request_kwargs(
+            model, payload, tools, self._api_key, self._api_base, self._request_timeout
+        )
 
         if on_delta is None:
             raw: Any = await litellm.acompletion(**kwargs)

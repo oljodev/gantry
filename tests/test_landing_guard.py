@@ -34,9 +34,14 @@ def _leader_payload() -> dict[str, object]:
 
 
 def _integration_tools() -> ToolRegistry:
-    # Stand-ins: the guard only counts calls by name, not their effects.
+    # Stand-ins: the guard only counts calls by name, not their effects. spawn is
+    # included so a leader that delegates satisfies the leader delivery gate.
     return ToolRegistry(
-        [RecordingTool(name="merge_child_branches"), RecordingTool(name="land_branch")]
+        [
+            RecordingTool(name="merge_child_branches"),
+            RecordingTool(name="land_branch"),
+            RecordingTool(name="spawn_subtask"),
+        ]
     )
 
 
@@ -79,7 +84,7 @@ async def test_land_reminders_are_bounded(db: Sessions) -> None:
 
 async def test_no_reminder_when_nothing_was_integrated(db: Sessions) -> None:
     task = await enqueue_agent_task(db, _leader_payload())
-    # A leader that never merged (e.g. delegated nothing) may finish freely.
+    # A leader that delegated but never merged may finish freely — no land reminder.
     outcome = await run_agent_task(db, task, _JustFinishLLM(), _integration_tools())
 
     assert outcome.final_text == "nothing to integrate"
@@ -141,6 +146,9 @@ class _MergeThenAlwaysFinishLLM:
 
 
 class _JustFinishLLM:
+    """Delegates one worker, integrates nothing, then finishes — so the landing
+    guard has nothing to remind about and the leader delivery gate is satisfied."""
+
     async def complete(
         self,
         *,
@@ -149,4 +157,12 @@ class _JustFinishLLM:
         tools: Sequence[ToolSchema] = (),
         on_delta: DeltaSink | None = None,
     ) -> LLMResponse:
+        spawned = any(
+            tc["function"]["name"] == "spawn_subtask"
+            for m in messages
+            if m.get("role") == "assistant"
+            for tc in (m.get("tool_calls") or [])
+        )
+        if not spawned:
+            return _call("spawn_subtask")
         return final_response("nothing to integrate")

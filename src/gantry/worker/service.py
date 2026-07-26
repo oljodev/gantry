@@ -92,6 +92,8 @@ class WorkerConfig:
     #: Add Anthropic prompt-cache breakpoints to each LLM request (the loop's
     #: append-only history makes the prefix stable, so this is near-free).
     prompt_caching: bool = True
+    #: Per-request LLM timeout (seconds) — bounds a hung provider stream.
+    llm_request_timeout_seconds: float = 600.0
     #: How many agent tasks this process runs at once on the shared event loop.
     #: Default 1 keeps a single-slot worker (the natural unit for tests).
     concurrency: int = 1
@@ -122,6 +124,7 @@ class WorkerConfig:
             run_task_ceiling=settings.run_task_ceiling,
             skills_root=settings.skills_root,
             prompt_caching=settings.prompt_caching,
+            llm_request_timeout_seconds=settings.llm_request_timeout_seconds,
             concurrency=settings.worker_concurrency,
             default_model=settings.default_model,
             conflict_resolver_model=settings.conflict_resolver_model,
@@ -205,7 +208,11 @@ class Worker:
 
         self._llm_factory: LLMFactory = llm_factory or (
             lambda key, base: LiteLLMClient(
-                key, base, prompt_caching=config.prompt_caching, limiter=_limiter_for(base)
+                key,
+                base,
+                prompt_caching=config.prompt_caching,
+                limiter=_limiter_for(base),
+                request_timeout=config.llm_request_timeout_seconds,
             )
         )
         self.processed = 0

@@ -44,6 +44,7 @@ from gantry.runtime.llm import (
     LLMUsage,
     Message,
     ToolCallRequest,
+    malformed_arguments,
 )
 from gantry.runtime.pricing import cost_usd
 from gantry.runtime.state import (
@@ -299,12 +300,11 @@ async def run_agent_task(
         # Send the PROJECTED history: resolved write/edit bodies elided so a
         # write-heavy worker doesn't recirculate multi-MB args every step (the
         # bloat + per-step-compaction/cache-thrash linchpin). Pure projection —
-        # tracked/events keep full args for recover()/replay.
-        response = await llm.complete(
-            model=model,
-            messages=state.projected_messages(),
-            tools=tools.schemas(),
-            on_delta=on_delta,
+        # tracked/events keep full args for recover()/replay. If the provider
+        # rejects the prompt as too long, recover by force-compacting and retrying
+        # rather than failing the task (a context-overflow is a permanent 400).
+        response = await _complete_with_context_recovery(
+            sessions, task, state, llm, model, tools, compaction, on_delta
         )
         await flush_reasoning()
         seq = await _checkpoint(sessions, task, EventType.LLM_RESPONSE, _response_payload(response))
@@ -333,6 +333,7 @@ async def run_agent_task(
             if reminder is not None:
                 state.tracked.append(reminder)
                 continue
+            _check_leader_delivery(task, state, is_leader=is_leader)
             return _outcome(state, model, response.content or "")
 
         await _settle_tool_calls(
@@ -610,6 +611,29 @@ async def _record_diagnostics(
 
 
 async def _execute_tool(tools: ToolRegistry, tc: ToolCallRequest, ctx: ToolContext) -> ToolResult:
+    malformed = malformed_arguments(tc.arguments)
+    if malformed is not None:
+        # The model emitted a tool call whose JSON arguments didn't parse (e.g. a
+        # stream that truncated them). Report it as a structured diagnostic — same
+        # fingerprint each time the same call recurs, so a model stuck emitting the
+        # same broken call is stalled/escalated — instead of handing garbage to the
+        # tool or letting a KeyError crash the loop.
+        diagnostic = diagnostics.Diagnostic(
+            file=tc.name,
+            line=None,
+            column=None,
+            message="tool call arguments were not valid JSON — re-emit the call with "
+            "complete, well-formed JSON arguments",
+            severity=diagnostics.Severity.ERROR,
+            code="MalformedToolCall",
+            source="tool-validation",
+        )
+        return ToolResult(
+            f"Malformed tool call to {tc.name}: arguments were not valid JSON "
+            f"({malformed[:200]}). Re-issue the call with complete JSON arguments.",
+            is_error=True,
+            diagnostics=(diagnostic,),
+        )
     tool = tools.get(tc.name)
     if tool is None:
         # A hallucinated tool is structured like any other failure so it feeds the
@@ -640,6 +664,28 @@ async def _execute_tool(tools: ToolRegistry, tc: ToolCallRequest, ctx: ToolConte
     except Exception as exc:
         logger.warning("agent.tool_failed", tool=tc.name, error=repr(exc))
         return ToolResult(f"Tool '{tc.name}' failed: {exc!r}", is_error=True)
+
+
+def _check_leader_delivery(task: Task, state: AgentState, *, is_leader: bool) -> None:
+    """Reject an autonomous leader's premature exit (the "lazy leader fast-exit").
+
+    An autonomous leader has NO write tools — its only way to produce anything is
+    to delegate. If it reaches a final answer having spawned zero workers and
+    integrated nothing (no merge, no land), it delivered nothing at all: fail it so
+    the run gets a clear signal instead of a silent success over an empty result.
+    A leader that spawned anything is exempt — it did its job, even if it is now
+    reporting the children's failure. Pure function of durable state, so a resume
+    decides identically.
+    """
+    if not is_leader:
+        return
+    if state.count_tool_calls(*SPAWN_TOOL_NAMES, "merge_child_branches", "land_branch") == 0:
+        logger.warning("agent.leader_empty_exit", task_id=str(task.id))
+        raise AgentLoopError(
+            "autonomous leader tried to finish without delegating any work: it "
+            "spawned no workers and integrated nothing. A leader must split the goal "
+            "into micro-tasks and spawn workers; finishing empty delivers nothing."
+        )
 
 
 def _check_passive_read_loop(
@@ -867,6 +913,80 @@ async def _apply_compaction(
         summarized=result.summarized_messages,
         kept=len(result.kept_seqs),
     )
+
+
+#: How many times one step may recover from a provider context-overflow by
+#: force-compacting and retrying before it gives up and surfaces the error.
+_MAX_CONTEXT_RECOVERIES = 2
+
+
+def _is_context_overflow(exc: Exception) -> bool:
+    """Whether ``exc`` is a provider "prompt too long" rejection. LiteLLM
+    normalizes these to ``ContextWindowExceededError``; the message/status check is
+    a defensive fallback for providers it doesn't map."""
+    if type(exc).__name__ == "ContextWindowExceededError":
+        return True
+    if getattr(exc, "status_code", None) == 400:
+        msg = str(exc).lower()
+        return "context" in msg and ("length" in msg or "window" in msg or "token" in msg)
+    return False
+
+
+async def _force_compact_once(
+    sessions: Sessions,
+    task: Task,
+    state: AgentState,
+    llm: LLMClient,
+    model: str,
+    config: CompactionConfig,
+) -> bool:
+    """Force one compaction regardless of the token estimate. Returns whether it
+    actually shrank the history (False when there is nothing left to compact)."""
+    projected = state.projected_messages()
+    plan = plan_compaction(state.tracked, config, projected, force=True)
+    if plan is None:
+        return False
+    before = len(state.tracked)
+    await _apply_compaction(sessions, task, state, llm, model, plan, projected)
+    return len(state.tracked) < before
+
+
+async def _complete_with_context_recovery(
+    sessions: Sessions,
+    task: Task,
+    state: AgentState,
+    llm: LLMClient,
+    model: str,
+    tools: ToolRegistry,
+    compaction: CompactionConfig | None,
+    on_delta: DeltaSink,
+) -> LLMResponse:
+    """Call the model, recovering from a context-overflow rejection by
+    force-compacting the history and retrying (bounded). Any other error, or an
+    overflow we can no longer shrink, propagates to the worker's retry path."""
+    for attempt in range(_MAX_CONTEXT_RECOVERIES + 1):
+        try:
+            return await llm.complete(
+                model=model,
+                messages=state.projected_messages(),
+                tools=tools.schemas(),
+                on_delta=on_delta,
+            )
+        except Exception as exc:
+            recoverable = (
+                attempt < _MAX_CONTEXT_RECOVERIES
+                and compaction is not None
+                and _is_context_overflow(exc)
+            )
+            if not recoverable:
+                raise
+            assert compaction is not None  # narrowed by `recoverable`
+            logger.warning(
+                "agent.context_overflow_recovery", task_id=str(task.id), attempt=attempt + 1
+            )
+            if not await _force_compact_once(sessions, task, state, llm, model, compaction):
+                raise  # nothing left to shrink — surface the original rejection
+    raise AssertionError("unreachable")  # pragma: no cover
 
 
 async def _maybe_compact(
