@@ -12,6 +12,7 @@ import {
   type ReactNode,
 } from 'react'
 import {
+  getProject,
   getStats,
   listApprovals,
   listQuestions,
@@ -28,6 +29,8 @@ interface AppDataValue {
   stats: Stats | null
   approvals: ApprovalItem[]
   questions: QuestionItem[]
+  /** No-HITL (auto-approve) mode for this project — gates the approval badge. */
+  noHitl: boolean
   connection: ConnectionState
   /** null = unknown yet, true/false = last API probe reached the backend. */
   online: boolean | null
@@ -43,6 +46,7 @@ const AppDataContext = createContext<AppDataValue>({
   stats: null,
   approvals: [],
   questions: [],
+  noHitl: false,
   connection: 'connecting',
   online: null,
   version: 0,
@@ -65,6 +69,7 @@ export function AppDataProvider({
   const [stats, setStats] = useState<Stats | null>(null)
   const [approvals, setApprovals] = useState<ApprovalItem[]>([])
   const [questions, setQuestions] = useState<QuestionItem[]>([])
+  const [noHitl, setNoHitl] = useState(false)
   const [connection, setConnection] = useState<ConnectionState>('connecting')
   const [online, setOnline] = useState<boolean | null>(null)
   const [version, setVersion] = useState(0)
@@ -83,6 +88,7 @@ export function AppDataProvider({
       })
     listApprovals(scope).then(setApprovals).catch(console.error)
     listQuestions(scope).then(setQuestions).catch(console.error)
+    if (scope) getProject(scope).then((p) => setNoHitl(p.auto_approve)).catch(console.error)
     setVersion((v) => v + 1)
   }, [scope])
 
@@ -110,7 +116,18 @@ export function AppDataProvider({
 
   return (
     <AppDataContext.Provider
-      value={{ projectId, feed, stats, approvals, questions, connection, online, version, refetch }}
+      value={{
+        projectId,
+        feed,
+        stats,
+        approvals,
+        questions,
+        noHitl,
+        connection,
+        online,
+        version,
+        refetch,
+      }}
     >
       {children}
     </AppDataContext.Provider>

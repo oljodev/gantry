@@ -16,6 +16,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../auth/AuthProvider'
 import { useAppData } from '../state/AppDataProvider'
+import { approvalBadgeCount } from '../lib/hitl'
 import { useTheme } from '../lib/theme'
 import { projectPath, useProjectId } from '../lib/project'
 import type { ConnectionState } from '../api/stream'
@@ -36,12 +37,14 @@ const CONNECTION_TONE: Record<ConnectionState, [string, string]> = {
 }
 
 export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { connection, approvals, questions } = useAppData()
+  const { connection, approvals, noHitl } = useAppData()
   const { authEnabled, me, signOut } = useAuth()
   const { theme, toggle } = useTheme()
   const projectId = useProjectId()
   const [connLabel, connDot] = CONNECTION_TONE[connection]
-  const pendingHitl = approvals.length + questions.length
+  // A call-to-action badge: only when a human actually needs to approve
+  // something (No-HITL off AND a task is parked waiting) — never a lingering count.
+  const pendingHitl = approvalBadgeCount(approvals.length, noHitl)
 
   const main: NavItem[] = [
     { to: projectPath(projectId), icon: LayoutDashboard, label: 'Dashboard', end: true },

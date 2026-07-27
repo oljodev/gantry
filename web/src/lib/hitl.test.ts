@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isAutoAccepted, resolvedByLabel } from './hitl'
+import { approvalBadgeCount, isAutoAccepted, resolvedByLabel } from './hitl'
 import type { ApprovalHistoryItem } from '../api/types'
 
 const item = (resolvedBy: string): ApprovalHistoryItem => ({
@@ -26,5 +26,16 @@ describe('isAutoAccepted', () => {
   it('flags No-HITL auto-approvals and not human ones', () => {
     expect(isAutoAccepted(item('auto-accept'))).toBe(true)
     expect(isAutoAccepted(item('someone@example.com'))).toBe(false)
+  })
+})
+
+describe('approvalBadgeCount', () => {
+  it('shows the count only when No-HITL is OFF and something is waiting', () => {
+    expect(approvalBadgeCount(2, false)).toBe(2)
+    expect(approvalBadgeCount(0, false)).toBe(0)
+  })
+  it('stays hidden in No-HITL mode even if something is parked', () => {
+    // No lingering count: auto-accept resolves it, so there is nothing to action.
+    expect(approvalBadgeCount(3, true)).toBe(0)
   })
 })
