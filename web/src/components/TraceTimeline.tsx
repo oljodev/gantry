@@ -86,6 +86,7 @@ const MARKER_TONES: Record<string, string> = {
   task_cancelled: 'text-zinc-500',
   task_parked: 'text-indigo-300',
   task_resumed: 'text-sky-300',
+  children_failed_early: 'text-amber-400',
   approval_requested: 'text-purple-300',
   ask_user_question: 'text-sky-300',
   ask_user_answered: 'text-emerald-400',
@@ -102,6 +103,10 @@ function markerDetail(event: TaskEvent): string {
   }
   if (event.event_type === 'ask_user_question') {
     return String(p.question)
+  }
+  if (event.event_type === 'children_failed_early') {
+    const failed = Array.isArray(p.failed) ? p.failed.length : 0
+    return `woke early — ${failed} child task${failed === 1 ? '' : 's'} failed`
   }
   if (event.event_type === 'ask_user_answered') {
     return `answered "${String(p.answer)}"`

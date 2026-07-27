@@ -95,6 +95,10 @@ function lineFor(event: TaskEvent): Omit<LogLine, 'label'> | null {
       return { ...base, action: 'cancelled', tone: 'error' }
     case 'task_parked':
       return { ...base, action: 'sleeping until children finish', tone: 'muted' }
+    case 'children_failed_early': {
+      const failed = Array.isArray(event.payload.failed) ? event.payload.failed.length : 0
+      return { ...base, action: `woke early — ${failed} child task(s) failed`, tone: 'error' }
+    }
     case 'approval_requested':
       return { ...base, action: `awaiting approval: ${String(event.payload.tool ?? '')}`, tone: 'active' }
     case 'tool_call':

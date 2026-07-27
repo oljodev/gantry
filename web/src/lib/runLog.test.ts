@@ -48,6 +48,15 @@ describe('runLog', () => {
     expect(lines[2]).toMatchObject({ action: 'failed', tone: 'error' })
   })
 
+  it('surfaces an early child-failure wake', () => {
+    const feed = [
+      ev({ event_type: 'children_failed_early', task_id: 'root', payload: { failed: ['x', 'y'] } }),
+    ]
+    const lines = runLog(feed, labels, 'root')
+    expect(lines[0]).toMatchObject({ label: 'Leader', tone: 'error' })
+    expect(lines[0].action).toContain('2 child task(s) failed')
+  })
+
   it('scopes to the run and skips noisy events', () => {
     const feed = [
       ev({ event_type: 'tool_call', task_id: 'w1', payload: { name: 'read_file', arguments: { path: 'a.py' } } }),
