@@ -13,6 +13,7 @@ import { TraceTimeline } from '../components/TraceTimeline'
 import { Markdown } from '../components/Markdown'
 import { compactNumber, shortId } from '../lib/format'
 import { runCacheSavingsUsd } from '../lib/pricing'
+import { useResizableWidth } from '../lib/resize'
 import { runTokens } from '../lib/usage'
 import { runTreeSignal } from '../lib/runTree'
 import { finalText, foldTrace, pendingApprovals, pendingQuestions } from '../lib/trace'
@@ -20,7 +21,9 @@ import { useAppData } from '../state/AppDataProvider'
 
 type RightTab = 'terminal' | 'diff'
 type TopView = 'overview' | 'details'
-type LeftTab = 'tree' | 'log'
+type CenterTab = 'trace' | 'log'
+
+const LEFT_WIDTH_KEY = 'gantry.run.leftWidth'
 
 const RIGHT_WIDTH_KEY = 'gantry.run.rightWidth'
 
@@ -32,6 +35,7 @@ export function TaskPage() {
   const [tree, setTree] = useState<Task[]>([])
   const [follow, setFollow] = useState(true)
   const [stopping, setStopping] = useState(false)
+  const [centerTab, setCenterTab] = useState<CenterTab>('trace')
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -122,36 +126,59 @@ export function TaskPage() {
         onStopAll={() => void stopAll()}
       />
       <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:flex-row">
-        {/* Left rail: the trace tree and a live action log, as sibling tabs. */}
-        <LeftRail tree={tree} rootTaskId={task?.root_task_id ?? null} currentId={taskId} />
+        {/* Trace tree: flush to the sidebar, drag its right edge to resize. */}
+        <TreeRail tree={tree} currentId={taskId} />
 
-        {/* Trace: fills the space between the tree and the terminal. min-w-0 so
-            wide trace content scrolls inside instead of widening the whole row
-            (which would slide the layout under the fixed sidebar). */}
+        {/* Center: Trace and the Live Log as sibling tabs. min-w-0 so wide trace
+            content scrolls inside instead of widening the whole row (which would
+            slide the layout under the fixed sidebar). */}
         <section className="flex min-h-0 min-w-0 flex-1 flex-col">
           <div className="flex shrink-0 items-center gap-1 border-b border-zinc-800 px-2 text-sm">
-            <span className="border-b-2 border-amber-500 px-3 py-1.5 text-amber-300">Trace</span>
+            {(['trace', 'log'] as const).map((name) => (
+              <button
+                key={name}
+                onClick={() => setCenterTab(name)}
+                className={`-mb-px border-b-2 px-3 py-1.5 transition ${
+                  centerTab === name
+                    ? 'border-amber-500 text-amber-300'
+                    : 'border-transparent text-zinc-500 hover:text-zinc-300'
+                }`}
+              >
+                {name === 'log' ? 'Live Log' : 'Trace'}
+              </button>
+            ))}
             <span className="grow" />
-            <button
-              onClick={() => setFollow(!follow)}
-              title="Auto-scroll to new events"
-              className={`-mb-px flex items-center gap-1 px-3 py-1.5 text-xs transition ${
-                follow ? 'text-emerald-400' : 'text-zinc-600 hover:text-zinc-400'
-              }`}
-            >
-              <ChevronDown className="h-3.5 w-3.5" aria-hidden />
-              {follow ? 'following' : 'follow'}
-            </button>
+            {centerTab === 'trace' && (
+              <button
+                onClick={() => setFollow(!follow)}
+                title="Auto-scroll to new events"
+                className={`-mb-px flex items-center gap-1 px-3 py-1.5 text-xs transition ${
+                  follow ? 'text-emerald-400' : 'text-zinc-600 hover:text-zinc-400'
+                }`}
+              >
+                <ChevronDown className="h-3.5 w-3.5" aria-hidden />
+                {follow ? 'following' : 'follow'}
+              </button>
+            )}
           </div>
-          <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-3 py-3">
-            <TraceTimeline
-              steps={steps}
-              taskId={taskId}
-              pendingApprovalIds={pendingApprovalIds}
-              pendingQuestionIds={pendingQuestionIds}
-            />
-            <div ref={bottomRef} />
-          </div>
+          {centerTab === 'trace' ? (
+            <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-3 py-3">
+              <TraceTimeline
+                steps={steps}
+                taskId={taskId}
+                terminalStatus={
+                  task && TERMINAL_STATUSES.includes(task.status) ? task.status : null
+                }
+                pendingApprovalIds={pendingApprovalIds}
+                pendingQuestionIds={pendingQuestionIds}
+              />
+              <div ref={bottomRef} />
+            </div>
+          ) : (
+            <div className="min-h-0 flex-1 overflow-hidden">
+              <RunLogStream tree={tree} rootTaskId={task?.root_task_id ?? null} />
+            </div>
+          )}
         </section>
 
         {/* Terminal / Diff: flush to the right, full height, drag to resize. */}
@@ -161,47 +188,37 @@ export function TaskPage() {
   )
 }
 
-// The left rail: the trace tree and a Live Log Stream as sibling tabs. The tree
-// shows the run's shape; the log is a lightweight, real-time feed of what each
-// sub-agent is doing, both projected from the same live data.
-function LeftRail({
-  tree,
-  rootTaskId,
-  currentId,
-}: {
-  tree: Task[]
-  rootTaskId: string | null
-  currentId: string
-}) {
-  const [tab, setTab] = useState<LeftTab>('tree')
+// The left rail: the trace tree. On desktop it's a fixed-width panel you can
+// drag wider by its right edge (the same resize behavior as the Terminal/Diff
+// pane on the right); it stacks with a capped height on narrow screens.
+function TreeRail({ tree, currentId }: { tree: Task[]; currentId: string }) {
+  const { width, onHandleDown } = useResizableWidth(LEFT_WIDTH_KEY, 'right', {
+    min: 180,
+    max: 480,
+    initial: 240,
+  })
   return (
-    <aside className="flex max-h-52 shrink-0 flex-col overflow-hidden border-b border-zinc-800 bg-zinc-900/20 lg:max-h-none lg:w-60 lg:border-r lg:border-b-0">
-      <div className="flex shrink-0 items-center gap-1 border-b border-zinc-800 px-2 text-sm">
-        {(['tree', 'log'] as const).map((name) => (
-          <button
-            key={name}
-            onClick={() => setTab(name)}
-            className={`-mb-px border-b-2 px-2.5 py-1.5 text-xs capitalize transition ${
-              tab === name
-                ? 'border-amber-500 text-amber-300'
-                : 'border-transparent text-zinc-500 hover:text-zinc-300'
-            }`}
-          >
-            {name === 'log' ? 'Live log' : 'Tree'}
-          </button>
-        ))}
-      </div>
+    <aside
+      className="relative flex max-h-52 shrink-0 flex-col overflow-hidden border-b border-zinc-800 bg-zinc-900/20 lg:max-h-none lg:w-[var(--lw)] lg:max-w-[40vw] lg:border-r lg:border-b-0"
+      style={{ ['--lw' as string]: `${width}px` }}
+    >
+      <h2 className="shrink-0 border-b border-zinc-800 px-3 py-2 text-xs font-semibold text-zinc-500">
+        TRACE TREE
+      </h2>
       <div className="min-h-0 flex-1 overflow-y-auto p-2">
-        {tab === 'tree' ? (
-          tree.length > 0 ? (
-            <TaskTree tree={tree} currentId={currentId} />
-          ) : (
-            <p className="px-1.5 pb-2 text-xs text-zinc-600">loading…</p>
-          )
+        {tree.length > 0 ? (
+          <TaskTree tree={tree} currentId={currentId} />
         ) : (
-          <RunLogStream tree={tree} rootTaskId={rootTaskId} />
+          <p className="px-1.5 pb-2 text-xs text-zinc-600">loading…</p>
         )}
       </div>
+      <div
+        onMouseDown={onHandleDown}
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize tree panel"
+        className="absolute top-0 -right-1 hidden h-full w-2 cursor-col-resize bg-transparent transition hover:bg-amber-600/40 lg:block"
+      />
     </aside>
   )
 }
@@ -219,32 +236,11 @@ function RightPane({
   diffCount: number
 }) {
   const [tab, setTab] = useState<RightTab>('terminal')
-  const [width, setWidth] = useState(() => {
-    const saved = Number(localStorage.getItem(RIGHT_WIDTH_KEY))
-    return saved >= 280 && saved <= 820 ? saved : 380
+  const { width, onHandleDown } = useResizableWidth(RIGHT_WIDTH_KEY, 'left', {
+    min: 280,
+    max: 820,
+    initial: 380,
   })
-  const drag = useRef<{ startX: number; startW: number } | null>(null)
-
-  useEffect(() => {
-    const move = (e: MouseEvent) => {
-      if (!drag.current) return
-      const next = drag.current.startW + (drag.current.startX - e.clientX)
-      setWidth(Math.max(280, Math.min(820, Math.round(next))))
-    }
-    const up = () => {
-      if (drag.current) {
-        drag.current = null
-        document.body.style.userSelect = ''
-        localStorage.setItem(RIGHT_WIDTH_KEY, String(width))
-      }
-    }
-    window.addEventListener('mousemove', move)
-    window.addEventListener('mouseup', up)
-    return () => {
-      window.removeEventListener('mousemove', move)
-      window.removeEventListener('mouseup', up)
-    }
-  }, [width])
 
   return (
     <div
@@ -252,10 +248,7 @@ function RightPane({
       style={{ ['--rw' as string]: `${width}px` }}
     >
       <div
-        onMouseDown={(e) => {
-          drag.current = { startX: e.clientX, startW: width }
-          document.body.style.userSelect = 'none'
-        }}
+        onMouseDown={onHandleDown}
         role="separator"
         aria-orientation="vertical"
         aria-label="Resize terminal panel"
