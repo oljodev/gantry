@@ -894,6 +894,78 @@ async def cancel(session: AsyncSession, *, task_id: uuid.UUID) -> CancelResult |
     return CancelResult(task=requested, requested=True)
 
 
+async def _subtree_ids(session: AsyncSession, root_id: uuid.UUID) -> list[uuid.UUID]:
+    """Every task id in the subtree rooted at ``root_id`` (inclusive), via a
+    recursive walk down ``parent_task_id``. Targeting a run's root returns the
+    whole run; targeting a mid-tree leader returns just its subtree."""
+    subtree = sa.select(Task.id).where(Task.id == root_id).cte("subtree", recursive=True)
+    subtree = subtree.union_all(sa.select(Task.id).where(Task.parent_task_id == subtree.c.id))
+    return list((await session.scalars(sa.select(subtree.c.id))).all())
+
+
+async def cancel_tree(session: AsyncSession, *, task_id: uuid.UUID) -> list[uuid.UUID]:
+    """Cancel a task and its whole subtree, so stopping a leader stops its workers.
+
+    One transaction over every non-terminal task in the subtree: leased
+    (CLAIMED/RUNNING) tasks get ``cancel_requested`` + a cancel NOTIFY so their
+    owning worker hard-cancels the slot mid-step (killing the LLM stream); every
+    other non-terminal task (PENDING or parked) flips straight to CANCELLED. A
+    cancelled leader can no longer spawn, so the subtree cannot grow after this —
+    no zombies, no race with in-flight spawns. Idempotent: already-terminal rows
+    are skipped, so re-running cancels nothing new. Returns the affected ids.
+    """
+    ids = await _subtree_ids(session, task_id)
+    if not ids:
+        return []
+    id_set = set(ids)
+    affected: list[uuid.UUID] = []
+
+    # Parked/pending rows: no worker owns the loop, so flip straight to terminal.
+    flipped = (
+        await session.execute(
+            sa.update(Task)
+            .where(
+                Task.id.in_(ids),
+                Task.status.notin_(TERMINAL_STATUSES),
+                Task.status.notin_(LEASED_STATUSES),
+            )
+            .values(
+                status=TaskStatus.CANCELLED,
+                claimed_by=None,
+                lease_expires_at=None,
+                updated_at=sa.func.now(),
+            )
+            .returning(Task.id, Task.parent_task_id)
+        )
+    ).all()
+    for tid, parent in flipped:
+        await append_event(session, tid, EventType.TASK_CANCELLED, {})
+        affected.append(tid)
+        # Only a parent OUTSIDE the cancelled subtree can need waking; parents
+        # within it are themselves being cancelled in this same batch.
+        if parent is not None and parent not in id_set:
+            await _try_wake_parent(session, parent)
+
+    # Leased rows: a lease-holding worker owns the loop; request cooperative
+    # cancellation and wake it now to interrupt the in-flight step immediately.
+    leased = (
+        (
+            await session.execute(
+                sa.update(Task)
+                .where(Task.id.in_(ids), Task.status.in_(LEASED_STATUSES))
+                .values(cancel_requested=True, updated_at=sa.func.now())
+                .returning(Task.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for tid in leased:
+        await notify_task_cancel(session, tid)
+        affected.append(tid)
+    return affected
+
+
 async def mark_cancelled(
     session: AsyncSession,
     *,

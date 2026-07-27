@@ -600,7 +600,15 @@ class Worker:
             await self._fail(task, repr(exc), retryable=retryable)
         finally:
             heartbeater.cancel()
-            if workspace is not None and (succeeded or not cfg.keep_failed_workspaces):
+            # A deliberate hard-cancel (slot.cancel -> CancelledError) leaves
+            # succeeded=False, but a cancel is an "undo", not a failure to debug:
+            # always discard its throwaway workspace so the dirty/uncommitted git
+            # state is rolled back cleanly (nothing was pushed, so destroy is the
+            # rollback). keep_failed_workspaces only preserves genuine failures.
+            hard_cancelled = task.id in self._stopping
+            if workspace is not None and (
+                succeeded or hard_cancelled or not cfg.keep_failed_workspaces
+            ):
                 await ws.destroy(workspace.root)
             self.processed += 1
 
