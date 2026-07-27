@@ -33,7 +33,7 @@ from gantry.skills.store import load_registry
 from gantry.vault import Vault
 from gantry.vault.store import GITHUB_TOKEN_SECRET, get_secret, provider_secret_name
 from gantry.worker import workspace as ws
-from gantry.worker.git import CloneError, GitError, ensure_pushed
+from gantry.worker.git import CloneError, GitError, current_branch, ensure_pushed
 from gantry.worker.merge import default_branch, promote_branch
 from gantry.worker.policy import policy_for_payload
 from gantry.worker.tools import build_coding_registry, build_copilot_registry
@@ -488,8 +488,9 @@ class Worker:
             # origin — the swarm's only rendezvous. A child that finished with work
             # committed locally but never pushed would otherwise look succeeded yet
             # deliver nothing to the leader's merge.
-            if workspace is not None:
-                await self._deliver_branch(task, workspace)
+            delivered_branch = (
+                await self._deliver_branch(task, workspace) if workspace is not None else None
+            )
             async with session_scope(self._sessions) as session:
                 succeeded = await queue.complete(
                     session,
@@ -500,7 +501,7 @@ class Worker:
                         "final_text": outcome.final_text,
                         "steps": outcome.steps,
                         "resumed": outcome.resumed,
-                        "branch": workspace.branch if workspace else None,
+                        "branch": delivered_branch,
                         "prompt_tokens": outcome.prompt_tokens,
                         "completion_tokens": outcome.completion_tokens,
                         "cache_read_tokens": outcome.cache_read_tokens,
@@ -645,9 +646,9 @@ class Worker:
             and not is_leader
         )
 
-    async def _deliver_branch(self, task: Task, workspace: ws.Workspace) -> None:
+    async def _deliver_branch(self, task: Task, workspace: ws.Workspace) -> str | None:
         """Ensure a repo-backed task's branch and its commits reach origin before it
-        is marked succeeded.
+        is marked succeeded, and return the branch it actually delivered.
 
         The swarm's ONLY rendezvous is origin: a leader integrates its children by
         fetching their pushed branches — it cannot read a child's isolated,
@@ -658,13 +659,24 @@ class Worker:
         HEAD, so "succeeded" implies "delivered". Best-effort and never fatal: if
         the push is rejected the leader's merge tool reports the missing branch as a
         structured diagnostic rather than assuming success.
+
+        The delivered branch is the checkout's CURRENT branch (HEAD), not the task's
+        original branch: a hands-on worker stays on its task branch, but a SUB-LEADER
+        that integrated its own children ends on the pushed staging branch — and that
+        staging branch (not its empty task branch) is what its parent must merge. So
+        the branch a task reports is always the branch it pushed, which is what makes
+        nested delegation (leader -> sub-leader -> worker) compose.
         """
         if workspace.branch is None:
-            return
+            return None
         try:
             await ensure_pushed(workspace.path, workspace.auth)
         except GitError as exc:
             logger.warning("worker.deliver_failed", task_id=str(task.id), error=repr(exc))
+        try:
+            return await current_branch(workspace.path)
+        except GitError:  # detached HEAD or other odd state — fall back to the task branch
+            return workspace.branch
 
     async def _land_task_on_main(self, task: Task, workspace: ws.Workspace) -> None:
         """Land a finished top-level task's branch on the repo's main branch.
