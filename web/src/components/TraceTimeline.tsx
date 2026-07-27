@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { TaskEvent } from '../api/types'
+import type { TaskEvent, TaskStatus } from '../api/types'
 import type { LlmStep, MarkerStep, ToolStep, TraceStep } from '../lib/trace'
 import { Brain, Layers } from 'lucide-react'
 import { clockTime, compactJson, duration } from '../lib/format'
 import { flavorForPath, highlightText, type TokenKind } from '../lib/highlight'
+import { isStepActive } from '../lib/stepStatus'
 import { ApprovalCard } from './ApprovalCard'
 import { QuestionCard } from './QuestionCard'
 import { DiffViewer } from './DiffViewer'
@@ -12,20 +13,29 @@ import { Markdown } from './Markdown'
 export function TraceTimeline({
   steps,
   taskId,
+  terminalStatus = null,
   pendingApprovalIds,
   pendingQuestionIds,
 }: {
   steps: TraceStep[]
   taskId?: string
+  /** The task's status once terminal (else null); lets an interrupted step show
+   *  its true outcome instead of a stuck "working…". */
+  terminalStatus?: TaskStatus | null
   pendingApprovalIds?: ReadonlySet<string>
   pendingQuestionIds?: ReadonlySet<string>
 }) {
   if (steps.length === 0) {
     return <p className="py-8 text-center text-sm text-zinc-600">Waiting for events…</p>
   }
+  const live = terminalStatus === null
   return (
     <ol className="flex flex-col gap-2">
       {steps.map((step, i) => {
+        // Only the last step, on a live task, is genuinely in progress — an
+        // earlier one is done the moment the agent moves on, so it never keeps
+        // blinking "working…".
+        const active = isStepActive(step, i === steps.length - 1, live)
         // A still-pending approval or question renders its full actionable card
         // right where the agent parked — resolve inline, no trip to another page.
         const toolCallId = step.kind === 'lifecycle' ? String(step.event.payload.tool_call_id) : ''
@@ -49,8 +59,8 @@ export function TraceTimeline({
               <>
                 {step.kind === 'lifecycle' && <Marker step={step} />}
                 {step.kind === 'compaction' && <Compaction step={step} />}
-                {step.kind === 'llm' && <Llm step={step} />}
-                {step.kind === 'tool' && <ToolCard step={step} />}
+                {step.kind === 'llm' && <Llm step={step} active={active} />}
+                {step.kind === 'tool' && <ToolCard step={step} active={active} />}
               </>
             )}
           </li>
@@ -143,7 +153,7 @@ function StepDuration({ from, to }: { from?: TaskEvent; to?: TaskEvent }) {
   return text ? <span className="font-mono text-zinc-600">{text}</span> : null
 }
 
-function Llm({ step }: { step: LlmStep }) {
+function Llm({ step, active }: { step: LlmStep; active: boolean }) {
   const response = step.response
   const content = (response?.payload.content as string | null) ?? null
   const usage = response?.payload.usage as
@@ -166,7 +176,7 @@ function Llm({ step }: { step: LlmStep }) {
           {stepNo !== undefined ? `Step ${stepNo}` : 'LLM'}
         </span>
         <span className="font-mono">{String(step.request?.payload.model ?? '')}</span>
-        {!response && <span className="animate-pulse text-amber-400">working…</span>}
+        {active && <span className="animate-pulse text-amber-400">working…</span>}
         {usage && (
           <span className="font-mono text-zinc-600">
             {usage.prompt_tokens}→{usage.completion_tokens} tok
@@ -243,7 +253,7 @@ function Expandable({ text, tone }: { text: string; tone: string }) {
   )
 }
 
-function ToolCard({ step }: { step: ToolStep }) {
+function ToolCard({ step, active }: { step: ToolStep; active: boolean }) {
   const name = String(step.call.payload.name ?? 'tool')
   const args = (step.call.payload.arguments ?? {}) as Record<string, unknown>
   const result = step.result
@@ -266,7 +276,7 @@ function ToolCard({ step }: { step: ToolStep }) {
         <span className="truncate font-mono text-zinc-500">
           {fileChange ? String(args.path ?? '') : compactJson(args)}
         </span>
-        {!result && <span className="animate-pulse text-amber-400">running…</span>}
+        {active && <span className="animate-pulse text-amber-400">running…</span>}
         <StepDuration from={step.call} to={step.result} />
         <span className="grow" />
         <Timestamp event={step.call} />
