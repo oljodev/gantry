@@ -89,8 +89,13 @@ class MergeChildBranchesTool(Tool):
         "parallel workers succeeded and BEFORE you run QA. It fetches each child's "
         "pushed branch, merges them in spawn order into a fresh staging branch, "
         "resolves any overlapping edits, force-pushes that staging branch, and returns "
-        "a per-branch report. Point your qa-reviewer at the returned staging branch. "
-        "(For workers to have anything to merge, each must commit and push its branch.)"
+        "a per-branch report. To QA or fix the integrated result, spawn that worker with "
+        "`base_branch` set to the returned staging branch — its workspace then starts ON "
+        "that branch directly. NEVER tell a worker to `git fetch`/`git checkout` the "
+        "staging branch in bash: a worker's shell has no git credentials, so a fetch "
+        "fails with 'could not read Username'. Its fresh clone already contains every "
+        "pushed branch, so base_branch is all it needs. (For workers to have anything to "
+        "merge, each must commit and push its branch.)"
     )
     parameters: ClassVar[dict[str, Any]] = {
         "type": "object",

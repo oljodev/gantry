@@ -79,6 +79,32 @@ async def test_prepare_workspace_without_repo_is_an_empty_dir(tmp_path: Path) ->
     assert workspace.branch is None and workspace.repo_url is None
 
 
+async def test_prepare_workspace_starts_on_a_pushed_staging_branch(
+    origin: Path, tmp_path: Path
+) -> None:
+    """A worker spawned onto an integrated staging branch starts ON it via
+    ``base_branch`` — no `git fetch` needed (a worker's shell has no credentials, so
+    a fetch would fail 'could not read Username'). A full clone already contains
+    every pushed branch, so the branch checks out directly and its work is present.
+    """
+    staging = "gantry/staging-abcdef123456"
+    seed = tmp_path / "seed"
+    git("clone", str(origin), str(seed))
+    git("checkout", "-b", staging, cwd=seed)
+    (seed / "integrated.py").write_text("VALUE = 42\n")
+    git("add", "-A", cwd=seed)
+    git("commit", "-m", "integrated staging work", cwd=seed)
+    git("push", "origin", staging, cwd=seed)
+
+    workspace = await prepare_workspace(
+        tmp_path / "ws", uuid.uuid4(), 1, {"repo_url": str(origin), "base_branch": staging}
+    )
+    # The staging work is present locally, and the task branch was cut off staging —
+    # all without an authenticated fetch inside the sandbox.
+    assert (workspace.path / "integrated.py").read_text() == "VALUE = 42\n"
+    assert await current_branch(workspace.path) == workspace.branch
+
+
 @pytest.fixture
 def empty_origin(tmp_path: Path) -> Path:
     """A freshly-created bare repo with no commits — what an operator makes on
