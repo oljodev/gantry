@@ -24,6 +24,7 @@ from gantry.core.db import session_scope
 from gantry.core.models import DEFAULT_WORKSPACE_ID, Provider, Task, TaskKind, TaskStatus
 from gantry.core.notify import QueueListener
 from gantry.logging import get_logger
+from gantry.providers import litellm_model_string
 from gantry.runtime.compaction import CompactionConfig
 from gantry.runtime.llm import LiteLLMClient, LLMClient
 from gantry.runtime.loop import AgentLoopError, run_agent_task
@@ -53,6 +54,24 @@ _PERMANENT_PROVIDER_STATUSES = frozenset({400, 401, 403, 404})
 def _is_permanent_provider_error(exc: Exception) -> bool:
     status = getattr(exc, "status_code", None)
     return isinstance(status, int) and status in _PERMANENT_PROVIDER_STATUSES
+
+
+def _route_task_model(task: Task, provider: Provider | None) -> None:
+    """Enforce that a provider-backed task's model routes THROUGH that provider in
+    LiteLLM, in place on the task payload.
+
+    Top-level tasks get their model mapped to a final LiteLLM string at create time,
+    but a spawned child inherits its leader's ``provider_id`` while often carrying a
+    bare slug the leader picked (e.g. ``deepseek/deepseek-r1``). Sent as-is with an
+    OpenRouter key, LiteLLM's ``deepseek/`` prefix would dispatch the call DIRECTLY
+    to DeepSeek — which rejects the OpenRouter key ("your api key is invalid"). This
+    re-applies the provider -> LiteLLM prefix (``openrouter/deepseek/deepseek-r1``),
+    so an OpenRouter-backed worker never makes a direct-vendor call. Idempotent:
+    an already-prefixed string passes through unchanged. Tasks with no provider keep
+    the verbatim env-default behavior."""
+    model = task.payload.get("model")
+    if provider is not None and model:
+        task.payload["model"] = litellm_model_string(provider.provider_type, str(model))
 
 
 class LeaseLostError(RuntimeError):
@@ -423,7 +442,12 @@ class Worker:
                 await queue.mark_running(
                     session, task_id=task.id, worker_id=cfg.worker_id, attempt=task.attempt
                 )
-            llm = await self._llm_for_task(task)
+            llm, provider = await self._llm_for_task(task)
+            # Enforce that the model routes through its provider in LiteLLM before any
+            # call is made — a spawned child inherits its leader's provider but often
+            # a bare model slug, which would otherwise be sent DIRECT to that vendor
+            # with the wrong key (see _route_task_model).
+            _route_task_model(task, provider)
             copilot = task.payload.get("copilot")
             if copilot:
                 # Co-pilot tasks propose a skill/tree for the UI; no sandbox.
@@ -703,15 +727,18 @@ class Worker:
         else:
             logger.info("worker.land_skipped", task_id=str(task.id), detail=detail)
 
-    async def _llm_for_task(self, task: Task) -> LLMClient:
-        """The task's LLM client: vault-backed provider config, or the default.
+    async def _llm_for_task(self, task: Task) -> tuple[LLMClient, Provider | None]:
+        """The task's LLM client (and its provider, if any): vault-backed provider
+        config, or the default.
 
         Tasks without ``provider_id`` use the worker's shared client (env-var
-        credentials) — the pre-provider behavior, unchanged.
+        credentials) — the pre-provider behavior, unchanged. The provider is
+        returned too so the caller can enforce that the model string routes through
+        it (see ``_route_task_model``).
         """
         raw_provider_id = task.payload.get("provider_id")
         if not raw_provider_id:
-            return self._llm
+            return self._llm, None
         if self._vault is None:
             raise ProviderConfigError(
                 "task uses a configured provider but this worker has no vault key "
@@ -734,7 +761,7 @@ class Worker:
                 workspace_id=task.workspace_id,
                 name=provider_secret_name(provider_id),
             )
-        return self._llm_factory(api_key, provider.base_url)
+        return self._llm_factory(api_key, provider.base_url), provider
 
     async def _github_token(self, task: Task) -> str | None:
         """Vault-stored GitHub OAuth token, falling back to the env-var token."""
