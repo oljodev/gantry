@@ -40,6 +40,37 @@ def test_litellm_string_prefixes_a_bare_openrouter_slug() -> None:
     )
 
 
+def test_litellm_string_collapses_a_doubled_prefix() -> None:
+    # The exact 400 in the screenshot: a small worker echoed an already-mapped slug
+    # into its spawn, producing openrouter/openrouter/... — collapse to a single one.
+    assert (
+        litellm_model_string(
+            ProviderType.OPENROUTER, "openrouter/openrouter/qwen/qwen3-coder-30b-a3b-instruct"
+        )
+        == "openrouter/qwen/qwen3-coder-30b-a3b-instruct"
+    )
+
+
+def test_litellm_string_collapses_triple_but_keeps_inner_vendor() -> None:
+    assert (
+        litellm_model_string(
+            ProviderType.OPENROUTER, "openrouter/openrouter/openrouter/deepseek/r1"
+        )
+        == "openrouter/deepseek/r1"
+    )
+    # A legitimate inner vendor segment (OpenRouter routing to an OpenAI model) stays.
+    assert (
+        litellm_model_string(ProviderType.OPENROUTER, "openrouter/openai/gpt-4")
+        == "openrouter/openai/gpt-4"
+    )
+
+
+def test_route_task_model_collapses_a_double_prefixed_slug() -> None:
+    task = _task("openrouter/openrouter/qwen/qwen3-coder-30b-a3b-instruct")
+    _route_task_model(task, _openrouter())
+    assert task.payload["model"] == "openrouter/qwen/qwen3-coder-30b-a3b-instruct"
+
+
 def test_route_task_model_normalizes_a_bare_child_slug() -> None:
     # A child inherited an OpenRouter provider but a bare 'deepseek/deepseek-r1'
     # slug the leader picked; routing must prefix it so no direct DeepSeek call is made.

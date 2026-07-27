@@ -27,13 +27,19 @@ _PREFIX: dict[ProviderType, str] = {
 def litellm_model_string(provider_type: ProviderType, model: str) -> str:
     """``("google", "gemini-2.5-pro")`` → ``"gemini/gemini-2.5-pro"``.
 
-    Already-prefixed model names pass through untouched so users can paste
-    full LiteLLM strings anywhere a bare model name is accepted.
+    Strictly idempotent: the result always has EXACTLY ONE leading provider
+    prefix. An already-prefixed name passes through unchanged, and — critically —
+    a slug that arrived double-prefixed (``openrouter/openrouter/qwen/...``, which
+    a small model can echo when it copies an already-mapped slug into a spawn) is
+    collapsed back to a single prefix instead of being sent to LiteLLM and 400ing
+    as an invalid model ID. The inner vendor segment is preserved, so a legitimate
+    ``openrouter/openai/gpt-4`` (OpenRouter routing to an OpenAI model) is kept.
     """
-    prefix = _PREFIX[provider_type]
-    if model.startswith(f"{prefix}/"):
-        return model
-    return f"{prefix}/{model}"
+    marker = f"{_PREFIX[provider_type]}/"
+    # Strip every repeated leading provider prefix, then add back exactly one.
+    while model.startswith(marker):
+        model = model[len(marker) :]
+    return f"{marker}{model}"
 
 
 def resolve_model(provider: Provider | None, model: str | None, default: str) -> str:
