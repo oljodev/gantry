@@ -137,20 +137,24 @@ async def _send_task_events(
 async def _send_all_events(websocket: WebSocket, sessions: Sessions, cursor: int) -> int:
     while True:
         async with sessions() as session:
-            events = (
-                await session.scalars(
-                    sa.select(TaskEvent)
+            # Join the owning task's root so the dashboard can filter the firehose
+            # to one run's tree (the per-task stream doesn't need this).
+            rows = (
+                await session.execute(
+                    sa.select(TaskEvent, Task.root_task_id)
+                    .join(Task, Task.id == TaskEvent.task_id)
                     .where(TaskEvent.id > cursor)
                     .order_by(TaskEvent.id)
                     .limit(_BATCH)
                 )
             ).all()
-        for event in events:
-            await websocket.send_text(
-                EventMessage(data=TaskEventOut.model_validate(event)).model_dump_json()
+        for event, root_task_id in rows:
+            out = TaskEventOut.model_validate(event).model_copy(
+                update={"root_task_id": root_task_id}
             )
+            await websocket.send_text(EventMessage(data=out).model_dump_json())
             cursor = event.id
-        if len(events) < _BATCH:
+        if len(rows) < _BATCH:
             return cursor
 
 

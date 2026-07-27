@@ -154,6 +154,10 @@ class TaskEventOut(BaseModel):
     event_type: EventType
     payload: dict[str, Any]
     created_at: datetime
+    #: The run this event belongs to. Populated on the firehose (a join) so a
+    #: dashboard can filter cross-run events to one run's tree; None on the
+    #: per-task stream, where the client already knows the run.
+    root_task_id: uuid.UUID | None = None
 
 
 class TaskListResponse(BaseModel):
@@ -265,6 +269,23 @@ class ApprovalItem(BaseModel):
 
 class ApprovalsResponse(BaseModel):
     approvals: list[ApprovalItem]
+
+
+class ApprovalHistoryItem(BaseModel):
+    """One resolved approval, for the audit log. ``resolved_by`` is ``auto-accept``
+    for a decision the No-HITL mode auto-approved."""
+
+    task_id: uuid.UUID
+    goal: str
+    tool: str
+    arguments: dict[str, Any]
+    decision: str
+    resolved_by: str
+    resolved_at: datetime
+
+
+class ApprovalHistoryResponse(BaseModel):
+    items: list[ApprovalHistoryItem]
 
 
 class QuestionAnswerRequest(BaseModel):

@@ -9,7 +9,7 @@ comes through.
 from __future__ import annotations
 
 import uuid
-from typing import Annotated, cast
+from typing import Annotated, Any, cast
 
 import sqlalchemy as sa
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -35,6 +35,8 @@ from gantry.prompts import PLANNER_SYSTEM_PROMPT
 from gantry.providers import resolve_model
 from gantry.server.auth import require_user
 from gantry.server.schemas import (
+    ApprovalHistoryItem,
+    ApprovalHistoryResponse,
     ApprovalItem,
     ApprovalResolveRequest,
     ApprovalsResponse,
@@ -460,6 +462,70 @@ async def list_approvals(
     return ApprovalsResponse(approvals=items)
 
 
+@router.get("/approvals/history", response_model=ApprovalHistoryResponse)
+async def approval_history(
+    request: Request,
+    project_id: Annotated[uuid.UUID | None, Query()] = None,
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+) -> ApprovalHistoryResponse:
+    """The audit log: recent RESOLVED approvals, newest first — including the ones
+    auto-approved in No-HITL mode (``resolved_by == "auto-accept"``). Each is
+    enriched with the tool and arguments from its matching request event."""
+    sessions = get_sessions(request)
+    project_filter = Task.project_id == project_id if project_id is not None else sa.true()
+    async with sessions() as session:
+        resolved = (
+            await session.execute(
+                sa.select(TaskEvent, Task)
+                .join(Task, Task.id == TaskEvent.task_id)
+                .where(
+                    TaskEvent.event_type == EventType.APPROVAL_RESOLVED.value,
+                    Task.workspace_id == DEFAULT_WORKSPACE_ID,
+                    project_filter,
+                )
+                .order_by(TaskEvent.id.desc())
+                .limit(limit)
+            )
+        ).all()
+        # Pair each resolution with its request (same task + tool_call_id) for the
+        # tool name and arguments, which live on the APPROVAL_REQUESTED event.
+        requests: dict[tuple[uuid.UUID, str], dict[str, Any]] = {}
+        task_ids = {event.task_id for event, _ in resolved}
+        if task_ids:
+            for event in (
+                await session.scalars(
+                    sa.select(TaskEvent).where(
+                        TaskEvent.task_id.in_(task_ids),
+                        TaskEvent.event_type == EventType.APPROVAL_REQUESTED.value,
+                    )
+                )
+            ).all():
+                requests[(event.task_id, str(event.payload.get("tool_call_id")))] = event.payload
+    items = [
+        ApprovalHistoryItem(
+            task_id=event.task_id,
+            goal=str(task.payload.get("goal") or ""),
+            tool=str(
+                requests.get((event.task_id, str(event.payload.get("tool_call_id"))), {}).get(
+                    "tool"
+                )
+                or ""
+            ),
+            arguments=dict(
+                requests.get((event.task_id, str(event.payload.get("tool_call_id"))), {}).get(
+                    "arguments"
+                )
+                or {}
+            ),
+            decision=str(event.payload.get("decision") or ""),
+            resolved_by=str(event.payload.get("resolved_by") or ""),
+            resolved_at=event.created_at,
+        )
+        for event, task in resolved
+    ]
+    return ApprovalHistoryResponse(items=items)
+
+
 @router.post("/tasks/{task_id}/approvals/{tool_call_id}", response_model=TaskOut)
 async def resolve_task_approval(
     request: Request,
@@ -567,16 +633,18 @@ async def answer_task_question(
 async def cancel_task(request: Request, task_id: uuid.UUID) -> TaskOut:
     sessions = get_sessions(request)
     async with session_scope(sessions) as session:
-        result = await queue.cancel(session, task_id=task_id)
-        if result is not None:
-            return TaskOut.model_validate(result.task)
+        # Cancel the whole subtree, so stopping a leader stops the workers it
+        # spawned (no zombies). Returns the affected ids; we report the target row.
+        affected = await queue.cancel_tree(session, task_id=task_id)
         task = await session.get(Task, task_id)
     if task is None:
         raise HTTPException(status_code=404, detail="task not found")
-    raise HTTPException(
-        status_code=409,
-        detail=f"task is {task.status.value}; already finished",
-    )
+    if not affected:
+        raise HTTPException(
+            status_code=409,
+            detail=f"task is {task.status.value}; already finished",
+        )
+    return TaskOut.model_validate(task)
 
 
 async def _control_response(sessions: Sessions) -> EmergencyStopResponse:

@@ -83,6 +83,19 @@ async def test_ws_resumes_from_client_cursor(client: httpx.AsyncClient, db: Sess
         assert seqs == [3, 4]  # nothing at or before the cursor is re-sent
 
 
+async def test_firehose_events_carry_root_task_id(client: httpx.AsyncClient, db: Sessions) -> None:
+    # The dashboard filters the workspace-wide firehose to one run's tree, so each
+    # firehose event must name its run (root_task_id) — unlike the per-task stream.
+    task = await create_task(client)
+    async with connect(client, "/api/events/ws?after_id=0") as ws:
+        while True:
+            message = await recv_event(ws)
+            if message["data"]["task_id"] == task["id"]:
+                break
+    assert message["data"]["event_type"] == "task_enqueued"
+    assert message["data"]["root_task_id"] == task["root_task_id"]
+
+
 async def test_ws_delivers_new_events_via_notify_not_poll(
     client: httpx.AsyncClient, db: Sessions
 ) -> None:
