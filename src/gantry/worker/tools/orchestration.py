@@ -203,7 +203,35 @@ _CHILD_SPEC_PROPERTIES: dict[str, Any] = {
     "max_steps": {"type": "integer"},
     "priority": {"type": "integer", "description": "Higher runs earlier (default 0)"},
     "max_attempts": {"type": "integer"},
-    "kind": {"type": "string", "enum": ["execute", "plan"]},
+    "role": {
+        "type": "string",
+        "enum": ["worker", "sub_leader"],
+        "description": (
+            "'worker' (the default) does the change itself in one leaf task — use it "
+            "for almost everything. 'sub_leader' spawns a delegating SUB-LEADER that "
+            "runs the whole swarm workflow one level down: it surveys its sub-scope, "
+            "fans out to its OWN 2-10 workers, integrates their branches, and pushes a "
+            "single combined branch back up to you. Reach for it only when one slice is "
+            "itself a large subsystem that needs its own decomposition, so no single "
+            "leader has to fan out too wide."
+        ),
+    },
+    "title": {
+        "type": "string",
+        "description": (
+            "A tight ~3-word label for this task shown as its trace-tree node (e.g. "
+            "'Refactor board.py', 'Add pieces module'). Omit it and one is derived from "
+            "the goal."
+        ),
+    },
+    "kind": {
+        "type": "string",
+        "enum": ["execute", "plan"],
+        "description": (
+            "Low-level task kind; prefer `role` instead. 'execute' is a worker, 'plan' "
+            "is a sub-leader. `role` and a team `agent` both override this."
+        ),
+    },
     "agent": {
         "type": "string",
         "description": (
@@ -332,6 +360,9 @@ class _SpawnBase(Tool):
             # payload snapshot — deterministic across re-runs.
             payload.update(node_payload_fields(node))
         payload["goal"] = str(spec.get("goal") or "").strip()
+        title = str(spec.get("title") or "").strip()
+        if title:
+            payload["title"] = title
         # Explicit tool args win over the profile snapshot. A blank string is treated
         # as "not provided" so it falls through to inheritance — as is a local/
         # self-referential repo_url (file://, a bare path) WHEN the parent has a real
@@ -354,13 +385,20 @@ class _SpawnBase(Tool):
             payload[key] = value
         _inherit_parent_context(payload, parent.payload)
         payload["depth"] = child_depth
-        kind = (
-            node_kind(node)
-            if node is not None
-            else TaskKind(str(spec.get("kind") or TaskKind.EXECUTE.value))
-        )
+        # `role` is the friendly knob a leader reaches for; `kind` is the low-level
+        # value it maps to. A team `agent` node's kind wins over both (it comes from
+        # the immutable profile snapshot). role='sub_leader' -> a delegating plan task.
+        if node is not None:
+            kind = node_kind(node)
+        elif str(spec.get("role") or "").strip() == "sub_leader":
+            kind = TaskKind.PLAN
+        else:
+            kind = TaskKind(str(spec.get("kind") or TaskKind.EXECUTE.value))
         if kind is TaskKind.PLAN:
+            # A spawned plan task is a SUB-leader (it has a parent); mark it so the UI
+            # can label it distinctly and the delegation role is explicit in the log.
             payload.setdefault("system_prompt", PLANNER_SYSTEM_PROMPT)
+            payload["sub_leader"] = True
         return payload, kind
 
     async def _enqueue_child(
