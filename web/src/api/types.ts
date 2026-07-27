@@ -51,6 +51,20 @@ export interface TaskEvent {
   event_type: string
   payload: Record<string, unknown>
   created_at: string
+  // Present on the firehose stream so a run's tree can be filtered from the
+  // workspace-wide event flow; absent on the per-task stream.
+  root_task_id?: string | null
+}
+
+export interface ApprovalHistoryItem {
+  task_id: string
+  goal: string
+  tool: string
+  arguments: Record<string, unknown>
+  decision: string
+  // 'auto-accept' when No-HITL mode auto-approved the decision.
+  resolved_by: string
+  resolved_at: string
 }
 
 export type StreamMessage = { type: 'task'; data: Task } | { type: 'event'; data: TaskEvent }

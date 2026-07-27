@@ -12,7 +12,9 @@ import { TraceTimeline } from '../components/TraceTimeline'
 import { Markdown } from '../components/Markdown'
 import { compactNumber, shortId } from '../lib/format'
 import { runTokens } from '../lib/usage'
+import { runTreeSignal } from '../lib/runTree'
 import { finalText, foldTrace, pendingApprovals, pendingQuestions } from '../lib/trace'
+import { useAppData } from '../state/AppDataProvider'
 
 type RightTab = 'terminal' | 'diff'
 type TopView = 'overview' | 'details'
@@ -53,11 +55,17 @@ export function TaskPage() {
     }
   }, [events.length, follow])
 
-  const lifecycleCount = events.filter((e) => e.event_type.startsWith('task_')).length
+  // The tree used to refresh only on the ROOT task's own lifecycle events, so a
+  // sub-agent spawned mid-run didn't appear (and child statuses went stale) until
+  // the leader parked. Watching the shared firehose for this run's lifecycle
+  // events makes the tree live: a child enqueue or any status change advances the
+  // signal and re-fetches the whole tree — sub-agent nodes pop in without an F5.
+  const { feed } = useAppData()
+  const runSignal = useMemo(() => runTreeSignal(feed, task?.root_task_id), [feed, task?.root_task_id])
   useEffect(() => {
     if (!task) return
     listTasks({ rootTaskId: task.root_task_id }).then(setTree).catch(console.error)
-  }, [task?.root_task_id, task?.status, lifecycleCount])
+  }, [task?.root_task_id, task?.status, runSignal])
 
   const steps = useMemo(() => foldTrace(events), [events])
   const chunkEvents = useMemo(
@@ -83,10 +91,19 @@ export function TaskPage() {
 
   const stopAll = async () => {
     setStopping(true)
-    // Stop every agent in the run, not just the one on screen — a parent left
-    // running would otherwise keep spawning work.
-    await Promise.allSettled(activeInRun.map((t) => cancelTask(t.id)))
-    setStopping(false)
+    // One cascade call cancels the whole run's subtree server-side (a cancelled
+    // leader can't spawn more), so we no longer race the tree from the client.
+    // Optimistically flip active nodes to cancelled so spinners clear instantly;
+    // the stream then confirms the real terminal state.
+    const cancelActive = (t: Task): Task =>
+      ACTIVE_STATUSES.has(t.status) ? { ...t, status: 'cancelled' } : t
+    setTree((prev) => prev.map(cancelActive))
+    setTask((prev) => (prev ? cancelActive(prev) : prev))
+    try {
+      if (task) await cancelTask(task.root_task_id)
+    } finally {
+      setStopping(false)
+    }
   }
 
   if (!taskId) return null

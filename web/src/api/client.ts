@@ -3,6 +3,7 @@ import { apiUrl, BackendUnreachableError } from './base'
 import type {
   AgentProfile,
   AgentProfileCreate,
+  ApprovalHistoryItem,
   CopilotSession,
   GithubRepo,
   GithubStatus,
@@ -172,6 +173,13 @@ export function listApprovals(projectId?: string): Promise<ApprovalItem[]> {
   const suffix = projectId ? `?project_id=${projectId}` : ''
   return request<{ approvals: ApprovalItem[] }>(`/api/approvals${suffix}`).then(
     (body) => body.approvals,
+  )
+}
+
+export function getApprovalHistory(projectId?: string): Promise<ApprovalHistoryItem[]> {
+  const suffix = projectId ? `?project_id=${projectId}` : ''
+  return request<{ items: ApprovalHistoryItem[] }>(`/api/approvals/history${suffix}`).then(
+    (body) => body.items,
   )
 }
 
