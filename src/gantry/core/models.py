@@ -97,6 +97,11 @@ class EventType(enum.StrEnum):
     #: running; the loop injects a durable reminder and steers it to wait rather
     #: than orphaning them. Folds into history as a user message on rehydration.
     CHILDREN_PENDING = "children_pending"
+    #: A parked leader was woken EARLY because a child failed/cancelled while
+    #: siblings still run — wait_for_children returns immediately with the failure
+    #: instead of blocking on the survivors, and records which children it surfaced
+    #: (payload ``failed``) so a later wait only re-reports NEW failures.
+    CHILDREN_FAILED_EARLY = "children_failed_early"
     #: A durable nudge to keep an autonomous leader on the swarm workflow, folded
     #: into history as a user message on rehydration. Two kinds, by payload:
     #: survey-budget ({"surveyed": n}) pushes a leader that keeps reading without

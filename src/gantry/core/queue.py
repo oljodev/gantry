@@ -433,7 +433,7 @@ async def fail(
         EventType.TASK_FAILED,
         {"worker_id": worker_id, "attempt": attempt, "error": error},
     )
-    await _try_wake_parent(session, await _parent_of(session, task_id))
+    await _try_wake_parent(session, await _parent_of(session, task_id), on_child_failure=True)
     return TaskStatus.FAILED
 
 
@@ -524,8 +524,18 @@ async def park_for_children(
     return TaskStatus.WAITING_CHILDREN
 
 
-async def _try_wake_parent(session: AsyncSession, parent_id: uuid.UUID | None) -> bool:
-    """Re-queue a parked parent iff every child has reached a terminal state.
+async def _try_wake_parent(
+    session: AsyncSession, parent_id: uuid.UUID | None, *, on_child_failure: bool = False
+) -> bool:
+    """Re-queue a parked parent when its children reach an actionable state:
+    every child settled (the normal case), or — when ``on_child_failure`` — a
+    child FAILED/CANCELLED while siblings still run, so the leader can react to
+    the failure immediately instead of blocking on the survivors.
+
+    ``on_child_failure`` is set by the failure/cancel transitions (a child just
+    became terminal-FAILED or CANCELLED); the success and lost-wakeup-guard paths
+    leave it False so a partial success never wakes the leader and an
+    already-known failure can't re-wake it in a loop.
 
     Ordering is load-bearing: LOCK THE PARENT ROW FIRST, then examine the
     children. Two siblings completing concurrently under READ COMMITTED would
@@ -550,12 +560,28 @@ async def _try_wake_parent(session: AsyncSession, parent_id: uuid.UUID | None) -
             .exists()
         )
     )
+    reason = "children_settled"
     if unfinished:
-        return False
+        # Survivors still run: only an early failure/cancel is grounds to wake now.
+        if not on_child_failure:
+            return False
+        has_failure = await session.scalar(
+            sa.select(
+                sa.select(Task.id)
+                .where(
+                    Task.parent_task_id == parent_id,
+                    Task.status.in_((TaskStatus.FAILED, TaskStatus.CANCELLED)),
+                )
+                .exists()
+            )
+        )
+        if not has_failure:
+            return False
+        reason = "child_failed"
     await session.execute(sa.update(Task).where(Task.id == parent_id).values(**_wake_to_pending()))
-    await append_event(session, parent_id, EventType.TASK_RESUMED, {"reason": "children_settled"})
+    await append_event(session, parent_id, EventType.TASK_RESUMED, {"reason": reason})
     await notify_task_ready(session, parent_id)
-    logger.info("queue.parent_woken", parent_id=str(parent_id))
+    logger.info("queue.parent_woken", parent_id=str(parent_id), reason=reason)
     return True
 
 
@@ -870,7 +896,8 @@ async def cancel(session: AsyncSession, *, task_id: uuid.UUID) -> CancelResult |
     task = (await session.scalars(stmt)).first()
     if task is not None:
         await append_event(session, task.id, EventType.TASK_CANCELLED, {})
-        await _try_wake_parent(session, task.parent_task_id)  # cancellation is terminal too
+        # Cancellation is terminal too, and an early one wakes a parked leader.
+        await _try_wake_parent(session, task.parent_task_id, on_child_failure=True)
         return CancelResult(task=task, requested=False)
 
     # Live (leased) task: request cooperative cancellation.
@@ -944,7 +971,7 @@ async def cancel_tree(session: AsyncSession, *, task_id: uuid.UUID) -> list[uuid
         # Only a parent OUTSIDE the cancelled subtree can need waking; parents
         # within it are themselves being cancelled in this same batch.
         if parent is not None and parent not in id_set:
-            await _try_wake_parent(session, parent)
+            await _try_wake_parent(session, parent, on_child_failure=True)
 
     # Leased rows: a lease-holding worker owns the loop; request cooperative
     # cancellation and wake it now to interrupt the in-flight step immediately.
@@ -999,7 +1026,7 @@ async def mark_cancelled(
     if task is None:
         return False
     await append_event(session, task.id, EventType.TASK_CANCELLED, {})
-    await _try_wake_parent(session, task.parent_task_id)
+    await _try_wake_parent(session, task.parent_task_id, on_child_failure=True)
     return True
 
 
@@ -1053,7 +1080,7 @@ async def reap_expired(session: AsyncSession, *, limit: int = 100) -> list[Reape
         if item.status is TaskStatus.PENDING:
             await notify_task_ready(session, item.task_id)
         else:  # terminally failed by the reaper — its parent may be waiting
-            await _try_wake_parent(session, row.parent_task_id)
+            await _try_wake_parent(session, row.parent_task_id, on_child_failure=True)
         logger.info(
             "queue.task_reaped",
             task_id=str(item.task_id),

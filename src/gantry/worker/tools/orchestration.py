@@ -26,7 +26,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from gantry.core import queue
 from gantry.core.db import session_scope
-from gantry.core.models import TERMINAL_STATUSES, Task, TaskKind, TaskStatus
+from gantry.core.events import append_event, read_events
+from gantry.core.models import TERMINAL_STATUSES, EventType, Task, TaskKind, TaskStatus
 from gantry.prompts import PLANNER_SYSTEM_PROMPT
 from gantry.runtime.tools import (
     TaskParked,
@@ -603,15 +604,23 @@ def _depth_cap_message() -> str:
     )
 
 
+#: A child that reached one of these woke the leader early — no point blocking on
+#: the survivors when something already failed.
+_FAILURE_STATUSES = (TaskStatus.FAILED, TaskStatus.CANCELLED)
+
+
 class WaitForChildrenTool(Tool):
     name = "wait_for_children"
     description = (
         "Sleep (at zero compute cost) until every spawned subtask has finished, "
         "then receive a report of each child's status and result. Spawn ALL the "
         "children you need first (they run concurrently), then call this ONCE to "
-        "wait for the whole batch — do not spawn one, wait, spawn the next. To act "
-        "on children as they finish individually instead, poll agent_status. Never "
-        "poll in a busy loop."
+        "wait for the whole batch — do not spawn one, wait, spawn the next. It WAKES "
+        "YOU EARLY if a child fails or is cancelled while the others are still "
+        "running, so you can react (respawn a fix, adjust the plan, integrate what "
+        "works, or stop the rest) instead of blocking on the survivors; call it again "
+        "to keep waiting — it only re-reports NEW failures. To act on children as they "
+        "finish individually instead, poll agent_status. Never poll in a busy loop."
     )
     parameters: ClassVar[dict[str, Any]] = {"type": "object", "properties": {}}
     #: Re-running after a crash just re-checks state — naturally idempotent.
@@ -620,19 +629,77 @@ class WaitForChildrenTool(Tool):
     async def execute(self, arguments: dict[str, Any], ctx: ToolContext) -> ToolResult:
         sessions = _sessions_of(ctx)
         async with session_scope(sessions) as session:
-            children = (
-                await session.scalars(
-                    sa.select(Task)
-                    .where(Task.parent_task_id == ctx.task_id)
-                    .order_by(Task.created_at, Task.id)
+            children = list(
+                (
+                    await session.scalars(
+                        sa.select(Task)
+                        .where(Task.parent_task_id == ctx.task_id)
+                        .order_by(Task.created_at, Task.id)
+                    )
+                ).all()
+            )
+            if not children:
+                return ToolResult("no subtasks have been spawned; nothing to wait for")
+            if all(c.status in TERMINAL_STATUSES for c in children):
+                return ToolResult(_children_report(children))
+            # Children still run. Return NOW on a not-yet-surfaced failure so the
+            # leader can react; record which failures we surfaced (durably) so a
+            # later wait blocks for the survivors instead of re-reporting the same
+            # ones — that is what lets a leader respawn a fix and wait again.
+            failed = [c for c in children if c.status in _FAILURE_STATUSES]
+            surfaced = await _surfaced_failed_ids(session, ctx.task_id) if failed else set()
+            new_failed = [c for c in failed if str(c.id) not in surfaced]
+            if new_failed:
+                await append_event(
+                    session,
+                    ctx.task_id,
+                    EventType.CHILDREN_FAILED_EARLY,
+                    {"failed": sorted(str(c.id) for c in failed)},
                 )
-            ).all()
-        if not children:
-            return ToolResult("no subtasks have been spawned; nothing to wait for")
-        unsettled = [c for c in children if c.status not in TERMINAL_STATUSES]
-        if unsettled:
-            raise TaskParked(TaskStatus.WAITING_CHILDREN.value)
-        return ToolResult(_children_report(list(children)))
+                return ToolResult(_early_failure_report(children, new_failed))
+        # Nothing new to report — sleep until the next child settles (or all do).
+        raise TaskParked(TaskStatus.WAITING_CHILDREN.value)
+
+
+async def _surfaced_failed_ids(session: AsyncSession, task_id: uuid.UUID) -> set[str]:
+    """Child ids a prior wait_for_children already surfaced as failed — read from
+    the durable CHILDREN_FAILED_EARLY events, so a resume decides identically and a
+    leader is not re-woken for the same failure it already saw."""
+    surfaced: set[str] = set()
+    for event in await read_events(session, task_id):
+        if event.event_type is EventType.CHILDREN_FAILED_EARLY:
+            surfaced.update(str(fid) for fid in event.payload.get("failed", []))
+    return surfaced
+
+
+def _early_failure_report(children: list[Task], new_failed: list[Task]) -> str:
+    """A compact report for an early (child-failure) wake: the newly-failed children
+    with their errors, plus what is still running, so the leader can decide fast."""
+    running = [c for c in children if c.status not in TERMINAL_STATUSES]
+    succeeded = sum(1 for c in children if c.status is TaskStatus.SUCCEEDED)
+    failed = sum(1 for c in children if c.status in _FAILURE_STATUSES)
+    body = {
+        "early_exit": "child_failure",
+        "note": (
+            "Woke early: a child FAILED or was CANCELLED while others are still "
+            "running. Decide now — respawn a focused fix, adjust the plan, integrate "
+            "and land what already works, or stop the rest. To keep waiting for the "
+            "still-running children, call wait_for_children again; it only re-reports "
+            "NEW failures."
+        ),
+        "summary": {"failed": failed, "running": len(running), "succeeded": succeeded},
+        "newly_failed": [
+            {
+                "task_id": str(c.id),
+                "goal": c.payload.get("goal"),
+                "status": c.status.value,
+                **({"error": c.last_error[:_ERROR_CHARS]} if c.last_error else {}),
+            }
+            for c in new_failed
+        ],
+        "still_running": [{"task_id": str(c.id), "goal": c.payload.get("goal")} for c in running],
+    }
+    return json.dumps(body, indent=2)
 
 
 def _children_report(children: list[Task]) -> str:
