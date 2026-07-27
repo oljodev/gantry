@@ -66,8 +66,14 @@ async def test_happy_path_checkpoints_every_step(db: Sessions) -> None:
 async def test_tool_exception_becomes_error_result_the_llm_sees(db: Sessions) -> None:
     task = await enqueue_agent_task(db)
     tool = RecordingTool(fail_with=RuntimeError("disk on fire"))
+    # After the tool error the completion guard nudges once (don't give up right
+    # after a failure); the worker still finishes on the next no-tool-call turn.
     llm = ScriptedLLM(
-        [response_with_tool_call("c1", "increment", {"n": 1}), final_response("gave up")]
+        [
+            response_with_tool_call("c1", "increment", {"n": 1}),
+            final_response("still stuck"),
+            final_response("gave up"),
+        ]
     )
     outcome = await run_agent_task(db, task, llm, ToolRegistry([tool]))
 
@@ -84,7 +90,15 @@ async def test_tool_exception_becomes_error_result_the_llm_sees(db: Sessions) ->
 
 async def test_unknown_tool_becomes_error_result(db: Sessions) -> None:
     task = await enqueue_agent_task(db)
-    llm = ScriptedLLM([response_with_tool_call("c1", "nonexistent", {}), final_response("ok")])
+    # The unknown-tool error result trips the completion guard's one nudge before
+    # the worker is allowed to finish.
+    llm = ScriptedLLM(
+        [
+            response_with_tool_call("c1", "nonexistent", {}),
+            final_response("retry"),
+            final_response("ok"),
+        ]
+    )
     outcome = await run_agent_task(db, task, llm, ToolRegistry([]))
     assert outcome.final_text == "ok"
     tool_msgs = [m for m in llm.calls[1]["messages"] if m["role"] == "tool"]
@@ -149,7 +163,8 @@ async def test_resume_non_idempotent_without_recovery_reports_interrupted(db: Se
     await _seed_crashed_step(db, task, started=True)
 
     tool = RecordingTool(idempotency=ToolIdempotency.NON_IDEMPOTENT)
-    llm = ScriptedLLM([final_response("acknowledged")])
+    # The interrupted (error) result trips one completion nudge before finishing.
+    llm = ScriptedLLM([final_response("checking"), final_response("acknowledged")])
     await run_agent_task(db, task, llm, ToolRegistry([tool]))
 
     assert tool.executions == []  # never blindly re-run

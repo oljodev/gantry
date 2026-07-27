@@ -102,6 +102,11 @@ class EventType(enum.StrEnum):
     #: instead of blocking on the survivors, and records which children it surfaced
     #: (payload ``failed``) so a later wait only re-reports NEW failures.
     CHILDREN_FAILED_EARLY = "children_failed_early"
+    #: A leaf worker tried to finish (no tool call) right after its last action
+    #: failed; the loop injected a durable "keep going" nudge instead of letting it
+    #: succeed with nothing delivered. Folds into history as a user message on
+    #: rehydration, exactly like the other nudges — bounded so it can't loop.
+    COMPLETION_NUDGE = "completion_nudge"
     #: A durable nudge to keep an autonomous leader on the swarm workflow, folded
     #: into history as a user message on rehydration. Two kinds, by payload:
     #: survey-budget ({"surveyed": n}) pushes a leader that keeps reading without

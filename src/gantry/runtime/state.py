@@ -80,6 +80,15 @@ class AgentState:
     #: How many times the loop has reminded a leader to land its staging branch
     #: on main before finishing — bounded.
     landing_reminders: int = 0
+    #: Whether the MOST RECENT tool result was an error. Lets the completion guard
+    #: tell a genuine finish from a worker giving up right after a failed action
+    #: (a reasoning model that narrates its next step but omits the tool call).
+    #: Folded from TOOL_RESULT.is_error so live and resumed states agree.
+    last_tool_errored: bool = False
+    #: How many times the loop nudged a leaf worker that tried to finish on the
+    #: heels of a failed action to keep going — bounded so a truly stuck worker
+    #: still terminates instead of looping.
+    completion_nudges: int = 0
     #: Error fingerprints per diagnostic-producing tool result, oldest first —
     #: the loop detector's rolling evidence. Folded from DIAGNOSTICS events so a
     #: resumed task keeps counting where it left off instead of forgetting that
@@ -258,6 +267,26 @@ def children_pending_message(children: Sequence[str]) -> Message:
             "Call wait_for_children to sleep until they all finish, then integrate what "
             "they produced (and commit/push if that is your responsibility) before you "
             "reply with a final message."
+        ),
+    }
+
+
+def completion_nudge_message() -> Message:
+    """The reminder injected when a leaf worker ends its turn with NO tool call
+    right after its last action FAILED — the "giving up mid-task" failure mode
+    (a reasoning model narrates the fix it is about to make, then omits the tool
+    call, and the loop would otherwise read that as a finished run). Steer it to
+    actually continue instead of silently 'succeeding' with nothing delivered."""
+    return {
+        "role": "user",
+        "content": (
+            "You ended your turn without calling a tool, but your last action FAILED and "
+            "the task is NOT finished — this does not count as done. Do not stop here. "
+            "Fix the problem and continue: call a tool to try a different command or "
+            "approach (e.g. if a git fetch failed for auth, the branch is already in your "
+            "local clone — just `git checkout <branch>` without fetching). Only reply "
+            "without a tool call once the work is genuinely complete (and committed/pushed "
+            "if you changed code). If you are truly blocked, say exactly what blocks you."
         ),
     }
 
@@ -501,6 +530,12 @@ def rehydrate(payload: dict[str, Any], events: Sequence[TaskEvent]) -> AgentStat
                 TrackedMessage(event.seq, tool_message(p["tool_call_id"], p["content"]))
             )
             state.resolved_tool_ids.add(p["tool_call_id"])
+            # Track only the MOST RECENT result's error-ness (mirror the live fold).
+            state.last_tool_errored = bool(p.get("is_error"))
+            state.resumed = True
+        elif event.event_type is EventType.COMPLETION_NUDGE:
+            state.tracked.append(TrackedMessage(event.seq, completion_nudge_message()))
+            state.completion_nudges += 1
             state.resumed = True
         elif event.event_type is EventType.COMPACTION:
             kept = set(p["kept_seqs"])

@@ -58,6 +58,7 @@ from gantry.runtime.state import (
     assistant_message,
     children_pending_message,
     compaction_anchors,
+    completion_nudge_message,
     leader_land_message,
     leader_nudge_message,
     rehydrate,
@@ -330,6 +331,11 @@ async def run_agent_task(
             reminder = await _children_guard(sessions, task, state)
             if reminder is None and is_leader:
                 reminder = await _landing_guard(sessions, task, state)
+            # A leaf worker (not a delegating agent, which has its own guards) that
+            # tries to finish right after a failed action is giving up mid-task, not
+            # done — nudge it to continue instead of marking a hollow SUCCESS.
+            if reminder is None and not delegates:
+                reminder = await _completion_guard(sessions, task, state)
             if reminder is not None:
                 state.tracked.append(reminder)
                 continue
@@ -570,6 +576,9 @@ async def _record_tool_result(
     )
     state.tracked.append(TrackedMessage(seq, tool_message(tc.id, result.content)))
     state.resolved_tool_ids.add(tc.id)
+    # Mirror the rehydrate fold: only the most recent result's error-ness is kept,
+    # so the completion guard sees the same signal live and on resume.
+    state.last_tool_errored = result.is_error
     await _record_diagnostics(sessions, task, state, tc, result)
 
 
@@ -805,6 +814,35 @@ async def _children_guard(
     state.children_reminders += 1
     logger.info("agent.children_guard", task_id=str(task.id), live=len(live))
     return TrackedMessage(seq, children_pending_message(names))
+
+
+#: Backstop so a worker that keeps failing-then-giving-up still terminates rather
+#: than looping on the nudge. One nudge is enough to recover a reasoning model that
+#: simply forgot to emit its next tool call; past that a stuck worker may finish.
+_MAX_COMPLETION_NUDGES = 1
+
+
+async def _completion_guard(
+    sessions: Sessions, task: Task, state: AgentState
+) -> TrackedMessage | None:
+    """Reject a leaf worker's premature finish RIGHT AFTER a failed action.
+
+    A worker that ends its turn with no tool call while its last action errored is
+    almost always giving up mid-task — a reasoning model narrates the fix it means
+    to make next, then omits the actual tool call, and the loop would read that as
+    a completed run and mark a hollow SUCCESS. Durably nudge it to continue (fold
+    like the other reminders). ``None`` means it may finish: a clean finish (its
+    last action did not error), or the nudge budget is spent so a genuinely stuck
+    worker still terminates.
+    """
+    if not state.last_tool_errored:
+        return None
+    if state.completion_nudges >= _MAX_COMPLETION_NUDGES:
+        return None
+    seq = await _checkpoint(sessions, task, EventType.COMPLETION_NUDGE, {})
+    state.completion_nudges += 1
+    logger.info("agent.completion_guard", task_id=str(task.id), nudges=state.completion_nudges)
+    return TrackedMessage(seq, completion_nudge_message())
 
 
 #: How many read-only survey calls a leader may make before the loop starts

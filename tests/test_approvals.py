@@ -206,7 +206,15 @@ async def test_approved_call_executes_on_resume_exactly_once(db: Sessions) -> No
 async def test_rejected_call_is_never_executed_and_llm_adapts(db: Sessions) -> None:
     task = await enqueue_task(db)
     tool = RecordingTool(name="bash")
-    llm = gated_llm()
+    # The rejection is an error result, so the completion guard nudges once before
+    # the worker is allowed to finish (a third response covers that turn).
+    llm = ScriptedLLM(
+        [
+            response_with_tool_call("c1", "bash", {"command": "rm -rf ./junk"}),
+            final_response("all tidy"),
+            final_response("all tidy"),
+        ]
+    )
     with pytest.raises(TaskParked):
         await run_agent_task(db, task, llm, ToolRegistry([tool]), approval_policy=POLICY)
     async with session_scope(db) as session:
@@ -223,8 +231,9 @@ async def test_rejected_call_is_never_executed_and_llm_adapts(db: Sessions) -> N
     assert len(tool_results) == 1
     assert tool_results[0].payload["is_error"] is True
     assert "too risky" in tool_results[0].payload["content"]
-    # The rejection reached the LLM as the tool result of the gated call.
-    rejected_msg = llm.calls[-1]["messages"][-1]
+    # The rejection reached the LLM as the tool result of the gated call (the turn
+    # right after the resume, before the completion nudge).
+    rejected_msg = llm.calls[1]["messages"][-1]
     assert rejected_msg["role"] == "tool" and "too risky" in rejected_msg["content"]
 
 
