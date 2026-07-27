@@ -1,16 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { Check, ChevronDown, ChevronUp, Copy, Loader2, Square } from 'lucide-react'
+import { Check, ChevronDown, ChevronUp, Copy, Loader2, PiggyBank, Square } from 'lucide-react'
 import { cancelTask, listTasks, retryTask } from '../api/client'
 import { openTaskStream, type ConnectionState } from '../api/stream'
 import { ACTIVE_STATUSES, TERMINAL_STATUSES, type Task, type TaskEvent } from '../api/types'
 import { DiffViewer } from '../components/DiffViewer'
+import { RunLogStream } from '../components/RunLogStream'
 import { StatusPill } from '../components/StatusPill'
 import { TaskTree } from '../components/TaskTree'
 import { TerminalPane } from '../components/TerminalPane'
 import { TraceTimeline } from '../components/TraceTimeline'
 import { Markdown } from '../components/Markdown'
 import { compactNumber, shortId } from '../lib/format'
+import { runCacheSavingsUsd } from '../lib/pricing'
 import { runTokens } from '../lib/usage'
 import { runTreeSignal } from '../lib/runTree'
 import { finalText, foldTrace, pendingApprovals, pendingQuestions } from '../lib/trace'
@@ -18,6 +20,7 @@ import { useAppData } from '../state/AppDataProvider'
 
 type RightTab = 'terminal' | 'diff'
 type TopView = 'overview' | 'details'
+type LeftTab = 'tree' | 'log'
 
 const RIGHT_WIDTH_KEY = 'gantry.run.rightWidth'
 
@@ -119,15 +122,8 @@ export function TaskPage() {
         onStopAll={() => void stopAll()}
       />
       <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:flex-row">
-        {/* Trace tree: flush to the sidebar, full height, its own scroll. */}
-        <aside className="max-h-44 shrink-0 overflow-y-auto border-b border-zinc-800 bg-zinc-900/20 p-2 lg:max-h-none lg:w-60 lg:border-r lg:border-b-0">
-          <h2 className="px-1.5 pt-1 pb-2 text-xs font-semibold text-zinc-500">TRACE TREE</h2>
-          {tree.length > 0 ? (
-            <TaskTree tree={tree} currentId={taskId} />
-          ) : (
-            <p className="px-1.5 pb-2 text-xs text-zinc-600">loading…</p>
-          )}
-        </aside>
+        {/* Left rail: the trace tree and a live action log, as sibling tabs. */}
+        <LeftRail tree={tree} rootTaskId={task?.root_task_id ?? null} currentId={taskId} />
 
         {/* Trace: fills the space between the tree and the terminal. min-w-0 so
             wide trace content scrolls inside instead of widening the whole row
@@ -162,6 +158,51 @@ export function TaskPage() {
         <RightPane chunkEvents={chunkEvents} events={events} diffCount={diffCount} />
       </div>
     </div>
+  )
+}
+
+// The left rail: the trace tree and a Live Log Stream as sibling tabs. The tree
+// shows the run's shape; the log is a lightweight, real-time feed of what each
+// sub-agent is doing, both projected from the same live data.
+function LeftRail({
+  tree,
+  rootTaskId,
+  currentId,
+}: {
+  tree: Task[]
+  rootTaskId: string | null
+  currentId: string
+}) {
+  const [tab, setTab] = useState<LeftTab>('tree')
+  return (
+    <aside className="flex max-h-52 shrink-0 flex-col overflow-hidden border-b border-zinc-800 bg-zinc-900/20 lg:max-h-none lg:w-60 lg:border-r lg:border-b-0">
+      <div className="flex shrink-0 items-center gap-1 border-b border-zinc-800 px-2 text-sm">
+        {(['tree', 'log'] as const).map((name) => (
+          <button
+            key={name}
+            onClick={() => setTab(name)}
+            className={`-mb-px border-b-2 px-2.5 py-1.5 text-xs capitalize transition ${
+              tab === name
+                ? 'border-amber-500 text-amber-300'
+                : 'border-transparent text-zinc-500 hover:text-zinc-300'
+            }`}
+          >
+            {name === 'log' ? 'Live log' : 'Tree'}
+          </button>
+        ))}
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto p-2">
+        {tab === 'tree' ? (
+          tree.length > 0 ? (
+            <TaskTree tree={tree} currentId={currentId} />
+          ) : (
+            <p className="px-1.5 pb-2 text-xs text-zinc-600">loading…</p>
+          )
+        ) : (
+          <RunLogStream tree={tree} rootTaskId={rootTaskId} />
+        )}
+      </div>
+    </aside>
   )
 }
 
@@ -365,6 +406,7 @@ function RunTop({
           )}
           {label}
         </span>
+        <SavingsBadge tree={tree} task={task} />
         <span className="grow" />
         <div className="flex rounded-md border border-zinc-800 p-0.5 text-xs">
           {(['overview', 'details'] as const).map((name) => (
@@ -452,6 +494,26 @@ function RunTop({
       )}
       {actionError && <p className="mt-2 text-xs text-red-400">{actionError}</p>}
     </header>
+  )
+}
+
+// A live "cost saver" badge: dollars prompt-caching has saved across the whole
+// run tree so far. Hidden until the savings round to at least a cent, so it only
+// appears once caching has actually paid off.
+function SavingsBadge({ tree, task }: { tree: Task[]; task: Task | null }) {
+  const saved = useMemo(() => {
+    const nodes = tree.length ? tree : task ? [task] : []
+    return runCacheSavingsUsd(nodes)
+  }, [tree, task])
+  if (saved < 0.005) return null
+  return (
+    <span
+      title="Saved so far by serving cached prompt tokens instead of fresh input"
+      className="flex items-center gap-1 rounded-full border border-emerald-900/60 bg-emerald-950/40 px-2 py-0.5 text-xs text-emerald-300"
+    >
+      <PiggyBank className="h-3.5 w-3.5" aria-hidden />
+      Saved ${saved.toFixed(2)}
+    </span>
   )
 }
 
