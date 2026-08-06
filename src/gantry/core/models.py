@@ -17,6 +17,7 @@ from __future__ import annotations
 import enum
 import uuid
 from datetime import datetime
+from decimal import Decimal
 from typing import Any
 
 import sqlalchemy as sa
@@ -33,6 +34,13 @@ DEFAULT_WORKSPACE_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
 #: 0004). Runs/agents/teams are scoped by project_id; this is the fallback for
 #: rows created without an explicit project (e.g. children inherit the parent's).
 DEFAULT_PROJECT_ID = uuid.UUID("00000000-0000-0000-0000-000000000002")
+
+#: The account every run is billed to when auth is DISABLED (local dev, CI) and
+#: there is therefore no signed-in email. Seeded by migration 0015 so the credit
+#: ledger has a real row to decrement in every environment — metering must behave
+#: identically with and without Supabase, or the billing path is only ever
+#: exercised in production.
+LOCAL_USER_ID = uuid.UUID("00000000-0000-0000-0000-000000000003")
 
 
 class TaskStatus(enum.StrEnum):
@@ -140,6 +148,55 @@ def _status_column() -> sa.Enum:
     )
 
 
+#: Scale of the credit ledger: NUMERIC(18, 6). Credits are money, so they are
+#: NUMERIC (exact) rather than FLOAT — a float balance drifts under a million
+#: small decrements, and a balance that disagrees with SUM(credits_deducted) is
+#: unauditable. Six decimals because a single cheap call can cost well under a
+#: whole credit and must not round to zero.
+CREDIT_SCALE = 6
+_CREDITS = sa.Numeric(18, CREDIT_SCALE)
+
+
+class User(Base):
+    """An account that owns runs and holds a Gantry Credits (GC) balance.
+
+    Identity comes from Supabase (``email`` is the natural key the JWT carries;
+    ``subject`` is the provider's stable id, recorded but not keyed on because a
+    workspace is invited by email). Rows are created on demand the first time an
+    authenticated caller launches something — there is no signup step.
+
+    ``gantry_credits_balance`` is decremented by the metering path in a single
+    atomic UPDATE per LLM call; it is never computed by reading-then-writing, so
+    concurrent agents in one swarm cannot lose each other's charges.
+    """
+
+    __tablename__ = "users"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    email: Mapped[str] = mapped_column(sa.String(320), nullable=False)
+    #: Supabase ``sub`` claim, when known. Informational: the allowlist is by email.
+    subject: Mapped[str] = mapped_column(sa.String(128), nullable=False, default="")
+    #: Spendable balance in GC. May go NEGATIVE by at most the cost of calls
+    #: already in flight: a provider response that has already been paid for is
+    #: always recorded, because dropping the charge would be free inference.
+    gantry_credits_balance: Mapped[Decimal] = mapped_column(
+        _CREDITS, nullable=False, server_default=sa.text("0"), default=Decimal("0")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    )
+
+    __table_args__ = (
+        # One account per email per workspace — the upsert target of the
+        # resolve-on-first-use path.
+        sa.UniqueConstraint("workspace_id", "email", name="uq_users_workspace_email"),
+    )
+
+
 class Task(Base):
     __tablename__ = "tasks"
 
@@ -174,6 +231,15 @@ class Task(Base):
         _status_column(), nullable=False, default=TaskStatus.PENDING
     )
     priority: Mapped[int] = mapped_column(sa.Integer, nullable=False, default=0)
+
+    #: Who this run is billed to. Set from the authenticated caller at launch and
+    #: INHERITED by every spawned child, so a whole swarm bills one account no
+    #: matter how deep it fans out. Nullable because rows predating billing (and
+    #: anything enqueued outside the API) have no owner; those calls are logged
+    #: with a NULL ``user_id`` and deduct from nobody rather than being dropped.
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), sa.ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
 
     payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
     result: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
@@ -228,6 +294,7 @@ class Task(Base):
         sa.Index("ix_tasks_project", "project_id"),
         sa.Index("ix_tasks_parent", "parent_task_id"),
         sa.Index("ix_tasks_root", "root_task_id"),
+        sa.Index("ix_tasks_user", "user_id"),
     )
 
 
@@ -509,6 +576,71 @@ class RunSpend(Base):
     )
 
     __table_args__ = (sa.Index("ix_run_spend_workspace", "workspace_id"),)
+
+
+class LlmUsageLog(Base):
+    """One immutable row per provider call — the billing audit trail.
+
+    This is the *evidence* behind a balance: ``SUM(credits_deducted)`` over a
+    user's rows must equal what was taken off ``users.gantry_credits_balance``,
+    so the row and the decrement are written in ONE transaction (see
+    ``billing/ledger.py``). Never updated or deleted; a correction is a new row.
+
+    It complements, rather than replaces, the two existing spend surfaces: the
+    ``llm_response`` EVENT is the agent's own history (replayable, per-step), and
+    ``Task.cost_usd`` is a settled per-task total. Neither can answer "what did
+    this account spend, at what margin, on which model" — a per-call table with
+    both the raw provider cost and the marked-up credit charge can.
+
+    ``raw_cost_usd`` is what the call cost Gantry at provider list price;
+    ``credits_deducted`` is what the user was charged. The ratio between them is
+    the realised gross margin, which is the whole point of recording both.
+    """
+
+    __tablename__ = "llm_usage_logs"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    #: The billed account. NULL for a call with no owner (a task enqueued outside
+    #: the API); the row is still written, so usage is never silently unlogged.
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), sa.ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    #: The run (== ``Task.root_task_id``), so "credits used by this run" is one
+    #: indexed SUM even across a swarm of hundreds of tasks.
+    run_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    #: The task that made the call. No FK: the log outlives the task tree, and a
+    #: deleted project must never take the billing record with it.
+    task_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    #: The slug as REQUESTED (provider-prefixed, e.g. ``openrouter/qwen/qwen3-coder``)
+    #: — that is what was priced, so it is what gets audited.
+    model_slug: Mapped[str] = mapped_column(sa.String(200), nullable=False, default="")
+    prompt_tokens: Mapped[int] = mapped_column(sa.BigInteger, nullable=False, default=0)
+    completion_tokens: Mapped[int] = mapped_column(sa.BigInteger, nullable=False, default=0)
+    total_tokens: Mapped[int] = mapped_column(sa.BigInteger, nullable=False, default=0)
+    #: Input tokens served from / written to the provider's prompt cache. Broken
+    #: out because they are priced differently — without them the raw cost of a
+    #: cache-warm agent looks inexplicably low next to its token count.
+    cache_read_tokens: Mapped[int] = mapped_column(sa.BigInteger, nullable=False, default=0)
+    cache_write_tokens: Mapped[int] = mapped_column(sa.BigInteger, nullable=False, default=0)
+    #: Provider list cost of this call, in USD.
+    raw_cost_usd: Mapped[Decimal] = mapped_column(
+        sa.Numeric(18, 8), nullable=False, server_default=sa.text("0"), default=Decimal("0")
+    )
+    #: What the user was charged, in GC (raw cost, marked up to the margin target).
+    credits_deducted: Mapped[Decimal] = mapped_column(
+        _CREDITS, nullable=False, server_default=sa.text("0"), default=Decimal("0")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    )
+
+    __table_args__ = (
+        sa.Index("ix_llm_usage_logs_user", "user_id", "created_at"),
+        sa.Index("ix_llm_usage_logs_run", "run_id"),
+        sa.Index("ix_llm_usage_logs_task", "task_id"),
+        sa.Index("ix_llm_usage_logs_workspace", "workspace_id", "created_at"),
+    )
 
 
 class ProviderType(enum.StrEnum):
