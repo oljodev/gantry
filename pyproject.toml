@@ -22,6 +22,8 @@ dependencies = [
     "cryptography>=44",
     "pyjwt[crypto]>=2.10",
     "httpx>=0.28",
+    "python-multipart>=0.0.32",
+    "pypdf>=6.15.0",
 ]
 
 [dependency-groups]
@@ -85,6 +87,13 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "litellm.*"
+ignore_missing_imports = true
+
+# boto3 is an OPTIONAL dependency: only a deployment that sets
+# GANTRY_ATTACHMENT_S3_BUCKET installs it, and storage.py imports it lazily
+# behind a clear error message.
+[[tool.mypy.overrides]]
+module = "boto3.*"
 ignore_missing_imports = true
 
 # --- Pytest -------------------------------------------------------------

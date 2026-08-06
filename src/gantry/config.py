@@ -167,6 +167,27 @@ class Settings(BaseSettings):
     hard_max_context_tokens: int = 96_000
     #: Directory of SKILL.md files loaded by workers and the API.
     skills_root: Path = Path("skills")
+    #: --- Attachments (multi-modal prompt uploads) ----------------------------
+    #: Where uploaded blobs live when no S3 bucket is configured. Keys are
+    #: content-addressed, so this directory is safe to share between processes
+    #: on one host; a multi-host deployment wants the S3 backend below.
+    attachment_root: Path = Path("/tmp/gantry-attachments")
+    #: Per-file upload ceiling in MiB. Enforced while STREAMING the body, so an
+    #: oversized upload is rejected without ever being buffered whole.
+    attachment_max_mb: int = 20
+    #: Character budget for one attachment's extracted text. An attachment is
+    #: context, not the whole prompt: past this the text is truncated with an
+    #: explicit marker so the model knows the document continues.
+    attachment_max_text_chars: int = 60_000
+    #: Set to store blobs in S3 instead of on disk (requires boto3 installed).
+    attachment_s3_bucket: str | None = None
+    attachment_s3_prefix: str = "attachments"
+    attachment_s3_region: str | None = None
+    #: Model used to transcribe an image for a worker whose model is text-only.
+    #: None derives one from the worker model's provider route (so it runs on the
+    #: run's own key); set it explicitly for a provider we can't guess, e.g. a
+    #: local OpenAI-compatible endpoint serving a VLM.
+    vision_model: str | None = None
     #: Model a stalled task is escalated to. When the loop detector sees the same
     #: structured error recur across a task's recent tool results, the task is
     #: re-queued to run on THIS model with the error history as opening context —
