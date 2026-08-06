@@ -203,7 +203,9 @@ async def is_worktree_clean(repo: Path) -> bool:
     return out.strip() == ""
 
 
-async def ensure_pushed(repo: Path, auth: GitAuth) -> None:
+async def ensure_pushed(
+    repo: Path, auth: GitAuth, *, message: str = "gantry: deliver outstanding work"
+) -> None:
     """Convergently deliver the checkout's current branch to origin: stage and
     commit any outstanding changes, then push HEAD.
 
@@ -211,8 +213,12 @@ async def ensure_pushed(repo: Path, auth: GitAuth) -> None:
     safe to call at task finalize regardless of whether the agent already ran
     ``git_commit_push``. Raises ``GitError`` if the push itself is rejected, which
     the caller treats as a delivery failure.
+
+    ``message`` labels the catch-up commit. It exists so a checkpoint written for
+    a reason other than finishing (a run paused mid-flight for credits) says so in
+    the history, rather than claiming work was delivered.
     """
     if not await is_worktree_clean(repo):
         await run_git(["add", "-A"], cwd=repo)
-        await run_git(["commit", "-m", "gantry: deliver outstanding work"], cwd=repo, check=False)
+        await run_git(["commit", "-m", message], cwd=repo, check=False)
     await run_git(["push", "-u", "origin", "HEAD"], cwd=repo, auth=auth)

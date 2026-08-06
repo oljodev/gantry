@@ -94,7 +94,9 @@ async def test_an_out_of_credit_account_is_stopped_before_spending_anything(
     db: Sessions, tmp_path: Path
 ) -> None:
     """The gate is BEFORE the first call: a check that ran after a response could
-    only record the overrun, never prevent it."""
+    only record the overrun, never prevent it. And it PAUSES rather than fails —
+    running out of money is a billing condition the user can fix, not an error in
+    the work (see tests/test_credits_pause.py for the full pause/resume cycle)."""
     CATALOG.load({TEST_MODEL: TokenPrice(Decimal(1000), Decimal(3000), Decimal(100))})
     task, user_id = await _owned_task(db, credits="0")
     llm = ScriptedLLM([final_response("should never run")])
@@ -103,8 +105,8 @@ async def test_an_out_of_credit_account_is_stopped_before_spending_anything(
     await worker.process(await claim_as(db, worker))
 
     settled = await get_task(db, task)
-    assert settled.status is TaskStatus.FAILED
-    assert "Gantry Credits" in (settled.last_error or "")
+    assert settled.status is TaskStatus.PAUSED_OUT_OF_CREDITS
+    assert settled.last_error is None  # a pause is not a failure to debug
     # Nothing was sent to the provider, so nothing was charged.
     assert llm.calls == []
     async with db() as session:
@@ -117,11 +119,11 @@ async def test_an_out_of_credit_account_is_stopped_before_spending_anything(
         ) == 0
 
 
-async def test_enforcement_is_off_by_default_so_an_upgrade_does_not_halt_work(
+async def test_enforcement_can_be_turned_off_to_track_without_gating(
     db: Sessions, tmp_path: Path
 ) -> None:
-    """Upgrading a running deployment must not suddenly refuse work that used to
-    run — the balance goes negative and stays visible instead."""
+    """A deployment that wants metering but no enforcement lets the balance go
+    negative and stay visible instead of pausing."""
     CATALOG.load({TEST_MODEL: TokenPrice(Decimal(1000), Decimal(3000), Decimal(100))})
     task, user_id = await _owned_task(db, credits="0")
     worker = _worker(db, tmp_path, ScriptedLLM([final_response("ran anyway")]))

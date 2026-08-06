@@ -20,7 +20,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from gantry.attachments.prepare import prepare_task_attachments
 from gantry.attachments.snapshot import PAYLOAD_KEY as ATTACHMENTS_KEY
 from gantry.attachments.storage import AttachmentStore
-from gantry.billing.ledger import BillingContext, has_credit
+from gantry.billing.gate import CreditGate
+from gantry.billing.ledger import BillingContext, credit_balance
 from gantry.billing.metering import meter
 from gantry.config import Settings
 from gantry.core import queue
@@ -140,8 +141,10 @@ class WorkerConfig:
     #: None derives one from the worker model's provider route, so the pre-pass
     #: always runs on the key the task already holds.
     vision_model: str | None = None
-    #: Refuse to start a task whose owner has no Gantry Credits left. Off by
-    #: default so upgrading a running deployment never halts funded-by-nobody work.
+    #: Pause a task whose owner has no Gantry Credits left, at the next step
+    #: boundary, as PAUSED_OUT_OF_CREDITS. Defaults OFF here so a Worker built
+    #: directly (tests, embedders) is not gated by surprise; ``from_settings``
+    #: turns it on, which is the path every real deployment uses.
     enforce_credit_balance: bool = False
 
     @classmethod
@@ -454,21 +457,28 @@ class Worker:
         cancel_requested = asyncio.Event()
         heartbeater = asyncio.create_task(self._heartbeat_loop(task, lease_lost, cancel_requested))
         workspace: ws.Workspace | None = None
+        # Bound before the try so the park handler can always report the balance
+        # that caused a pause, whatever stage the task got to.
+        gate = CreditGate(enabled=False)
         succeeded = False
         try:
             async with session_scope(self._sessions) as session:
                 await queue.mark_running(
                     session, task_id=task.id, worker_id=cfg.worker_id, attempt=task.attempt
                 )
-            # Refuse to start work an account cannot pay for. Checked HERE, before
-            # the first token is spent, because a credit check after a response has
-            # arrived can only record the overrun, never prevent it.
-            await self._check_credit(task)
+            # Seed the credit gate from the database ONCE. From here the metering
+            # path keeps it current for free (each deduction returns the new
+            # balance), so the per-step affordability check costs no queries.
+            # Checked before the first token is spent: a check after a response
+            # has arrived can only record the overrun, never prevent it.
+            gate = await self._credit_gate(task)
+            if gate.exhausted:  # nothing has been spent yet — pause before starting
+                raise TaskParked(TaskStatus.PAUSED_OUT_OF_CREDITS.value)
             llm, provider = await self._llm_for_task(task)
             # Bill every call this task makes. Wrapping the client (rather than the
             # loop) means the summarizer, the conflict resolver and the attachment
             # vision pre-pass are metered too — none of them can spend off-ledger.
-            llm = self._meter(task, llm)
+            llm = self._meter(task, llm, gate)
             # Enforce that the model routes through its provider in LiteLLM before any
             # call is made — a spawned child inherits its leader's provider but often
             # a bare model slug, which would otherwise be sent DIRECT to that vendor
@@ -480,6 +490,14 @@ class Worker:
             # message from the payload.
             await self._prepare_attachments(task, llm)
             copilot = task.payload.get("copilot")
+            # Bound before the branch: a co-pilot task takes the sandbox-free path
+            # below but is still passed to _should_land_on_main at finalize, and
+            # Python evaluates that argument even though the call short-circuits
+            # to False on `workspace is None`. Left unbound it raised
+            # UnboundLocalError after every successful co-pilot run — invisible,
+            # because the task was already terminal by then and the follow-up
+            # _fail() was a no-op.
+            is_leader = bool(task.payload.get("autonomous_leader"))
             if copilot:
                 # Co-pilot tasks propose a skill/tree for the UI; no sandbox.
                 registry = build_copilot_registry(str(copilot))
@@ -495,7 +513,6 @@ class Worker:
                     task.payload,
                     github_token=await self._github_token(task),
                 )
-                is_leader = bool(task.payload.get("autonomous_leader"))
                 can_spawn = (
                     task.kind is TaskKind.PLAN or bool(task.payload.get("can_spawn")) or is_leader
                 )
@@ -523,6 +540,11 @@ class Worker:
                     raise TaskCancelledError(str(task.id))
                 if lease_lost.is_set():
                     raise LeaseLostError(str(task.id))
+                # Out of credit: PAUSE, never fail. This runs at a step boundary,
+                # so any tool call already in flight has settled and flushed its
+                # file/git state — the run stops between actions, not inside one.
+                if gate.exhausted:
+                    raise TaskParked(TaskStatus.PAUSED_OUT_OF_CREDITS.value)
 
             async with self._sessions() as session:
                 skills = await load_registry(
@@ -579,6 +601,14 @@ class Worker:
                 assert workspace is not None
                 await self._land_task_on_main(task, workspace)
         except TaskParked as parked:
+            if parked.reason == TaskStatus.PAUSED_OUT_OF_CREDITS.value and workspace is not None:
+                # Preserve the paused agent's work before the throwaway workspace
+                # goes away. Committing and pushing to the task's branch makes it
+                # durable at the run's REAL rendezvous (origin) rather than on this
+                # host's disk — so a resume picks it up even on another machine,
+                # or after this worker dies. Best-effort: an unpushable workspace
+                # must not turn a pause into a failure.
+                await self._preserve_paused_work(task, workspace)
             async with session_scope(self._sessions) as session:
                 if parked.reason == TaskStatus.WAITING_APPROVAL.value:
                     status = await queue.park_for_approval(
@@ -587,6 +617,14 @@ class Worker:
                 elif parked.reason == TaskStatus.WAITING_INPUT.value:
                     status = await queue.park_for_input(
                         session, task_id=task.id, worker_id=cfg.worker_id, attempt=task.attempt
+                    )
+                elif parked.reason == TaskStatus.PAUSED_OUT_OF_CREDITS.value:
+                    status = await queue.park_for_credits(
+                        session,
+                        task_id=task.id,
+                        worker_id=cfg.worker_id,
+                        attempt=task.attempt,
+                        balance=gate.describe(),
                     )
                 else:
                     status = await queue.park_for_children(
@@ -783,10 +821,11 @@ class Worker:
                 "worker.attachment_prepare_failed", task_id=str(task.id), error=repr(exc)
             )
 
-    def _meter(self, task: Task, llm: LLMClient) -> LLMClient:
+    def _meter(self, task: Task, llm: LLMClient, gate: CreditGate) -> LLMClient:
         """Wrap a task's client so each completion writes a usage row and deducts
         credits from the run's owner. ``run_id`` is the ROOT task, so a swarm's
-        whole tree accumulates against one run total however deep it fans out."""
+        whole tree accumulates against one run total however deep it fans out.
+        The gate rides along so each charge updates what the loop reads."""
         return meter(
             llm,
             self._sessions,
@@ -796,22 +835,52 @@ class Worker:
                 run_id=task.root_task_id,
                 task_id=task.id,
             ),
+            gate,
         )
 
-    async def _check_credit(self, task: Task) -> None:
-        """Stop an unfunded task before it spends anything.
+    async def _credit_gate(self, task: Task) -> CreditGate:
+        """Seed this task's credit gate with one database read.
 
-        Off unless ``enforce_credit_balance`` is set, so upgrading an existing
-        deployment never silently halts work that used to run. Non-retryable: a
-        balance is fixed by topping up, not by trying again in 30 seconds.
+        After this the metering path keeps it current for free, so the per-step
+        affordability check never touches the database again. A task with no
+        owner is never gated: unattributed work has no balance to run out of.
         """
-        if not self._config.enforce_credit_balance or task.user_id is None:
-            return
+        enabled = self._config.enforce_credit_balance and task.user_id is not None
+        if not enabled or task.user_id is None:
+            return CreditGate(enabled=False)
         async with self._sessions() as session:
-            if not await has_credit(session, task.user_id):
-                raise ProviderConfigError(
-                    "this account is out of Gantry Credits — top up the balance to run more work"
-                )
+            return CreditGate(enabled=True, balance=await credit_balance(session, task.user_id))
+
+    async def _preserve_paused_work(self, task: Task, workspace: ws.Workspace) -> None:
+        """Make a paused agent's in-progress work durable before its throwaway
+        workspace is destroyed.
+
+        Parked tasks release their compute — that is the whole point of parking —
+        and the workspace is per-ATTEMPT, so a resume gets a fresh clone under a
+        new directory. Anything the agent had edited but not committed would be
+        lost. Pushing to the task's branch stores it where the run already
+        rendezvouses (origin), so the resumed attempt clones it straight back,
+        even on a different machine.
+
+        Best-effort by construction: a task with no repo has nothing to preserve,
+        and a push that fails must not turn a recoverable pause into a failure.
+        """
+        if workspace.branch is None or workspace.repo_url is None:
+            return
+        try:
+            await ensure_pushed(
+                workspace.path,
+                workspace.auth,
+                message=f"gantry: checkpoint paused run {task.id.hex[:12]} (out of credits)",
+            )
+        except GitError as exc:
+            logger.warning(
+                "worker.paused_work_not_preserved", task_id=str(task.id), error=repr(exc)
+            )
+        else:
+            logger.info(
+                "worker.paused_work_preserved", task_id=str(task.id), branch=workspace.branch
+            )
 
     async def _llm_for_task(self, task: Task) -> tuple[LLMClient, Provider | None]:
         """The task's LLM client (and its provider, if any): vault-backed provider

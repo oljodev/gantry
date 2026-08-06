@@ -23,6 +23,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
+from gantry.billing.gate import CreditGate
 from gantry.billing.ledger import BillingContext, RecordedCall, Sessions, record_call_in_session
 from gantry.logging import get_logger
 from gantry.runtime.llm import DeltaSink, LLMClient, LLMResponse, Message, ToolSchema
@@ -38,10 +39,14 @@ class MeteredLLMClient:
         inner: LLMClient,
         sessions: Sessions,
         context: BillingContext,
+        gate: CreditGate | None = None,
     ) -> None:
         self._inner = inner
         self._sessions = sessions
         self._context = context
+        #: Fed the post-charge balance after every call, so the agent's step
+        #: boundary can decide whether to pause without a database read.
+        self._gate = gate
 
     @property
     def context(self) -> BillingContext:
@@ -82,6 +87,8 @@ class MeteredLLMClient:
                 error=repr(exc),
             )
             return None
+        if self._gate is not None:
+            self._gate.observe(recorded.balance_after)
         logger.info(
             "billing.call_charged",
             task_id=str(self._context.task_id),
@@ -98,6 +105,7 @@ def meter(
     inner: LLMClient,
     sessions: Sessions | None,
     context: BillingContext | None,
+    gate: CreditGate | None = None,
 ) -> LLMClient:
     """Wrap ``inner`` for billing when there is somewhere to bill it.
 
@@ -107,4 +115,4 @@ def meter(
     """
     if sessions is None or context is None:
         return inner
-    return MeteredLLMClient(inner, sessions, context)
+    return MeteredLLMClient(inner, sessions, context, gate)

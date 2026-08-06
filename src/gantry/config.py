@@ -203,10 +203,20 @@ class Settings(BaseSettings):
     #: raw call may eat 60% of revenue, leaving a 40% gross margin — the minimum
     #: target. LOWER it to widen the margin (0.5 => 50%); it must stay in (0, 1].
     credit_cost_ratio: float = 0.60
-    #: Refuse to start a task whose owner has no credit left. Off by default so an
-    #: existing deployment does not suddenly stop running work the day it upgrades;
-    #: turn it on once accounts are actually funded.
-    enforce_credit_balance: bool = False
+    #: Pause a run whose owner has no credit left, at the next step boundary. ON:
+    #: an unfunded run stops cleanly as PAUSED_OUT_OF_CREDITS and resumes on
+    #: top-up, so enforcement costs a pause rather than a failure. Set to false
+    #: only to run a deployment where credits are tracked but never enforced.
+    enforce_credit_balance: bool = True
+    #: Accounts allowed to grant credits. Empty means nobody is an admin by
+    #: email, which is the safe default: with auth enabled and no admins named,
+    #: the only way to grant is the internal secret below.
+    admin_emails: list[str] = Field(default_factory=list)
+    #: Shared secret for machine callers of the credit-grant endpoint — the seam
+    #: the Paddle payment webhook will present. Sent as the ``X-Gantry-Admin-Secret``
+    #: header and compared in constant time. None disables the header entirely, so
+    #: an unset secret can never be matched by an empty one.
+    internal_api_secret: str | None = None
     #: Pull live list prices from OpenRouter instead of relying only on the small
     #: built-in table. Prices are fetched once at worker boot and refreshed on the
     #: TTL below; a failed fetch is non-fatal (the static table still prices).
