@@ -17,6 +17,9 @@ from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from gantry.attachments.prepare import prepare_task_attachments
+from gantry.attachments.snapshot import PAYLOAD_KEY as ATTACHMENTS_KEY
+from gantry.attachments.storage import AttachmentStore
 from gantry.config import Settings
 from gantry.core import queue
 from gantry.core.control import get_control
@@ -131,6 +134,10 @@ class WorkerConfig:
     #: fallback that bounds how long a worker with a dead listener keeps
     #: claiming, so it stays short.
     control_refresh_seconds: float = 2.0
+    #: Vision model used to transcribe an attached image for a text-only worker.
+    #: None derives one from the worker model's provider route, so the pre-pass
+    #: always runs on the key the task already holds.
+    vision_model: str | None = None
 
     @classmethod
     def from_settings(cls, settings: Settings, worker_id: str | None = None) -> WorkerConfig:
@@ -149,6 +156,7 @@ class WorkerConfig:
             conflict_resolver_model=settings.conflict_resolver_model,
             execute_max_context_tokens=settings.execute_max_context_tokens,
             leader_max_context_tokens=settings.leader_max_context_tokens,
+            vision_model=settings.vision_model,
             compaction=CompactionConfig(
                 max_context_tokens=settings.max_context_tokens,
                 keep_recent_messages=settings.keep_recent_messages,
@@ -197,6 +205,7 @@ class Worker:
         cancel_listener: QueueListener | None = None,
         control_listener: QueueListener | None = None,
         workspace_id: uuid.UUID = DEFAULT_WORKSPACE_ID,
+        attachment_store: AttachmentStore | None = None,
     ) -> None:
         self._sessions = sessions
         self._config = config
@@ -206,6 +215,9 @@ class Worker:
         self._control_listener = control_listener
         self._workspace_id = workspace_id
         self._vault = vault
+        #: Blob store for prompt attachments. Built from settings by default so a
+        #: worker started with just a config can read what the API stored.
+        self._attachment_store = attachment_store
         #: Cached emergency-stop gate. Refreshed on a timer (durable fallback)
         #: and flipped instantly by the control NOTIFY. ``_control_checked_at``
         #: is loop-clock time, so it never depends on the host wall clock.
@@ -448,6 +460,11 @@ class Worker:
             # a bare model slug, which would otherwise be sent DIRECT to that vendor
             # with the wrong key (see _route_task_model).
             _route_task_model(task, provider)
+            # Model capability guard: resolve each attached file into a form THIS
+            # task's model can read, transcribing images for a text-only worker.
+            # Runs after the model is final and before the loop builds its opening
+            # message from the payload.
+            await self._prepare_attachments(task, llm)
             copilot = task.payload.get("copilot")
             if copilot:
                 # Co-pilot tasks propose a skill/tree for the UI; no sandbox.
@@ -726,6 +743,31 @@ class Worker:
             logger.info("worker.landed_on_main", task_id=str(task.id), target=str(target))
         else:
             logger.info("worker.land_skipped", task_id=str(task.id), detail=detail)
+
+    async def _prepare_attachments(self, task: Task, llm: LLMClient) -> None:
+        """Route this task's attachments through the capability guard.
+
+        A no-op unless the payload actually carries attachments. Never fatal: a
+        blob store outage or a failed transcription leaves the agent with an
+        explicit note about the file it can't read, which is far better than
+        failing a whole run over a picture.
+        """
+        if not task.payload.get(ATTACHMENTS_KEY):
+            return
+        model = str(task.payload.get("model") or self._config.default_model)
+        try:
+            await prepare_task_attachments(
+                self._sessions,
+                task.payload,
+                model=model,
+                llm=llm,
+                store=self._attachment_store,
+                vision_model=self._config.vision_model,
+            )
+        except Exception as exc:
+            logger.warning(
+                "worker.attachment_prepare_failed", task_id=str(task.id), error=repr(exc)
+            )
 
     async def _llm_for_task(self, task: Task) -> tuple[LLMClient, Provider | None]:
         """The task's LLM client (and its provider, if any): vault-backed provider

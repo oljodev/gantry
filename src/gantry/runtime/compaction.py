@@ -26,6 +26,13 @@ SUMMARIZE_INSTRUCTION = (
 )
 
 
+#: Flat charge for one image block. Providers bill an image by its pixel
+#: dimensions, which we can't see from the data URL — and charging the base64
+#: LENGTH would be wildly wrong (a 2 MB PNG is ~2.7M base64 chars but ~1.5k
+#: tokens). This is the right order of magnitude for a typical screenshot.
+IMAGE_BLOCK_TOKENS = 1_500
+
+
 def estimate_tokens(messages: list[Message]) -> int:
     """Cheap chars/4 heuristic — deliberately provider-agnostic and dependency-free."""
     total = 0
@@ -34,6 +41,15 @@ def estimate_tokens(messages: list[Message]) -> int:
         content = msg.get("content")
         if isinstance(content, str):
             total += len(content) // 4
+        elif isinstance(content, list):
+            # Multi-modal content (an attached mockup rides on the goal message).
+            for block in content:
+                if not isinstance(block, dict):
+                    continue
+                if block.get("type") == "text":
+                    total += len(str(block.get("text") or "")) // 4
+                else:
+                    total += IMAGE_BLOCK_TOKENS
         for tc in msg.get("tool_calls") or []:
             total += len(tc["function"]["arguments"]) // 4 + 16
     return total

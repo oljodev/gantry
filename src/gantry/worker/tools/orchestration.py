@@ -24,6 +24,8 @@ import sqlalchemy as sa
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from gantry.attachments.snapshot import PAYLOAD_KEY as ATTACHMENTS_KEY
+from gantry.attachments.snapshot import inheritable
 from gantry.core import queue
 from gantry.core.db import session_scope
 from gantry.core.events import append_event, read_events
@@ -165,6 +167,14 @@ def _inherit_parent_context(payload: dict[str, Any], parent_payload: dict[str, A
     # borrow the parent's when the child pinned none.
     if payload.get("model") is None and parent_payload.get("model") is not None:
         payload["model"] = parent_payload["model"]
+    # The user's attached files are part of the SPEC, so they flow down to every
+    # worker that has to build against them — but only the durable snapshot: the
+    # parent's model-specific resolution (its base64 image, its transcript) is
+    # stripped so each child re-resolves against ITS OWN model. That is what makes
+    # a vision leader delegating to a text-only coder work: the coder gets the
+    # cached transcription, not an image block its provider would reject.
+    if payload.get(ATTACHMENTS_KEY) is None and parent_payload.get(ATTACHMENTS_KEY):
+        payload[ATTACHMENTS_KEY] = inheritable(parent_payload[ATTACHMENTS_KEY])
 
 
 def _sessions_of(ctx: ToolContext) -> Sessions:

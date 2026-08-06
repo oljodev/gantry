@@ -8,6 +8,7 @@ import signal
 
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
+from gantry.attachments.storage import build_store
 from gantry.config import get_settings
 from gantry.core.db import create_engine
 from gantry.core.notify import TASK_CANCEL_CHANNEL, WORKSPACE_CONTROL_CHANNEL, QueueListener
@@ -53,6 +54,7 @@ async def main() -> None:
             limiter_registry=limiters,
             cancel_listener=cancel_listener,
             control_listener=control_listener,
+            attachment_store=build_store(settings),
         )
         logger.info(
             "worker.booting",

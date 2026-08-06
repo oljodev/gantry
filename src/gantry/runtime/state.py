@@ -19,6 +19,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
+from gantry.attachments.context import goal_message
+from gantry.attachments.snapshot import PAYLOAD_KEY as ATTACHMENTS_KEY
 from gantry.core.models import EventType, TaskEvent
 from gantry.runtime.llm import Message, ToolCallRequest
 
@@ -160,11 +162,19 @@ class AgentState:
 
 
 def initial_messages(payload: dict[str, Any]) -> list[TrackedMessage]:
+    """The [system, goal] anchors, derived purely from the payload.
+
+    Any attachments fold into the GOAL message rather than becoming a message of
+    their own — the goal is an untouchable compaction anchor, so a spec, a
+    mockup, or a transcribed diagram survives every fold for the life of the run,
+    exactly like the prose goal does. ``goal_message`` is pure, so a resumed task
+    reconstructs a byte-identical opening message.
+    """
     system = payload.get("system_prompt") or DEFAULT_SYSTEM_PROMPT
     goal = payload.get("goal", "")
     return [
         TrackedMessage(None, {"role": "system", "content": system}),
-        TrackedMessage(None, {"role": "user", "content": goal}),
+        TrackedMessage(None, goal_message(goal, payload.get(ATTACHMENTS_KEY) or [])),
     ]
 
 
