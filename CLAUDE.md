@@ -68,6 +68,24 @@ default and is only for deliberately wanting that multiplication.
   filesystem. Attachments fold into the **goal message**, which is a compaction
   anchor — a spec survives the whole run.
 
+- **Every LLM call is metered, and the ledger must reconcile.** The billing hook
+  is a *client decorator* (`billing/metering.py`), not a provider callback, so
+  agent steps, the compaction summarizer, the conflict resolver and the vision
+  pre-pass are all billed by construction — a new call site cannot spend
+  off-ledger. Each response writes one `llm_usage_logs` row **and** decrements
+  `users.gantry_credits_balance` in ONE transaction, via a single
+  `UPDATE ... balance = balance - :c` (never read-modify-write, or a swarm of
+  agents on one account would interleave and lose charges). The invariant is
+  `balance == start - SUM(credits_deducted)`. Charges are priced from the
+  *requested* slug, never the provider-echoed `response.model`. A balance may go
+  negative — the provider already billed us, so hiding the charge would not
+  un-spend it; enforcement (`enforce_credit_balance`) gates *before* a task
+  starts. Billing failures log at ERROR and never fail the agent's turn.
+  Pricing is `raw_cost / credit_cost_ratio x credits_per_usd`, in Decimal
+  throughout: `credit_cost_ratio` is the COST ratio, so 0.60 means a **40% gross
+  margin**. Runs are attributed at launch and children inherit `user_id` through
+  `queue.enqueue`, so a whole swarm bills one account.
+
 Per-task tuning is role-aware: a leaf EXECUTE worker compacts at a tighter budget
 (`execute_max_context_tokens`) so a small task never compacts and its prompt cache
 stays warm; a delegating leader gets a larger one (`leader_max_context_tokens`).
