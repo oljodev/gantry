@@ -53,6 +53,21 @@ default and is only for deliberately wanting that multiplication.
   repair-wave brake) or the run's whole tree hits `run_task_ceiling` — so a
   leader can't fund fixer wave after fixer wave.
 
+- **Attachments are routed by model capability, never assumed.**
+  `attachments/capabilities.py` maps a model slug to the modalities it can
+  ingest, and an unknown slug is **text-only on purpose**: under-claiming costs
+  one cheap transcription, over-claiming is a hard provider 400 mid-run. Before
+  the loop starts, `attachments/prepare.py` resolves every attached file into a
+  form THIS task's model can read — an image block for a vision model, a
+  vision-model transcription for a text-only worker (DeepSeek-R1, Qwen Coder),
+  an explicit note when neither is possible (never a silent omission). The
+  transcript is cached on the attachment row, so a resume reuses the identical
+  text instead of paying for a second, subtly different description. Uploads
+  sniff their media type from the BYTES (never the client's Content-Type), and
+  blob keys are content-addressed so a user filename never reaches the
+  filesystem. Attachments fold into the **goal message**, which is a compaction
+  anchor — a spec survives the whole run.
+
 Per-task tuning is role-aware: a leaf EXECUTE worker compacts at a tighter budget
 (`execute_max_context_tokens`) so a small task never compacts and its prompt cache
 stays warm; a delegating leader gets a larger one (`leader_max_context_tokens`).
