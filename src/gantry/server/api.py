@@ -15,6 +15,8 @@ import sqlalchemy as sa
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from gantry.attachments.snapshot import PAYLOAD_KEY as ATTACHMENTS_KEY
+from gantry.attachments.snapshot import snapshot_attachments
 from gantry.config import Settings
 from gantry.core import queue
 from gantry.core.control import get_control, set_emergency_stop
@@ -87,6 +89,15 @@ async def create_task(request: Request, body: TaskCreateRequest) -> TaskOut:
                 raise HTTPException(status_code=422, detail="unknown provider_id")
             settings = cast("Settings", request.app.state.settings)
             payload["model"] = resolve_model(provider, body.model, settings.default_model)
+        if body.attachment_ids:
+            # Snapshot now: the run must depend only on its payload, exactly as
+            # it does for a team's profile tree.
+            snapshot = await snapshot_attachments(
+                session, body.attachment_ids, workspace_id=DEFAULT_WORKSPACE_ID
+            )
+            if len(snapshot) != len(body.attachment_ids):
+                raise HTTPException(status_code=422, detail="unknown attachment_id")
+            payload[ATTACHMENTS_KEY] = snapshot
         project = await session.get(Project, body.project_id or DEFAULT_PROJECT_ID)
         if project is not None and project.auto_approve:
             payload["auto_approve"] = True

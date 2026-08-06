@@ -21,6 +21,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from gantry import __version__
+from gantry.attachments.storage import build_store
 from gantry.config import Settings, get_settings
 from gantry.core import queue
 from gantry.core.db import create_engine, create_session_factory, session_scope
@@ -28,6 +29,7 @@ from gantry.logging import configure_logging, get_logger
 from gantry.server import (
     agents_api,
     api,
+    attachments_api,
     copilot_api,
     github_api,
     projects_api,
@@ -94,6 +96,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         else None
     )
     app.state.vault = Vault.from_settings(settings) if settings.vault_key else None
+    # Blob storage for prompt attachments (local dir, or S3 when configured).
+    app.state.attachment_store = build_store(settings)
     app.add_exception_handler(AuthFailed, auth_failed_response)  # type: ignore[arg-type]
     app.add_middleware(
         CORSMiddleware,
@@ -108,6 +112,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(github_api.router)
     app.include_router(agents_api.router)
     app.include_router(skills_api.router)
+    app.include_router(attachments_api.router)
     app.include_router(copilot_api.router)
     app.include_router(ws.router)
 

@@ -89,6 +89,57 @@ class CopilotSessionsResponse(BaseModel):
     sessions: list[CopilotSessionOut]
 
 
+class AttachmentOut(BaseModel):
+    """An uploaded file's metadata. Never carries the bytes (fetch those from
+    ``/api/attachments/{id}/content``) and never the full extracted text — the
+    UI only needs to show that text WAS extracted, and how much."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    project_id: uuid.UUID
+    filename: str
+    media_type: str
+    #: image | pdf | text | audio | video | other
+    kind: str
+    size_bytes: int
+    pages: int
+    #: Length of the text pulled out of the file (0 = nothing extractable).
+    extracted_chars: int = 0
+    extract_error: str = ""
+    created_at: datetime
+
+    @model_validator(mode="before")
+    @classmethod
+    def _summarize_text(cls, value: Any) -> Any:
+        # ORM rows carry the whole extracted body; project it to a length so a
+        # 60k-character document doesn't ride along in every list response.
+        text = getattr(value, "extracted_text", None)
+        if text is not None:
+            return {
+                **{
+                    field: getattr(value, field)
+                    for field in (
+                        "id",
+                        "project_id",
+                        "filename",
+                        "media_type",
+                        "kind",
+                        "size_bytes",
+                        "pages",
+                        "extract_error",
+                        "created_at",
+                    )
+                },
+                "extracted_chars": len(text),
+            }
+        return value
+
+
+class AttachmentsResponse(BaseModel):
+    attachments: list[AttachmentOut]
+
+
 class TaskCreateRequest(BaseModel):
     goal: str = Field(min_length=1)
     kind: TaskKind = TaskKind.EXECUTE
@@ -107,6 +158,9 @@ class TaskCreateRequest(BaseModel):
     max_attempts: int = Field(default=3, ge=1)
     #: Explicit skill names to inject (auto-matching by goal happens anyway).
     skills: list[str] | None = None
+    #: Uploaded files to attach to the prompt. Snapshotted into the payload at
+    #: create time, so later deleting one can't change an in-flight run.
+    attachment_ids: list[uuid.UUID] = Field(default_factory=list)
     #: Extra payload fields passed through to the agent verbatim.
     payload: dict[str, Any] = Field(default_factory=dict)
 
@@ -483,6 +537,8 @@ class TeamLaunchRequest(BaseModel):
     #: Optional per-run USD budget. When the run's settled spend crosses it, the
     #: leader is told to stop spawning and converge, and any task gracefully halts.
     budget_usd: float | None = Field(default=None, gt=0)
+    #: Uploaded files to attach to the team's goal (snapshotted like the tree).
+    attachment_ids: list[uuid.UUID] = Field(default_factory=list)
 
 
 TeamNodeIn.model_rebuild()

@@ -16,6 +16,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from gantry.attachments.snapshot import PAYLOAD_KEY as ATTACHMENTS_KEY
+from gantry.attachments.snapshot import snapshot_attachments
 from gantry.config import Settings
 from gantry.core import queue
 from gantry.core.db import session_scope
@@ -401,6 +403,13 @@ async def launch_team(request: Request, team_id: uuid.UUID, body: TeamLaunchRequ
             payload["base_branch"] = body.base_branch
         if body.budget_usd is not None:
             payload["budget_usd"] = body.budget_usd
+        if body.attachment_ids:
+            snapshot = await snapshot_attachments(
+                session, body.attachment_ids, workspace_id=DEFAULT_WORKSPACE_ID
+            )
+            if len(snapshot) != len(body.attachment_ids):
+                raise HTTPException(status_code=422, detail="unknown attachment_id")
+            payload[ATTACHMENTS_KEY] = snapshot
         payload.setdefault("model", settings.default_model)
 
         max_attempts = DEFAULT_PLANNER_MAX_ATTEMPTS if kind is TaskKind.PLAN else 3
