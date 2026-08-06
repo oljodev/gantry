@@ -369,6 +369,62 @@ class CopilotSession(Base):
     )
 
 
+class Attachment(Base):
+    """An uploaded file a prompt can carry: image, PDF, or text/code document.
+
+    Metadata only — the bytes live in the blob store under ``storage_key`` (a
+    content-addressed path, never the user's filename). ``media_type`` and
+    ``kind`` are what the SERVER sniffed from the bytes, not what the client
+    declared, because every downstream routing decision keys off them.
+
+    Two derived-text columns make the expensive work happen once:
+    ``extracted_text`` is filled at upload (text/code files and standard PDFs),
+    and ``transcript`` caches the vision pre-pass's description of an image the
+    worker's model cannot see. Caching the transcript is what makes a resumed
+    task reconstruct byte-identical history instead of paying for a second,
+    subtly different description.
+    """
+
+    __tablename__ = "attachments"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        sa.ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+        default=DEFAULT_PROJECT_ID,
+    )
+    #: Sanitized display name (basename only, no traversal characters).
+    filename: Mapped[str] = mapped_column(sa.String(255), nullable=False)
+    #: Server-sniffed media type — the client's Content-Type is never trusted.
+    media_type: Mapped[str] = mapped_column(sa.String(128), nullable=False)
+    #: Routing kind: image | pdf | text | audio | video | other.
+    kind: Mapped[str] = mapped_column(sa.String(16), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(sa.BigInteger, nullable=False, default=0)
+    #: sha256 of the content — the blob store key is derived from it, so two
+    #: uploads of the same file share one blob.
+    digest: Mapped[str] = mapped_column(sa.String(64), nullable=False)
+    storage_key: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    #: Text pulled out at upload time, so a text-only model can ingest the file.
+    extracted_text: Mapped[str] = mapped_column(sa.Text, nullable=False, default="")
+    #: Why extraction failed (encrypted PDF, ...) — shown rather than swallowed.
+    extract_error: Mapped[str] = mapped_column(sa.Text, nullable=False, default="")
+    pages: Mapped[int] = mapped_column(sa.Integer, nullable=False, default=0)
+    #: Vision-model description, filled lazily by the worker's pre-pass.
+    transcript: Mapped[str] = mapped_column(sa.Text, nullable=False, default="")
+    transcript_model: Mapped[str] = mapped_column(sa.String(200), nullable=False, default="")
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    )
+
+    __table_args__ = (
+        sa.Index("ix_attachments_workspace", "workspace_id"),
+        sa.Index("ix_attachments_project", "project_id"),
+        sa.Index("ix_attachments_digest", "workspace_id", "digest"),
+    )
+
+
 class WorkspaceControl(Base):
     """The workspace's emergency stop — the swarm-wide kill switch.
 

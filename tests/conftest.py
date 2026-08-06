@@ -106,7 +106,7 @@ async def engine(database_url: str) -> AsyncIterator[AsyncEngine]:
         await conn.execute(
             sa.text(
                 "TRUNCATE tasks, task_events, secrets, providers, agent_profiles, "
-                "teams, team_members, skills, copilot_sessions, projects, "
+                "teams, team_members, skills, copilot_sessions, attachments, projects, "
                 "workspace_controls "
                 "RESTART IDENTITY CASCADE"
             )
@@ -137,13 +137,17 @@ def db(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
 
 
 @pytest.fixture
-async def app(engine: AsyncEngine, database_url: str) -> AsyncIterator[FastAPI]:
+async def app(
+    engine: AsyncEngine, database_url: str, tmp_path_factory: pytest.TempPathFactory
+) -> AsyncIterator[FastAPI]:
     from gantry.server.app import create_app
 
     settings = Settings(
         _env_file=None,
         database_url=database_url,
         reaper_interval_seconds=0.2,
+        # Per-test blob root, so an upload test never writes to a shared dir.
+        attachment_root=tmp_path_factory.mktemp("attachments"),
         # Fixed test vault key so secret-carrying routes work.
         vault_key="11" * 32,
         # Auth OFF, explicitly. `_env_file=None` only ignores the .env file —
