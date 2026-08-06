@@ -342,6 +342,16 @@ class UsageLogResponse(BaseModel):
 
 class CreditGrantRequest(BaseModel):
     credits: float = Field(gt=0, le=1_000_000)
+    #: Account to credit. Omitted, the caller's own — a payment webhook sets it
+    #: to the customer who paid, since the webhook authenticates as itself.
+    user_id: uuid.UUID | None = None
+
+
+class ResumeRunResponse(BaseModel):
+    """Outcome of un-pausing a credit-paused run."""
+
+    run_id: uuid.UUID
+    resumed_tasks: int
 
 
 class SkillWriteRequest(BaseModel):

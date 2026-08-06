@@ -116,6 +116,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(attachments_api.router)
     app.include_router(copilot_api.router)
     app.include_router(credits_api.router)
+    app.include_router(credits_api.grant_router)
     app.include_router(ws.router)
 
     @app.get("/healthz")
