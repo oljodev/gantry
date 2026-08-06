@@ -143,6 +143,12 @@ export function getRunCredits(rootTaskId: string): Promise<RunCredits> {
   return request<RunCredits>(`/api/credits/runs/${rootTaskId}`)
 }
 
+/** Un-pause a run that stopped for lack of credit. Rejects with a 409 while the
+ *  balance is still empty, which the UI surfaces as "top up first". */
+export function resumeRun(rootTaskId: string): Promise<{ run_id: string; resumed_tasks: number }> {
+  return request(`/api/credits/runs/${rootTaskId}/resume`, { method: 'POST' })
+}
+
 // --- projects ------------------------------------------------------------
 
 export function listProjects(): Promise<ProjectSummary[]> {

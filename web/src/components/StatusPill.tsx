@@ -7,6 +7,7 @@ const STYLES: Record<TaskStatus, string> = {
   waiting_approval: 'bg-purple-950 text-purple-300 border border-purple-800',
   waiting_input: 'bg-sky-950 text-sky-300 border border-sky-800',
   waiting_children: 'bg-indigo-950 text-indigo-300 border border-indigo-800',
+  paused_out_of_credits: 'bg-amber-950 text-amber-200 border border-amber-700',
   succeeded: 'bg-emerald-950 text-emerald-300 border border-emerald-800',
   failed: 'bg-red-950 text-red-300 border border-red-800',
   cancelled: 'bg-zinc-900 text-zinc-500 border border-zinc-800',
@@ -22,7 +23,7 @@ export function StatusPill({ status }: { status: TaskStatus }) {
       {LIVE.includes(status) && (
         <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current" aria-hidden />
       )}
-      {status.replace('_', ' ')}
+      {status.replaceAll('_', ' ')}
     </span>
   )
 }

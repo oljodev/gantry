@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { Check, ChevronDown, ChevronUp, Copy, Loader2, PiggyBank, Square } from 'lucide-react'
-import { cancelTask, getRunCredits, listTasks, retryTask } from '../api/client'
+import { cancelTask, getCreditBalance, getRunCredits, listTasks, retryTask } from '../api/client'
 import { openTaskStream, type ConnectionState } from '../api/stream'
 import {
   ACTIVE_STATUSES,
@@ -17,6 +17,7 @@ import { TaskTree } from '../components/TaskTree'
 import { TerminalPane } from '../components/TerminalPane'
 import { TraceTimeline } from '../components/TraceTimeline'
 import { Markdown } from '../components/Markdown'
+import { PausedBanner } from '../components/PausedBanner'
 import { formatCredits } from '../lib/credits'
 import { compactNumber, shortId } from '../lib/format'
 import { runCacheSavingsUsd } from '../lib/pricing'
@@ -74,7 +75,7 @@ export function TaskPage() {
   // the leader parked. Watching the shared firehose for this run's lifecycle
   // events makes the tree live: a child enqueue or any status change advances the
   // signal and re-fetches the whole tree — sub-agent nodes pop in without an F5.
-  const { feed } = useAppData()
+  const { feed, version } = useAppData()
   const runSignal = useMemo(() => runTreeSignal(feed, task?.root_task_id), [feed, task?.root_task_id])
   useEffect(() => {
     if (!task) return
@@ -102,6 +103,20 @@ export function TaskPage() {
     () => (tree.length ? tree : task ? [task] : []).filter((t) => ACTIVE_STATUSES.has(t.status)),
     [tree, task],
   )
+
+  // The balance decides whether the paused banner offers "Resume" or "Top up &
+  // resume", so it is read here rather than inside the banner.
+  const [balance, setBalance] = useState<number | null>(null)
+  useEffect(() => {
+    getCreditBalance()
+      .then((c) => setBalance(c.balance))
+      .catch(() => setBalance(null))
+  }, [version])
+
+  // Optimistic un-pause so the banner clears the moment the resume lands; the
+  // stream then confirms the real status.
+  const unpause = (t: Task): Task =>
+    t.status === 'paused_out_of_credits' ? { ...t, status: 'pending' } : t
 
   const stopAll = async () => {
     setStopping(true)
@@ -132,6 +147,14 @@ export function TaskPage() {
         stopping={stopping}
         onStopAll={() => void stopAll()}
       />
+      {task && (
+        <PausedBanner
+          tasks={tree.length ? tree : [task]}
+          rootTaskId={task.root_task_id}
+          balance={balance}
+          onResumed={() => setTree((prev) => prev.map(unpause))}
+        />
+      )}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:flex-row">
         {/* Trace tree: flush to the sidebar, drag its right edge to resize. */}
         <TreeRail tree={tree} currentId={taskId} />

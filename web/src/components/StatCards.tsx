@@ -18,7 +18,15 @@ export function StatCards({ stats }: { stats: Stats | null }) {
         { label: 'queued', value: String(count(stats, 'pending')) },
         {
           label: 'waiting',
-          value: String(count(stats, 'waiting_approval', 'waiting_input', 'waiting_children')),
+          value: String(
+            count(
+              stats,
+              'waiting_approval',
+              'waiting_input',
+              'waiting_children',
+              'paused_out_of_credits',
+            ),
+          ),
           tone: 'text-purple-300',
         },
         {

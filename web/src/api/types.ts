@@ -7,6 +7,7 @@ export type TaskStatus =
   | 'waiting_approval'
   | 'waiting_input'
   | 'waiting_children'
+  | 'paused_out_of_credits'
   | 'succeeded'
   | 'failed'
   | 'cancelled'
@@ -21,6 +22,7 @@ export const ACTIVE_STATUSES: ReadonlySet<TaskStatus> = new Set([
   'waiting_approval',
   'waiting_input',
   'waiting_children',
+  'paused_out_of_credits',
 ])
 
 export interface Task {

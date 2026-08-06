@@ -17,10 +17,10 @@ type Filter = 'all' | 'active' | 'succeeded' | 'failed'
 
 const FILTERS: Record<Filter, (t: Task) => boolean> = {
   all: () => true,
-  active: (t) =>
-    ['pending', 'claimed', 'running', 'waiting_approval', 'waiting_input', 'waiting_children'].includes(
-      t.status,
-    ),
+  // Reuses the shared set rather than repeating the list: a hand-maintained
+  // copy silently drops any status added later (a paused run would vanish from
+  // the "active" filter while still being very much in flight).
+  active: (t) => ACTIVE_STATUSES.has(t.status),
   succeeded: (t) => t.status === 'succeeded',
   failed: (t) => t.status === 'failed' || t.status === 'cancelled',
 }
