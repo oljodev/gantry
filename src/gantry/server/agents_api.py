@@ -33,6 +33,7 @@ from gantry.core.models import (
 )
 from gantry.prompts import DEFAULT_AUTONOMOUS_LEADER_PROMPT
 from gantry.server.auth import require_user
+from gantry.server.credits_api import current_user_id
 from gantry.server.providers_api import get_sessions
 from gantry.server.schemas import (
     AgentProfileIn,
@@ -421,6 +422,7 @@ async def launch_team(request: Request, team_id: uuid.UUID, body: TeamLaunchRequ
             payload=payload,
             priority=body.priority,
             max_attempts=max_attempts,
+            user_id=await current_user_id(request, session),
         )
         return TaskOut.model_validate(task)
 

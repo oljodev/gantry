@@ -135,12 +135,27 @@ async def require_user(request: Request) -> AuthContext:
     """Router-level dependency: 401/403 unless auth is disabled or token is valid."""
     auth = _get_authenticator(request.app.state)
     if auth is None:
+        request.state.auth_context = ANONYMOUS
         return ANONYMOUS
     header = request.headers.get("authorization", "")
     scheme, _, token = header.partition(" ")
     if scheme.lower() != "bearer" or not token.strip():
         raise AuthFailed(401, "missing bearer token")
-    return await auth.authenticate(token.strip())
+    ctx = await auth.authenticate(token.strip())
+    # Stashed so handlers under this dependency can attribute work to the caller
+    # (billing) without verifying the JWT a second time.
+    request.state.auth_context = ctx
+    return ctx
+
+
+def auth_context(request: Request) -> AuthContext:
+    """The verified caller for this request, as recorded by ``require_user``.
+
+    Falls back to anonymous for routes outside the dependency — never re-verifies
+    a token, so it cannot be used to bypass the gate.
+    """
+    ctx = getattr(request.state, "auth_context", None)
+    return ctx if isinstance(ctx, AuthContext) else ANONYMOUS
 
 
 async def ws_authenticated(websocket: WebSocket) -> bool:

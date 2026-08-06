@@ -28,6 +28,7 @@ from gantry.core.models import (
 )
 from gantry.providers import resolve_model
 from gantry.server.auth import require_user
+from gantry.server.credits_api import current_user_id
 from gantry.server.schemas import (
     CopilotSessionCreate,
     CopilotSessionOut,
@@ -96,6 +97,7 @@ async def start_copilot(request: Request, body: CopilotStartRequest) -> TaskOut:
             kind=TaskKind.EXECUTE,
             payload=payload,
             max_attempts=3,
+            user_id=await current_user_id(request, session),
         )
         if body.session_id is not None:
             saved = await session.get(CopilotSession, body.session_id)

@@ -282,6 +282,68 @@ class UsageResponse(BaseModel):
     by_model: list[ModelUsage]
 
 
+class CreditBalance(BaseModel):
+    """The header's live figure: what the caller has, and what they have spent.
+
+    ``target_margin`` is echoed so the UI can state the pricing basis rather than
+    hard-coding a number that would silently drift from the server's config.
+    """
+
+    user_id: uuid.UUID
+    email: str
+    balance: float
+    lifetime_credits_used: float
+    lifetime_cost_usd: float
+    calls: int
+    credits_per_usd: float
+    target_margin: float
+
+
+class RunCredits(BaseModel):
+    """Credits accumulated by one run (root task + every agent it spawned)."""
+
+    run_id: uuid.UUID
+    credits_used: float
+    raw_cost_usd: float
+    prompt_tokens: int
+    completion_tokens: int
+    calls: int
+
+
+class UsageLogItem(BaseModel):
+    """One billed LLM call, straight off the audit trail."""
+
+    id: uuid.UUID
+    run_id: uuid.UUID | None
+    task_id: uuid.UUID | None
+    model_slug: str
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
+    raw_cost_usd: float
+    credits_deducted: float
+    created_at: datetime
+
+
+class ModelSpend(BaseModel):
+    """Credits and raw cost attributed to one model slug."""
+
+    model_slug: str
+    credits: float
+    raw_cost_usd: float
+    total_tokens: int
+    calls: int
+
+
+class UsageLogResponse(BaseModel):
+    entries: list[UsageLogItem]
+    by_model: list[ModelSpend]
+
+
+class CreditGrantRequest(BaseModel):
+    credits: float = Field(gt=0, le=1_000_000)
+
+
 class SkillWriteRequest(BaseModel):
     #: The project this skill belongs to (defaults to the Default project).
     project_id: uuid.UUID | None = None

@@ -36,6 +36,7 @@ from gantry.core.models import (
 from gantry.prompts import PLANNER_SYSTEM_PROMPT
 from gantry.providers import resolve_model
 from gantry.server.auth import require_user
+from gantry.server.credits_api import current_user_id
 from gantry.server.schemas import (
     ApprovalHistoryItem,
     ApprovalHistoryResponse,
@@ -109,6 +110,8 @@ async def create_task(request: Request, body: TaskCreateRequest) -> TaskOut:
             payload=payload,
             priority=body.priority,
             max_attempts=max_attempts,
+            # Bill the run — and everything it spawns — to whoever launched it.
+            user_id=await current_user_id(request, session),
         )
     return TaskOut.model_validate(task)
 
