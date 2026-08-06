@@ -4,6 +4,7 @@ import type {
   AgentProfile,
   AgentProfileCreate,
   ApprovalHistoryItem,
+  Attachment,
   CopilotSession,
   GithubRepo,
   GithubStatus,
@@ -67,6 +68,28 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const contentType = response.headers.get('content-type') ?? ''
   if (!contentType.includes('application/json')) {
     throw new BackendUnreachableError(path, `expected JSON, got ${contentType || 'no content-type'}`)
+  }
+  return response.json() as Promise<T>
+}
+
+// Multipart upload. Deliberately does NOT set Content-Type: the browser has to
+// generate the multipart boundary itself, and setting the header by hand
+// produces a body the server cannot parse.
+async function upload<T>(path: string, form: FormData): Promise<T> {
+  const token = await getAccessToken()
+  let response: Response
+  try {
+    response = await fetch(apiUrl(path), {
+      method: 'POST',
+      body: form,
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+  } catch (err) {
+    throw new BackendUnreachableError(path, String(err))
+  }
+  if (!response.ok) {
+    const detail = await response.text().catch(() => '')
+    throw new Error(`${response.status} ${response.statusText}: ${detail}`)
   }
   return response.json() as Promise<T>
 }
@@ -167,6 +190,31 @@ export function updateSkill(skillId: string, body: SkillWrite): Promise<Skill> {
 
 export function deleteSkill(skillId: string): Promise<void> {
   return request<void>(`/api/skills/${skillId}`, { method: 'DELETE' })
+}
+
+// --- attachments ---------------------------------------------------------
+
+export function uploadAttachment(file: File, projectId?: string): Promise<Attachment> {
+  const form = new FormData()
+  form.append('file', file)
+  if (projectId) form.append('project_id', projectId)
+  return upload<Attachment>('/api/attachments', form)
+}
+
+export function listAttachments(projectId?: string): Promise<Attachment[]> {
+  const suffix = projectId ? `?project_id=${projectId}` : ''
+  return request<{ attachments: Attachment[] }>(`/api/attachments${suffix}`).then(
+    (body) => body.attachments,
+  )
+}
+
+export function deleteAttachment(attachmentId: string): Promise<void> {
+  return request<void>(`/api/attachments/${attachmentId}`, { method: 'DELETE' })
+}
+
+/** Absolute URL of an attachment's bytes — used for inline image previews. */
+export function attachmentContentUrl(attachmentId: string): string {
+  return apiUrl(`/api/attachments/${attachmentId}/content`)
 }
 
 export function listApprovals(projectId?: string): Promise<ApprovalItem[]> {

@@ -104,6 +104,26 @@ export interface TaskCreate {
   max_steps?: number
   priority?: number
   skills?: string[]
+  attachment_ids?: string[]
+}
+
+// What an uploaded file IS, as sniffed by the server from its bytes — never
+// from the browser's declared Content-Type.
+export type AttachmentKind = 'image' | 'pdf' | 'text' | 'audio' | 'video' | 'other'
+
+export interface Attachment {
+  id: string
+  project_id: string
+  filename: string
+  media_type: string
+  kind: AttachmentKind
+  size_bytes: number
+  pages: number
+  // How much text the server pulled out of the file (0 = nothing extractable,
+  // e.g. an image, or a scanned PDF that needs a vision model).
+  extracted_chars: number
+  extract_error: string
+  created_at: string
 }
 
 export interface Skill {
@@ -298,4 +318,5 @@ export interface TeamLaunch {
   repo_url?: string
   base_branch?: string
   priority?: number
+  attachment_ids?: string[]
 }

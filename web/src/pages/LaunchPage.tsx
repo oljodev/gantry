@@ -7,7 +7,8 @@ import {
   listSkills,
   listTeams,
 } from '../api/client'
-import type { Provider, Skill, TeamSummary } from '../api/types'
+import type { Attachment, Provider, Skill, TeamSummary } from '../api/types'
+import { AttachmentPicker } from '../components/AttachmentPicker'
 import { field, primaryButton } from '../components/forms'
 import { RepoPicker } from '../components/RepoPicker'
 import { SkillChips } from '../components/SkillChips'
@@ -64,6 +65,7 @@ function QuickRun() {
   const [model, setModel] = useState('')
   const [skills, setSkills] = useState<Skill[]>([])
   const [chosenSkills, setChosenSkills] = useState<Set<string>>(new Set())
+  const [attachments, setAttachments] = useState<Attachment[]>([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -98,6 +100,7 @@ function QuickRun() {
         provider_id: providerId || undefined,
         model: model.trim() || undefined,
         skills: chosenSkills.size ? [...chosenSkills] : undefined,
+        attachment_ids: attachments.length ? attachments.map((a) => a.id) : undefined,
       })
       navigate(projectPath(projectId, `tasks/${task.id}`))
     } catch (err) {
@@ -166,6 +169,11 @@ function QuickRun() {
           })
         }
       />
+      <AttachmentPicker
+        attachments={attachments}
+        onChange={setAttachments}
+        projectId={projectId || undefined}
+      />
       <div className="flex items-center gap-3">
         <button type="submit" disabled={busy || !goal.trim()} className={primaryButton}>
           {busy ? 'Launching…' : 'Launch'}
@@ -184,6 +192,7 @@ function TeamRun({ preselected }: { preselected: string | null }) {
   const [goal, setGoal] = useState('')
   const [repoUrl, setRepoUrl] = useState('')
   const [baseBranch, setBaseBranch] = useState('')
+  const [attachments, setAttachments] = useState<Attachment[]>([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -206,6 +215,7 @@ function TeamRun({ preselected }: { preselected: string | null }) {
         goal: goal.trim(),
         repo_url: repoUrl.trim() || undefined,
         base_branch: baseBranch.trim() || undefined,
+        attachment_ids: attachments.length ? attachments.map((a) => a.id) : undefined,
       })
       navigate(projectPath(projectId, `tasks/${task.id}`))
     } catch (err) {
@@ -264,6 +274,11 @@ function TeamRun({ preselected }: { preselected: string | null }) {
           onChange={(e) => setBaseBranch(e.target.value)}
         />
       )}
+      <AttachmentPicker
+        attachments={attachments}
+        onChange={setAttachments}
+        projectId={projectId || undefined}
+      />
       <div className="flex items-center gap-3">
         <button
           type="submit"
