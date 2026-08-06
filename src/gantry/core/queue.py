@@ -35,6 +35,7 @@ from gantry.core.models import (
     TaskEvent,
     TaskKind,
     TaskStatus,
+    User,
 )
 from gantry.core.notify import notify_task_cancel, notify_task_ready
 from gantry.logging import get_logger
@@ -635,6 +636,145 @@ async def park_for_approval(
         await notify_task_ready(session, task_id)
         return TaskStatus.PENDING
     return TaskStatus.WAITING_APPROVAL
+
+
+async def park_for_credits(
+    session: AsyncSession,
+    *,
+    task_id: uuid.UUID,
+    worker_id: str,
+    attempt: int,
+    balance: str = "",
+) -> TaskStatus | None:
+    """Park a task that ran out of Gantry Credits, until its owner tops up.
+
+    Same fenced-park + lost-wakeup shape as :func:`park_for_approval`, with the
+    balance itself as the resolution ledger: if a top-up committed in the window
+    between the worker deciding to pause and this park landing, we read the
+    now-positive balance here (the UPDATE locked the task row, and the top-up
+    path locks it too, so the two serialize) and re-queue immediately rather
+    than stranding a funded run in a paused state nobody will wake.
+
+    The park is deliberately NOT a failure: the event log is intact, so a resume
+    continues from the exact step that could not be paid for.
+    """
+    res = await session.execute(
+        sa.update(Task)
+        .where(
+            Task.id == task_id,
+            Task.claimed_by == worker_id,
+            Task.attempt == attempt,
+            Task.status.in_(LEASED_STATUSES),
+        )
+        .values(
+            status=TaskStatus.PAUSED_OUT_OF_CREDITS,
+            claimed_by=None,
+            lease_expires_at=None,
+            updated_at=sa.func.now(),
+        )
+    )
+    if _rowcount(res) != 1:
+        return None
+    await append_event(
+        session,
+        task_id,
+        EventType.TASK_PARKED,
+        {"reason": TaskStatus.PAUSED_OUT_OF_CREDITS.value, "balance": balance},
+    )
+    if await _owner_has_credit(session, task_id):
+        await session.execute(
+            sa.update(Task).where(Task.id == task_id).values(**_wake_to_pending())
+        )
+        await append_event(session, task_id, EventType.TASK_RESUMED, {"reason": "credits_added"})
+        await notify_task_ready(session, task_id)
+        return TaskStatus.PENDING
+    return TaskStatus.PAUSED_OUT_OF_CREDITS
+
+
+async def _owner_has_credit(session: AsyncSession, task_id: uuid.UUID) -> bool:
+    """Whether the account this task bills to can fund more work.
+
+    A task with no owner is never gated — unattributed work (anything enqueued
+    outside the API) must keep running rather than pausing on a balance that
+    does not exist.
+    """
+    balance = (
+        await session.execute(
+            sa.select(User.gantry_credits_balance)
+            .select_from(Task)
+            .join(User, User.id == Task.user_id)
+            .where(Task.id == task_id)
+        )
+    ).scalar_one_or_none()
+    return balance is None or balance > 0
+
+
+async def resume_paused_run(session: AsyncSession, *, root_task_id: uuid.UUID) -> tuple[int, bool]:
+    """Wake every credit-paused task in a run. Returns (woken, funded).
+
+    ``funded`` is False when the balance is still empty, in which case nothing is
+    woken — resuming an unfunded run would just re-pause it at the next step,
+    burning an attempt and filling the log with churn.
+
+    Waking the whole tree in ONE statement matters for a swarm: a leader and its
+    children all pause within moments of each other, and resuming them one at a
+    time would let an early-woken leader observe its children as still-parked and
+    make decisions about a tree that is mid-resume.
+    """
+    root = await session.get(Task, root_task_id, with_for_update=True)
+    if root is None:
+        return 0, False
+    if root.user_id is not None:
+        balance = (
+            await session.execute(
+                sa.select(User.gantry_credits_balance).where(User.id == root.user_id)
+            )
+        ).scalar_one_or_none()
+        if balance is not None and balance <= 0:
+            return 0, False
+
+    woken = await _wake_credit_paused(session, Task.root_task_id == root_task_id)
+    logger.info("queue.run_resumed", root_task_id=str(root_task_id), woken=woken)
+    return woken, True
+
+
+async def resume_paused_accounts(session: AsyncSession, *, user_id: uuid.UUID) -> int:
+    """Wake every credit-paused task belonging to one account, across all its runs.
+
+    This is the top-up path: money arrives for the ACCOUNT, not for a particular
+    run, so everything that account paused should come back. Returns how many
+    tasks were woken.
+    """
+    woken = await _wake_credit_paused(session, Task.user_id == user_id)
+    if woken:
+        logger.info("queue.account_resumed", user_id=str(user_id), woken=woken)
+    return woken
+
+
+async def _wake_credit_paused(session: AsyncSession, scope: sa.ColumnElement[bool]) -> int:
+    """Re-queue the credit-paused tasks matching ``scope``, in one statement.
+
+    Waking a whole tree at once matters for a swarm: a leader and its children
+    pause within moments of each other, and waking them one at a time would let
+    an early-woken leader observe its own children as still-parked and make
+    decisions about a tree that is mid-resume.
+    """
+    paused = (
+        await session.scalars(
+            sa.select(Task.id).where(scope, Task.status == TaskStatus.PAUSED_OUT_OF_CREDITS)
+        )
+    ).all()
+    if not paused:
+        return 0
+    await session.execute(
+        sa.update(Task)
+        .where(Task.id.in_(paused), Task.status == TaskStatus.PAUSED_OUT_OF_CREDITS)
+        .values(**_wake_to_pending(), claimed_by=None, lease_expires_at=None)
+    )
+    for task_id in paused:
+        await append_event(session, task_id, EventType.TASK_RESUMED, {"reason": "credits_added"})
+        await notify_task_ready(session, task_id)
+    return len(paused)
 
 
 async def resolve_approval(

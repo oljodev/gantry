@@ -50,6 +50,11 @@ class TaskStatus(enum.StrEnum):
     WAITING_APPROVAL = "waiting_approval"
     WAITING_INPUT = "waiting_input"
     WAITING_CHILDREN = "waiting_children"
+    #: Out of Gantry Credits. A PARKED state, not a terminal one: the run keeps
+    #: its event log and resumes exactly where it stopped once the balance is
+    #: topped up. Deliberately distinct from FAILED — running out of money is a
+    #: billing condition the user can fix, not an error in the work.
+    PAUSED_OUT_OF_CREDITS = "paused_out_of_credits"
     SUCCEEDED = "succeeded"
     FAILED = "failed"
     CANCELLED = "cancelled"
@@ -60,6 +65,17 @@ LEASED_STATUSES = (TaskStatus.CLAIMED, TaskStatus.RUNNING)
 
 #: Terminal statuses — the queue never transitions a task out of these.
 TERMINAL_STATUSES = (TaskStatus.SUCCEEDED, TaskStatus.FAILED, TaskStatus.CANCELLED)
+
+#: Parked statuses: no worker holds the task, but it is not finished either —
+#: it is waiting on something external (a human, its children, a top-up) and
+#: will be woken back to PENDING. Membership here is what keeps a paused run out
+#: of "failed" reporting and inside "still in flight".
+PARKED_STATUSES = (
+    TaskStatus.WAITING_APPROVAL,
+    TaskStatus.WAITING_INPUT,
+    TaskStatus.WAITING_CHILDREN,
+    TaskStatus.PAUSED_OUT_OF_CREDITS,
+)
 
 
 class TaskKind(enum.StrEnum):
