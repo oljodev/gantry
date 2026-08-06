@@ -86,6 +86,25 @@ default and is only for deliberately wanting that multiplication.
   margin**. Runs are attributed at launch and children inherit `user_id` through
   `queue.enqueue`, so a whole swarm bills one account.
 
+- **Running out of credit PAUSES a run; it never fails it.** The gate is checked
+  at a step boundary (the worker's `on_step`), so an in-flight tool call always
+  finishes and the run stops *between* actions — a half-applied edit is
+  unrecoverable. The task parks as `PAUSED_OUT_OF_CREDITS`, which is a parked
+  status like `waiting_approval`: unleased, log intact, resumed by
+  `queue.resume_paused_*` to PENDING with `max_attempts` lifted (a pause must not
+  erode the error-retry budget). `park_for_credits` re-reads the balance inside
+  the park transaction, so a top-up racing the park can't strand a funded run.
+  The affordability check reads a `CreditGate` fed by the metering path's
+  `UPDATE ... RETURNING`, NOT the database — a query per step would be ~15k
+  queries for one swarm. Because the next call's cost is unknowable, an account
+  overruns its last credit by at most one call. A git-backed task pushes its WIP
+  to its branch before parking, since the workspace is per-attempt and a resume
+  re-clones. **Granting credits is creating money**: `/api/credits/grant` sits
+  outside the blanket bearer dependency (its caller is a webhook with no session)
+  and `authorize_grant` is the only gate — internal secret via
+  `hmac.compare_digest`, an `admin_emails` account, or auth-disabled dev. An
+  ordinary authenticated user is always 403.
+
 Per-task tuning is role-aware: a leaf EXECUTE worker compacts at a tighter budget
 (`execute_max_context_tokens`) so a small task never compacts and its prompt cache
 stays warm; a delegating leader gets a larger one (`leader_max_context_tokens`).
