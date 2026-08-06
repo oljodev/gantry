@@ -195,6 +195,25 @@ class Settings(BaseSettings):
     #: and relies on the injected loop-break context alone. Point it at a strong
     #: reasoning model (e.g. a DeepSeek-R1 slug) served by the run's provider.
     escalation_model: str | None = None
+    #: --- Billing (Gantry Credits) --------------------------------------------
+    #: How many GC one USD of *revenue* buys. 100 => 1 GC == $0.01 at list.
+    credits_per_usd: float = 100.0
+    #: Fraction of the charge that provider cost is allowed to consume, i.e. the
+    #: target COST ratio: charge = raw_cost / credit_cost_ratio. 0.60 means the
+    #: raw call may eat 60% of revenue, leaving a 40% gross margin — the minimum
+    #: target. LOWER it to widen the margin (0.5 => 50%); it must stay in (0, 1].
+    credit_cost_ratio: float = 0.60
+    #: Refuse to start a task whose owner has no credit left. Off by default so an
+    #: existing deployment does not suddenly stop running work the day it upgrades;
+    #: turn it on once accounts are actually funded.
+    enforce_credit_balance: bool = False
+    #: Pull live list prices from OpenRouter instead of relying only on the small
+    #: built-in table. Prices are fetched once at worker boot and refreshed on the
+    #: TTL below; a failed fetch is non-fatal (the static table still prices).
+    openrouter_pricing_enabled: bool = True
+    openrouter_pricing_url: str = "https://openrouter.ai/api/v1/models"
+    #: How long a fetched price snapshot stays authoritative, in seconds.
+    openrouter_pricing_ttl_seconds: float = 21_600.0
     #: --- Agent shell sandbox -------------------------------------------------
     #: An agent's `bash` command is model-authored, i.e. untrusted. These bound
     #: what it can reach and consume; see `worker/sandbox.py` for the layering.
