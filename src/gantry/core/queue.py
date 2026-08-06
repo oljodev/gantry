@@ -196,6 +196,7 @@ async def enqueue(
     max_attempts: int = 3,
     scheduled_at: datetime | None = None,
     task_id: uuid.UUID | None = None,
+    user_id: uuid.UUID | None = None,
 ) -> Task:
     """Insert a pending task, log it, and notify idle workers (on commit).
 
@@ -203,6 +204,10 @@ async def enqueue(
     e.g. ``spawn_subtask`` derives it from the spawning tool call's identity.
     A child inherits its parent's ``project_id``; a root uses the supplied
     ``project_id`` (falling back to the Default project).
+
+    ``user_id`` (the billed account) is inherited from the parent the same way,
+    which is what makes a swarm bill one account: every spawn tool routes through
+    here, so a child cannot be created without an owner its parent didn't have.
     """
     task_id = task_id or uuid.uuid4()
     task = Task(
@@ -211,6 +216,7 @@ async def enqueue(
         project_id=project_id or (parent.project_id if parent else DEFAULT_PROJECT_ID),
         parent_task_id=parent.id if parent else None,
         root_task_id=parent.root_task_id if parent else task_id,
+        user_id=user_id or (parent.user_id if parent else None),
         kind=kind,
         payload=payload,
         priority=priority,

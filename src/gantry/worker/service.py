@@ -20,6 +20,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from gantry.attachments.prepare import prepare_task_attachments
 from gantry.attachments.snapshot import PAYLOAD_KEY as ATTACHMENTS_KEY
 from gantry.attachments.storage import AttachmentStore
+from gantry.billing.ledger import BillingContext, has_credit
+from gantry.billing.metering import meter
 from gantry.config import Settings
 from gantry.core import queue
 from gantry.core.control import get_control
@@ -138,6 +140,9 @@ class WorkerConfig:
     #: None derives one from the worker model's provider route, so the pre-pass
     #: always runs on the key the task already holds.
     vision_model: str | None = None
+    #: Refuse to start a task whose owner has no Gantry Credits left. Off by
+    #: default so upgrading a running deployment never halts funded-by-nobody work.
+    enforce_credit_balance: bool = False
 
     @classmethod
     def from_settings(cls, settings: Settings, worker_id: str | None = None) -> WorkerConfig:
@@ -157,6 +162,7 @@ class WorkerConfig:
             execute_max_context_tokens=settings.execute_max_context_tokens,
             leader_max_context_tokens=settings.leader_max_context_tokens,
             vision_model=settings.vision_model,
+            enforce_credit_balance=settings.enforce_credit_balance,
             compaction=CompactionConfig(
                 max_context_tokens=settings.max_context_tokens,
                 keep_recent_messages=settings.keep_recent_messages,
@@ -454,7 +460,15 @@ class Worker:
                 await queue.mark_running(
                     session, task_id=task.id, worker_id=cfg.worker_id, attempt=task.attempt
                 )
+            # Refuse to start work an account cannot pay for. Checked HERE, before
+            # the first token is spent, because a credit check after a response has
+            # arrived can only record the overrun, never prevent it.
+            await self._check_credit(task)
             llm, provider = await self._llm_for_task(task)
+            # Bill every call this task makes. Wrapping the client (rather than the
+            # loop) means the summarizer, the conflict resolver and the attachment
+            # vision pre-pass are metered too — none of them can spend off-ledger.
+            llm = self._meter(task, llm)
             # Enforce that the model routes through its provider in LiteLLM before any
             # call is made — a spawned child inherits its leader's provider but often
             # a bare model slug, which would otherwise be sent DIRECT to that vendor
@@ -768,6 +782,36 @@ class Worker:
             logger.warning(
                 "worker.attachment_prepare_failed", task_id=str(task.id), error=repr(exc)
             )
+
+    def _meter(self, task: Task, llm: LLMClient) -> LLMClient:
+        """Wrap a task's client so each completion writes a usage row and deducts
+        credits from the run's owner. ``run_id`` is the ROOT task, so a swarm's
+        whole tree accumulates against one run total however deep it fans out."""
+        return meter(
+            llm,
+            self._sessions,
+            BillingContext(
+                workspace_id=task.workspace_id,
+                user_id=task.user_id,
+                run_id=task.root_task_id,
+                task_id=task.id,
+            ),
+        )
+
+    async def _check_credit(self, task: Task) -> None:
+        """Stop an unfunded task before it spends anything.
+
+        Off unless ``enforce_credit_balance`` is set, so upgrading an existing
+        deployment never silently halts work that used to run. Non-retryable: a
+        balance is fixed by topping up, not by trying again in 30 seconds.
+        """
+        if not self._config.enforce_credit_balance or task.user_id is None:
+            return
+        async with self._sessions() as session:
+            if not await has_credit(session, task.user_id):
+                raise ProviderConfigError(
+                    "this account is out of Gantry Credits — top up the balance to run more work"
+                )
 
     async def _llm_for_task(self, task: Task) -> tuple[LLMClient, Provider | None]:
         """The task's LLM client (and its provider, if any): vault-backed provider

@@ -9,6 +9,7 @@ import signal
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from gantry.attachments.storage import build_store
+from gantry.billing.catalog import refresh_prices
 from gantry.config import get_settings
 from gantry.core.db import create_engine
 from gantry.core.notify import TASK_CANCEL_CHANNEL, WORKSPACE_CONTROL_CHANNEL, QueueListener
@@ -34,6 +35,9 @@ async def main() -> None:
         loop.add_signal_handler(sig, shutdown.set)
 
     vault = Vault.from_settings(settings) if settings.vault_key else None
+    # Load live model list prices once at boot so the credit ledger prices slugs
+    # nobody hard-coded. Non-fatal: a failure leaves the static table in charge.
+    priced = await refresh_prices()
     # One pacer per provider (keyed by base_url), each at the configured rate, so a
     # slow/throttled provider never stalls another. The keyless default client uses
     # the "" limiter; per-provider clients built at claim time reuse this registry.
@@ -60,6 +64,7 @@ async def main() -> None:
             "worker.booting",
             concurrency=config.concurrency,
             llm_max_rps=settings.llm_max_rps,
+            priced_models=priced,
         )
         with contextlib.suppress(asyncio.CancelledError):
             await worker.run(shutdown)
