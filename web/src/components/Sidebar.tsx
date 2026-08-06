@@ -15,6 +15,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { useAuth } from '../auth/AuthProvider'
+import { CreditsMeter } from './CreditsMeter'
 import { useAppData } from '../state/AppDataProvider'
 import { approvalBadgeCount } from '../lib/hitl'
 import { useTheme } from '../lib/theme'
@@ -131,6 +132,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
               )}
             </button>
           </div>
+          <CreditsMeter />
           {authEnabled && me?.email && (
             <div className="mt-2 flex items-center justify-between gap-2">
               <span className="truncate font-mono text-zinc-400" title={me.email}>

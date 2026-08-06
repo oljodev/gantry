@@ -6,6 +6,7 @@ import type {
   ApprovalHistoryItem,
   Attachment,
   CopilotSession,
+  CreditBalance,
   GithubRepo,
   GithubStatus,
   Me,
@@ -15,6 +16,7 @@ import type {
   Provider,
   ProviderCreate,
   ProviderTestResult,
+  RunCredits,
   RunUsage,
   Skill,
   SkillWrite,
@@ -126,6 +128,19 @@ export function getUsage(projectId?: string, days = 30): Promise<Usage> {
 export function getRunUsage(projectId?: string): Promise<RunUsage[]> {
   const suffix = projectId ? `?project_id=${projectId}` : ''
   return request<{ runs: RunUsage[] }>(`/api/usage/runs${suffix}`).then((b) => b.runs)
+}
+
+// --- credits -------------------------------------------------------------
+
+/** The caller's Gantry Credits balance. Cheap enough to re-poll on every live
+ *  event batch, which is what keeps the header figure honest during a run. */
+export function getCreditBalance(): Promise<CreditBalance> {
+  return request<CreditBalance>('/api/credits')
+}
+
+/** Credits one run has burned so far (root task + every agent it spawned). */
+export function getRunCredits(rootTaskId: string): Promise<RunCredits> {
+  return request<RunCredits>(`/api/credits/runs/${rootTaskId}`)
 }
 
 // --- projects ------------------------------------------------------------

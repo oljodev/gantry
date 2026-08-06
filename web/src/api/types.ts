@@ -205,6 +205,51 @@ export interface RunUsage {
   calls: number
 }
 
+/** Gantry Credits: the caller's spendable balance and lifetime totals. */
+export interface CreditBalance {
+  user_id: string
+  email: string
+  balance: number
+  lifetime_credits_used: number
+  lifetime_cost_usd: number
+  calls: number
+  /** How many GC one USD of revenue buys (100 => 1 GC = $0.01). */
+  credits_per_usd: number
+  /** Gross margin the pricing targets, as a fraction (0.4 => 40%). */
+  target_margin: number
+}
+
+/** Credits burned by one run so far — the root task and every agent it spawned. */
+export interface RunCredits {
+  run_id: string
+  credits_used: number
+  raw_cost_usd: number
+  prompt_tokens: number
+  completion_tokens: number
+  calls: number
+}
+
+export interface UsageLogItem {
+  id: string
+  run_id: string | null
+  task_id: string | null
+  model_slug: string
+  prompt_tokens: number
+  completion_tokens: number
+  total_tokens: number
+  raw_cost_usd: number
+  credits_deducted: number
+  created_at: string
+}
+
+export interface ModelSpend {
+  model_slug: string
+  credits: number
+  raw_cost_usd: number
+  total_tokens: number
+  calls: number
+}
+
 export interface Me {
   auth_enabled: boolean
   email: string | null

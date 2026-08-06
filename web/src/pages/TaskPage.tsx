@@ -1,9 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { Check, ChevronDown, ChevronUp, Copy, Loader2, PiggyBank, Square } from 'lucide-react'
-import { cancelTask, listTasks, retryTask } from '../api/client'
+import { cancelTask, getRunCredits, listTasks, retryTask } from '../api/client'
 import { openTaskStream, type ConnectionState } from '../api/stream'
-import { ACTIVE_STATUSES, TERMINAL_STATUSES, type Task, type TaskEvent } from '../api/types'
+import {
+  ACTIVE_STATUSES,
+  TERMINAL_STATUSES,
+  type RunCredits,
+  type Task,
+  type TaskEvent,
+} from '../api/types'
 import { DiffViewer } from '../components/DiffViewer'
 import { RunLogStream } from '../components/RunLogStream'
 import { StatusPill } from '../components/StatusPill'
@@ -11,6 +17,7 @@ import { TaskTree } from '../components/TaskTree'
 import { TerminalPane } from '../components/TerminalPane'
 import { TraceTimeline } from '../components/TraceTimeline'
 import { Markdown } from '../components/Markdown'
+import { formatCredits } from '../lib/credits'
 import { compactNumber, shortId } from '../lib/format'
 import { runCacheSavingsUsd } from '../lib/pricing'
 import { useResizableWidth } from '../lib/resize'
@@ -510,10 +517,38 @@ function SavingsBadge({ tree, task }: { tree: Task[]; task: Task | null }) {
   )
 }
 
+// Credits this run has burned so far, straight off the billing ledger.
+//
+// Deliberately NOT derived from the tokens shown beside it: the ledger prices
+// each call at the model it actually ran on and at the margin in force when it
+// ran, which a client-side recomputation from summed tokens cannot reproduce
+// once a run spans several models. Re-fetched on the same live-event counter the
+// rest of the page uses, so it climbs while the swarm works.
+function useRunCredits(rootTaskId: string | undefined): RunCredits | null {
+  const { version } = useAppData()
+  const [credits, setCredits] = useState<RunCredits | null>(null)
+  useEffect(() => {
+    if (!rootTaskId) return
+    let live = true
+    getRunCredits(rootTaskId)
+      .then((next) => {
+        if (live) setCredits(next)
+      })
+      .catch(() => {
+        // A backend without the credits route leaves the stat hidden.
+      })
+    return () => {
+      live = false
+    }
+  }, [rootTaskId, version])
+  return credits
+}
+
 // Overview body: a live summary of the whole run — how many agents are running,
-// done, or failed, plus step/token totals.
+// done, or failed, plus step/token/credit totals.
 function RunRollup({ task, tree }: { task: Task | null; tree: Task[] }) {
   const nodes = tree.length ? tree : task ? [task] : []
+  const credits = useRunCredits(task?.root_task_id)
   const running = nodes.filter((t) => ACTIVE_STATUSES.has(t.status)).length
   const done = nodes.filter((t) => t.status === 'succeeded').length
   const failed = nodes.filter((t) => t.status === 'failed' || t.status === 'cancelled').length
@@ -529,6 +564,8 @@ function RunRollup({ task, tree }: { task: Task | null; tree: Task[] }) {
   const { prompt, completion } = runTokens(nodes)
   if (prompt || completion)
     stats.push(['tokens', `${compactNumber(prompt)}→${compactNumber(completion)}`, 'text-zinc-300'])
+  if (credits && credits.credits_used > 0)
+    stats.push(['credits', formatCredits(credits.credits_used), 'text-amber-300'])
   return (
     <dl className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-xs text-zinc-500">
       <div className="flex gap-1.5">
