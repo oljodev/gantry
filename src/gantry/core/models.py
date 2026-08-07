@@ -659,6 +659,36 @@ class LlmUsageLog(Base):
     )
 
 
+class PaddleWebhookEvent(Base):
+    """The idempotency ledger for Paddle payment webhooks.
+
+    Paddle retries a webhook delivery on anything other than a prompt 2xx, and
+    can legitimately redeliver the same event (a slow handler, a network blip
+    on their side). A payment webhook is the one place double-processing is a
+    real financial bug — a retried ``transaction.completed`` must never grant
+    credits twice — so every delivery inserts its Paddle-assigned ``event_id``
+    here FIRST, in the same transaction as the grant. A retry collides on the
+    primary key, the grant is skipped, and the handler still answers 200 (the
+    event genuinely was handled, just not again).
+    """
+
+    __tablename__ = "paddle_webhook_events"
+
+    #: Paddle's own event id (``evt_...``) — globally unique per their docs, so
+    #: it alone is sufficient as the idempotency key.
+    event_id: Mapped[str] = mapped_column(sa.String(64), primary_key=True)
+    event_type: Mapped[str] = mapped_column(sa.String(64), nullable=False)
+    #: The account credited, when the event carried an identifiable one — kept
+    #: for support/audit ("did we process this customer's payment?").
+    user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    credits_granted: Mapped[Decimal] = mapped_column(
+        _CREDITS, nullable=False, server_default=sa.text("0"), default=Decimal("0")
+    )
+    received_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    )
+
+
 class ProviderType(enum.StrEnum):
     """LLM provider families. ``LOCAL`` is any OpenAI-compatible endpoint."""
 
