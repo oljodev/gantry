@@ -27,6 +27,7 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from gantry.billing.credits import CallCharge, calculate_credits_for_call
+from gantry.core import queue
 from gantry.core.db import session_scope
 from gantry.core.models import DEFAULT_WORKSPACE_ID, LlmUsageLog, User
 from gantry.logging import get_logger
@@ -158,6 +159,57 @@ async def has_credit(session: AsyncSession, user_id: uuid.UUID | None) -> bool:
         return True
     balance = await credit_balance(session, user_id)
     return balance is None or balance > 0
+
+
+@dataclass(frozen=True)
+class GrantOutcome:
+    """What happened when credits were added to an account."""
+
+    user_id: uuid.UUID
+    balance_after: Decimal
+    resumed_tasks: int
+
+
+async def grant_credits_and_resume(
+    session: AsyncSession, user_id: uuid.UUID, credits: Decimal
+) -> GrantOutcome | None:
+    """THE internal credit grant function — the one place a balance goes up AND
+    whatever it unblocks gets woken.
+
+    Both the admin/self-serve top-up route and the Paddle webhook call this
+    exact function; neither hand-rolls its own UPDATE. (This is deliberately
+    separate from :func:`gantry.billing.users.grant_credits`, which is the bare
+    balance-only primitive test setup uses — that one has no opinion about
+    paused runs, this one is the full user-facing operation.) Two things happen
+    in one transaction, not two:
+
+    1. the balance is incremented atomically (``UPDATE ... balance + :c``, the
+       same interleaving-safe shape as the deduction path);
+    2. any run this account paused for lack of credit (``PAUSED_OUT_OF_CREDITS``)
+       is woken.
+
+    Splitting those into separate calls would leave a real window where a
+    successful payment has landed but the swarm it was meant to fund is still
+    sitting parked — from the user's side, indistinguishable from the payment
+    having silently failed. Returns ``None`` if ``user_id`` does not exist,
+    which the caller turns into a 404 rather than crediting nothing and calling
+    it a success.
+    """
+    row = (
+        await session.execute(
+            sa.update(User)
+            .where(User.id == user_id)
+            .values(
+                gantry_credits_balance=User.gantry_credits_balance + credits,
+                updated_at=sa.func.now(),
+            )
+            .returning(User.gantry_credits_balance)
+        )
+    ).first()
+    if row is None:
+        return None
+    woken = await queue.resume_paused_accounts(session, user_id=user_id)
+    return GrantOutcome(user_id=user_id, balance_after=Decimal(row[0]), resumed_tasks=woken)
 
 
 async def run_credits_used(session: AsyncSession, run_id: uuid.UUID) -> Decimal:

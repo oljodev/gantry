@@ -18,6 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from gantry.billing.credits import gross_margin
+from gantry.billing.ledger import grant_credits_and_resume
 from gantry.billing.users import resolve_user_id
 from gantry.config import Settings
 from gantry.core import queue
@@ -283,26 +284,15 @@ async def grant(request: Request, body: CreditGrantRequest) -> CreditBalance:
     sessions = get_sessions(request)
     async with session_scope(sessions) as session:
         target = body.user_id or await current_user_id(request, session)
-        updated = (
-            await session.execute(
-                sa.update(User)
-                .where(User.id == target)
-                .values(
-                    gantry_credits_balance=User.gantry_credits_balance + Decimal(str(body.credits)),
-                    updated_at=sa.func.now(),
-                )
-                .returning(User.gantry_credits_balance)
-            )
-        ).first()
-        if updated is None:
+        outcome = await grant_credits_and_resume(session, target, Decimal(str(body.credits)))
+        if outcome is None:
             raise HTTPException(status_code=404, detail="unknown user_id")
-        woken = await queue.resume_paused_accounts(session, user_id=target)
     logger.info(
         "credits.granted",
         actor=actor,
         user_id=str(target),
         credits=body.credits,
-        resumed_tasks=woken,
+        resumed_tasks=outcome.resumed_tasks,
     )
     return await _balance_for(request, target)
 

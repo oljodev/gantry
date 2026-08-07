@@ -12,15 +12,24 @@ Layering, outermost first:
 from __future__ import annotations
 
 from gantry.billing.credits import CallCharge, calculate_credits_for_call, gross_margin
-from gantry.billing.ledger import BillingContext, has_credit, record_call, run_credits_used
+from gantry.billing.ledger import (
+    BillingContext,
+    GrantOutcome,
+    grant_credits_and_resume,
+    has_credit,
+    record_call,
+    run_credits_used,
+)
 from gantry.billing.metering import MeteredLLMClient, meter
 from gantry.billing.users import resolve_user_id
 
 __all__ = [
     "BillingContext",
     "CallCharge",
+    "GrantOutcome",
     "MeteredLLMClient",
     "calculate_credits_for_call",
+    "grant_credits_and_resume",
     "gross_margin",
     "has_credit",
     "meter",
