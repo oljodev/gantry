@@ -212,11 +212,32 @@ class Settings(BaseSettings):
     #: email, which is the safe default: with auth enabled and no admins named,
     #: the only way to grant is the internal secret below.
     admin_emails: list[str] = Field(default_factory=list)
-    #: Shared secret for machine callers of the credit-grant endpoint — the seam
-    #: the Paddle payment webhook will present. Sent as the ``X-Gantry-Admin-Secret``
-    #: header and compared in constant time. None disables the header entirely, so
-    #: an unset secret can never be matched by an empty one.
+    #: Shared secret for machine callers of the credit-grant endpoint (a manual
+    #: top-up script, an internal admin tool). Sent as the
+    #: ``X-Gantry-Admin-Secret`` header and compared in constant time. None
+    #: disables the header entirely, so an unset secret can never be matched by
+    #: an empty one. NOT used by the Paddle webhook — Paddle signs its own
+    #: requests (see ``paddle_webhook_secret``) and cannot be asked to present an
+    #: arbitrary header, so that route verifies Paddle's signature instead.
     internal_api_secret: str | None = None
+    #: --- Paddle (payments; Merchant of Record) --------------------------------
+    #: The webhook signing secret from the Paddle dashboard (Developer tools ->
+    #: Notifications -> the destination's "Webhook secret key", ``pdl_ntfset_...``
+    #: style). Verifies the ``Paddle-Signature`` header on every inbound webhook.
+    #: None means the webhook route refuses everything (see paddle_api.py) — an
+    #: unconfigured secret must never be treated as "accept anything unsigned".
+    paddle_webhook_secret: str | None = None
+    #: Maps a Paddle price id (``pri_...``) to a flat Gantry Credits grant — the
+    #: intended path once real products exist: "Buy the $9.99 pack" always grants
+    #: exactly the credits that pack promises, independent of currency or Paddle's
+    #: own totals math. Configure as JSON: '{"pri_01abc": 1000, "pri_01xyz": 5500}'.
+    paddle_price_credits: dict[str, float] = Field(default_factory=dict)
+    #: How many seconds old a webhook's SIGNED timestamp may be before it is
+    #: rejected as a replay. Each delivery (including a Paddle-side retry) is
+    #: signed fresh at send time, so this only needs to cover clock skew and
+    #: normal network latency between Paddle signing the request and it arriving
+    #: here — not the gap between retries.
+    paddle_signature_tolerance_seconds: float = 300.0
     #: Pull live list prices from OpenRouter instead of relying only on the small
     #: built-in table. Prices are fetched once at worker boot and refreshed on the
     #: TTL below; a failed fetch is non-fatal (the static table still prices).
