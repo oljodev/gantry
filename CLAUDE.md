@@ -105,6 +105,40 @@ default and is only for deliberately wanting that multiplication.
   `hmac.compare_digest`, an `admin_emails` account, or auth-disabled dev. An
   ordinary authenticated user is always 403.
 
+- **Every string that reaches a TEXT/JSONB column goes through
+  `core/sanitize.py` first.** Postgres cannot store a NUL byte (`\x00`) in
+  either column type — not even escaped — and one is trivially reachable: a
+  `bash` tool call is model-authored (`cat` a binary file, `git diff` a binary
+  blob), its output is decoded with `errors="replace"`, which passes a literal
+  NUL through unchanged, and that string is headed straight for a
+  `terminal_chunk` event. Rather than patch every producer, `append_event`
+  (every event payload), `queue.complete`/`fail` (`Task.result`/`last_error`),
+  and the attachment text/transcript paths all sanitize at the write boundary —
+  a producer fixed later, or a new one that forgets, is still safe. Only NUL is
+  touched; this must never grow into a general control-character filter, since
+  the terminal pane renders real ANSI colour codes.
+
+- **The Paddle webhook authenticates itself; nothing else does.**
+  `POST /api/webhooks/paddle` sits outside every router's auth dependency (a
+  payment webhook cannot present our bearer token or admin secret) and instead
+  verifies Paddle's own HMAC-SHA256 `Paddle-Signature` header
+  (`billing/paddle.py`) against `raw_body` — read via `request.body()` BEFORE
+  anything touches `request.json()`, since the signature covers the exact bytes
+  Paddle sent. An unconfigured `paddle_webhook_secret` fails CLOSED (401), never
+  "accept unsigned". The signed timestamp must additionally be within
+  `paddle_signature_tolerance_seconds` of now, so a captured valid signature
+  can't be replayed later. Every delivery inserts its Paddle `event_id` into
+  `paddle_webhook_events` (PK) and grants credits in ONE transaction via the
+  shared `billing.ledger.grant_credits_and_resume` — a retry-redelivered event
+  (Paddle retries on anything but a prompt 2xx) collides on the PK and is
+  skipped, so a redelivery can't double-grant. The only link between a Paddle
+  purchase and a Gantry account is `customData.user_id`, set client-side at
+  `Paddle.Checkout.open()` and echoed back on the webhook — the key name must
+  match exactly on both sides (`lib/paddle.ts` / `billing/paddle.py`). A webhook
+  shaped in a way we didn't anticipate (unmapped price, non-USD total, unknown
+  user_id) degrades to `"skipped"` (still 200), never a crash — Paddle retries
+  4xx/5xx responses, so raising on a parsing surprise would crash-loop it.
+
 Per-task tuning is role-aware: a leaf EXECUTE worker compacts at a tighter budget
 (`execute_max_context_tokens`) so a small task never compacts and its prompt cache
 stays warm; a delegating leader gets a larger one (`leader_max_context_tokens`).
