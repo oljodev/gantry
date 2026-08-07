@@ -354,6 +354,23 @@ class ResumeRunResponse(BaseModel):
     resumed_tasks: int
 
 
+class PaddleWebhookResponse(BaseModel):
+    """Acknowledgement for a Paddle webhook delivery.
+
+    ``status`` is one of: ``granted`` (credits applied, runs woken),
+    ``duplicate`` (this event_id was already processed — Paddle redelivered),
+    ``skipped`` (verified and parsed, but not an event we act on, or one we
+    could not map to a fundable account/amount). All three are 200s — only a
+    bad signature or unreadable body is rejected.
+    """
+
+    status: str
+    event_id: str | None = None
+    user_id: uuid.UUID | None = None
+    credits_granted: float = 0.0
+    resumed_tasks: int = 0
+
+
 class SkillWriteRequest(BaseModel):
     #: The project this skill belongs to (defaults to the Default project).
     project_id: uuid.UUID | None = None

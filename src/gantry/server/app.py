@@ -33,6 +33,7 @@ from gantry.server import (
     copilot_api,
     credits_api,
     github_api,
+    paddle_api,
     projects_api,
     providers_api,
     skills_api,
@@ -117,6 +118,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(copilot_api.router)
     app.include_router(credits_api.router)
     app.include_router(credits_api.grant_router)
+    app.include_router(paddle_api.router)
     app.include_router(ws.router)
 
     @app.get("/healthz")
