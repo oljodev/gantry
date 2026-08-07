@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from gantry.core.models import EventType, TaskEvent
 from gantry.core.notify import notify_task_event
+from gantry.core.sanitize import sanitize_json
 
 # A burst of N racing writers can force the unluckiest one through N-1
 # collisions (one winner per round), so this bounds burst size, not luck.
@@ -41,6 +42,12 @@ async def append_event(
     Uses a nested transaction (SAVEPOINT) per try so a unique-violation
     rollback does not poison the caller's outer transaction.
     """
+    # The single choke point for every event payload — terminal_chunk (raw
+    # subprocess bytes decoded with errors="replace"), llm_response, tool_result,
+    # diagnostics, everything. A NUL byte here is a hard Postgres write failure,
+    # not a formatting nuisance, so it is stripped before the payload is even
+    # built into the INSERT rather than left to be discovered at commit time.
+    payload = sanitize_json(payload) if payload else payload
     for attempt_no in range(_MAX_SEQ_RETRIES):
         if attempt_no:
             await asyncio.sleep(random.uniform(0, 0.01) * attempt_no)  # decorrelate racers

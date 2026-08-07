@@ -38,6 +38,7 @@ from gantry.core.models import (
     User,
 )
 from gantry.core.notify import notify_task_cancel, notify_task_ready
+from gantry.core.sanitize import sanitize_json, strip_null_bytes
 from gantry.logging import get_logger
 
 logger = get_logger(__name__)
@@ -345,6 +346,11 @@ async def complete(
 
     ``cost_usd`` is SET (not incremented) inside this fenced terminal UPDATE, so a
     re-claim/zombie can never double-count the run's spend."""
+    # result["final_text"] is model output decoded from a byte stream (and may
+    # itself echo raw tool/terminal bytes back) — the same NUL-byte exposure as
+    # every event payload, so it gets the same treatment before it reaches the
+    # JSONB column.
+    result = sanitize_json(result) if result else result
     res = await session.execute(
         sa.update(Task)
         .where(
@@ -390,6 +396,11 @@ async def fail(
     Returns the resulting status, or None if the fencing check rejected the
     write (lease lost — some other attempt owns the task now).
     """
+    # error is frequently repr(exc) of a provider/subprocess error, which can
+    # carry the offending bytes right back into the message (e.g. a decode
+    # error's own diagnostic text). last_error is a plain TEXT column, so a NUL
+    # here is just as fatal to the write as one in a JSONB payload.
+    error = strip_null_bytes(error)
     guard = (
         Task.id == task_id,
         Task.claimed_by == worker_id,

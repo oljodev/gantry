@@ -36,6 +36,7 @@ from gantry.attachments.snapshot import PAYLOAD_KEY
 from gantry.attachments.storage import AttachmentNotStored, AttachmentStore
 from gantry.core.db import session_scope
 from gantry.core.models import Attachment
+from gantry.core.sanitize import strip_null_bytes
 from gantry.logging import get_logger
 from gantry.runtime.llm import LLMClient
 
@@ -90,6 +91,9 @@ async def _load_rows(sessions: Sessions, entries: Sequence[Any]) -> dict[str, At
 async def _save_transcript(sessions: Sessions, row: Attachment, text: str, model: str) -> None:
     """Persist the description so the next attempt (or the next task in the run)
     reuses it instead of paying for the same call again."""
+    # A vision model's own output, not a value we control — the same class of
+    # risk as any other LLM completion reaching a text column.
+    text = strip_null_bytes(text)
     async with session_scope(sessions) as session:
         await session.execute(
             sa.update(Attachment)

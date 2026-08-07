@@ -26,6 +26,7 @@ import re
 from dataclasses import dataclass
 
 from gantry.attachments.capabilities import Modality
+from gantry.core.sanitize import strip_null_bytes
 
 
 class AttachmentKind(enum.StrEnum):
@@ -327,7 +328,7 @@ def decode_text(data: bytes) -> str:
             continue
     else:
         text = data.decode("utf-8", errors="replace")
-    return text.replace("\r\n", "\n").replace("\r", "\n").replace("\x00", "")
+    return strip_null_bytes(text.replace("\r\n", "\n").replace("\r", "\n"))
 
 
 def truncate(text: str, limit: int = MAX_EXTRACTED_CHARS) -> tuple[str, bool]:
@@ -367,7 +368,7 @@ def extract_pdf_text(data: bytes, *, limit: int = MAX_EXTRACTED_CHARS) -> Extrac
     body = "\n\n".join(
         f"--- page {number} ---\n{text}" for number, text in enumerate(pages, 1) if text
     )
-    text, truncated = truncate(body.replace("\x00", ""), limit)
+    text, truncated = truncate(strip_null_bytes(body), limit)
     return ExtractedText(text=text, truncated=truncated, pages=len(pages))
 
 
