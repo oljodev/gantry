@@ -6,6 +6,7 @@ import { openTaskStream, type ConnectionState } from '../api/stream'
 import {
   ACTIVE_STATUSES,
   TERMINAL_STATUSES,
+  type CreditBalance,
   type RunCredits,
   type Task,
   type TaskEvent,
@@ -105,12 +106,13 @@ export function TaskPage() {
   )
 
   // The balance decides whether the paused banner offers "Resume" or "Top up &
-  // resume", so it is read here rather than inside the banner.
-  const [balance, setBalance] = useState<number | null>(null)
+  // resume" (and carries the account id/email PausedBanner needs to open
+  // Paddle checkout), so it is fetched here rather than inside the banner.
+  const [credits, setCredits] = useState<CreditBalance | null>(null)
   useEffect(() => {
     getCreditBalance()
-      .then((c) => setBalance(c.balance))
-      .catch(() => setBalance(null))
+      .then(setCredits)
+      .catch(() => setCredits(null))
   }, [version])
 
   // Optimistic un-pause so the banner clears the moment the resume lands; the
@@ -151,7 +153,7 @@ export function TaskPage() {
         <PausedBanner
           tasks={tree.length ? tree : [task]}
           rootTaskId={task.root_task_id}
-          balance={balance}
+          credits={credits}
           onResumed={() => setTree((prev) => prev.map(unpause))}
         />
       )}

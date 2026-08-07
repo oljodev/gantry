@@ -1,9 +1,10 @@
 import { useState } from 'react'
-import { Coins, Loader2, RefreshCw } from 'lucide-react'
+import { Coins, Loader2, Plus, RefreshCw } from 'lucide-react'
 import { resumeRun } from '../api/client'
 import { useAppData } from '../state/AppDataProvider'
 import { formatCredits } from '../lib/credits'
-import type { Task } from '../api/types'
+import { openCheckout, paddleConfigured } from '../lib/paddle'
+import type { CreditBalance, Task } from '../api/types'
 
 /** True when any task in the run stopped for lack of credit.
  *
@@ -22,22 +23,36 @@ export function isPausedForCredits(tasks: Array<Pick<Task, 'status'>>): boolean 
 export function PausedBanner({
   tasks,
   rootTaskId,
-  balance,
+  credits,
   onResumed,
 }: {
   tasks: Array<Pick<Task, 'status'>>
   rootTaskId: string
-  balance: number | null
+  credits: CreditBalance | null
   onResumed: () => void
 }) {
   const { refetch } = useAppData()
   const [busy, setBusy] = useState(false)
+  const [opening, setOpening] = useState(false)
   const [error, setError] = useState('')
 
   if (!isPausedForCredits(tasks)) return null
 
   const pausedCount = tasks.filter((t) => t.status === 'paused_out_of_credits').length
+  const balance = credits?.balance ?? null
   const funded = balance !== null && balance > 0
+
+  const buyCredits = async () => {
+    if (!credits) return
+    setOpening(true)
+    try {
+      await openCheckout({ userId: credits.user_id, email: credits.email || undefined })
+    } catch {
+      setError('Could not open checkout. Try again in a moment.')
+    } finally {
+      setOpening(false)
+    }
+  }
 
   const resume = async () => {
     setBusy(true)
@@ -73,6 +88,20 @@ export function PausedBanner({
             {balance !== null && ` Balance: ${formatCredits(balance)} GC.`}
           </p>
         </div>
+        {!funded && paddleConfigured && credits && (
+          <button
+            onClick={() => void buyCredits()}
+            disabled={opening}
+            className="flex shrink-0 items-center gap-1.5 rounded-md border border-amber-700 px-3 py-1.5 text-sm font-medium text-amber-200 transition hover:bg-amber-900/40 disabled:opacity-60"
+          >
+            {opening ? (
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+            ) : (
+              <Plus className="h-4 w-4" aria-hidden />
+            )}
+            Buy credits
+          </button>
+        )}
         <button
           onClick={() => void resume()}
           disabled={busy}
