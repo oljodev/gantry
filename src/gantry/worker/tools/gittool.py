@@ -16,7 +16,7 @@ from typing import Any, ClassVar
 
 from gantry.core.models import EventType
 from gantry.runtime.tools import Tool, ToolContext, ToolIdempotency, ToolResult
-from gantry.worker.git import GitAuth, GitError, current_branch, head_commit, run_git
+from gantry.worker.git import GitAuth, GitError, current_branch, head_commit, run_git, stage_all
 
 #: Diffs beyond this go to the event log truncated — the UI shows what fits;
 #: the pushed branch itself is always the authoritative artifact.
@@ -50,7 +50,7 @@ class GitCommitPushTool(Tool):
             return ToolResult("a non-empty commit message is required", is_error=True)
 
         try:
-            await run_git(["add", "-A"], cwd=repo)
+            await stage_all(repo)
             staged, _ = await run_git(["diff", "--cached", "--quiet"], cwd=repo, check=False)
             committed = False
             diff = ""

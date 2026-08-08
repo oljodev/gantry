@@ -203,6 +203,58 @@ async def is_worktree_clean(repo: Path) -> bool:
     return out.strip() == ""
 
 
+#: Generated build output and installed dependencies — never source, and never
+#: something a commit should carry. Mirrors what Vite's own project template
+#: gitignores by default; see ``stage_all``.
+_MUST_IGNORE = ("node_modules/", "dist/", ".vite/")
+
+
+async def ensure_gitignore_excludes(repo: Path, patterns: tuple[str, ...] = _MUST_IGNORE) -> bool:
+    """Make sure ``.gitignore`` lists every one of ``patterns``, creating or
+    appending to the file as needed. Returns whether it wrote anything, so a
+    caller knows whether the file itself now needs staging.
+
+    Matches by the bare directory name, so an existing ``node_modules`` entry
+    (no trailing slash) is recognised as already covering it — this can only
+    ever ADD missing entries, never duplicate or fight a project's own rules.
+    """
+    path = repo / ".gitignore"
+    try:
+        existing = path.read_text() if path.exists() else ""
+    except OSError:
+        return False
+    covered = {line.strip().rstrip("/") for line in existing.splitlines()}
+    missing = [p for p in patterns if p.rstrip("/") not in covered]
+    if not missing:
+        return False
+    separator = "" if not existing or existing.endswith("\n") else "\n"
+    try:
+        with path.open("a") as f:
+            f.write(separator + "\n".join(missing) + "\n")
+    except OSError:
+        return False
+    return True
+
+
+async def stage_all(repo: Path) -> None:
+    """``git add -A``, but never sweeps in generated build output or installed
+    dependencies that were never gitignored.
+
+    A worker that runs ``npm install`` (or any build) before its first commit
+    leaves ``node_modules``/``dist``/``.vite`` sitting untracked; a blind
+    ``git add -A`` then stages tens of thousands of files in one commit —
+    which has OOM-crashed Node's own git tooling in practice. Ensuring the
+    ignore entries exist FIRST means git itself never picks those paths up,
+    which actually prevents it rather than hoping a prompt instruction is
+    followed. The single choke point for every ``git add`` a worker's commit
+    goes through (``git_commit_push`` and the ``ensure_pushed`` finalize
+    path) — a future call site inherits the guard for free.
+    """
+    if await ensure_gitignore_excludes(repo):
+        await run_git(["add", "--", ".gitignore"], cwd=repo)
+    await run_git(["add", "-A"], cwd=repo)
+
+
 async def ensure_pushed(
     repo: Path, auth: GitAuth, *, message: str = "gantry: deliver outstanding work"
 ) -> None:
@@ -219,6 +271,6 @@ async def ensure_pushed(
     the history, rather than claiming work was delivered.
     """
     if not await is_worktree_clean(repo):
-        await run_git(["add", "-A"], cwd=repo)
+        await stage_all(repo)
         await run_git(["commit", "-m", message], cwd=repo, check=False)
     await run_git(["push", "-u", "origin", "HEAD"], cwd=repo, auth=auth)
