@@ -167,6 +167,7 @@ def _request_kwargs(
     api_key: str | None,
     api_base: str | None,
     request_timeout: float | None = None,
+    provider_routing: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build the litellm.acompletion kwargs (pure — testable without litellm)."""
     kwargs: dict[str, Any] = {"model": model, "messages": messages}
@@ -184,6 +185,11 @@ def _request_kwargs(
         # Bounds a hung provider (a stream that stalls mid-body): litellm raises a
         # (retryable) timeout instead of blocking the worker slot indefinitely.
         kwargs["timeout"] = request_timeout
+    if provider_routing:
+        # OpenRouter-specific routing preference (see gantry.runtime.routing),
+        # forwarded verbatim through litellm's passthrough body. A no-op for
+        # any other provider — litellm.drop_params strips what it can't send.
+        kwargs["extra_body"] = {"provider": provider_routing}
     return kwargs
 
 
@@ -240,6 +246,7 @@ class LiteLLMClient:
         prompt_caching: bool = True,
         limiter: AsyncRateLimiter | None = None,
         request_timeout: float | None = None,
+        provider_routing: dict[str, Any] | None = None,
     ) -> None:
         self._api_key = api_key
         self._api_base = api_base
@@ -248,6 +255,12 @@ class LiteLLMClient:
         self._limiter = limiter
         #: Per-request timeout passed to litellm (None = litellm's default).
         self._request_timeout = request_timeout
+        #: OpenRouter provider-order preference (see gantry.runtime.routing),
+        #: applied to every call this client makes. Public and mutable so a
+        #: caller can update it after construction — e.g. once a fresh
+        #: rolling cache-hit-rate is known — without rebuilding the client
+        #: (and losing its shared rate limiter in the process).
+        self.provider_routing = provider_routing
 
     async def complete(
         self,
@@ -267,7 +280,13 @@ class LiteLLMClient:
 
         payload = with_cache_control(messages, model) if self._prompt_caching else messages
         kwargs = _request_kwargs(
-            model, payload, tools, self._api_key, self._api_base, self._request_timeout
+            model,
+            payload,
+            tools,
+            self._api_key,
+            self._api_base,
+            self._request_timeout,
+            self.provider_routing,
         )
 
         if on_delta is None:

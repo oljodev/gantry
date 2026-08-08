@@ -13,7 +13,9 @@ import random
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -23,6 +25,7 @@ from gantry.attachments.storage import AttachmentStore
 from gantry.billing.gate import CreditGate
 from gantry.billing.ledger import BillingContext, credit_balance
 from gantry.billing.metering import meter
+from gantry.billing.routing_stats import rolling_cache_hit_rate
 from gantry.config import Settings
 from gantry.core import queue
 from gantry.core.control import get_control
@@ -31,10 +34,11 @@ from gantry.core.models import DEFAULT_WORKSPACE_ID, Provider, Task, TaskKind, T
 from gantry.core.notify import QueueListener
 from gantry.logging import get_logger
 from gantry.providers import litellm_model_string
-from gantry.runtime.compaction import CompactionConfig
+from gantry.runtime.compaction import CompactionConfig, estimate_tokens
 from gantry.runtime.llm import LiteLLMClient, LLMClient
 from gantry.runtime.loop import AgentLoopError, run_agent_task
 from gantry.runtime.ratelimit import AsyncRateLimiter, LimiterRegistry
+from gantry.runtime.routing import ProviderCandidate, provider_routing_payload
 from gantry.runtime.tools import TaskParked, TaskStalled
 from gantry.skills.store import load_registry
 from gantry.vault import Vault
@@ -916,7 +920,68 @@ class Worker:
                 workspace_id=task.workspace_id,
                 name=provider_secret_name(provider_id),
             )
-        return self._llm_factory(api_key, provider.base_url), provider
+            routing = await self._resolve_provider_routing(session, task)
+        llm = self._llm_factory(api_key, provider.base_url)
+        if routing is not None and isinstance(llm, LiteLLMClient):
+            llm.provider_routing = routing
+        return llm, provider
+
+    async def _resolve_provider_routing(
+        self, session: AsyncSession, task: Task
+    ) -> dict[str, Any] | None:
+        """The OpenRouter ``provider`` routing preference for this task, or None.
+
+        A no-op for the overwhelming majority of tasks, which carry no
+        ``provider_candidates`` at all. When present, each candidate names its
+        own price (USD per 1M tokens) for uncached input, cached input, and
+        output — see ``gantry.runtime.routing`` for the cost model. A
+        candidate's cache hit rate is either given explicitly (an operator's
+        prior — "this backend supports prompt caching at roughly this rate")
+        or, when omitted, the model's own rolling observed rate from recent
+        billed calls (``gantry.billing.routing_stats``) — real history beating
+        a guess whenever there is enough of it to trust.
+        """
+        raw_candidates = task.payload.get("provider_candidates")
+        if not isinstance(raw_candidates, list) or not raw_candidates:
+            return None
+        model = str(task.payload.get("model") or self._config.default_model)
+        default_hit_rate = await rolling_cache_hit_rate(session, model)
+        candidates: list[ProviderCandidate] = []
+        for entry in raw_candidates:
+            if not isinstance(entry, dict):
+                continue
+            try:
+                name = str(entry["name"])
+                price_in = Decimal(str(entry["price_in_per_mtok"]))
+                price_out = Decimal(str(entry["price_out_per_mtok"]))
+                price_cache = Decimal(str(entry.get("price_cache_per_mtok", price_in)))
+                hit_rate = (
+                    Decimal(str(entry["cache_hit_rate"]))
+                    if "cache_hit_rate" in entry
+                    else (default_hit_rate or Decimal(0))
+                )
+                candidates.append(
+                    ProviderCandidate(
+                        name=name,
+                        price_in_per_mtok=price_in,
+                        price_cache_per_mtok=price_cache,
+                        price_out_per_mtok=price_out,
+                        cache_hit_rate=hit_rate,
+                    )
+                )
+            except (KeyError, InvalidOperation, ValueError) as exc:
+                logger.warning(
+                    "worker.provider_candidate_invalid",
+                    task_id=str(task.id),
+                    entry=entry,
+                    error=repr(exc),
+                )
+        if not candidates:
+            return None
+        goal_message = [{"role": "user", "content": str(task.payload.get("goal") or "")}]
+        input_tokens = estimate_tokens(goal_message)
+        output_tokens = int(task.payload.get("max_tokens") or 1000)
+        return provider_routing_payload(candidates, input_tokens, output_tokens)
 
     async def _github_token(self, task: Task) -> str | None:
         """Vault-stored GitHub OAuth token, falling back to the env-var token."""
