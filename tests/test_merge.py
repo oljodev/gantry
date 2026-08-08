@@ -3,6 +3,7 @@ conflict resolution, exercised against a local bare remote."""
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from pathlib import Path
 
@@ -110,6 +111,65 @@ async def test_unresolvable_conflict_is_skipped_not_fatal(
     assert report.clean == [branch_a]
     assert report.skipped == [branch_b]
     assert (leader.path / "README.md").read_text() == "# from A\n"
+
+
+async def test_a_stuck_resolver_is_skipped_by_the_hard_timeout_not_hung(
+    origin: Path,  # noqa: F811
+    tmp_path: Path,
+) -> None:
+    """The bug this guards against: 8+ workers conflicting on a shared glue
+    file must never hang the whole integration on one stalled resolver call —
+    it is bounded and the branch is skipped, so every OTHER branch still gets
+    a chance."""
+    branch_a = await _worker_pushes(origin, tmp_path, "a", {"README.md": "# from A\n"})
+    branch_b = await _worker_pushes(origin, tmp_path, "b", {"README.md": "# from B\n"})
+    branch_c = await _worker_pushes(origin, tmp_path, "c", {"other.txt": "unrelated\n"})
+    leader = await _leader(origin, tmp_path)
+
+    async def stuck_resolver(path: str, content: str) -> str | None:
+        await asyncio.sleep(10)  # far longer than the test's timeout budget
+        return "never reached"
+
+    report = await merge_branches(
+        leader.path,
+        [branch_a, branch_b, branch_c],
+        into="gantry/staging-x",
+        trunk=leader.branch or "main",
+        auth=leader.auth,
+        resolver=stuck_resolver,
+        merge_timeout_seconds=0.05,
+    )
+
+    assert report.clean == [branch_a, branch_c]  # branch_c isn't blocked by branch_b
+    assert report.skipped == [branch_b]
+    reason = next(m.detail for m in report.merges if m.branch == branch_b)
+    assert "timed out" in reason
+
+
+async def test_a_stuck_git_merge_is_skipped_by_the_hard_timeout(
+    origin: Path,  # noqa: F811
+    tmp_path: Path,
+) -> None:
+    """Even a merge that never conflicts must not exceed its budget — the merge
+    subprocess itself (not just the resolver) is bounded."""
+    branch_a = await _worker_pushes(origin, tmp_path, "a", {"a.txt": "alpha\n"})
+    leader = await _leader(origin, tmp_path)
+
+    report = await merge_branches(
+        leader.path,
+        [branch_a],
+        into="gantry/staging-x",
+        trunk=leader.branch or "main",
+        auth=leader.auth,
+        # No real `git merge` completes in a tenth of a millisecond.
+        merge_timeout_seconds=0.0001,
+    )
+
+    assert report.skipped == [branch_a]
+    reason = next(m.detail for m in report.merges if m.branch == branch_a)
+    assert "timed out" in reason
+    # The merge was aborted cleanly, not left mid-conflict.
+    assert not (leader.path / "a.txt").exists()
 
 
 async def test_resolver_that_leaves_markers_is_rejected(

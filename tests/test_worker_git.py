@@ -295,3 +295,19 @@ async def test_clone_of_missing_repo_raises_actionable_error(tmp_path: Path) -> 
     message = str(excinfo.value)
     assert str(missing) in message
     assert "without a repo" in message  # points the user at the greenfield path
+
+
+async def test_a_hard_timeout_kills_a_stuck_git_process(tmp_path: Path) -> None:
+    """The hard-timeout mechanism ``merge_child_branches`` relies on to avoid
+    hanging on a stuck merge (see gantry.worker.merge): an unreasonably tight
+    budget must kill the subprocess and raise, rather than block forever."""
+    from gantry.worker.git import GitError, run_git
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    await run_git(["init", "-b", "main"], cwd=repo)
+    with pytest.raises(GitError, match="timed out"):
+        # No real git invocation completes in a tenth of a millisecond — this
+        # exercises the SIGKILL-and-raise path deterministically, without
+        # needing an actually-hanging process.
+        await run_git(["status"], cwd=repo, timeout_seconds=0.0001)

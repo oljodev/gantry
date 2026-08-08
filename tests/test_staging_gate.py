@@ -97,6 +97,33 @@ async def test_a_circular_import_is_caught_by_an_import_verify(
     assert _STAGING not in _remote_heads(leader)
 
 
+async def test_an_unresolvable_conflict_is_reported_under_skipped_branches(
+    origin: Path,  # noqa: F811
+    tmp_path: Path,
+) -> None:
+    # Two workers collide on the same file; no resolver is configured, so the
+    # conflict cannot be auto-fixed — the branch is skipped, not fatal, and the
+    # leader is told explicitly to spawn a resolution worker for it.
+    branch_a = await _worker_pushes(origin, tmp_path, "a", {"README.md": "# from A\n"})
+    branch_b = await _worker_pushes(origin, tmp_path, "b", {"README.md": "# from B\n"})
+    leader = await _leader(origin, tmp_path)
+    tool = MergeChildBranchesTool(leader.auth, leader.branch or "main")
+
+    result = await tool.execute({"branches": [branch_a, branch_b], "into": _STAGING}, _ctx(leader))
+
+    assert not result.is_error, result.content
+    assert "resolution worker" in result.content
+    # The JSON summary is a leading prefix of the content; a trailing note
+    # (only present when something was skipped) follows it as plain text.
+    summary, _ = json.JSONDecoder().raw_decode(result.content)
+    assert summary["skipped_branches"] == [
+        {"branch": branch_b, "reason": "conflicts in README.md and no resolver available"}
+    ]
+    # The clean branch still made it into staging and was published.
+    assert summary["pushed"] is True
+    assert _STAGING in _remote_heads(leader)
+
+
 async def test_a_branch_missing_from_origin_blocks_integration(
     origin: Path,  # noqa: F811
     tmp_path: Path,

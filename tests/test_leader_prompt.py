@@ -66,6 +66,29 @@ def test_leader_prompt_guards_against_collisions_and_thrash() -> None:
     assert "converge" in prompt and "thrash" in prompt
 
 
+def test_leader_prompt_reserves_shared_glue_files_to_a_scaffold_worker() -> None:
+    # The recurring merge-collision failure mode: several workers all touch the
+    # project's shared entry points/manifests, guaranteeing a conflict at
+    # merge time. The prompt must name the specific files and make ownership
+    # explicit — one scaffold worker, everyone else hands off.
+    prompt = DEFAULT_AUTONOMOUS_LEADER_PROMPT.lower()
+    assert "package.json" in prompt
+    assert "app.jsx" in prompt
+    assert "index.html" in prompt
+    assert "scaffold worker" in prompt
+    assert "only" in prompt
+
+
+def test_leader_prompt_tells_the_leader_to_spawn_a_resolution_worker_for_skips() -> None:
+    # merge_child_branches now skips (rather than hangs on) an unresolvable or
+    # timed-out conflict and reports it under skipped_branches — the leader
+    # must know what to do with that: spawn a targeted resolution worker.
+    prompt = DEFAULT_AUTONOMOUS_LEADER_PROMPT.lower()
+    assert "skipped_branches" in prompt
+    assert "resolution worker" in prompt
+    assert "timeout" in prompt or "timed out" in prompt or "stalled" in prompt
+
+
 def test_planner_prompt_is_the_leader_prompt() -> None:
     # The orchestrator config is embedded under the historical name so every
     # existing leader path (API launch, spawn_subtask, team planner nodes) uses it.
