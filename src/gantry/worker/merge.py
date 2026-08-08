@@ -14,6 +14,7 @@ against a local remote without touching an LLM.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -25,6 +26,14 @@ from gantry.worker.git import GitAuth, GitError, run_git
 ConflictResolver = Callable[[str, str], Awaitable[str | None]]
 
 _CONFLICT_MARKERS = ("<<<<<<<", "=======", ">>>>>>>")
+
+#: Hard cap on a single branch's merge attempt (the `git merge` itself, plus
+#: the conflict resolver's LLM turn if it conflicts). Many parallel workers
+#: converging on the same integration means many merges — some hitting the
+#: same shared glue file — and each one MUST return promptly, resolved or
+#: not: an unbounded git merge (e.g. lock contention) or a stalled resolver
+#: call would otherwise hang the whole leader turn, not just one branch.
+DEFAULT_MERGE_TIMEOUT_SECONDS = 30.0
 
 
 @dataclass(frozen=True)
@@ -75,9 +84,17 @@ async def _conflicted_files(repo: Path) -> list[str]:
     return [line.strip() for line in out.splitlines() if line.strip()]
 
 
-async def _resolve_conflicts(repo: Path, resolver: ConflictResolver | None) -> tuple[bool, str]:
+async def _resolve_conflicts(
+    repo: Path, resolver: ConflictResolver | None, timeout_seconds: float
+) -> tuple[bool, str]:
     """Try to resolve every conflicted file in the in-progress merge. Returns
-    (resolved, detail); on success the files are staged, ready to commit."""
+    (resolved, detail); on success the files are staged, ready to commit.
+
+    Each file gets its own ``timeout_seconds`` budget for the resolver's LLM
+    turn — a single stalled call (a hung provider, a huge shared file like
+    package.json) skips just this branch instead of blocking every other
+    branch waiting behind it in the merge sequence.
+    """
     files = await _conflicted_files(repo)
     if not files:
         return False, "merge failed with no resolvable conflict"
@@ -89,7 +106,10 @@ async def _resolve_conflicts(repo: Path, resolver: ConflictResolver | None) -> t
             content = target.read_text(errors="replace")
         except OSError as exc:  # e.g. a delete/modify conflict — no file to read
             return False, f"cannot read conflicted {rel}: {exc}"
-        fixed = await resolver(rel, content)
+        try:
+            fixed = await asyncio.wait_for(resolver(rel, content), timeout=timeout_seconds)
+        except TimeoutError:
+            return False, f"conflict resolver timed out after {timeout_seconds}s on {rel}"
         if fixed is None or _has_conflict_markers(fixed):
             return False, f"unresolved conflict in {rel}"
         target.write_text(fixed)
@@ -154,11 +174,18 @@ async def merge_branches(
     auth: GitAuth,
     resolver: ConflictResolver | None = None,
     push: bool = True,
+    merge_timeout_seconds: float = DEFAULT_MERGE_TIMEOUT_SECONDS,
 ) -> MergeReport:
     """Merge ``branches`` (in the given order) into a fresh ``into`` branch built
     off ``trunk``, resolving conflicts via ``resolver``. Rebuilding from trunk
     each call makes the operation deterministic and safe to re-run (idempotent
-    under crash recovery)."""
+    under crash recovery).
+
+    ``merge_timeout_seconds`` bounds EACH branch's merge attempt (the `git
+    merge` itself, and separately the conflict resolver if it conflicts) — a
+    branch that blows either budget is skipped immediately rather than
+    stalling every branch queued behind it.
+    """
     # Fresh staging branch off the trunk — reset if a prior run left one.
     await run_git(["checkout", "-B", into, trunk], cwd=repo)
 
@@ -173,15 +200,25 @@ async def merge_branches(
             # publish an integration that silently dropped a child's whole result.
             merges.append(BranchMerge(branch, "missing", f"not on origin: {exc}"))
             continue
-        code, _ = await run_git(
-            ["merge", "--no-ff", "-m", f"gantry: merge {branch}", "FETCH_HEAD"],
-            cwd=repo,
-            check=False,
-        )
+        try:
+            code, _ = await run_git(
+                ["merge", "--no-ff", "-m", f"gantry: merge {branch}", "FETCH_HEAD"],
+                cwd=repo,
+                check=False,
+                timeout_seconds=merge_timeout_seconds,
+            )
+        except GitError as exc:
+            # A hard timeout — e.g. many workers merging at once contending on
+            # the same shared glue file, or `.git/index.lock`. Never block the
+            # rest of the batch waiting on one stuck branch: abort whatever the
+            # merge left behind and move straight to the next branch.
+            await run_git(["merge", "--abort"], cwd=repo, check=False)
+            merges.append(BranchMerge(branch, "skipped", f"merge timed out: {exc}"))
+            continue
         if code == 0:
             merges.append(BranchMerge(branch, "clean"))
             continue
-        resolved, detail = await _resolve_conflicts(repo, resolver)
+        resolved, detail = await _resolve_conflicts(repo, resolver, merge_timeout_seconds)
         if resolved:
             await run_git(["commit", "--no-edit"], cwd=repo)
             merges.append(BranchMerge(branch, "resolved", detail))

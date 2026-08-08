@@ -22,6 +22,7 @@ from gantry.runtime.llm import LLMClient
 from gantry.runtime.tools import Tool, ToolContext, ToolIdempotency, ToolResult
 from gantry.worker.git import GitAuth
 from gantry.worker.merge import (
+    DEFAULT_MERGE_TIMEOUT_SECONDS,
     ConflictResolver,
     default_branch,
     merge_branches,
@@ -95,7 +96,10 @@ class MergeChildBranchesTool(Tool):
         "staging branch in bash: a worker's shell has no git credentials, so a fetch "
         "fails with 'could not read Username'. Its fresh clone already contains every "
         "pushed branch, so base_branch is all it needs. (For workers to have anything to "
-        "merge, each must commit and push its branch.)"
+        "merge, each must commit and push its branch.) Each branch's merge attempt is "
+        "capped by a hard timeout — a branch that conflicts and can't be resolved within "
+        "it is skipped immediately (never hangs the batch) and reported under "
+        "skipped_branches; spawn a targeted resolution worker for each and re-run."
     )
     parameters: ClassVar[dict[str, Any]] = {
         "type": "object",
@@ -124,6 +128,7 @@ class MergeChildBranchesTool(Tool):
         resolver: ConflictResolver | None = None,
         *,
         verify_command: str | None = None,
+        merge_timeout_seconds: float = DEFAULT_MERGE_TIMEOUT_SECONDS,
     ) -> None:
         self._auth = auth
         self._trunk = trunk_branch
@@ -133,6 +138,9 @@ class MergeChildBranchesTool(Tool):
             _DEFAULT_VERIFY_COMMAND if verify_command is None else verify_command.strip()
         )
         self._verifier = BashTool()
+        #: Hard per-branch cap on the merge attempt (git merge, plus the
+        #: resolver's LLM turn on conflict) — see gantry.worker.merge.
+        self._merge_timeout_seconds = merge_timeout_seconds
 
     async def _verify_staging(self, ctx: ToolContext) -> ToolResult | None:
         """Run the configured verify command on the freshly-merged staging checkout.
@@ -169,17 +177,17 @@ class MergeChildBranchesTool(Tool):
             auth=self._auth,
             resolver=self._resolver,
             push=False,
+            merge_timeout_seconds=self._merge_timeout_seconds,
         )
+        skipped_branches = [
+            {"branch": m.branch, "reason": m.detail} for m in report.merges if m.status == "skipped"
+        ]
         summary: dict[str, Any] = {
             "staging_branch": report.staging_branch,
             "head": report.head,
             "merged_clean": report.clean,
             "auto_resolved": report.resolved,
-            "skipped": [
-                {"branch": m.branch, "reason": m.detail}
-                for m in report.merges
-                if m.status == "skipped"
-            ],
+            "skipped_branches": skipped_branches,
         }
         # Delivery gate: a branch that is not on origin (its worker never pushed)
         # contributed nothing to staging. Refuse — loudly and with structured
@@ -235,7 +243,17 @@ class MergeChildBranchesTool(Tool):
         summary["pushed"] = await push_staging(repo, into, self._auth)
         if verify is not None:
             summary["verified"] = {"command": self._verify_command, "passed": True}
-        return ToolResult(json.dumps(summary, indent=2))
+        note = ""
+        if skipped_branches:
+            names = ", ".join(s["branch"] for s in skipped_branches)
+            note = (
+                f"\n{len(skipped_branches)} branch(es) could not be merged cleanly and "
+                f"were left OUT of staging ({names}) — see skipped_branches for why "
+                "(a conflict the resolver could not fix, or it timed out). Spawn a "
+                "targeted resolution worker for each, with base_branch set to this "
+                "staging branch, then re-run merge_child_branches to fold its fix in."
+            )
+        return ToolResult(f"{json.dumps(summary, indent=2)}{note}")
 
     async def _discover_child_branches(self, ctx: ToolContext) -> list[str]:
         if ctx.sessions is None:
