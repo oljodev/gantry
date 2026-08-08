@@ -66,6 +66,19 @@ def test_leader_prompt_guards_against_collisions_and_thrash() -> None:
     assert "converge" in prompt and "thrash" in prompt
 
 
+def test_leader_prompt_forbids_a_monolithic_fix_everything_qa_task() -> None:
+    # The 60+-step failure: one QA worker told to "fix all build/type/import
+    # errors across the entire codebase" runs out of steps debugging eight
+    # unrelated components at once. The prompt must forbid that shape and
+    # give the concrete alternative: inspect the failure, name the specific
+    # file, spawn one narrow worker per error.
+    prompt = DEFAULT_AUTONOMOUS_LEADER_PROMPT.lower()
+    assert "fix everything" in prompt
+    assert "one narrow, dedicated worker per failing file" in prompt
+    assert "at most one primary objective" in prompt
+    assert "under 15 tool steps" in prompt
+
+
 def test_leader_prompt_reserves_shared_glue_files_to_a_scaffold_worker() -> None:
     # The recurring merge-collision failure mode: several workers all touch the
     # project's shared entry points/manifests, guaranteeing a conflict at

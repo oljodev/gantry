@@ -10,7 +10,14 @@ from pathlib import Path
 import pytest
 
 from gantry.runtime.tools import ToolContext
-from gantry.worker.git import GitAuth, current_branch, ensure_pushed, remote_branch_commit
+from gantry.worker.git import (
+    GitAuth,
+    current_branch,
+    ensure_gitignore_excludes,
+    ensure_pushed,
+    remote_branch_commit,
+    stage_all,
+)
 from gantry.worker.tools.gittool import GitCommitPushTool
 from gantry.worker.workspace import destroy, prepare_workspace
 
@@ -295,6 +302,104 @@ async def test_clone_of_missing_repo_raises_actionable_error(tmp_path: Path) -> 
     message = str(excinfo.value)
     assert str(missing) in message
     assert "without a repo" in message  # points the user at the greenfield path
+
+
+async def test_ensure_gitignore_excludes_creates_the_file_when_missing(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    wrote = await ensure_gitignore_excludes(repo)
+    assert wrote is True
+    lines = (repo / ".gitignore").read_text().splitlines()
+    assert lines == ["node_modules/", "dist/", ".vite/"]
+
+
+async def test_ensure_gitignore_excludes_appends_only_the_missing_entries(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    # A project's own .gitignore, already covering node_modules WITHOUT a
+    # trailing slash — must be recognised as already covered, not duplicated.
+    (repo / ".gitignore").write_text("*.log\nnode_modules\n")
+
+    wrote = await ensure_gitignore_excludes(repo)
+
+    assert wrote is True
+    content = (repo / ".gitignore").read_text()
+    assert content.count("node_modules") == 1
+    assert "dist/" in content and ".vite/" in content
+
+
+async def test_ensure_gitignore_excludes_is_a_no_op_once_everything_is_covered(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / ".gitignore").write_text("node_modules/\ndist/\n.vite/\n")
+
+    assert await ensure_gitignore_excludes(repo) is False
+
+
+async def test_stage_all_never_stages_node_modules_dist_or_vite_cache(
+    origin: Path, tmp_path: Path
+) -> None:
+    """The bug this guards against: a worker that ran `npm install` before its
+    first commit has thousands of untracked node_modules files sitting in the
+    worktree — `git add -A` must never sweep them in."""
+    workspace = await prepare_workspace(tmp_path / "ws", uuid.uuid4(), 1, {"repo_url": str(origin)})
+    (workspace.path / "src").mkdir()
+    (workspace.path / "src" / "app.py").write_text("VALUE = 1\n")
+    (workspace.path / "node_modules" / "pkg").mkdir(parents=True)
+    (workspace.path / "node_modules" / "pkg" / "index.js").write_text("module.exports = {}\n")
+    (workspace.path / "dist").mkdir()
+    (workspace.path / "dist" / "bundle.js").write_text("console.log(1)\n")
+    (workspace.path / ".vite").mkdir()
+    (workspace.path / ".vite" / "cache.json").write_text("{}\n")
+
+    await stage_all(workspace.path)
+
+    staged = git("diff", "--cached", "--name-only", cwd=workspace.path).splitlines()
+    assert set(staged) == {"src/app.py", ".gitignore"}
+    untracked = git("status", "--porcelain", cwd=workspace.path)
+    # node_modules/dist/.vite are now ignored, not merely unstaged — they no
+    # longer show up as untracked ("??") at all.
+    assert "node_modules" not in untracked
+    assert "dist" not in untracked
+    assert ".vite" not in untracked
+
+
+async def test_git_commit_push_tool_never_commits_node_modules(
+    origin: Path, tmp_path: Path
+) -> None:
+    workspace = await prepare_workspace(tmp_path / "ws", uuid.uuid4(), 1, {"repo_url": str(origin)})
+    assert workspace.branch is not None
+    (workspace.path / "src.py").write_text("VALUE = 1\n")
+    (workspace.path / "node_modules" / "pkg").mkdir(parents=True)
+    (workspace.path / "node_modules" / "pkg" / "index.js").write_text("x\n" * 5000)
+
+    ctx = ToolContext(task_id=uuid.uuid4(), workspace=workspace.path)
+    result = await GitCommitPushTool(workspace.auth).execute({"message": "add feature"}, ctx)
+
+    assert not result.is_error, result.content
+    files = git(
+        "--git-dir", str(origin), "ls-tree", "-r", "--name-only", workspace.branch
+    ).splitlines()
+    assert "src.py" in files and ".gitignore" in files
+    assert not any(f.startswith("node_modules/") for f in files)
+
+
+async def test_ensure_pushed_also_excludes_node_modules(origin: Path, tmp_path: Path) -> None:
+    workspace = await prepare_workspace(tmp_path / "ws", uuid.uuid4(), 1, {"repo_url": str(origin)})
+    assert workspace.branch is not None
+    (workspace.path / "src.py").write_text("VALUE = 1\n")
+    (workspace.path / "node_modules" / "pkg").mkdir(parents=True)
+    (workspace.path / "node_modules" / "pkg" / "index.js").write_text("x\n" * 5000)
+
+    await ensure_pushed(workspace.path, workspace.auth)
+
+    files = git(
+        "--git-dir", str(origin), "ls-tree", "-r", "--name-only", workspace.branch
+    ).splitlines()
+    assert "src.py" in files
+    assert not any(f.startswith("node_modules/") for f in files)
 
 
 async def test_a_hard_timeout_kills_a_stuck_git_process(tmp_path: Path) -> None:
