@@ -66,6 +66,17 @@ def test_leader_prompt_guards_against_collisions_and_thrash() -> None:
     assert "converge" in prompt and "thrash" in prompt
 
 
+def test_leader_prompt_forbids_combining_scaffold_install_and_build_in_one_task() -> None:
+    # The ENOSPC/WASM-OOM failure mode: a scaffold worker told to scaffold a
+    # project, npm install, AND verify the build all in one task burns a huge
+    # step budget on a single slow/flaky stage. Must be split into separate,
+    # sequential micro-tasks instead.
+    prompt = DEFAULT_AUTONOMOUS_LEADER_PROMPT.lower()
+    assert "heavy dependency install" in prompt
+    assert "build verification" in prompt
+    assert "sequential micro-tasks" in prompt
+
+
 def test_leader_prompt_forbids_a_monolithic_fix_everything_qa_task() -> None:
     # The 60+-step failure: one QA worker told to "fix all build/type/import
     # errors across the entire codebase" runs out of steps debugging eight

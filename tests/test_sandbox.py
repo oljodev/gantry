@@ -22,6 +22,8 @@ from gantry.worker.sandbox import (
     argv_for,
     build_env,
     confinement_warnings,
+    default_npm_cache_dir,
+    ensure_npm_cache,
     parse_wrapper,
     passthrough_warnings,
     policy_from_settings,
@@ -94,6 +96,47 @@ def test_env_passthrough_is_explicit_and_audited(tmp_path: Path) -> None:
     assert passthrough_warnings(["CI", "MY_API_TOKEN"]) == ["MY_API_TOKEN"]
 
 
+def test_build_env_injects_node_options_and_npm_cache_by_default(tmp_path: Path) -> None:
+    """The WASM-OOM and ENOSPC guards: every agent shell gets a V8 heap cap
+    (well under the RLIMIT_AS ceiling) and a shared npm cache path, without an
+    operator having to configure anything."""
+    env = build_env(SandboxPolicy(), home=tmp_path / "home")
+
+    assert env["NODE_OPTIONS"] == "--max-old-space-size=3072"
+    assert env["NPM_CONFIG_CACHE"] == str(default_npm_cache_dir())
+
+
+def test_build_env_lets_an_operator_passthrough_override_the_default(tmp_path: Path) -> None:
+    """An operator who explicitly passed either variable through made a
+    deliberate choice — it must win over Gantry's own default, not be
+    clobbered by it."""
+    policy = SandboxPolicy(env_passthrough=frozenset({"NODE_OPTIONS", "NPM_CONFIG_CACHE"}))
+    env = build_env(
+        policy,
+        home=tmp_path,
+        base={"NODE_OPTIONS": "--max-old-space-size=8192", "NPM_CONFIG_CACHE": "/mnt/npm-cache"},
+    )
+
+    assert env["NODE_OPTIONS"] == "--max-old-space-size=8192"
+    assert env["NPM_CONFIG_CACHE"] == "/mnt/npm-cache"
+
+
+def test_build_env_can_disable_node_options_and_npm_cache(tmp_path: Path) -> None:
+    policy = SandboxPolicy(node_old_space_mb=None, npm_cache_dir=None)
+    env = build_env(policy, home=tmp_path)
+
+    assert "NODE_OPTIONS" not in env
+    assert "NPM_CONFIG_CACHE" not in env
+
+
+def test_ensure_npm_cache_creates_the_shared_directory(tmp_path: Path) -> None:
+    path = tmp_path / "shared-npm-cache"
+    assert not path.exists()
+    ensure_npm_cache(path)
+    assert path.is_dir()
+    ensure_npm_cache(path)  # idempotent — a second agent racing to create it
+
+
 async def test_agent_shell_cannot_read_worker_secrets(
     ctx: ToolContext, home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -114,6 +157,25 @@ async def test_agent_shell_home_is_not_the_operators(ctx: ToolContext, home: Pat
 
     assert str(home) in result.content
     assert str(Path.home()) not in result.content
+
+
+async def test_agent_shell_sees_node_options_and_a_real_npm_cache_dir(
+    ctx: ToolContext, home: Path, tmp_path: Path
+) -> None:
+    """End-to-end: a real subprocess sees both variables, and the shared cache
+    directory actually exists on disk by the time the command runs — proving
+    ensure_npm_cache is wired into spawn(), not just present in build_env."""
+    cache_dir = tmp_path / "shared-npm-cache"
+    policy = SandboxPolicy(npm_cache_dir=cache_dir)
+    result = await BashTool(policy, home).execute(
+        {"command": 'echo "$NODE_OPTIONS"; echo "$NPM_CONFIG_CACHE"; test -d "$NPM_CONFIG_CACHE"'},
+        ctx,
+    )
+
+    assert not result.is_error, result.content
+    assert "--max-old-space-size=3072" in result.content
+    assert str(cache_dir) in result.content
+    assert cache_dir.is_dir()
 
 
 # --- resource ceilings ----------------------------------------------------
@@ -238,6 +300,8 @@ def test_policy_from_settings_maps_units_and_disables_on_zero() -> None:
             sandbox_max_processes=0,
             sandbox_wrapper="nsjail -Mo --",
             sandbox_env_passthrough=["CI"],
+            sandbox_node_old_space_mb=0,
+            sandbox_npm_cache_dir="",
         )
     )
 
@@ -247,6 +311,18 @@ def test_policy_from_settings_maps_units_and_disables_on_zero() -> None:
     assert policy.max_processes is None
     assert policy.wrapper == ("nsjail", "-Mo", "--")
     assert policy.env_passthrough == frozenset({"CI"})
+    assert policy.node_old_space_mb is None  # 0 == do not set NODE_OPTIONS
+    assert policy.npm_cache_dir is None  # "" == disable the override
+
+
+def test_policy_from_settings_defaults_the_npm_cache_dir_when_unset() -> None:
+    policy = policy_from_settings(Settings(_env_file=None))
+    assert policy.npm_cache_dir == default_npm_cache_dir()
+
+
+def test_policy_from_settings_honours_an_operator_chosen_npm_cache_dir() -> None:
+    policy = policy_from_settings(Settings(_env_file=None, sandbox_npm_cache_dir="/mnt/npm-cache"))
+    assert policy.npm_cache_dir == Path("/mnt/npm-cache")
 
 
 def test_defaults_are_restrictive() -> None:
