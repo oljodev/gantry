@@ -32,6 +32,7 @@ import contextlib
 import os
 import shlex
 import signal
+import tempfile
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -98,6 +99,13 @@ SHELL_PATH = "/bin/sh"
 _MIB = 1024 * 1024
 
 
+def default_npm_cache_dir() -> Path:
+    """The fixed, shared npm cache path every worker process agrees on by
+    default — a plain function (not a constant) so it re-reads the OS temp
+    dir the same way ``worker/git.py``'s hermetic config path does."""
+    return Path(tempfile.gettempdir()) / "gantry-npm-cache"
+
+
 @dataclass(frozen=True)
 class SandboxPolicy:
     """Resource ceilings and confinement settings for one agent shell command.
@@ -109,9 +117,11 @@ class SandboxPolicy:
 
     #: RLIMIT_AS — maximum address space. The only portable memory ceiling
     #: without cgroups. Note it caps *virtual* address space, so runtimes that
-    #: reserve huge sparse arenas (JVM, Go, ASAN builds) need this raised or
-    #: disabled; that is a deliberate trade for host survival by default.
-    memory_bytes: int | None = 2048 * _MIB
+    #: reserve huge sparse arenas (JVM, Go, ASAN builds — and Node/V8, whose
+    #: WASM/JIT engines reserve large arenas independent of actual heap use)
+    #: need this raised or disabled; that is a deliberate trade for host
+    #: survival by default. See ``Settings.sandbox_memory_mb``.
+    memory_bytes: int | None = 4096 * _MIB
     #: RLIMIT_CPU — CPU-seconds, a backstop for a spin loop that produces no
     #: output and therefore never trips the wall-clock timeout. Sized off the
     #: command's timeout by :meth:`for_timeout` so it can't fire early on a
@@ -133,6 +143,24 @@ class SandboxPolicy:
     wrapper: tuple[str, ...] = ()
     #: Extra environment names an operator explicitly allows through.
     env_passthrough: frozenset[str] = field(default_factory=frozenset)
+    #: V8 old-space heap ceiling for Node processes, in MiB (0/None = don't set
+    #: NODE_OPTIONS at all — an operator's own passthrough value then wins).
+    #: Secondary to ``memory_bytes`` — that RLIMIT_AS ceiling is what actually
+    #: stops the `WebAssembly.instantiate(): Out of memory` crash; this just
+    #: keeps V8 from growing its own heap right up against it in the first
+    #: place. Set comfortably below ``memory_bytes`` to leave room for V8's
+    #: other arenas (new-space, code space, WASM memory) and the process's
+    #: native footprint, all of which also count against RLIMIT_AS.
+    node_old_space_mb: int | None = 3072
+    #: Shared npm package cache every agent shell is pointed at via
+    #: NPM_CONFIG_CACHE, so concurrent `npm install`s across the whole worker
+    #: (``worker_concurrency`` can be 100) reuse downloaded packages instead
+    #: of each fetching and storing its own copy — the difference between one
+    #: task's disk footprint and multiplying it by however many are running
+    #: at once, which is what turns into ENOSPC under load. None disables the
+    #: override, leaving npm's own per-HOME default — which, since HOME is
+    #: private per task, is NOT shared.
+    npm_cache_dir: Path | None = field(default_factory=default_npm_cache_dir)
 
     def for_timeout(self, timeout_seconds: float) -> SandboxPolicy:
         """This policy with a CPU ceiling derived from the command's wall-clock
@@ -169,6 +197,14 @@ def policy_from_settings(settings: Any) -> SandboxPolicy:
     def _count(value: int) -> int | None:
         return value if value > 0 else None
 
+    def _npm_cache_dir(value: str | None) -> Path | None:
+        # None (unset) -> the shared default; "" explicitly disables the
+        # override; anything else is an operator-chosen path (e.g. a mounted,
+        # persistent volume shared across worker processes/hosts).
+        if value is None:
+            return default_npm_cache_dir()
+        return Path(value) if value.strip() else None
+
     return SandboxPolicy(
         memory_bytes=_bytes(settings.sandbox_memory_mb),
         file_size_bytes=_bytes(settings.sandbox_file_size_mb),
@@ -176,6 +212,8 @@ def policy_from_settings(settings: Any) -> SandboxPolicy:
         max_processes=_count(settings.sandbox_max_processes),
         wrapper=parse_wrapper(settings.sandbox_wrapper),
         env_passthrough=frozenset(settings.sandbox_env_passthrough),
+        node_old_space_mb=_count(settings.sandbox_node_old_space_mb),
+        npm_cache_dir=_npm_cache_dir(settings.sandbox_npm_cache_dir),
     )
 
 
@@ -257,6 +295,13 @@ def build_env(
     env["HOME"] = str(home)
     env["TMPDIR"] = str(tmp)
     env.setdefault("PATH", os.defpath)
+    # setdefault, not overwrite: an operator who explicitly passed either
+    # through (added to sandbox_env_passthrough) made a deliberate choice
+    # that should win over Gantry's own default.
+    if policy.node_old_space_mb:
+        env.setdefault("NODE_OPTIONS", f"--max-old-space-size={policy.node_old_space_mb}")
+    if policy.npm_cache_dir is not None:
+        env.setdefault("NPM_CONFIG_CACHE", str(policy.npm_cache_dir))
     return env
 
 
@@ -313,6 +358,13 @@ def ensure_home(home: Path) -> None:
     (home / "tmp").mkdir(parents=True, exist_ok=True)
 
 
+def ensure_npm_cache(path: Path) -> None:
+    """Create the shared npm cache directory. Idempotent, cheap, sync — safe to
+    call before every command since concurrent agents racing to create the
+    same shared directory is not an error (``exist_ok=True``)."""
+    path.mkdir(parents=True, exist_ok=True)
+
+
 def argv_for(command: str, policy: SandboxPolicy, *, workspace: Path, home: Path) -> list[str]:
     """Full argv for one agent command: wrapper prefix (if any) + ``sh -c``."""
     prefix = [
@@ -338,6 +390,8 @@ async def spawn(
     stop.
     """
     await asyncio.to_thread(ensure_home, home)
+    if policy.npm_cache_dir is not None:
+        await asyncio.to_thread(ensure_npm_cache, policy.npm_cache_dir)
     argv = argv_for(command, policy, workspace=workspace, home=home)
     return await asyncio.create_subprocess_exec(
         *argv,

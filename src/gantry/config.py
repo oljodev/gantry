@@ -263,8 +263,13 @@ class Settings(BaseSettings):
     #: RLIMIT_AS ceiling per agent shell, in MiB (0 = unlimited). The portable
     #: memory bound without cgroups; keeps a thousand concurrent builds from
     #: OOMing the host. Raise it for runtimes that reserve large sparse address
-    #: space (JVM, Go, ASAN builds).
-    sandbox_memory_mb: int = 2048
+    #: space (JVM, Go, ASAN builds) — Node/V8 is squarely in this group: it
+    #: reserves generous virtual arenas for its WASM/JIT engines regardless of
+    #: actual heap usage, so a tight RLIMIT_AS surfaces as `RangeError:
+    #: WebAssembly.instantiate(): Out of memory` from an ordinary `npm run
+    #: build`/`vite build` well before 2 GiB of memory is genuinely in use.
+    #: 4096 gives that headroom while still bounding a runaway process.
+    sandbox_memory_mb: int = 4096
     #: RLIMIT_FSIZE ceiling per agent shell, in MiB (0 = unlimited) — one runaway
     #: log or `yes > file` can otherwise fill the host's disk.
     sandbox_file_size_mb: int = 2048
@@ -281,6 +286,22 @@ class Settings(BaseSettings):
     #: out of untrusted shells. Names that look like credentials are flagged at
     #: boot; add toolchain paths here, never secrets.
     sandbox_env_passthrough: list[str] = Field(default_factory=list)
+    #: V8 old-space heap ceiling injected via NODE_OPTIONS for every agent
+    #: shell, in MiB (0 = do not set NODE_OPTIONS at all). Deliberately below
+    #: sandbox_memory_mb: that RLIMIT_AS ceiling is the actual OOM backstop,
+    #: and V8's other arenas (new-space, code space, WASM memory) also count
+    #: against it, so old-space alone should leave headroom under it.
+    sandbox_node_old_space_mb: int = 3072
+    #: Shared npm cache directory every agent shell is pointed at via
+    #: NPM_CONFIG_CACHE, so concurrent `npm install`s (worker_concurrency can
+    #: be 100) reuse downloaded packages instead of each fetching and storing
+    #: its own copy — the disk-pressure multiplier that turns into ENOSPC
+    #: under load. None (the default) is a fixed gantry-managed path under
+    #: the OS temp dir; "" explicitly disables the override, falling back to
+    #: npm's own per-HOME default (NOT shared, since HOME is private per
+    #: task); anything else is an operator-chosen path (e.g. a mounted,
+    #: persistent volume shared across worker processes/hosts).
+    sandbox_npm_cache_dir: str | None = None
     #: Origins allowed to call the API from a browser. Includes the Cloudflare
     #: Pages production origin so a split deploy (static frontend + remote
     #: backend) works out of the box; override via GANTRY_CORS_ORIGINS.
