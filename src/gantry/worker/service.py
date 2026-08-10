@@ -527,6 +527,7 @@ class Worker:
                     workspace.auth,
                     can_spawn=can_spawn,
                     leader=is_leader,
+                    non_interactive=bool(task.payload.get("non_interactive")),
                     max_subtasks=cfg.max_subtasks,
                     max_repair_failures=cfg.max_repair_failures,
                     run_task_ceiling=cfg.run_task_ceiling,

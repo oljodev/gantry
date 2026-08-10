@@ -5,6 +5,15 @@ workspace. An agent whose profile allows delegation (``can_spawn``, or a task
 of kind ``plan``) additionally gets the orchestration tools, so a coder can
 spawn a reviewer, wait for it, and act on its report — the hybrid that the old
 disjoint planner/coder split made impossible.
+
+``ask_user`` is withheld from a non-leader registry when ``non_interactive`` is
+set: an unattended autonomous-swarm worker has no human watching the UI to
+answer it, so leaving the tool in place just gives a "timid" model a way to
+stall the run on a trivial implementation question instead of deciding and
+moving on. Only the pure Autonomous Leader (``leader=True``) keeps ``ask_user``
+unconditionally — it is the one role meant to pause for a genuine product
+decision during its planning phase; every worker, hybrid, and sub-leader
+spawned under a non-interactive run loses it.
 """
 
 from __future__ import annotations
@@ -77,6 +86,7 @@ def build_coding_registry(
     *,
     can_spawn: bool = False,
     leader: bool = False,
+    non_interactive: bool = False,
     max_subtasks: int = DEFAULT_MAX_SUBTASKS,
     max_repair_failures: int = DEFAULT_MAX_REPAIR_FAILURES,
     run_task_ceiling: int = DEFAULT_RUN_TASK_CEILING,
@@ -107,20 +117,20 @@ def build_coding_registry(
         )
         return registry
 
-    registry = ToolRegistry(
-        [
-            BashTool(),
-            ReadFileTool(),
-            WriteFileTool(),
-            EditFileTool(),
-            ListDirTool(),
-            GlobTool(),
-            GrepTool(),
-            WebSearchTool(),
-            WebFetchTool(),
-            AskUserTool(),
-        ]
-    )
+    tools: list[Tool] = [
+        BashTool(),
+        ReadFileTool(),
+        WriteFileTool(),
+        EditFileTool(),
+        ListDirTool(),
+        GlobTool(),
+        GrepTool(),
+        WebSearchTool(),
+        WebFetchTool(),
+    ]
+    if not non_interactive:
+        tools.append(AskUserTool())
+    registry = ToolRegistry(tools)
     if auth is not None:
         registry.register(GitCommitPushTool(auth))
     if can_spawn:
