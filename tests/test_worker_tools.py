@@ -204,6 +204,46 @@ def test_leader_registry_can_only_survey_and_delegate() -> None:
     )
 
 
+def test_non_interactive_worker_has_no_ask_user() -> None:
+    # An unattended autonomous-swarm worker has no human watching the UI to
+    # answer ask_user — leaving the tool in place just lets a "timid" model
+    # stall the run on a trivial implementation question instead of deciding.
+    names = _tool_names(build_coding_registry(non_interactive=True))
+    assert "ask_user" not in names
+    # ...but it keeps every other tool, including delegation when can_spawn.
+    assert {"read_file", "write_file", "bash", "glob", "grep"} <= names
+
+
+def test_non_interactive_hybrid_worker_has_no_ask_user() -> None:
+    # A can_spawn hybrid (or sub-leader) spawned under a non-interactive run
+    # loses ask_user too — only the pure Autonomous Leader keeps it.
+    names = _tool_names(build_coding_registry(can_spawn=True, non_interactive=True))
+    assert "ask_user" not in names
+    assert "spawn_subtask" in names
+
+
+def test_non_interactive_leader_keeps_ask_user() -> None:
+    # The pure Autonomous Leader is the one role meant to pause for a genuine
+    # product decision during its planning phase — it keeps ask_user even when
+    # the run is otherwise non-interactive (e.g. it was itself spawned by
+    # another non-interactive parent).
+    from gantry.worker.git import GitAuth
+
+    names = _tool_names(
+        build_coding_registry(
+            GitAuth(env={}), leader=True, non_interactive=True, trunk_branch="gantry/task-abc"
+        )
+    )
+    assert "ask_user" in names
+
+
+def test_interactive_worker_still_has_ask_user() -> None:
+    # Default (non_interactive unset) behavior is unchanged: an ordinary,
+    # attended task keeps ask_user.
+    names = _tool_names(build_coding_registry(non_interactive=False))
+    assert "ask_user" in names
+
+
 @pytest.mark.parametrize("path", ["../outside.txt", "../../etc/passwd", "/etc/passwd"])
 async def test_file_tools_are_jailed_to_the_workspace(ctx: ToolContext, path: str) -> None:
     for tool in (ReadFileTool(), WriteFileTool(), EditFileTool()):

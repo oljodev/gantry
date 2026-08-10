@@ -6,7 +6,12 @@ import uuid
 from typing import Any
 
 from gantry.core.models import EventType, TaskEvent
-from gantry.runtime.state import rehydrate
+from gantry.runtime.state import (
+    AUTONOMY_MANDATE,
+    DEFAULT_SYSTEM_PROMPT,
+    initial_messages,
+    rehydrate,
+)
 
 TASK_ID = uuid.uuid4()
 
@@ -40,6 +45,36 @@ def test_fresh_task_has_only_initial_messages() -> None:
     assert not state.resumed
     assert state.steps == 0
     assert state.pending_tool_calls() == []
+
+
+def test_non_interactive_worker_gets_the_autonomy_mandate() -> None:
+    # No ask_user tool and no human watching the UI: the system prompt must
+    # tell the model to decide and act rather than try to ask anyway.
+    tracked = initial_messages({"goal": "g", "non_interactive": True})
+    system = tracked[0].message["content"]
+    assert system == f"{DEFAULT_SYSTEM_PROMPT}\n{AUTONOMY_MANDATE}"
+
+
+def test_interactive_worker_has_no_autonomy_mandate() -> None:
+    tracked = initial_messages({"goal": "g"})
+    assert tracked[0].message["content"] == DEFAULT_SYSTEM_PROMPT
+    assert "AUTONOMY MANDATE" not in tracked[0].message["content"]
+
+
+def test_non_interactive_autonomous_leader_keeps_its_own_prompt() -> None:
+    # The Autonomous Leader keeps ask_user (see build_coding_registry) and its
+    # own "ask only for real decisions" guidance — never append the worker
+    # mandate over it, even in the edge case where the leader's own payload
+    # somehow carries non_interactive too.
+    tracked = initial_messages(
+        {
+            "goal": "g",
+            "system_prompt": "LEADER PROMPT",
+            "autonomous_leader": True,
+            "non_interactive": True,
+        }
+    )
+    assert tracked[0].message["content"] == "LEADER PROMPT"
 
 
 def test_fold_full_step_history() -> None:
