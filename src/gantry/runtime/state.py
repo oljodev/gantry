@@ -33,6 +33,19 @@ DEFAULT_SYSTEM_PROMPT = (
     "changed and where (files, identifiers, results) — not a narration of every step."
 )
 
+#: Appended to a non-interactive task's system prompt (see ``initial_messages``).
+#: Newer, highly-aligned models tend toward "timid AI": stalling on trivial
+#: implementation questions (framework choice, naming, styling) instead of just
+#: deciding. Under an autonomous run the ask_user tool is withheld entirely (see
+#: ``worker.tools.build_coding_registry``), so a model that still tries to ask
+#: would just stall silently — spell out that it must decide and act instead.
+AUTONOMY_MANDATE = (
+    "AUTONOMY MANDATE: You are a fully autonomous worker. You MUST NOT ask for "
+    "human input or permission. Make reasonable technical decisions based on "
+    "industry standards, the provided specs, and your own logic, then execute "
+    "immediately. You do not have a supervisor to ask."
+)
+
 
 @dataclass
 class TrackedMessage:
@@ -171,6 +184,12 @@ def initial_messages(payload: dict[str, Any]) -> list[TrackedMessage]:
     reconstructs a byte-identical opening message.
     """
     system = payload.get("system_prompt") or DEFAULT_SYSTEM_PROMPT
+    # A non-interactive task has no ask_user tool (see build_coding_registry), and
+    # no human watching the UI to answer it anyway — except the pure Autonomous
+    # Leader, which keeps both the tool and its own "ask only for real decisions"
+    # guidance from DEFAULT_AUTONOMOUS_LEADER_PROMPT untouched.
+    if payload.get("non_interactive") and not payload.get("autonomous_leader"):
+        system = f"{system}\n{AUTONOMY_MANDATE}"
     goal = payload.get("goal", "")
     return [
         TrackedMessage(None, {"role": "system", "content": system}),
