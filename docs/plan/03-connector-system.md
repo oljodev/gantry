@@ -5,7 +5,7 @@
 | Term | Meaning | Where it lives |
 |------|---------|----------------|
 | **Connector** (catalog entry) | Something Gantry knows how to install and describe: a manifest plus, for native connectors, Rust code | `connectors/<id>/`, embedded into the binary at build time |
-| **Instance** | An installed, configured connector. First-party native connectors are installed automatically and are singletons; some connectors allow several instances (two GitHub accounts) via `multi_instance: true` | `connector_instances` table |
+| **Instance** | An installed, configured connector. Nothing is installed without an explicit **Install** action, first-party connectors included (§11); first-party native connectors are singletons; some connectors allow several instances (two GitHub accounts) via `multi_instance: true` | `connector_instances` table |
 | **Tool** | One callable capability with a JSON-schema input, a risk tier and flags | From the manifest (native) or discovered at runtime (MCP) |
 | **Attachment** | Which instances offer their tools in a given chat | `chat_connectors` table |
 | **Runtime kind** | `native` (in-process Rust), `mcp-stdio` (child process speaking MCP), `mcp-remote` (Streamable HTTP endpoint) | `runtime.kind` in the manifest |
@@ -64,7 +64,7 @@ Field reference (`manifest_version: "1"`). The `user_config` block is deliberate
 | `tool_overrides` | map | Runtime-discovered tool name → `{ risk, always_confirm, parallel_safe }` |
 | `prompt` | object | `{ system_addendum: markdown, usage_hints: string[] }` injected into the system prompt while attached |
 | `compatibility` | object | `{ platforms: [darwin, win32, linux], gantry: ">=0.1.0" }` |
-| `catalog` | object | `{ featured, sort_weight, suggest_for: string[] }` — the meta-connector's matching hints |
+| `catalog` | object | `{ featured, sort_weight, suggest_for: string[] }` — matching hints for connector suggestions (§9) |
 
 Runtime shapes:
 
@@ -326,10 +326,6 @@ Why it is the riskiest connector: arbitrary code as the user, and scope cannot b
 
 `fetch_url`: 5 MB cap, ≤5 redirects, 20 s timeout, no cookies, private and loopback address ranges blocked. Provider-native web search (Anthropic, OpenAI, Gemini, xAI, OpenRouter plugin) is handled by the provider layer and preferred; this connector is the fallback and the "read this page" tool.
 
-### `connector-catalog` — the meta-connector
-
-Always installed and attached; see §9.
-
 ## 6. MCP runtime
 
 **Decision: use `rmcp`, the official Rust SDK, behind an adapter.** Evaluation:
@@ -360,7 +356,7 @@ Auth types: `none`, `api_key`, `headers`, `oauth2`. Instance state machine: `unc
 **OAuth flow** (MCP 2026-07-28 authorization rules):
 
 1. On connect, or on the first 401 with a `WWW-Authenticate` challenge, fetch the Protected Resource Metadata (RFC 9728), then the authorization server's metadata (RFC 8414), and read `client_id_metadata_document_supported`.
-2. Registration, in the manifest's priority order: **pre-registered** client (manifest `auth.client` or `user_supplied_fields` entered by the user, as Google Drive requires) → **Client ID Metadata Document**: the client id is `https://gantry.oljo.dev/oauth/client-metadata.json`, a static file in `site/` listing loopback redirect URIs on a fixed port set (17321–17325), `token_endpoint_auth_method: "none"`, `grant_types: ["authorization_code"]` → **Dynamic Client Registration** with `application_type: "native"` for older servers, the result persisted per issuer in `oauth_clients` → **prompt the user** for a client id/secret as the last resort.
+2. Registration, in the manifest's priority order: **pre-registered** client (manifest `auth.client` or `user_supplied_fields` entered by the user, as Google Drive requires) → **Client ID Metadata Document**: the client id is `https://id.gantry.oljo.dev/client-metadata.json`, a static file in `client-metadata/` deployed to its own subdomain (14 §1) listing loopback redirect URIs on a fixed port set (17321–17325), `token_endpoint_auth_method: "none"`, `grant_types: ["authorization_code"]` → **Dynamic Client Registration** with `application_type: "native"` for older servers, the result persisted per issuer in `oauth_clients` → **prompt the user** for a client id/secret as the last resort.
 3. Authorization code + PKCE (S256), `state`, RFC 8707 `resource` indicator; open the system browser through `tauri-plugin-opener`; the loopback listener binds the first free port in the set; validate the `iss` parameter against the recorded issuer before redeeming the code; exchange; store `{ access_token, refresh_token, expires_at, scope, issuer }` in the vault as one credential.
 4. Refresh proactively when under 60 seconds to expiry and once on a 401. A failed refresh moves the instance to `expired`, shows "Reconnect", and if it happens mid-turn raises an `Interaction::AuthRequired` so the turn can continue after the user reconnects.
 5. Credentials are bound to the issuer that produced them; if the resource's authorization server changes, Gantry re-registers rather than reusing credentials.
@@ -373,14 +369,16 @@ rmcp's `auth` module is used for discovery and token exchange where its API fits
 
 The "Add custom server" dialog accepts a stdio command (with args and env) or a remote URL (with headers), an optional auth type, and a pasted JSON import in either the Claude Desktop `mcpServers` format or the MCP Registry `server.json` format. The result is an instance with `catalog_id = NULL`, a generic icon, tools discovered on first connect, and the same permission treatment as everything else. Importing `.mcpb` bundles is post-MVP; the manifest is a superset of the MCPB fields it needs.
 
-## 9. The `connector-catalog` meta-connector
+## 9. Connector suggestions (runtime tools, not a connector)
 
 Purpose: let the model *recommend installing* a connector when the task needs one. It never installs anything by itself.
 
-- **Index.** `Catalog` = embedded manifests + installed custom instances + (post-MVP) a weekly-refreshed snapshot of the official MCP Registry (`/v0/servers`). Search is keyword scoring over id, name, description, keywords, tool names and `catalog.suggest_for`, implemented in Rust; no external index.
-- **Tools.** `search_connectors { query, limit? }` → `{ id, name, description, category, installed, attached, requires: { auth, runtime } }[]` (read). `suggest_connector { id, reason }` → creates `Interaction::ConnectorSuggestion` and waits; returns `{ outcome: installed_and_attached | attached | declined | needs_setup, tools?: [...] }` (read).
-- **Prompting.** Its system addendum tells the model: search when the user asks for something no attached tool can do; never claim access it does not have; prefer `gantry__request_access` (see 04 §9) when the connector is installed but not attached.
-- **Surfacing.** A `ConnectorSuggestionCard` in the activity feed: icon, name, the model's reason, what it needs (runtime, auth), buttons **Install** and **Not now**. Install runs the normal flow inline (runtime check → settings form → OAuth), attaches the instance to the chat, records a `ToolSetChange`, and the model continues with the new tools on its next call. If the user navigated away, the sidebar shows the pending badge.
+Session 1 modelled this as an always-installed "meta-connector". Session 2's rule that no connector is ever installed without an explicit user action (§11) makes that shape contradictory, so the capability is reclassified as two **runtime tools owned by `gantry-agent`** (`runtime_tools/catalog.rs`), like `gantry__request_access` (04 §9). They are app behaviour, not a connector: no external system, no auth, no process. A General setting, **Suggest connectors**, turns them off; the catalog index itself lives in `gantry-connectors::catalog`.
+
+- **Index.** `Catalog` = embedded manifests + installed custom instances (+ the deferred remote overlay, §11). Search is keyword scoring over id, name, description, keywords, tool names and `catalog.suggest_for`, implemented in Rust; no external index.
+- **Tools** (`app` tier, 04 §2). `gantry__search_connectors { query, limit? }` → `{ id, name, description, category, installed, attached, requires: { auth, runtime } }[]`. `gantry__suggest_connector { id, reason }` → creates `Interaction::ConnectorSuggestion` and waits; returns `{ outcome: installed_and_attached | attached | declined | needs_setup, tools?: [...] }`.
+- **Prompting.** The core prompt tells the model: search when the user asks for something no attached tool can do; never claim access it does not have; prefer `gantry__request_access` when the connector is installed but not attached.
+- **Surfacing.** A `ConnectorSuggestionCard` in the activity feed: icon, name, the model's reason, what it needs (runtime, auth), buttons **Install** and **Not now**. Install runs the normal install flow (§11) inline, attaches the instance to the chat, records a `ToolSetChange`, and the model continues with the new tools on its next call. If the user navigated away, the sidebar shows the pending badge.
 - **Limits.** At most two suggestions per turn; a declined suggestion is not repeated in the same chat; every suggestion is an event.
 
 ## 10. Browsing and settings UI
@@ -388,3 +386,41 @@ Purpose: let the model *recommend installing* a connector when the task needs on
 - **Browse** (`/connectors`): featured row, categories, search; each card shows icon, name, one-liner, installed/attached state, and badges for auth and runtime requirements.
 - **Detail** (`/connectors/$id`): README, tool list with tiers, permission summary, settings form generated from `user_config`, the custom panel when `settings_ui` exists, the auth section (Connect / Reconnect / Disconnect, scopes, account), health with the negotiated protocol version, the stderr log for stdio servers, and "Attach to current chat".
 - **Install dialog**: runtime check → configuration → authentication → done, resumable if the user leaves mid-way.
+
+## 11. Catalog curation, distribution and installation
+
+### Curation
+
+The curated catalog is hand-authored. Vendor and community directories (mcpservers.org's official-server listings among them) are the *input*: a candidate is picked from a directory, tried against the real server, and turned into a folder under `connectors/<id>/` with a manifest, icon and README written by hand (§2, §3). Nothing is consumed from a directory at runtime. A catalog entry is therefore a tested artifact with the same review path as code, which is what makes the distribution decision below reasonable.
+
+### Nothing is installed by default
+
+The whole catalog is browsable; every entry, first-party included, is inert until the user clicks **Install** on it. There are no default-on connectors. Two consequences are handled explicitly:
+
+- **Add folder to workspace** in a chat with the local connectors not yet installed shows one dialog: "To work in this folder Gantry needs the Filesystem, Code editor and Shell connectors" with **Install all three** (one action, three installs, each logged) or **Choose**. The same applies to the Web search toggle and the `web` connector.
+- Connector suggestions (§9) are runtime tools, not a connector, so they need no installation; they never install anything without the card's Install button.
+
+### The install flow, by transport
+
+`InstallDialog` is one component with transport-specific steps; every path ends with an instance in `connector_instances` and an entry on Settings → Connectors.
+
+**Remote (`mcp-remote`, OAuth 2.1).** Install = create the instance, then run the OAuth flow of §7 immediately (or, when `auth.type` is `api_key`/`headers`, show the key form). No runtime is involved. If the user cancels the browser step, the instance exists in state `configured`/unauthorized with a **Connect** button; nothing is attached to any chat until authorization succeeds. Success runs a first connection (`server/discover` or the legacy handshake), caches the tool list, and shows it.
+
+**Local process (`mcp-stdio`, npm/npx, uv, Docker).**
+
+1. **Runtime check.** The dialog's first step calls `detect_runtimes` and compares what `runtime.requires` asks for (`node >= 20`, `uv`, `docker`) with what the resolved login-shell `PATH` provides (01 §6). A missing or too-old runtime shows the requirement, the detected version if any, per-OS install instructions (Homebrew/winget/apt commands or the vendor download link), a **Check again** button, and a **Cancel**. Install cannot proceed past this step until the check passes; there is no "install anyway".
+2. **Configuration.** The `user_config` form; sensitive values go to the vault (§7).
+3. **Command preview.** The exact command, arguments and environment variable *names* that will run, as the security posture in §6 requires.
+4. **First start.** Spawn under `ConnectorRegistry` supervision (§6): minimal environment, stderr to the per-instance log, `server/discover` then the legacy handshake, `tools/list`, then idle-stop. Failure shows the stderr tail with **Retry** and **Show log**; success shows the discovered tools with their risk tiers.
+
+Afterwards the instance is started lazily on first use, idle-stopped after 10 minutes, restarted with backoff on crash up to three times, and killed as a process tree on stop or app exit, all as specified in §6.
+
+**Uninstall** (Settings → Connectors → Remove): stop the process or drop the session, delete credentials from the vault, delete `oauth_clients` rows, detach from every chat, delete the instance. Events and tool-call history that reference it are kept; the UI renders the connector as "removed".
+
+### Distribution: static per release
+
+**Decision: the curated catalog ships inside each app release. A remote overlay is specified here and deferred.**
+
+Why static wins for v1: a catalog entry is tested code-adjacent data (a README, an icon, auth quirks, risk overrides), so it deserves the release pipeline anyway; the auto-updater (09, M13) makes releases cheap enough that "new connector = new release" is a matter of days; static has no failure mode, no endpoint to run, no key to protect, and no way for a compromised host to push a hostile connector definition to every user. The cost is real but small: users see new connectors when they update. Custom servers (§8) cover the gap for anyone who cannot wait.
+
+The deferred overlay, so its shape is settled: a static `catalog.json` on the Gantry domain, signed with an Ed25519 key whose public half ships in the app; entries may only *add* manifest-only connectors (`mcp-remote`, `mcp-stdio`), never native ones and never replace a shipped entry; fetched at most once a day, cached under `<app_data>/catalog/`, merged over the embedded catalog; on an unreachable endpoint, a bad signature or malformed JSON the app silently uses the embedded catalog plus the last good cache and shows nothing to the user beyond a line in Settings → Advanced. That failure mode is the reason the overlay is additive and cached: the app must never be worse off for having tried.

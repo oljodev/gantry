@@ -154,6 +154,7 @@ Shared rules enforced by the layer:
 - **Results are complete.** A transcript is never sent with a `ToolCall` lacking a `ToolResult`; the agent synthesizes error results on cancel or crash.
 - **Parallel results travel together** (Anthropic) or as consecutive items (others); the projection layer decides, callers just append `Tool` messages.
 - **Every tool call id round-trips unchanged** to the same provider; to a different provider (model switch mid-chat) ids are sanitized but kept.
+- **Argument deltas are best-effort.** Anthropic, OpenAI (both APIs) and Gemini 3+ stream partial tool arguments; Chat Completions upstreams behind OpenRouter vary, and xAI's current documentation states streaming works for all text models without the tool-calling restriction its older pages carried (verified in the M4 conformance run). Consumers of `ToolCallArgsDelta` (the code-editor live preview, the artifact panel) must work when zero deltas arrive and only `ToolCallEnd` does; 13 §2 describes the buffered fallback.
 
 ## 4. Per-provider notes
 

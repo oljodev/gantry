@@ -48,10 +48,11 @@ All crates live in one Cargo workspace. Types shared across the IPC boundary der
 | `gantry-providers` | `Provider` trait, `ProviderRegistry`, clients (`anthropic`, `openai_responses`, `openai_chat`, `gemini`), `ToolSchemaSanitizer`, SSE parsing, retry policy, `ModelCatalog`, judge defaults | core | See 02. |
 | `gantry-connectors` | `Connector` trait, `ConnectorRegistry`, manifest schema + validation, native runtime, MCP runtime (rmcp adapter), OAuth client, catalog (manifests embedded by `build.rs`), runtime detection | core, store, secrets, workspace | See 03. Native connector crates from `connectors/*/` are linked here. |
 | `gantry-workspace` | `Scope` (roots, canonicalization, sensitive-path patterns), `Fs` (atomic writes, encoding and line-ending preservation, edit journal), `Diff` (`similar` → hunks), `Search` (`ignore` + `grep-searcher`), `Runner` (`tokio::process`, timeouts, streaming output, kill), `CommandClassifier` | core | Shared by the filesystem, code-editor and shell connectors so scope enforcement is implemented once. |
-| `gantry-agent` | `TurnManager`, `TurnRunner` (the loop), `Transcript` (append-only builder + per-provider projection), `ContextBudget`, `SystemPromptBuilder`, `PermissionEngine`, `Judge`, `Interactions`, `EventSink` + `Batcher`, `TitleGenerator` | core, store, providers, connectors | See 04 and 05. |
+| `gantry-agent` | `TurnManager`, `TurnRunner` (the loop), `Transcript` (append-only builder + per-provider projection), `ContextBudget`, `SystemPromptBuilder` (10), `PermissionEngine`, `Judge`, `Interactions`, `EventSink` + `Batcher`, `TitleGenerator`, `runtime_tools` (access requests, connector search and suggestions, artifacts, skills, memory), `skills` (index, matcher, import), `memory` (store, selector) | core, store, providers, connectors | See 04, 05, 12 and 13. |
 | `gantry-app` (`src-tauri/`) | Tauri builder, plugins, `AppState`, command modules per feature, `ChannelSink`, startup and crash recovery, app menu, updater (later) | everything | The only crate that knows about Tauri. |
 | `connectors/<id>/` crates | One crate per native connector (`gantry-connector-filesystem`, `-code-editor`, `-shell`, `-web`, `-catalog`) | core, workspace | Each implements `Connector` and embeds its own `manifest.json`. |
-| `xtask` | `validate-connectors`, `gen-bindings`, `icons`, `release-notes` | — | Developer tasks, run with `cargo xtask <task>`. |
+| `xtask` | `validate-connectors`, `validate-skills`, `gen-bindings`, `icons`, `release-notes` | — | Developer tasks, run with `cargo xtask <task>`. |
+| `artifact-runtime/` (frontend package, not a crate) | The sandboxed artifact runtime: React, Babel with the loop-guard plugin, Tailwind's browser runtime, Mermaid, the bridge client and error capture, built into one inlined HTML document | — | See 13 §5–§6. |
 
 ### AppState
 
@@ -99,6 +100,9 @@ Names are illustrative; the generated bindings are the source of truth. All comm
 | Projects | `list_projects`, `get_project`, `create_project`, `update_project`, `archive_project`, `add_project_file`, `remove_project_file` |
 | Connectors | `list_catalog`, `list_instances`, `install_connector`, `add_custom_server`, `update_instance` (settings, enabled), `remove_instance`, `test_instance`, `start_oauth`, `cancel_oauth`, `list_instance_tools`, `detect_runtimes` |
 | Providers | `list_providers`, `set_provider_key` (write-only), `clear_provider_key`, `test_provider`, `list_models` (cached or refresh), `update_provider` (base URL, default model) |
+| Artifacts | `list_artifacts`, `get_artifact`, `get_artifact_version`, `save_artifact_version`, `restore_artifact_version`, `export_artifact`, `open_artifact_window` |
+| Skills | `list_skills`, `get_skill`, `save_skill`, `delete_skill`, `import_skill`, `export_skill`, `test_skill_match`, `pin_skill`, `unpin_skill` |
+| Memory | `list_memories`, `create_memory`, `update_memory`, `delete_memory`, `restore_memory`, `export_memories`, `import_memories` |
 | Settings | `get_settings`, `update_settings`, `get_secret_store_status`, `get_judge_config`, `update_judge_config` |
 | App | `pick_folder`, `pick_files`, `open_external`, `reveal_in_finder`, `app_info` |
 
@@ -146,8 +150,11 @@ src/
   features/interactions   PermissionCard, AccessRequestCard, ConnectorSuggestionCard, ElicitationCard, AuthRequiredCard
   features/projects       ProjectPage, ProjectSettings, KnowledgeFiles
   features/connectors     Browse, ConnectorDetail, InstallDialog, AddCustomServer, InstanceSettings, AuthStatus
-  features/settings       Providers, Models, Judge, Secrets, Appearance, Advanced
+  features/settings       General, Appearance, Providers, Guard, Guardrails, Connectors, Skills, Memory, Data, Advanced, About (11)
   features/search         Command palette style search over chats and messages
+  features/artifacts      ArtifactPanel, ArtifactToolbar, ProblemsTab, renderers/{Markdown, Code, Svg, SandboxHost}, registry, bridge (13)
+  features/skills         SkillsPage, SkillEditor, FrontmatterForm, ImportReview, MatchTester (12 §A)
+  features/memory         MemoryPage, MemoryTable, RecentlyDeleted (12 §B)
   components/ui/          shadcn components
   styles/                 tokens, tailwind entry
 ```
@@ -187,6 +194,7 @@ Adapted to Gantry's feature set rather than copied:
 | Connectors ▸ | Checklist of installed connectors attached to this chat; "Browse connectors…" |
 | Web search | Toggle. Uses the provider's server-side search when the model supports it, otherwise the `web` connector's search tool if a search API key is configured |
 | Thinking | Effort selector (off/low/medium/high/max, filtered by model capabilities) |
+| Skills ▸ | Pin a skill to this chat; typing `/` in the composer lists skills to invoke for one message (12 §A6) |
 
 Outside the menu, the composer shows the **mode chip** (Manual · Auto-edit · Plan · Auto ▾ guard), the **model picker** (provider › model), root chips, and Send/Stop. Keyboard: `Shift+Tab` cycles modes like Claude Code.
 
@@ -218,5 +226,12 @@ Outside the menu, the composer shows the **mode chip** (Manual · Auto-edit · P
 | T7 | "Use the OS credential store" vs Windows blob limits, macOS ACL prompts and Linux systems without Secret Service | The OS store holds one master key; secrets are envelope-encrypted in SQLite. Same security boundary, none of the platform edge cases. |
 | T8 | Uniform JSON-schema tools vs provider-native coding tools the models are trained on (Anthropic `text_editor`/`bash`, OpenAI `apply_patch`/`shell`) | Connectors expose schema tools everywhere; the provider layer can additionally map the code-editor and shell connectors onto native tool types where supported. Scheduled after the MVP loop works (post-MVP backlog in 09). |
 | T9 | Gemini `generateContent` (legacy) vs the Interactions API (default since June 2026) | Target Interactions. The trait is agnostic; if a model is only reachable through the legacy endpoint, that is a second Gemini client, not a redesign. |
-| T10 | CIMD (the preferred MCP client registration) needs an HTTPS-hosted metadata document | Gantry hosts a static `client-metadata.json` on its own domain (`site/`). Fallbacks: Dynamic Client Registration, pre-registered ids, and user-supplied client credentials (Google's Drive MCP requires the last). |
+| T10 | CIMD (the preferred MCP client registration) needs an HTTPS-hosted metadata document | Gantry hosts a static `client-metadata.json` from the `client-metadata/` folder on its own subdomain (14 §1). Fallbacks: Dynamic Client Registration, pre-registered ids, and user-supplied client credentials (Google's Drive MCP requires the last). |
 | T11 | tauri-specta is still a release candidate | Pin it. Keep command signatures simple so `ts-rs` plus thin wrappers is a one-day fallback. |
+| T12 | "No connector is ever auto-installed" (session 2) vs session 1's auto-installed first-party connectors and an always-on meta-connector | First-party connectors are catalog entries like any other and are installed by an explicit action; "Add folder to workspace" offers to install the three local connectors in one click. Connector search and suggestions are reclassified as runtime tools owned by the app (`gantry__search_connectors`, `gantry__suggest_connector`), because they are app behaviour, not a connector; a General setting turns suggestions off. 03 §9 and §11. |
+| T13 | Manual mode "asks before every tool call, no exceptions" vs tools whose only effect is Gantry's own state (artifacts, skill and memory proposals, catalog search) | A sixth tier, `app`, never prompts in any mode. Its members either only produce output the user sees (artifacts) or persist nothing without the user's own card (memory, skills). Prompting for them would be a prompt to allow being asked. 04 §2. |
+| T14 | Executable artifacts must be sandboxed, yet a sandboxed iframe shares the WebKit process with the app and multi-webview is still unstable in Tauri | `srcdoc` + `sandbox="allow-scripts"` + CSP for isolation (the Tauri advisory's post-fix rule makes IPC unreachable from an opaque origin); loop protection at compile time, teardown, and "Open in window" for process isolation; a `WebviewHost` replaces `SandboxHost` when multi-webview stabilizes. 13 §5. |
+| T15 | "The system prompt is fixed" vs standing user preferences, project instructions, memory and skills | The core scaffold is fixed; instruction layers are additive, size-limited and ranked below the core by a precedence rule the model reads first. 10. |
+| T16 | Memory and pinned skills live in the frozen prompt prefix, but the user can edit or delete them any time | Changes are appended as `SystemNote`s (including "forget: …" for deletions); the old text stays in existing chats' snapshots and the UI says so. Same mechanism as T5. 12 §B6. |
+| T17 | A static catalog needs an app release to add a connector; a dynamic one needs infrastructure and a trust story | Static per release in v1, made cheap by the auto-updater; the remote overlay is specified (signed, additive, cached, never blocking) and deferred. 03 §11. |
+| T18 | `site/` would have hosted both the OAuth client metadata and the marketing page | `client-metadata/` and `website/`, two Pages projects on two hosts. 14 §1. |

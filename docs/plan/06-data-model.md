@@ -14,6 +14,7 @@ Why: a desktop app's data is relational (chats → turns → messages → events
   blobs/ab/abcd…                content-addressed by SHA-256, immutable, deduplicated
   logs/                         app log and per-connector stderr logs, rotated
   runtimes/                     post-MVP: downloaded runtimes
+  skills/<name>/SKILL.md        user-installed and user-written skills (12 §A3); user-editable files
   master.key                    Linux fallback only (mode 0600); never on macOS or Windows
 ```
 
@@ -44,10 +45,11 @@ Types are indicative; the migrations are the source of truth.
 
 ### Chats and their scope
 
-- **chats** — `id, project_id NULL, title, title_source (auto|user), pinned, permission_mode, auto_guard, provider_id, model_id, effort, web_search, system_snapshot` (the frozen system prompt text, 02 §6), `declared_tools_json` (the tool set declared to Anthropic with `defer_loading`), `created_at, updated_at, last_message_at, archived_at`
+- **chats** — `id, project_id NULL, title, title_source (auto|user), pinned, permission_mode, auto_guard, provider_id, model_id, effort, web_search, instructions` (chat-level custom instructions, 10 §2), `system_snapshot` (the frozen system prompt text, 02 §6), `system_snapshot_version, snapshot_memory_ids_json` (10 §6, 12 §B4), `declared_tools_json` (the tool set declared to Anthropic with `defer_loading`), `created_at, updated_at, last_message_at, archived_at`
 - **chat_roots** — `chat_id, path, added_at` · PK `(chat_id, path)`
 - **chat_connectors** — `chat_id, instance_id, tool_filter_json NULL, source (user|project_default|access_request|suggestion), attached_at` · PK `(chat_id, instance_id)`
 - **chat_grants** — `id, chat_id, instance_id, tool_name NULL, tier_ceiling NULL, arg_scope_json NULL, source, created_at, revoked_at`
+- **chat_skills** — `chat_id, skill_id, pinned_at` · PK `(chat_id, skill_id)`; **project_skills** — `project_id, skill_id, pinned_at` · PK `(project_id, skill_id)`
 
 ### Transcript
 
@@ -73,10 +75,19 @@ The transcript is `messages` ordered by `seq`. It is append-only; edits to histo
 - **oauth_clients** — `id, instance_id, issuer, client_id, registration_json, created_at` (a client secret, if any, is a credential)
 - **credentials** — `id, kind (api_key|oauth_token|oauth_client_secret|user_config_secret|search_api_key), owner_kind (provider|instance), owner_id, label, ciphertext BLOB, nonce BLOB, expires_at NULL, meta_json` (issuer, scopes, last-four hint), `created_at, updated_at` · index `(owner_kind, owner_id)`
 
+### Artifacts, skills and memory
+
+- **artifacts** — `id, chat_id, project_id NULL` (denormalized from the chat), `type, title, language NULL, summary NULL, current_version, created_by_message_id, created_at, updated_at, archived_at` (13 §7)
+- **artifact_versions** — `id, artifact_id, version, content_blob_hash, data_blob_hash NULL` (reserved for data types), `source (model_create|model_update|model_edit|user_edit|user_restore), tool_call_id NULL, message_id NULL, note NULL, size, created_at` · index `(artifact_id, version)`
+- **artifact_kv** — reserved, not created in v1: `scope_kind (artifact|project), scope_id, key, value, size, updated_at` (13 §8)
+- **skills** — `id` (= name), `source (bundled|user|imported), path, name, description, triggers_json, always_include, enabled, content_hash, size, version, installed_at, updated_at, last_used_at, use_count` (12 §A3)
+- **skill_versions** — `id, skill_id, version, content, source (user_edit|import|ai_proposal|external_change|bundled), created_at`
+- **memories** — `id, scope_kind (global|project), scope_id NULL, kind (instruction|preference|fact|note), text, always_include, source (user|assistant), origin_chat_id NULL, origin_message_id NULL, tags_json, enabled, use_count, last_used_at, created_at, updated_at, archived_at` (12 §B2)
+
 ### Blobs and search
 
 - **blobs** — `hash PK, size, mime NULL, refcount, created_at`; files live under `blobs/`. Refcounts are maintained by the repositories that reference blobs; a weekly sweep deletes unreferenced files.
-- **messages_fts** (FTS5, external content over the text parts of `messages`) and **chats_fts** (titles), maintained by triggers. The `search` command unions both and returns snippets.
+- **messages_fts** (FTS5, external content over the text parts of `messages`) and **chats_fts** (titles), maintained by triggers. The `search` command unions both and returns snippets. **artifacts_fts** (title, summary, current content) and **memories_fts** (text, tags) serve the artifact search and the memory selector (12 §B4).
 - **schema_migrations** — `version, applied_at`
 
 ## 4. Where each kind of data lives
@@ -88,7 +99,10 @@ The transcript is `messages` ordered by `seq`. It is append-only; edits to histo
 | Connector configs | `connector_instances`, `oauth_clients` | Non-secret only; visible in the UI |
 | Credentials | `credentials` ciphertext, master key in the OS store | See §5 |
 | Project knowledge | `project_files` + `blobs` + `extracted_text` | Text is what goes into prompts |
-| Settings | `settings` | One row per key, JSON values |
+| Settings | `settings` | One row per key, JSON values; custom instructions, theme and defaults live here (11) |
+| Artifacts | `artifacts`, `artifact_versions` + `blobs` for content | Versions are immutable; content deduplicates by hash (13 §7) |
+| Skills | files on disk + `skills` index + `skill_versions` | Files are the user-facing truth; the index serves matching and the UI (12 §A3) |
+| Memory | `memories` (+ FTS) | Every row is visible on the Memory page (12 §B5) |
 
 ## 5. Secrets
 
@@ -124,6 +138,9 @@ Rules: decryption happens only inside `gantry-secrets`, on demand, with plaintex
 | Pending badges | `interactions` where `status = pending` grouped by `chat_id` | `(chat_id, status)` |
 | Search | `messages_fts MATCH ?` joined to chats, plus `chats_fts` | FTS |
 | Credentials for an owner | `credentials` by `(owner_kind, owner_id)` | `(owner_kind, owner_id)` |
+| Artifacts of a chat or project | `artifacts` by `chat_id` or `project_id`, versions by `(artifact_id, version)` | `(chat_id)`, `(project_id)`, `(artifact_id, version)` |
+| Memory selection | core set by `(scope_kind, scope_id, kind, enabled)`; long tail via `memories_fts MATCH` | `(scope_kind, scope_id, enabled)` + FTS |
+| Skill matching | all enabled skills (small), then `skill_versions` by `(skill_id, version)` | `(enabled)`, `(skill_id, version)` |
 
 ## 8. Migrations
 

@@ -14,6 +14,8 @@ Activity is shown **inline in the assistant's message**, in the order it happene
 | Decision | permission card, access request, suggestion, elicitation | waiting for the user | — |
 | Guard | "guard ✓" mark or "Blocked by guard: reason" | — | judge inputs summary, decision, confidence, flags, **Allow anyway** |
 | Notice | "Earlier conversation summarized", "Thinking context reset", refusal | — | detail |
+| Artifact | "Created artifact · Title (React)", "Updated artifact · Title (v3)" | source streaming into the panel | the artifact panel (13) |
+| Context used | "2 skills, 5 memories" | — | which skills and memories were injected this turn (12) |
 
 A collapsed summary line at the top of each turn ("7 tool calls · 3 files changed · 2 commands") lets a reader skim; expanding shows the rows. Everything is keyboard-navigable.
 
@@ -43,6 +45,9 @@ Every event carries `seq` (monotonic within a turn), `ts` (ms) and `turn_id`. `t
 | `message.completed` | message_id, stop_reason, usage | yes |
 | `turn.completed` | status, usage, counts, duration_ms | yes |
 | `error` | code, message, retryable | yes |
+| `artifact.created` | artifact_id, version, type, title | yes |
+| `artifact.updated` | artifact_id, version, source | yes |
+| `context.injected` | skills: [names], memories: [ids] | yes |
 | `turn.snapshot` | full current state of an active turn; sent first on `subscribe_turn` | no |
 
 Wire type: `AgentEventBatch { turn_id, events: Vec<AgentEvent> }`.

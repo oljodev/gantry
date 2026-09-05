@@ -1,13 +1,14 @@
 # 07 — Repository structure
 
-One Cargo workspace, one pnpm package, connectors as first-class folders. Names below are the canonical ones used across the plan.
+One Cargo workspace, one pnpm workspace (the app plus the artifact runtime), connectors and skills as first-class folders, two static sites. Names below are the canonical ones used across the plan.
 
 ```
 gantry/
 ├── .github/
 │   ├── workflows/
-│   │   ├── ci.yml                        # fmt, clippy, cargo test, xtask validate-connectors, pnpm typecheck + test, bindings drift check
-│   │   └── release.yml                   # tauri-action matrix: macOS universal, Windows x64, Linux x64 (AppImage, deb, rpm)
+│   │   ├── ci.yml                        # fmt, clippy, cargo test, xtask validate-connectors + validate-skills, pnpm typecheck + test, bindings drift check
+│   │   └── release.yml                   # tauri-action matrix: macOS universal, Windows x64, Linux x64 (AppImage, deb, rpm);
+│   │                                     # uploads stable-named copies + releases.json (14 §3)
 │   └── ISSUE_TEMPLATE/
 ├── .claude/                              # hooks and settings (existing)
 ├── .vscode/                              # editor settings (existing)
@@ -20,11 +21,16 @@ gantry/
 │   │   │   ├── icon.svg                  # master app icon
 │   │   │   └── icon-1024.png             # input for `cargo xtask icons` → src-tauri/icons/ (icns, ico, png sets)
 │   │   └── marketing/                    # screenshots, social images, store listings
+│   ├── prompts/
+│   │   ├── core.md                       # the fixed system prompt scaffold (10 §6), versioned
+│   │   ├── modes/{manual,auto_edit,plan,auto}.md
+│   │   ├── judge.md                      # the judge policy prompt (04 §6)
+│   │   └── compaction.md                 # summarizer instructions, including the artifact listing rule (13 §7)
 │   ├── models/
 │   │   ├── overrides.toml                # capabilities and pricing the provider APIs do not expose
 │   │   └── judge_defaults.toml           # judge model per provider
 │   └── guardrails/
-│       └── defaults.toml                 # hard-deny patterns, always-confirm patterns, sensitive path globs
+│       └── defaults.toml                 # hard-deny patterns, always-confirm patterns, sensitive path globs, secret patterns
 │
 ├── connectors/                           # every connector, first-party or bundled, one folder each (03 §2)
 │   ├── README.md                         # the folder contract for contributors
@@ -55,9 +61,6 @@ gantry/
 │   ├── web/                              # first-party · native
 │   │   ├── manifest.json  icon.svg  README.md  Cargo.toml
 │   │   └── src/{lib.rs, fetch.rs, extract.rs, search.rs}
-│   ├── connector-catalog/                # first-party · native · the meta-connector
-│   │   ├── manifest.json  icon.svg  README.md  Cargo.toml
-│   │   └── src/{lib.rs, index.rs, search.rs, suggest.rs}
 │   ├── google-drive/                     # bundled third-party · mcp-remote · user-supplied OAuth client
 │   │   ├── manifest.json  icon.svg  README.md
 │   │   └── ui/index.tsx                  # helper panel: OAuth client setup steps with copyable redirect URIs
@@ -66,16 +69,26 @@ gantry/
 │   └── playwright/                       # bundled third-party · mcp-stdio on the user's Node
 │       └── manifest.json  icon.svg  README.md
 │
+├── skills/                               # bundled, text-only skills (12 §A3); embedded at build time
+│   ├── README.md                         # the folder contract: SKILL.md + optional references/*.md, nothing executable
+│   ├── commit-messages/SKILL.md
+│   ├── code-review/SKILL.md
+│   ├── write-a-plan/SKILL.md
+│   └── artifact-authoring/
+│       ├── SKILL.md
+│       └── references/react-runtime.md   # the module allowlist and component contract (13 §6)
+│
 ├── crates/
 │   ├── gantry-core/
-│   │   └── src/{lib.rs, ids.rs, message.rs, tool.rs, risk.rs, event.rs, interaction.rs, permission.rs, error.rs}
+│   │   └── src/{lib.rs, ids.rs, message.rs, tool.rs, risk.rs, event.rs, interaction.rs, permission.rs, settings.rs, artifact.rs, skill.rs, memory.rs, error.rs}
 │   ├── gantry-store/
 │   │   ├── migrations/                   # 0001_init.sql, 0002_….sql (forward-only)
 │   │   └── src/
 │   │       ├── lib.rs  db.rs             # writer actor + read pool, pragmas
 │   │       ├── blobs.rs  fts.rs  migrate.rs
 │   │       └── repos/{chats.rs, messages.rs, events.rs, tool_calls.rs, file_edits.rs, command_runs.rs,
-│   │                  interactions.rs, projects.rs, connectors.rs, credentials.rs, providers.rs, settings.rs, mod.rs}
+│   │                  interactions.rs, projects.rs, connectors.rs, credentials.rs, providers.rs, settings.rs,
+│   │                  artifacts.rs, skills.rs, memories.rs, mod.rs}
 │   ├── gantry-secrets/
 │   │   └── src/{lib.rs, master_key.rs, envelope.rs, vault.rs, platform/{macos.rs, windows.rs, linux.rs, mod.rs}}
 │   ├── gantry-providers/
@@ -95,38 +108,63 @@ gantry/
 │   │   ├── build.rs                      # validates and embeds connectors/*/manifest.json
 │   │   └── src/
 │   │       ├── lib.rs  connector.rs      # the Connector trait, ToolEventSink, ToolOutcome
-│   │       ├── manifest.rs  catalog.rs  registry.rs  resources.rs  runtimes.rs
+│   │       ├── manifest.rs  registry.rs  resources.rs  runtimes.rs
+│   │       ├── catalog/{mod.rs, search.rs, overlay.rs}   # embedded catalog, keyword search, the deferred signed overlay (03 §11)
+│   │       ├── install.rs                # the install flow state machine per transport (03 §11)
 │   │       ├── native/{mod.rs, registry.rs}
 │   │       ├── mcp/{mod.rs, session.rs, connector.rs, transport.rs, mrtr.rs, risk.rs, process.rs}   # only these import rmcp
 │   │       └── auth/{mod.rs, discovery.rs, registration.rs, pkce.rs, loopback.rs, tokens.rs}
 │   ├── gantry-workspace/
 │   │   └── src/{lib.rs, scope.rs, fs.rs, journal.rs, diff.rs, search.rs, runner.rs, classify.rs, encoding.rs}
 │   ├── gantry-agent/
+│   │   ├── build.rs                      # validates and embeds skills/*/SKILL.md
 │   │   └── src/
 │   │       ├── lib.rs  turn_manager.rs  runner.rs
-│   │       ├── transcript.rs  projection.rs  context.rs  system_prompt.rs
+│   │       ├── transcript.rs  projection.rs  context.rs  system_prompt.rs   # system_prompt assembles the layers of 10 §2
 │   │       ├── permissions/{mod.rs, engine.rs, tiers.rs, grants.rs, guardrails.rs, judge.rs}
-│   │       ├── interactions.rs  events.rs  runtime_tools.rs  title.rs
+│   │       ├── runtime_tools/{mod.rs, access.rs, catalog.rs, artifacts.rs, skills.rs, memory.rs}
+│   │       ├── skills/{mod.rs, index.rs, matcher.rs, import.rs, export.rs}
+│   │       ├── memory/{mod.rs, selector.rs, proposals.rs}
+│   │       ├── artifacts/{mod.rs, versions.rs, registry.rs}   # type registry mirrored by the frontend
+│   │       ├── interactions.rs  events.rs  title.rs
 │   └── xtask/
-│       └── src/{main.rs, validate_connectors.rs, gen_bindings.rs, icons.rs}
+│       └── src/{main.rs, validate_connectors.rs, validate_skills.rs, gen_bindings.rs, icons.rs}
+│
+├── artifact-runtime/                     # the sandboxed artifact document (13 §5–§6); separate Vite build
+│   ├── package.json  vite.config.ts      # builds one self-contained, fully inlined runtime.html
+│   └── src/
+│       ├── main.ts                       # boot: wait for `mount`, dispatch by type
+│       ├── bridge.ts                     # postMessage client: ready, error, console, resize, open_url, storage/tools stubs
+│       ├── react/{compile.ts, loop-guard.ts, imports.ts, modules.ts, ErrorBoundary.tsx, mount.tsx}
+│       ├── html/mount.ts                 # document replacement with script instrumentation
+│       ├── mermaid/mount.ts
+│       ├── tokens.css                    # the app's theme tokens, mirrored
+│       └── conformance/probe.ts          # the sandbox conformance artifact (13 §5)
 │
 ├── docs/
-│   ├── plan/                             # this plan (00–09)
+│   ├── plan/                             # this plan (00–14)
 │   ├── decisions/                        # ADRs from here on: 0001-….md
-│   └── dev/                              # setup per OS, debugging, release checklist
+│   └── dev/                              # setup per OS, debugging, release checklist (release.md includes the website checklist, 14 §4)
 │
 ├── schemas/
-│   └── connector-manifest.schema.json    # used by build.rs, xtask and editor validation
+│   ├── connector-manifest.schema.json    # used by build.rs, xtask and editor validation
+│   └── skill-frontmatter.schema.json     # Agent Skills fields + gantry-* metadata keys (12 §A2)
 │
-├── site/                                 # static files served from the app's domain (Cloudflare Pages)
-│   ├── index.html                        # placeholder landing page
-│   └── oauth/client-metadata.json        # Client ID Metadata Document for MCP OAuth (03 §7)
+├── client-metadata/                      # MCP OAuth Client ID Metadata Document host (03 §7, 14 §1); its own Pages project and subdomain
+│   ├── README.md                         # what this is, why its URL must never change
+│   ├── index.html                        # one paragraph for humans
+│   └── client-metadata.json              # client_id must equal this file's own URL exactly
 │
-├── src/                                  # React frontend
+├── website/                              # the public marketing page (14); its own Pages project
+│   ├── index.html  styles.css  release.js
+│   └── assets/                           # wordmark, screenshots
+│
+├── src/                                  # React frontend (module map in 01 §5)
 │   ├── main.tsx  App.tsx
 │   ├── bindings.ts                       # generated by tauri-specta; committed; drift-checked in CI
+│   ├── generated/artifact-runtime.html   # output of the artifact-runtime build, imported as a raw string
 │   ├── app/
-│   │   ├── router.tsx  providers.tsx  shortcuts.ts
+│   │   ├── router.tsx  providers.tsx  shortcuts.ts  theme.ts   # theme.ts: data-theme stamping + window.setTheme (11 §3)
 │   │   └── layout/{AppShell.tsx, Sidebar.tsx, Titlebar.tsx}
 │   ├── lib/
 │   │   ├── ipc/{client.ts, keys.ts, hooks/…, events.ts}
@@ -137,14 +175,20 @@ gantry/
 │   ├── features/
 │   │   ├── sidebar/{SidebarNav.tsx, ChatListItem.tsx, ProjectList.tsx, PinnedSection.tsx, grouping.ts}
 │   │   ├── chat/{ChatView.tsx, MessageList.tsx, UserMessage.tsx, AssistantMessage.tsx, TurnStatusBar.tsx}
-│   │   ├── composer/{Composer.tsx, AttachMenu.tsx, ModeChip.tsx, ModelPicker.tsx, RootsChips.tsx, AttachmentTray.tsx}
-│   │   ├── activity/{ActivityFeed.tsx, ActivityItem.tsx, items/{EditItem.tsx, CommandItem.tsx, ConnectorItem.tsx, ReadItem.tsx, GuardMark.tsx},
+│   │   ├── composer/{Composer.tsx, AttachMenu.tsx, ModeChip.tsx, ModelPicker.tsx, RootsChips.tsx, AttachmentTray.tsx, SlashMenu.tsx}
+│   │   ├── activity/{ActivityFeed.tsx, ActivityItem.tsx, items/{EditItem.tsx, CommandItem.tsx, ConnectorItem.tsx, ReadItem.tsx, ArtifactItem.tsx, ContextItem.tsx, GuardMark.tsx},
 │   │   │             detail/{DetailDrawer.tsx, DiffDetail.tsx, CommandDetail.tsx, ToolCallDetail.tsx, JudgeDetail.tsx}}
-│   │   ├── interactions/{PermissionCard.tsx, AccessRequestCard.tsx, ConnectorSuggestionCard.tsx, ElicitationCard.tsx, AuthRequiredCard.tsx}
-│   │   ├── projects/{ProjectPage.tsx, ProjectSettings.tsx, KnowledgeFiles.tsx}
-│   │   ├── connectors/{Browse.tsx, ConnectorCard.tsx, ConnectorDetail.tsx, InstallDialog.tsx, AddCustomServer.tsx,
+│   │   ├── interactions/{PermissionCard.tsx, AccessRequestCard.tsx, ConnectorSuggestionCard.tsx, ElicitationCard.tsx, AuthRequiredCard.tsx,
+│   │   │                 SkillProposalCard.tsx, MemoryProposalCard.tsx}
+│   │   ├── artifacts/{ArtifactPanel.tsx, ArtifactToolbar.tsx, ProblemsTab.tsx, registry.ts, bridge.ts, store.ts,
+│   │   │              renderers/{MarkdownRenderer.tsx, CodeRenderer.tsx, SvgRenderer.tsx, SandboxHost.tsx}}
+│   │   ├── skills/{SkillsPage.tsx, SkillEditor.tsx, FrontmatterForm.tsx, ImportReview.tsx, MatchTester.tsx}
+│   │   ├── memory/{MemoryPage.tsx, MemoryTable.tsx, RecentlyDeleted.tsx}
+│   │   ├── projects/{ProjectPage.tsx, ProjectSettings.tsx, KnowledgeFiles.tsx, ProjectArtifacts.tsx}
+│   │   ├── connectors/{Browse.tsx, ConnectorCard.tsx, ConnectorDetail.tsx, InstallDialog.tsx, RuntimeCheck.tsx, AddCustomServer.tsx,
 │   │   │               InstanceSettings.tsx, UserConfigForm.tsx, AuthStatus.tsx, customPanels.ts}   # customPanels: import.meta.glob of connectors/*/ui
-│   │   ├── settings/{SettingsPage.tsx, Providers.tsx, Models.tsx, Guard.tsx, Guardrails.tsx, Secrets.tsx, Appearance.tsx, Advanced.tsx}
+│   │   ├── settings/{SettingsPage.tsx, General.tsx, Appearance.tsx, Providers.tsx, Guard.tsx, Guardrails.tsx, Connectors.tsx,
+│   │   │             Skills.tsx, Memory.tsx, Data.tsx, Advanced.tsx, About.tsx}
 │   │   └── search/{SearchPalette.tsx}
 │   ├── components/ui/                    # shadcn/ui (Base UI) components
 │   └── styles/{globals.css, tokens.css}
@@ -152,18 +196,19 @@ gantry/
 ├── src-tauri/                            # package gantry-app
 │   ├── Cargo.toml
 │   ├── build.rs
-│   ├── tauri.conf.json                   # identifier dev.oljo.gantry; bundle.icon → icons/
+│   ├── tauri.conf.json                   # identifier dev.oljo.gantry; bundle.icon → icons/; window theme null (11 §3)
 │   ├── capabilities/default.json         # Tauri v2 capabilities (dialog, opener, clipboard, notification, window-state)
 │   ├── icons/                            # generated from assets/branding/app-icon by `cargo xtask icons`
 │   └── src/
-│       ├── main.rs  lib.rs  state.rs  startup.rs  channel_sink.rs  menu.rs
-│       └── commands/{mod.rs, chats.rs, turns.rs, interactions.rs, activity.rs, projects.rs, connectors.rs, providers.rs, settings.rs, app.rs}
+│       ├── main.rs  lib.rs  state.rs  startup.rs  channel_sink.rs  menu.rs  artifact_window.rs
+│       └── commands/{mod.rs, chats.rs, turns.rs, interactions.rs, activity.rs, projects.rs, connectors.rs, providers.rs,
+│                     settings.rs, artifacts.rs, skills.rs, memory.rs, app.rs}
 │
 ├── Cargo.toml                            # [workspace] members = ["src-tauri", "crates/*", "connectors/filesystem", "connectors/code-editor",
-│                                         #                        "connectors/shell", "connectors/web", "connectors/connector-catalog"]
+│                                         #                        "connectors/shell", "connectors/web"]
 ├── Cargo.lock
 ├── rust-toolchain.toml  rustfmt.toml  clippy.toml  deny.toml
-├── package.json  pnpm-lock.yaml  tsconfig.json  vite.config.ts  components.json  eslint.config.js  .prettierrc
+├── package.json  pnpm-workspace.yaml  pnpm-lock.yaml  tsconfig.json  vite.config.ts  components.json  eslint.config.js  .prettierrc
 ├── LICENSE                               # FSL-1.1-ALv2 (08)
 ├── LICENSING.md                          # plain-language summary and FAQ
 ├── THIRD_PARTY_LICENSES.md               # generated by cargo-about + license-checker
@@ -179,19 +224,27 @@ gantry/
 | A first-party connector | `connectors/<id>/` with `Cargo.toml` | add the crate to `[workspace].members` and to `gantry-connectors` dependencies + `native/registry.rs` |
 | A bundled MCP connector | `connectors/<id>/` with `manifest.json`, `icon.svg`, `README.md` | nothing else; `build.rs` embeds it |
 | A connector's custom settings panel | `connectors/<id>/ui/index.tsx` | set `settings_ui` in the manifest |
+| A bundled skill | `skills/<name>/SKILL.md` (+ `references/*.md`) | `cargo xtask validate-skills`; `gantry-agent`'s `build.rs` embeds it |
+| A new artifact type | a renderer in `src/features/artifacts/renderers/` and an entry in both registries (`gantry-agent/src/artifacts/registry.rs`, `src/features/artifacts/registry.ts`) | if executable, a mount in `artifact-runtime/src/`; a line in `assets/prompts/core.md` |
+| A library artifacts may import | `artifact-runtime/src/react/modules.ts` | the allowlist line in `assets/prompts/core.md` and `skills/artifact-authoring/references/react-runtime.md` |
+| A runtime tool (`gantry__…`) | `crates/gantry-agent/src/runtime_tools/` | tier `app`; its card in `src/features/interactions/` if it needs a decision |
+| A settings key | `gantry-core/src/settings.rs` with a default | its section component under `src/features/settings/` |
 | A new model provider client | `crates/gantry-providers/src/<name>/` | a row in the normalization table in 02 and fixtures under `tests/fixtures/<name>/` |
 | A new IPC command | `src-tauri/src/commands/<area>.rs` | run `cargo xtask gen-bindings`; add a hook in `src/lib/ipc/hooks/` |
 | A new event kind | `gantry-core/src/event.rs` | handle it in `runStore.applyBatch` and, if persisted, in the persister |
 | A schema change | `crates/gantry-store/migrations/NNNN_name.sql` | update the repository and the table list in 06 |
 | A permission rule | `crates/gantry-agent/src/permissions/` | update the matrix in 04 |
+| A prompt change | `assets/prompts/` | bump the core version; the prompt fixture test in `gantry-agent` |
 | Branding | `assets/branding/` | regenerate `src-tauri/icons/` with `cargo xtask icons` |
+| Marketing copy or screenshots | `website/` | nothing else; Pages deploys on push |
 | A decision that changes this plan | `docs/decisions/NNNN-title.md` | edit the affected plan document in the same commit |
 
 ## Notes on specific files
 
 - **`Cargo.toml` (workspace).** Native connector crates are listed explicitly because `connectors/*` also holds manifest-only folders. Shared dependency versions live in `[workspace.dependencies]`.
-- **`crates/gantry-connectors/build.rs`** re-runs when any `connectors/*/manifest.json` changes (`cargo:rerun-if-changed` per file) and fails the build with the schema error and the offending path.
+- **`crates/gantry-connectors/build.rs`** and **`crates/gantry-agent/build.rs`** re-run when any manifest or `SKILL.md` changes (`cargo:rerun-if-changed` per file) and fail the build with the schema error and the offending path.
+- **`pnpm-workspace.yaml`** lists the app root and `artifact-runtime/`; the app's `build` script runs the runtime build first so `src/generated/artifact-runtime.html` is fresh (it is gitignored and regenerated).
 - **`vite.config.ts`** sets `server.fs.allow` to include `../connectors`, defines the two `import.meta.glob` roots, and aliases `@/` to `src/`.
 - **`src-tauri/tauri.conf.json`** points `bundle.icon` at the generated `icons/` set; the sources stay in `assets/branding/app-icon/` so the identity work later has one home.
-- **`site/oauth/client-metadata.json`** is deployed to the public domain; its `client_id` must equal its own URL exactly (03 §7).
-- **`assets/*.toml`** files are embedded with `include_str!` and parsed at startup, so tuning judge defaults or guardrails is a data change, not a code change.
+- **`client-metadata/client-metadata.json`** is deployed to `id.<domain>`; its `client_id` must equal its own URL exactly (03 §7). Changing that URL invalidates every OAuth registration users have made, which is why the folder has a README saying so.
+- **`assets/*.toml`** and **`assets/prompts/*.md`** are embedded with `include_str!` and parsed at startup, so tuning judge defaults, guardrails or prompt wording is a data change, not a code change; the core prompt still carries a version number.

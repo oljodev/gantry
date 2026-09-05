@@ -16,8 +16,9 @@
 | `write_external` | Mutates state outside the machine or outside the roots; not revertible by Gantry | Drive `create_file`, GitHub `create_issue`, a Supabase insert, sending a message |
 | `execute` | Runs code with unknown blast radius | `run_command` (unless classified read-only), tools of stdio MCP servers without annotations |
 | `destructive` | Irreversible deletion or force operations | `delete_path`, `delete_repository`, `git push --force`, a `DROP TABLE` |
+| `app` | Acts only on Gantry's own state and is either pure output or confirmed by its own card | `gantry__create_artifact`, `gantry__propose_memory`, `gantry__propose_skill`, `gantry__search_connectors`, `gantry__request_access` |
 
-Assignment: native manifests declare a tier per tool; the shell connector classifies each command at call time; MCP tools map from annotations with manifest and per-instance overrides (03 §6); unknown tools default conservatively (`write_external` remote, `execute` local).
+Assignment: native manifests declare a tier per tool; the shell connector classifies each command at call time; MCP tools map from annotations with manifest and per-instance overrides (03 §6); unknown tools default conservatively (`write_external` remote, `execute` local). Runtime tools owned by `gantry-agent` (`gantry__…`) are `app` tier by construction: they never touch the user's files, machine or external services, and the ones that persist anything (memory, skills) do so only after the user confirms a card (12).
 
 ## 3. Modes
 
@@ -28,8 +29,9 @@ Assignment: native manifests declare a tier per tool; the shell connector classi
 | write_external | Ask¹ | Ask¹ | Deny² | Allow | Judge |
 | execute | Ask¹ | Ask¹ | Ask¹ if the command classifies as read-only, else Deny | Allow | Judge |
 | destructive | Ask¹ | Ask¹ | Deny² | Allow³ | Judge³ |
+| app | Allow⁴ | Allow⁴ | Allow⁴ | Allow⁴ | Allow⁴ |
 
-¹ unless a standing grant for this chat matches (see §8). ² the tool is not even offered to the model in Plan mode (see §5). ³ `always_confirm` tools and guardrail patterns still ask (see §6).
+¹ unless a standing grant for this chat matches (see §8). ² the tool is not even offered to the model in Plan mode (see §5). ³ `always_confirm` tools and guardrail patterns still ask (see §6). ⁴ never prompts, always logged; see T13 in 01 §8 for why Manual mode's "no exceptions" does not extend to tools whose only effect is Gantry's own UI or a card the user decides on.
 
 **Manual** asks before every call, reads included, exactly as the brief says. It stays usable because every prompt offers "Allow for this chat" with a scope, and that grant is the user's explicit decision.
 
@@ -132,7 +134,7 @@ Matching: same chat and instance; tool matches or is wildcard; tier at or under 
 
 ## 9. Mid-conversation access requests
 
-This is for connectors that are **installed but not attached** to the chat (the meta-connector in 03 §9 handles connectors that are not installed).
+This is for connectors that are **installed but not attached** to the chat (the connector suggestion tools in 03 §9 handle connectors that are not installed).
 
 - The system prompt carries an inventory: "Attached: filesystem, code-editor, shell. Installed, not attached: github (repositories, issues, pull requests), supabase (database). Call `gantry__request_access` to use one."
 - `gantry__request_access { connector, tools?, reason }` is a runtime tool owned by `gantry-agent`, present whenever at least one installed instance is unattached.
@@ -141,12 +143,12 @@ This is for connectors that are **installed but not attached** to the chat (the 
 
 ## 10. The Interaction primitive
 
-Permission prompts, access requests, connector suggestions, MCP elicitation and mid-turn re-authentication are all the same mechanism:
+Permission prompts, access requests, connector suggestions, MCP elicitation, mid-turn re-authentication, and the skill and memory proposals of 12 are all the same mechanism:
 
 ```rust
 pub struct Interaction {
     pub id: InteractionId, pub chat_id: ChatId, pub turn_id: TurnId,
-    pub kind: InteractionKind,        // Permission | AccessRequest | ConnectorSuggestion | Elicitation | AuthRequired
+    pub kind: InteractionKind,        // Permission | AccessRequest | ConnectorSuggestion | Elicitation | AuthRequired | SkillProposal | MemoryProposal
     pub payload: serde_json::Value,   // kind-specific
     pub status: Pending | Resolved | Cancelled | Expired,
     pub resolution: Option<serde_json::Value>,
