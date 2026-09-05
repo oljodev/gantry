@@ -69,7 +69,7 @@ The transcript is `messages` ordered by `seq`. It is append-only; edits to histo
 
 ### Connectors and credentials
 
-- **connector_instances** — `id, catalog_id NULL, display_name, kind (native|mcp_stdio|mcp_remote), config_json` (command, args, env *names*, URL, header *names*; never secret values), `user_config_json` (non-sensitive values), `auth_type, auth_state, credential_id NULL, enabled, tools_cache_json NULL, server_info_json NULL` (name, version, negotiated protocol version, capabilities), `installed_at, updated_at, last_connected_at NULL, last_error NULL`
+- **connector_instances** — `id, catalog_id NULL, display_name, kind (native|mcp-stdio|mcp-remote), config_json` (command, args, env *names*, URL, header *names*; never secret values), `user_config_json` (non-sensitive values), `auth_type, auth_state, credential_id NULL, enabled, tools_cache_json NULL, server_info_json NULL` (name, version, negotiated protocol version, capabilities), `installed_at, updated_at, last_connected_at NULL, last_error NULL`
 - **oauth_clients** — `id, instance_id, issuer, client_id, registration_json, created_at` (a client secret, if any, is a credential)
 - **credentials** — `id, kind (api_key|oauth_token|oauth_client_secret|user_config_secret|search_api_key), owner_kind (provider|instance), owner_id, label, ciphertext BLOB, nonce BLOB, expires_at NULL, meta_json` (issuer, scopes, last-four hint), `created_at, updated_at` · index `(owner_kind, owner_id)`
 
