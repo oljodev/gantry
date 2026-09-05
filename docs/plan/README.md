@@ -1,6 +1,6 @@
 # Gantry — architecture plan
 
-**Status:** draft v2, 2026-09-05. Session 1 produced documents 01–09; session 2 added 10–14 and folded them into the roadmap. This is the planning baseline for the from-scratch rebuild. It is a plan, not a spec frozen in stone: when implementation contradicts it, update the plan in the same commit.
+**Status:** draft v3, 2026-09-05. Session 1 produced documents 01–09; session 2 added 10–14 and folded them into the roadmap; session 3 designed and built the marketing site (14, `website/`). This is the planning baseline for the from-scratch rebuild. It is a plan, not a spec frozen in stone: when implementation contradicts it, update the plan in the same commit.
 
 Gantry is a cross-platform desktop app (macOS, Windows, Linux) that combines a general AI chat client, a coding-agent environment, research tooling and an extensible connector (MCP) system in one Tauri/Rust/React application. Bring-your-own-key only. Local storage only in v1.
 
@@ -23,7 +23,7 @@ Read in order the first time. Each document is self-contained enough to be used 
 | 11 | [Settings and theming](11-settings-and-theming.md) | The settings sections, three-state theming across webview and native chrome, provider key management |
 | 12 | [Skills and memory](12-skills-and-memory.md) | Text-only skills (format, matching, the four flows) and the visible, user-confirmed memory store |
 | 13 | [Artifacts](13-artifacts.md) | Tool-call-based artifacts, the v1 types, the sandbox and its bridge, the React runtime, versioning, projects |
-| 14 | [Marketing site](14-marketing-site.md) | The `website/` and `client-metadata/` split and release-linked download buttons |
+| 14 | [Marketing website](14-marketing-site.md) | The art direction and technical approach of the three.js page in `website/`, its degradation tiers, the `oljo.dev` / `id.oljo.dev` split and release-linked download buttons |
 
 ## Decision register
 
@@ -49,7 +49,7 @@ Decisions the rest of the plan depends on. Each is justified where it is used.
 | D16 | Memory | SQLite table, fully visible and editable on a Memory page; the assistant proposes and the user confirms (non-blocking); two-tier selection with fixed token budgets. |
 | D17 | Artifacts | Created through `gantry__create_artifact`/`update`/`edit` tools in the normalized tool layer; six v1 types; executable types run in an opaque-origin `srcdoc` iframe with `sandbox="allow-scripts"` and a strict CSP; React compiled in-sandbox with Babel and loop protection; linear immutable versions; chat-owned, project-visible. |
 | D18 | Catalog distribution | The curated connector catalog ships statically with each release; a signed remote overlay is designed but deferred. |
-| D19 | Public sites | Marketing page in `website/`, MCP client metadata in `client-metadata/`, deployed as two Cloudflare Pages projects on two hosts; download buttons use stable asset names and `releases/latest/download/` URLs. |
+| D19 | Public sites | Marketing page in `website/` at `oljo.dev` (Vite-built static page with a lazily loaded three.js scene and an SVG poster fallback), MCP client metadata in `client-metadata/` at `id.oljo.dev`; two Cloudflare Pages projects; download buttons use stable asset names and `releases/latest/download/` URLs, enabled through the GitHub releases API. |
 
 ## Vocabulary
 

@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Gantry</title>
+  <meta name="description" content="Gantry is a desktop AI workspace: a chat client, a coding agent and connectors, running on your machine with your own API keys. macOS, Windows and Linux." />
+  <meta name="color-scheme" content="light dark" />
+  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f2f4f6" />
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0c1116" />
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="preload" href="/fonts/barlow-semi-condensed-600-latin.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="/fonts/barlow-400-latin.woff2" as="font" type="font/woff2" crossorigin />
+  <meta property="og:title" content="Gantry" />
+  <meta property="og:description" content="A desktop AI workspace with a chat client, a coding agent and connectors. Local, cross-platform, bring your own keys." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://oljo.dev/" />
+  <script type="module" src="/src/main.ts"></script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="site-header">
+    <div class="wrap header-row">
+      <a class="wordmark" href="#main" aria-label="Gantry, home">Gantry</a>
+      <nav class="site-nav" aria-label="Site">
+        <a href="#what-it-does">What it does</a>
+        <a href="#connectors">Connectors</a>
+        <a class="nav-repo" href="https://github.com/oljodev/gantry" rel="noopener">
+          <span class="ico"><!-- icon:github --></span>GitHub<span class="tag">Private</span>
+        </a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="hero-scene" data-scene data-scene-state="poster" aria-hidden="true" inert>
+        <div class="hero-poster"><!-- poster --></div>
+        <canvas class="hero-canvas" tabindex="-1"></canvas>
+        <div class="hero-caption" data-caption hidden>
+          <span class="cap-tool" data-caption-tool></span>
+          <span class="cap-action" data-caption-action></span>
+        </div>
+        <div class="hero-scrim"></div>
+      </div>
+
+      <div class="wrap">
+      <div class="hero-copy">
+        <h1 id="hero-title">Chat, code and connect.<br />On your machine.</h1>
+        <p class="lede">A desktop AI workspace with a chat client, a coding agent and connectors. Local, cross-platform, bring your own API keys.</p>
+        <div class="downloads" role="group" aria-label="Download Gantry">
+          <a class="dl" data-os="mac" aria-disabled="true">
+            <span class="ico"><!-- icon:download --></span>
+            <span class="dl-os">macOS</span>
+            <span class="dl-state" data-state>Coming soon</span>
+          </a>
+          <a class="dl" data-os="win" aria-disabled="true">
+            <span class="ico"><!-- icon:download --></span>
+            <span class="dl-os">Windows</span>
+            <span class="dl-state" data-state>Coming soon</span>
+          </a>
+          <a class="dl" data-os="linux" aria-disabled="true">
+            <span class="ico"><!-- icon:download --></span>
+            <span class="dl-os">Linux</span>
+            <span class="dl-state" data-state>Coming soon</span>
+          </a>
+        </div>
+        <p class="release" data-release hidden></p>
+      </div>
+      </div>
+    </section>
+
+    <section class="section work" id="what-it-does" aria-labelledby="work-title">
+      <div class="wrap work-grid">
+        <div class="work-copy">
+          <h2 id="work-title">Watch it work.</h2>
+          <p class="sub">An agent in Gantry edits files, runs commands and uses connectors while you watch. Every action is a row in the activity feed. Every risky one waits for your yes.</p>
+          <dl class="caps">
+            <div style="--i:0"><dt>Edits files</dt><dd>Targeted changes to the folders you add, shown as diffs before and after, revertible.</dd></div>
+            <div style="--i:1"><dt>Runs commands</dt><dd>Builds, tests and scripts in your shell, with output streaming as it happens.</dd></div>
+            <div style="--i:2"><dt>Uses connectors</dt><dd>GitHub, Drive, databases and more, through the same visible tool calls.</dd></div>
+            <div style="--i:3"><dt>Asks first</dt><dd>Four permission modes per chat, from approve-everything to hands-off with a guard model watching.</dd></div>
+          </dl>
+        </div>
+        <figure class="log" data-reveal aria-label="Example of the activity feed">
+          <ol class="log-rows">
+            <li style="--i:0"><span class="log-tool">filesystem</span><span class="log-text">read_file <code>src/lib/auth.rs</code></span><span class="log-meta">done</span></li>
+            <li style="--i:1"><span class="log-tool">code-editor</span><span class="log-text">str_replace <code>src/lib/auth.rs</code></span><span class="log-meta">+12 &minus;3</span></li>
+            <li style="--i:2"><span class="log-tool">shell</span><span class="log-text"><code>cargo test --package api</code></span><span class="log-meta">passed</span></li>
+            <li style="--i:3" class="log-ask"><span class="log-tool">github</span><span class="log-text">create_pull_request</span><span class="log-meta">allow?</span></li>
+            <li style="--i:4"><span class="log-tool">github</span><span class="log-text">create_pull_request</span><span class="log-meta">allowed once</span></li>
+          </ol>
+          <figcaption>An illustrative session as it appears in the feed, not a screenshot.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section class="section connectors" id="connectors" aria-labelledby="connectors-title">
+      <div class="wrap">
+        <div class="section-head">
+          <h2 id="connectors-title">Connectors, built in.</h2>
+          <p class="sub">A curated set ships with the app, from your own files and shell to the services you already use. Nothing installs itself. Every connector is one explicit click away.</p>
+        </div>
+        <div class="filters" data-filters role="group" aria-label="Filter connectors by category">
+          <!-- connector-filters -->
+        </div>
+        <!-- connector-grid -->
+        <p class="grid-note">Marks are placeholders until each integration is confirmed and its logo cleared for use.</p>
+      </div>
+    </section>
+
+    <section class="section about" id="about" aria-labelledby="about-title">
+      <div class="wrap">
+        <h2 id="about-title">What Gantry is.</h2>
+        <ul class="bento">
+          <li class="cell cell-chat" style="--i:0">
+            <h3>A chat client</h3>
+            <p>Talk to Claude, GPT, Gemini and Grok models, or anything on OpenRouter, from one place. Projects group chats with their files and instructions.</p>
+          </li>
+          <li class="cell cell-agent" style="--i:1">
+            <h3>A coding agent</h3>
+            <p>Works inside your repository with visible diffs and commands, under a permission mode you choose per chat.</p>
+          </li>
+          <li class="cell cell-connectors" style="--i:2">
+            <h3>Connectors</h3>
+            <p>Local connectors for files and shell, plus MCP servers for the services you use.</p>
+          </li>
+          <li class="cell cell-keys" style="--i:3">
+            <h3>Your keys</h3>
+            <p>No subscription. Add your own API keys; they stay encrypted in your OS keychain.</p>
+          </li>
+          <li class="cell cell-desktop" style="--i:4">
+            <h3>Every desktop</h3>
+            <p>One app for macOS, Windows and Linux, built with Rust and Tauri.</p>
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="section status" id="status" aria-labelledby="status-title">
+      <div class="wrap status-row">
+        <div>
+          <h2 id="status-title">Early, and in the open.</h2>
+          <p class="sub">Gantry is under active development. The code is source-available under the Functional Source License, and the repository is private while the first release takes shape.</p>
+        </div>
+        <a class="repo-card" href="https://github.com/oljodev/gantry" rel="noopener">
+          <span class="ico"><!-- icon:github --></span>
+          <span class="repo-name">github.com/oljodev/gantry</span>
+          <span class="badge"><span class="ico"><!-- icon:lock --></span>Private for now</span>
+        </a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap footer-row">
+      <span class="wordmark small">Gantry</span>
+      <p>&copy; 2026 Olav Jodal. Source-available under FSL-1.1-ALv2.</p>
+      <a href="https://github.com/oljodev/gantry" rel="noopener">GitHub</a>
+    </div>
+  </footer>
+</body>
+</html>

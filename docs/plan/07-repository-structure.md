@@ -150,14 +150,21 @@ gantry/
 │   ├── connector-manifest.schema.json    # used by build.rs, xtask and editor validation
 │   └── skill-frontmatter.schema.json     # Agent Skills fields + gantry-* metadata keys (12 §A2)
 │
-├── client-metadata/                      # MCP OAuth Client ID Metadata Document host (03 §7, 14 §1); its own Pages project and subdomain
+├── client-metadata/                      # MCP OAuth Client ID Metadata Document host (03 §7, 14 §1); its own Pages project at id.oljo.dev
 │   ├── README.md                         # what this is, why its URL must never change
 │   ├── index.html                        # one paragraph for humans
 │   └── client-metadata.json              # client_id must equal this file's own URL exactly
 │
-├── website/                              # the public marketing page (14); its own Pages project
-│   ├── index.html  styles.css  release.js
-│   └── assets/                           # wordmark, screenshots
+├── website/                              # the public marketing page at oljo.dev (14); standalone package, its own Pages project
+│   ├── package.json  pnpm-lock.yaml  vite.config.ts  tsconfig.json  README.md
+│   ├── index.html                        # all content; build-time injection points for the poster, the grid and icons
+│   ├── public/{favicon.svg, fonts/*.woff2, connectors/}   # self-hosted fonts; cleared connector logos go in connectors/
+│   ├── scripts/fetch-fonts.mjs
+│   └── src/
+│       ├── main.ts  releases.ts  os.ts  theme.ts  tiers.ts  reveal.ts
+│       ├── connectors/{data.ts, markup.ts, grid.ts}   # data.ts is the connector list
+│       ├── scene/{layout.js, poster.js, index.ts, structure.ts, modules.ts, carriage.ts, particles.ts, captions.ts, camera.ts, post.ts, palette.ts}
+│       └── styles/{tokens.css, fonts.css, styles.css}
 │
 ├── src/                                  # React frontend (module map in 01 §5)
 │   ├── main.tsx  App.tsx
@@ -236,7 +243,8 @@ gantry/
 | A permission rule | `crates/gantry-agent/src/permissions/` | update the matrix in 04 |
 | A prompt change | `assets/prompts/` | bump the core version; the prompt fixture test in `gantry-agent` |
 | Branding | `assets/branding/` | regenerate `src-tauri/icons/` with `cargo xtask icons` |
-| Marketing copy or screenshots | `website/` | nothing else; Pages deploys on push |
+| Marketing copy or screenshots | `website/index.html`, `website/public/` | nothing else; Pages builds and deploys on push |
+| A connector on the website showcase | one line in `website/src/connectors/data.ts` | a cleared logo file in `website/public/connectors/` when there is one |
 | A decision that changes this plan | `docs/decisions/NNNN-title.md` | edit the affected plan document in the same commit |
 
 ## Notes on specific files
@@ -246,5 +254,6 @@ gantry/
 - **`pnpm-workspace.yaml`** lists the app root and `artifact-runtime/`; the app's `build` script runs the runtime build first so `src/generated/artifact-runtime.html` is fresh (it is gitignored and regenerated).
 - **`vite.config.ts`** sets `server.fs.allow` to include `../connectors`, defines the two `import.meta.glob` roots, and aliases `@/` to `src/`.
 - **`src-tauri/tauri.conf.json`** points `bundle.icon` at the generated `icons/` set; the sources stay in `assets/branding/app-icon/` so the identity work later has one home.
-- **`client-metadata/client-metadata.json`** is deployed to `id.<domain>`; its `client_id` must equal its own URL exactly (03 §7). Changing that URL invalidates every OAuth registration users have made, which is why the folder has a README saying so.
+- **`client-metadata/client-metadata.json`** is deployed to `id.oljo.dev`; its `client_id` must equal its own URL exactly (03 §7). Changing that URL invalidates every OAuth registration users have made, which is why the folder has a README saying so.
+- **`website/`** keeps its own lockfile and stays out of the application's pnpm workspace so Cloudflare Pages can build it with root directory `website` (14 §1).
 - **`assets/*.toml`** and **`assets/prompts/*.md`** are embedded with `include_str!` and parsed at startup, so tuning judge defaults, guardrails or prompt wording is a data change, not a code change; the core prompt still carries a version number.
