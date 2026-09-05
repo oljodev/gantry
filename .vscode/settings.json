@@ -1,0 +1,5 @@
+{
+  "git.autofetch": true,
+  "git.postCommitCommand": "sync",
+  "git.confirmSync": false
+}
