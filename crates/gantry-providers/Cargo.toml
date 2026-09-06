@@ -1,0 +1,13 @@
+[package]
+name = "gantry-providers"
+description = "The Provider trait and the Anthropic, OpenAI, OpenAI-compatible and Gemini clients."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+gantry-core.workspace = true
+

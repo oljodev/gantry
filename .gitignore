@@ -1,2 +1,18 @@
+# Rust
+target/
+
+# Node
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Tauri
+src-tauri/gen/
+src-tauri/target/
+
+# Local
+.env
+.env.*
+.DS_Store
 .claude/settings.local.json
 .agent-eyes/

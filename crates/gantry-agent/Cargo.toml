@@ -1,0 +1,15 @@
+[package]
+name = "gantry-agent"
+description = "The turn loop: transcript, permissions, judge, interactions, events, skills, memory, artifacts."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+gantry-core.workspace = true
+gantry-providers.workspace = true
+gantry-connectors.workspace = true
+

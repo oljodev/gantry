@@ -1,0 +1,20 @@
+{
+  "manifest_version": "1",
+  "id": "filesystem",
+  "name": "Filesystem",
+  "description": "Read, search and write files inside the folders you attach to a chat.",
+  "version": "0.1.0",
+  "icon": "icon.svg",
+  "category": "local",
+  "keywords": [],
+  "publisher": { "name": "Gantry", "url": "https://oljo.dev" },
+  "first_party": true,
+  "homepage": "https://oljo.dev/connectors/filesystem/",
+  "license": "FSL-1.1-ALv2",
+  "runtime": { "kind": "native", "crate": "gantry-connector-filesystem", "singleton": true },
+  "auth": { "type": "none" },
+  "risk": { "network": "none", "local_system": "write", "default_tool_tier": "read" },
+  "tools": [],
+  "tools_generated": false,
+  "compatibility": { "platforms": ["darwin", "win32", "linux"], "gantry": ">=0.1.0" }
+}

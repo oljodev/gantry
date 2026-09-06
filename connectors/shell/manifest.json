@@ -1,0 +1,20 @@
+{
+  "manifest_version": "1",
+  "id": "shell",
+  "name": "Shell",
+  "description": "Run commands in an attached folder with streaming output, timeouts and kill.",
+  "version": "0.1.0",
+  "icon": "icon.svg",
+  "category": "developer",
+  "keywords": [],
+  "publisher": { "name": "Gantry", "url": "https://oljo.dev" },
+  "first_party": true,
+  "homepage": "https://oljo.dev/connectors/shell/",
+  "license": "FSL-1.1-ALv2",
+  "runtime": { "kind": "native", "crate": "gantry-connector-shell", "singleton": true },
+  "auth": { "type": "none" },
+  "risk": { "network": "none", "local_system": "execute", "default_tool_tier": "execute" },
+  "tools": [],
+  "tools_generated": false,
+  "compatibility": { "platforms": ["darwin", "win32", "linux"], "gantry": ">=0.1.0" }
+}

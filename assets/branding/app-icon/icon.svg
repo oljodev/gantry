@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Gantry app icon: the portal-frame mark in orange on a dark tile (docs/plan/15-app-design.md §13). -->
+  <defs>
+    <radialGradient id="sheen" cx="50%" cy="0%" r="90%">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.07"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect x="0" y="0" width="1024" height="1024" rx="225" fill="#141416"/>
+  <rect x="0" y="0" width="1024" height="1024" rx="225" fill="url(#sheen)"/>
+  <rect x="2" y="2" width="1020" height="1020" rx="223" fill="none" stroke="#ffffff" stroke-opacity="0.06" stroke-width="4"/>
+  <!-- The mark: two uprights and a beam, the hoist below; 56% of the tile height, optically centred. -->
+  <g transform="translate(512 528) scale(23.9) translate(-12 -13.75)" fill="none" stroke="#ff7a1f" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M3 6.5h18"/>
+    <path d="M5.5 6.5V21M18.5 6.5V21"/>
+  </g>
+  <g transform="translate(512 528) scale(23.9) translate(-12 -13.75)">
+    <rect x="9.5" y="9" width="5" height="5" rx="1.2" fill="#ff7a1f"/>
+  </g>
+</svg>
