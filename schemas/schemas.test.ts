@@ -1,10 +1,11 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { Ajv2020 } from 'ajv/dist/2020';
 import { describe, expect, it } from 'vitest';
 
-const root = join(import.meta.dirname, '..');
+const root = fileURLToPath(new URL('..', import.meta.url));
 const ajv = new Ajv2020({ allErrors: true, strict: true, formats: { uri: true } });
 
 const manifestSchema = JSON.parse(
@@ -16,7 +17,7 @@ const skillSchema = JSON.parse(
 
 describe('connector manifest schema', () => {
   const validate = ajv.compile(manifestSchema);
-  const dirs = readdirSync(join(root, 'connectors')).filter((d) =>
+  const dirs = readdirSync(join(root, 'connectors')).filter((d: string) =>
     statSync(join(root, 'connectors', d)).isDirectory(),
   );
 

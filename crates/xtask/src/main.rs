@@ -61,7 +61,7 @@ fn export_bindings_to(out: &Path) -> anyhow::Result<()> {
             "--package",
             "gantry-app",
             "--lib",
-            "gen_bindings",
+            "tests::gen_bindings",
             "--",
             "--exact",
         ])
