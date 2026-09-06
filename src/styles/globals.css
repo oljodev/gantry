@@ -1,0 +1,150 @@
+@import 'tailwindcss';
+@import './tokens.css';
+@import './fonts.css';
+
+/*
+ * Tailwind reads the tokens. The stock palette, radii, shadows and text sizes are cleared so the
+ * only utilities that exist are the ones in docs/plan/15-app-design.md.
+ */
+@theme inline {
+  --color-*: initial;
+  --color-base: var(--bg-base);
+  --color-surface: var(--bg-surface);
+  --color-raised: var(--bg-raised);
+  --color-overlay: var(--bg-overlay);
+  --color-inset: var(--bg-inset);
+  --color-hover: var(--bg-hover);
+  --color-active: var(--bg-active);
+  --color-selected: var(--bg-selected);
+  --color-backdrop: var(--bg-backdrop);
+  --color-line-subtle: var(--line-subtle);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-fg: var(--fg);
+  --color-fg-2: var(--fg-2);
+  --color-fg-3: var(--fg-3);
+  --color-fg-disabled: var(--fg-disabled);
+  --color-fg-on-accent: var(--fg-on-accent);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-text: var(--accent-text);
+  --color-accent-subtle: var(--accent-subtle);
+  --color-focus: var(--focus);
+  --color-good: var(--good);
+  --color-warn: var(--warn);
+  --color-bad: var(--bad);
+  --color-info: var(--info);
+  --color-good-subtle: var(--good-subtle);
+  --color-warn-subtle: var(--warn-subtle);
+  --color-bad-subtle: var(--bad-subtle);
+  --color-info-subtle: var(--info-subtle);
+  --color-diff-add: var(--diff-add-bg);
+  --color-diff-del: var(--diff-del-bg);
+  --color-transparent: transparent;
+  --color-current: currentColor;
+
+  --font-*: initial;
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+
+  --radius-*: initial;
+  --radius-1: var(--r-1);
+  --radius-2: var(--r-2);
+  --radius-3: var(--r-3);
+  --radius-4: var(--r-4);
+  --radius-full: 9999px;
+
+  --shadow-*: initial;
+  --shadow-float: var(--shadow-float);
+
+  --text-*: initial;
+  --text-micro: 11px;
+  --text-micro--line-height: 16px;
+  --text-meta: 12px;
+  --text-meta--line-height: 16px;
+  --text-ui: 13px;
+  --text-ui--line-height: 20px;
+  --text-body: 14px;
+  --text-body--line-height: 22px;
+  --text-chat: 15px;
+  --text-chat--line-height: 24px;
+  --text-title: 16px;
+  --text-title--line-height: 22px;
+  --text-page: 18px;
+  --text-page--line-height: 24px;
+  --text-hero: 22px;
+  --text-hero--line-height: 28px;
+  --text-mono: 12px;
+  --text-mono--line-height: 18px;
+  --text-code: 13px;
+  --text-code--line-height: 20px;
+
+  --ease-*: initial;
+  --ease-out: var(--ease-out);
+  --ease-in: var(--ease-in);
+
+  --spacing: 4px;
+}
+
+@layer base {
+  html {
+    font-family: var(--font-sans);
+    font-size: 13px;
+    line-height: 20px;
+    font-feature-settings: 'cv11';
+    color: var(--fg);
+    background: var(--bg-base);
+  }
+  html[data-os='macos'] {
+    -webkit-font-smoothing: antialiased;
+  }
+  body {
+    margin: 0;
+    height: 100vh;
+    overflow: hidden;
+    /* Chrome is not selectable; content areas opt in with .selectable */
+    user-select: none;
+    -webkit-user-select: none;
+    cursor: default;
+  }
+  .selectable {
+    user-select: text;
+    -webkit-user-select: text;
+    cursor: auto;
+  }
+  :focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+  }
+  ::selection {
+    background: var(--accent-subtle);
+  }
+  code,
+  kbd,
+  pre,
+  samp {
+    font-family: var(--font-mono);
+  }
+  /* Overlay-style scrollbars: thin, hover-visible thumb, no track */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--line-strong) transparent;
+  }
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--line-strong);
+    background-clip: content-box;
+    border: 3px solid transparent;
+    border-radius: 999px;
+  }
+  /* Tabular digits wherever numbers line up */
+  .tnum {
+    font-variant-numeric: tabular-nums;
+  }
+}

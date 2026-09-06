@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Gantry</title>
+    <script>
+      // First paint in the right theme, density and OS before React mounts (docs/plan/11 §3).
+      // The mirror is the persisted UI store; the backend value wins if they ever disagree.
+      (function () {
+        try {
+          var d = document.documentElement;
+          var raw = localStorage.getItem('gantry.ui');
+          var state = raw ? JSON.parse(raw).state || {} : {};
+          if (state.theme === 'light' || state.theme === 'dark') d.setAttribute('data-theme', state.theme);
+          if (state.density === 'compact') d.setAttribute('data-density', 'compact');
+          var ua = navigator.userAgent;
+          d.setAttribute('data-os', /Mac|iPhone|iPad/.test(ua) ? 'macos' : /Windows/.test(ua) ? 'windows' : 'linux');
+        } catch (e) {
+          /* storage unavailable: defaults apply */
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
