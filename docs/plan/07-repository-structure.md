@@ -155,16 +155,21 @@ gantry/
 │   ├── index.html                        # one paragraph for humans
 │   └── client-metadata.json              # client_id must equal this file's own URL exactly
 │
-├── website/                              # the public marketing page at oljo.dev (14); standalone package, its own Pages project
-│   ├── package.json  pnpm-lock.yaml  vite.config.ts  tsconfig.json  README.md
-│   ├── index.html                        # all content; build-time injection points for the poster, the grid and icons
-│   ├── public/{favicon.svg, fonts/*.woff2, connectors/}   # self-hosted fonts; cleared connector logos go in connectors/
-│   ├── scripts/fetch-fonts.mjs
+├── website/                              # the public site at oljo.dev (14): Astro 7, standalone package, its own Pages project, Node 22
+│   ├── .node-version  package.json  pnpm-lock.yaml  astro.config.mjs  tsconfig.json  README.md
+│   ├── public/{_headers, _redirects, robots.txt, favicon.svg, connectors/}   # cleared connector logo overrides go in connectors/
+│   ├── scripts/sync-fonts.mjs            # vendors the Geist woff2 subsets into src/assets/fonts/
 │   └── src/
-│       ├── main.ts  releases.ts  os.ts  theme.ts  tiers.ts  reveal.ts
-│       ├── connectors/{data.ts, markup.ts, grid.ts}   # data.ts is the connector list
-│       ├── scene/{layout.js, poster.js, index.ts, structure.ts, modules.ts, carriage.ts, particles.ts, captions.ts, camera.ts, post.ts, palette.ts}
-│       └── styles/{tokens.css, fonts.css, styles.css}
+│       ├── content.config.ts             # blog, changelog and docs collections
+│       ├── data/connectors.ts            # the connector list: the directory, the connector pages and the logo cloud read it
+│       ├── lib/{marks.ts, contrast.ts, connectors.ts, nav.ts, seo.ts, dates.ts}
+│       ├── styles/{theme.css, chrome.css, components.css, global.css, docs.css}   # theme.css holds the tokens
+│       ├── layouts/{BaseLayout, ProseLayout}.astro
+│       ├── components/{Logo, Icon}.astro  nav/  home/  product/  connectors/  download/  docs/
+│       ├── islands/hero/                 # the only React: the hero's product mock
+│       ├── scripts/{reveal, nav, steps, os, releases, connector-filter}.ts
+│       ├── pages/                        # index, product, connectors/[slug], pricing, download, about, privacy, license, security, blog, changelog, 404
+│       └── content/{blog, changelog, docs/docs}
 │
 ├── src/                                  # React frontend (module map in 01 §5)
 │   ├── main.tsx  App.tsx
@@ -243,8 +248,9 @@ gantry/
 | A permission rule | `crates/gantry-agent/src/permissions/` | update the matrix in 04 |
 | A prompt change | `assets/prompts/` | bump the core version; the prompt fixture test in `gantry-agent` |
 | Branding | `assets/branding/` | regenerate `src-tauri/icons/` with `cargo xtask icons` |
-| Marketing copy or screenshots | `website/index.html`, `website/public/` | nothing else; Pages builds and deploys on push |
-| A connector on the website showcase | one line in `website/src/connectors/data.ts` | a cleared logo file in `website/public/connectors/` when there is one |
+| Site copy | the page under `website/src/pages/`, or a Markdown file under `website/src/content/` for blog, changelog and docs | nothing else; Pages builds and deploys on push |
+| A connector on the website | one entry in `website/src/data/connectors.ts` (the directory, its page and the logo cloud follow) | nothing: the build finds its Simple Icons mark or uses initials; a cleared file in `website/public/connectors/` overrides |
+| A site colour or font | `website/src/styles/theme.css` | nothing |
 | A decision that changes this plan | `docs/decisions/NNNN-title.md` | edit the affected plan document in the same commit |
 
 ## Notes on specific files

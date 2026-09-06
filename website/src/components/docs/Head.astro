@@ -1,0 +1,8 @@
+---
+import Default from '@astrojs/starlight/components/Head.astro';
+import { Font } from 'astro:assets';
+---
+<Default><slot /></Default>
+<Font cssVariable="--font-geist" preload />
+<Font cssVariable="--font-geist-mono" />
+<link rel="icon" href="/favicon.svg" type="image/svg+xml" />

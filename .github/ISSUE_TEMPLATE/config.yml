@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Documentation
+    url: https://oljo.dev/docs/
+    about: Install, add a key, connect a service.
+  - name: Discussions
+    url: https://github.com/oljodev/gantry/discussions
+    about: Questions and ideas that are not bugs.

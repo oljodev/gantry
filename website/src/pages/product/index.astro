@@ -1,0 +1,100 @@
+---
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import Figures from '@/components/product/Figures.astro';
+import DownloadButtons from '@/components/download/DownloadButtons.astro';
+
+const chapters = [
+  { id: 'chat', eyebrow: 'Chat', title: 'Any model, one window.', docs: '/docs/start/first-chat/',
+    text: 'Talk to Claude, GPT, Gemini and Grok models, or anything on OpenRouter or a local Ollama, from one place. Keys go straight to the provider. Projects group chats with the folders, files and instructions they share, and artifacts, the documents and small apps a model builds, live beside the conversation, versioned, in a sandbox that cannot reach your files.' },
+  { id: 'agent', eyebrow: 'Agent', title: 'Edits you can read, commands you can see.', docs: '/docs/start/agent/',
+    text: 'Attach a folder and the agent can read, search and change what is in it. Edits are targeted replacements shown as diffs, revertible from the feed. Commands run in your shell with their output streaming in. Every tool call is a row in the activity feed with its input and its result, so a session is something you can scroll back through, not a summary you have to trust.' },
+  { id: 'permissions', eyebrow: 'Permissions', title: 'Four modes, chosen per chat.', docs: '/docs/start/permissions/',
+    text: 'Manual asks for everything. Auto-edit lets reads and edits inside your folders run, and asks for commands, external writes and anything destructive. Plan reads and searches but changes nothing. Auto runs everything, and with Guard on, a fast model from your provider reviews each risky call against the task and blocks what does not fit. The mode is a setting on the chat, so a scratch repository can run hands-off while a production database asks every time.' },
+  { id: 'connectors', eyebrow: 'Connectors', title: 'Built in, or any MCP server.', docs: '/docs/connectors/',
+    text: 'Four connectors are part of Gantry: the filesystem, the code editor, the shell and web fetch. Everything else is a Model Context Protocol server, run as a local process or reached over HTTPS, with a curated catalog that ships with each release. Signing in happens in your browser and the token stays on your machine. Nothing installs itself: the agent can suggest a connector, only you can add it.' },
+  { id: 'local', eyebrow: 'Local', title: 'A file you own, a key you keep.', docs: '/docs/reference/data/',
+    text: 'There is no account and no Gantry server. Chats, projects, memory and artifacts live in a SQLite database and a folder on your disk, with full-text search. API keys and tokens are encrypted with a master key kept in your OS keychain, Credential Manager or Secret Service, and never reach the interface layer. Back the folder up, move it, or delete it.' },
+];
+---
+<BaseLayout title="Product tour" description="What Gantry does: chat with any model, an agent whose edits and commands you can read, four permission modes, built-in and MCP connectors, and data that stays on your machine.">
+  <section class="head">
+    <div class="wrap">
+      <p class="eyebrow">Product tour</p>
+      <h1 class="display">Everything an AI workspace needs, on your desktop.</h1>
+      <p class="lede">Five chapters: the chat, the agent, permissions, connectors, and what stays local. Each one links to the docs that go deeper.</p>
+    </div>
+  </section>
+
+  <section class="tour wrap" aria-label="The tour">
+    <div class="chapters">
+      {chapters.map((ch) => (
+        <article class="chapter" id={ch.id} data-step={ch.id}>
+          <p class="eyebrow">{ch.eyebrow}</p>
+          <h2 class="title-sm">{ch.title}</h2>
+          <p class="prose-muted">{ch.text}</p>
+          <a class="arrow-link" href={ch.docs}>Read the docs</a>
+          <div class="inline-fig"><Figures which={ch.id as 'chat'} /></div>
+        </article>
+      ))}
+    </div>
+    <div class="stage" data-stage aria-hidden="true">
+      {chapters.map((ch) => <div class="layer" data-layer={ch.id}><Figures which={ch.id as 'chat'} /></div>)}
+    </div>
+  </section>
+
+  <section class="section tiers wrap" aria-labelledby="tiers-title">
+    <div class="head-sm">
+      <p class="eyebrow">Risk tiers</p>
+      <h2 id="tiers-title" class="title">Every tool call has a tier. <span class="dim">The mode decides what each tier does.</span></h2>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th scope="col">Tier</th><th scope="col">Examples</th><th scope="col">Manual</th><th scope="col">Auto-edit</th><th scope="col">Plan</th><th scope="col">Auto, guard on</th></tr></thead>
+        <tbody>
+          <tr><td>read</td><td>Read a file, list a folder, search issues</td><td>asks</td><td>runs</td><td>runs</td><td>runs</td></tr>
+          <tr><td>write</td><td>Edit a file in a folder you added</td><td>asks</td><td>runs</td><td>blocked</td><td>runs</td></tr>
+          <tr><td>write_external</td><td>Open a pull request, send a message, insert a row</td><td>asks</td><td>asks</td><td>blocked</td><td>guard decides</td></tr>
+          <tr><td>execute</td><td>Run a command or a script</td><td>asks</td><td>asks</td><td>blocked</td><td>guard decides</td></tr>
+          <tr><td>destructive</td><td>Delete files, drop tables, force-push</td><td>asks</td><td>asks</td><td>blocked</td><td>asks, always</td></tr>
+          <tr><td>app</td><td>Save a memory, create an artifact, propose a skill</td><td>asks</td><td>runs</td><td>runs</td><td>runs</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="band wrap">
+    <div class="card band-inner">
+      <div><h2 class="title-sm">Try it on your machine</h2><p class="prose-muted mt-2">Free, no account. Add a key from your provider and start.</p></div>
+      <DownloadButtons />
+    </div>
+  </section>
+  <script src="../../scripts/steps.ts"></script>
+  <script src="../../scripts/os.ts"></script>
+  <script src="../../scripts/releases.ts"></script>
+</BaseLayout>
+<style>
+  .head { padding: clamp(3.5rem, 8vw, 6rem) 0 clamp(2rem, 5vw, 3.5rem); }
+  .head .display { margin-top: 1rem; max-width: 18ch; }
+  .head .lede { margin-top: 1.25rem; }
+  .tour { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: clamp(2rem, 6vw, 5rem); align-items: start; padding-top: 2rem; border-top: 1px solid var(--color-line); }
+  .chapters { display: grid; }
+  .chapter { display: grid; gap: 1rem; justify-items: start; padding-block: clamp(3rem, 7vw, 5.5rem); border-bottom: 1px solid var(--color-line); scroll-margin-top: 6rem; }
+  .chapter:last-child { border-bottom: 0; }
+  .inline-fig { width: 100%; margin-top: 0.5rem; }
+  .stage { display: none; position: sticky; top: 6rem; min-height: 24rem; }
+  .layer { position: absolute; inset: 0; opacity: 0; translate: 0 10px; transition: opacity 400ms var(--ease-out-soft), translate 400ms var(--ease-out-soft); pointer-events: none; }
+  .stage[data-active="chat"] [data-layer="chat"], .stage[data-active="agent"] [data-layer="agent"], .stage[data-active="permissions"] [data-layer="permissions"], .stage[data-active="connectors"] [data-layer="connectors"], .stage[data-active="local"] [data-layer="local"] { opacity: 1; translate: none; }
+  @media (min-width: 64rem) { html.js-steps .stage { display: block; } html.js-steps .inline-fig { display: none; } }
+  @media (max-width: 64rem) { .tour { grid-template-columns: 1fr; } }
+  .head-sm { max-width: 46rem; margin-bottom: 2rem; }
+  .head-sm .title { margin-top: 0.9rem; }
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.95rem; min-width: 46rem; }
+  th, td { text-align: left; padding: 0.8rem 0.9rem; border-bottom: 1px solid var(--color-line); vertical-align: top; }
+  th { font-family: var(--font-mono); font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-fg-3); font-weight: 500; }
+  td { color: var(--color-fg-2); }
+  td:first-child { font-family: var(--font-mono); font-size: 0.85rem; color: var(--color-fg); white-space: nowrap; }
+  .band { padding-bottom: clamp(4rem, 8vw, 6rem); }
+  .band-inner { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 1.5rem; align-items: center; padding: 2rem 2.25rem; background: linear-gradient(135deg, rgb(255 122 31 / 0.08), transparent 55%), var(--color-surface); }
+  @media (max-width: 52rem) { .band-inner { grid-template-columns: 1fr; } }
+</style>

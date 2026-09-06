@@ -1,0 +1,52 @@
+/* Docs pages (Starlight). No Tailwind preflight here: Starlight has its own reset. The site's tokens and component
+   classes come in through theme.css and components.css; Starlight's own variables are mapped onto them below. */
+@layer base, starlight, theme, components, utilities;
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities);
+@import './theme.css';
+@import './chrome.css';
+
+:root {
+  --sl-font: var(--font-geist);
+  --sl-font-mono: var(--font-geist-mono);
+  --sl-color-accent-low: #3a1a05;
+  --sl-color-accent: #ff7a1f;
+  --sl-color-accent-high: #ffb27a;
+  --sl-color-white: #f5f5f5;
+  --sl-color-gray-1: #e4e4e7;
+  --sl-color-gray-2: #a1a1aa;
+  --sl-color-gray-3: #8b8b92;
+  --sl-color-gray-4: #52525b;
+  --sl-color-gray-5: #2e2e33;
+  --sl-color-gray-6: #17171a;
+  --sl-color-black: #0a0a0a;
+  --sl-color-bg: #0a0a0a;
+  --sl-color-bg-nav: transparent;
+  --sl-color-bg-sidebar: #0a0a0a;
+  --sl-color-bg-inline-code: #17171a;
+  --sl-color-hairline: #232326;
+  --sl-color-hairline-light: #2e2e33;
+  --sl-color-hairline-shade: #17171a;
+  --sl-color-text: #a1a1aa;
+  --sl-color-text-accent: #ff7a1f;
+  --sl-nav-height: 4.75rem;
+  --sl-content-width: 46rem;
+  --sl-sidebar-width: 17rem;
+  --sl-text-h1: 2.4rem;
+}
+/* The pill navbar floats inside Starlight's fixed header. */
+.site-nav a { text-decoration: none; }
+.header { background: transparent; border-bottom: 0; padding: 0; }
+.header .site-nav { position: static; padding-top: 0.75rem; }
+/* Headings in the site's weight and tracking. */
+.sl-markdown-content h1, .sl-markdown-content h2, .sl-markdown-content h3, h1[data-page-title] { font-weight: 600; letter-spacing: -0.02em; color: var(--sl-color-white); }
+.sl-markdown-content { color: var(--color-fg-2); }
+.sl-markdown-content strong { color: var(--color-fg); }
+.sl-markdown-content a { color: var(--color-fg); text-decoration-color: var(--color-line-2); }
+.sl-markdown-content a:hover { text-decoration-color: var(--color-brand); }
+.sidebar-content a[aria-current="page"] { background: rgb(255 122 31 / 0.12); color: var(--color-brand); }
+/* Search button: match the pill's chips. */
+site-search button[data-open-modal] { border-radius: var(--radius-pill); border: 1px solid var(--color-line-2); background: transparent; color: var(--color-fg-2); height: 2.25rem; }
+site-search button[data-open-modal]:hover { color: var(--color-fg); border-color: #3f3f46; }
+.prerelease { display: flex; flex-wrap: wrap; gap: 0.5rem 0.8rem; align-items: center; padding: 0.75rem 1rem; border-radius: 0.75rem; border: 1px solid rgb(255 122 31 / 0.4); background: rgb(255 122 31 / 0.07); color: var(--color-fg-2); font-size: 0.9rem; margin-bottom: 1.5rem; }
+.prerelease b { color: var(--color-brand); font-weight: 600; }

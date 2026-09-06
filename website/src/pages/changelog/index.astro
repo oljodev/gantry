@@ -1,0 +1,55 @@
+---
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import { getCollection } from 'astro:content';
+import { longDate } from '@/lib/dates';
+import { REPO_URL } from '@/lib/seo';
+const entries = (await getCollection('changelog', ({ data }) => !data.draft)).sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf());
+---
+<BaseLayout title="Changelog" description="What shipped in each Gantry release.">
+  <section class="head">
+    <div class="wrap-narrow">
+      <p class="eyebrow">Changelog</p>
+      <h1 class="display">What shipped.</h1>
+      <p class="lede">One entry per release, newest first. Also available as <a class="link" href="/changelog/rss.xml">RSS</a>.</p>
+    </div>
+  </section>
+  <section class="wrap-narrow list">
+    {entries.length === 0 ? (
+      <div class="empty card" data-reveal>
+        <p class="eyebrow">No release yet</p>
+        <h2 class="title-sm">The first version is taking shape.</h2>
+        <p class="prose-muted">Commits land in the repository every week. When the first build ships, this page and the download buttons update together.</p>
+        <div class="empty-links"><a class="btn" href={`${REPO_URL}/commits`} rel="noopener">Recent commits</a><a class="btn" href="/about/">Where it stands</a></div>
+      </div>
+    ) : (
+      <ol class="entries">
+        {entries.map((e) => (
+          <li class="entry" data-reveal>
+            <div class="entry-meta"><a class="version" href={`/changelog/${e.id}/`}>v{e.data.version}</a><time datetime={e.data.date.toISOString()}>{longDate(e.data.date)}</time></div>
+            <div>
+              {e.data.title && <h2 class="entry-title"><a href={`/changelog/${e.id}/`}>{e.data.title}</a></h2>}
+              {e.data.highlights.length > 0 && <ul class="highlights">{e.data.highlights.map((h) => <li>{h}</li>)}</ul>}
+              <a class="arrow-link" href={`/changelog/${e.id}/`}>Full notes</a>
+            </div>
+          </li>
+        ))}
+      </ol>
+    )}
+  </section>
+</BaseLayout>
+<style>
+  .head { padding: clamp(3.5rem, 8vw, 6rem) 0 2rem; }
+  .head .display { margin-top: 1rem; }
+  .head .lede { margin-top: 1.25rem; }
+  .list { padding-bottom: clamp(4rem, 8vw, 6rem); }
+  .empty { display: grid; gap: 0.8rem; padding: 2rem; justify-items: start; }
+  .empty-links { display: flex; gap: 0.6rem; flex-wrap: wrap; margin-top: 0.5rem; }
+  .entries { list-style: none; margin: 0; padding: 0; }
+  .entry { display: grid; grid-template-columns: 9rem minmax(0, 1fr); gap: 1.5rem; padding: 1.75rem 0; border-top: 1px solid var(--color-line); }
+  .entry-meta { display: grid; gap: 0.3rem; align-content: start; }
+  .version { font-family: var(--font-mono); font-weight: 500; color: var(--color-fg); }
+  .entry-meta time { font-family: var(--font-mono); font-size: 0.78rem; color: var(--color-fg-3); }
+  .entry-title { font-size: 1.25rem; }
+  .highlights { margin: 0.6rem 0 0.9rem; padding-left: 1.2rem; color: var(--color-fg-2); display: grid; gap: 0.3rem; }
+  @media (max-width: 40rem) { .entry { grid-template-columns: 1fr; gap: 0.6rem; } }
+</style>

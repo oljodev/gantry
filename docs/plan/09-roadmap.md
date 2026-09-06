@@ -174,7 +174,7 @@ Done when: v0.1.0 builds from `release.yml`, installs cleanly on all three OSes,
 
 ## Parallel track — marketing site (2 days, any time after M0)
 
-Done in session 3: the three.js page is in `website/` (14). Remaining: create the two Cloudflare Pages projects (`website/` with `pnpm build`, `client-metadata/` without a build), point `oljo.dev` and `id.oljo.dev`, and add the stable-named asset upload step to `release.yml` so the download buttons resolve. Nothing in the app depends on it until M9 needs `client-metadata/` live for CIMD registrations, which is the one date to respect.
+Done in session 4: the Astro site is in `website/` (14) with home, product tour, connectors and a page per connector, pricing, download, about, blog, changelog, docs and the trust pages. Remaining: create the two Cloudflare Pages projects (`website/` with `pnpm build`, Node 22; `client-metadata/` without a build), point `oljo.dev` and `id.oljo.dev`, verify the first deploy (14 §7), and add the stable-named asset upload step to `release.yml` so the download buttons resolve. Nothing in the app depends on it until M9 needs `client-metadata/` live for CIMD registrations, which is the one date to respect.
 
 ## Post-MVP backlog (in likely order)
 

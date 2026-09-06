@@ -1,0 +1,31 @@
+---
+import ProseLayout from '@/layouts/ProseLayout.astro';
+import { REPO_URL } from '@/lib/seo';
+---
+<ProseLayout title="About Gantry" eyebrow="About" lede="A desktop AI workspace that keeps your keys, your data and your decisions on your own machine. Source-available, built in the open." description="What Gantry is, why it exists, where it stands, and how to follow along.">
+  <h2>Why it exists</h2>
+  <p>Chat clients, coding agents and integrations have mostly grown up as separate products, each with its own account, its own subscription and its own copy of your data on someone else's server. Gantry puts the three in one desktop window and makes the opposite bet: <strong>you bring the keys, the app runs where you are, and nothing about your work leaves your machine unless you send it.</strong></p>
+  <p>That bet shapes everything else. Models are reached with your own API keys, so you pay the provider directly and switch freely. The agent works in folders you attach, shows every edit as a diff and every command with its output, and asks before it does anything risky, with four permission modes so the amount of asking fits the chat. Connectors follow the Model Context Protocol so the catalog can grow without the app growing, and none of them installs itself.</p>
+
+  <h2>Where it stands</h2>
+  <p>Gantry is being built from a written plan, in public, by a very small team. The order of work, roughly:</p>
+  <ol>
+    <li><strong>Foundation.</strong> The app shell, local storage, encrypted keys, and chat with the first providers.</li>
+    <li><strong>The agent.</strong> Files, editor and shell, the activity feed, the permission engine and the guard model.</li>
+    <li><strong>Connectors.</strong> The MCP client, OAuth sign-in, the catalog, and the first third-party connectors.</li>
+    <li><strong>Projects, artifacts, skills and memory.</strong> The pieces that make a workspace rather than a chat window.</li>
+    <li><strong>Releases.</strong> Signed builds for macOS, Windows and Linux, and this site's download buttons lighting up.</li>
+  </ol>
+  <p>Progress is visible in the repository and summarised in the <a href="/changelog/">changelog</a> once releases start. Design decisions are written down in the plan documents next to the code, so the reasoning is as open as the source.</p>
+
+  <h2>The licence</h2>
+  <p>Gantry is released under the <a href="/license/">Functional Source License, FSL-1.1-ALv2</a>. You can read, build, modify and share it, use it at work, and ship things you make with it. The one reserved use is offering Gantry itself as a competing product. Two years after each release, that release converts to Apache 2.0 with no strings at all.</p>
+
+  <h2>Follow along</h2>
+  <ul>
+    <li><a href={REPO_URL} rel="noopener">The repository on GitHub</a>: code, plan documents, issues and discussions.</li>
+    <li><a href="/changelog/">The changelog</a>, with an RSS feed, for releases.</li>
+    <li><a href="/blog/">The blog</a> for the longer notes on how things were built and why.</li>
+    <li><a href={`${REPO_URL}/issues/new?template=connector-request.yml`} rel="noopener">A connector request</a> if the service you need is not in the catalog.</li>
+  </ul>
+</ProseLayout>

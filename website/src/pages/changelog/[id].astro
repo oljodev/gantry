@@ -1,0 +1,14 @@
+---
+import { getCollection, render } from 'astro:content';
+import ProseLayout from '@/layouts/ProseLayout.astro';
+export async function getStaticPaths() {
+  const entries = await getCollection('changelog', ({ data }) => !data.draft);
+  return entries.map((entry) => ({ params: { id: entry.id }, props: { entry } }));
+}
+const { entry } = Astro.props;
+const { Content } = await render(entry);
+---
+<ProseLayout title={entry.data.title ? `${entry.data.title} (v${entry.data.version})` : `Gantry v${entry.data.version}`} description={entry.data.highlights.join('. ')} eyebrow="Changelog" date={entry.data.date} back={{ href: '/changelog/', label: 'All releases' }}>
+  {entry.data.highlights.length > 0 && <ul>{entry.data.highlights.map((h) => <li>{h}</li>)}</ul>}
+  <Content />
+</ProseLayout>

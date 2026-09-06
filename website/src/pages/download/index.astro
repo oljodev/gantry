@@ -1,0 +1,83 @@
+---
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import Icon from '@/components/Icon.astro';
+import { REPO_URL } from '@/lib/seo';
+const builds = [
+  { os: 'mac', label: 'macOS', icon: 'apple-logo', file: 'Gantry-macOS.dmg', req: 'Apple silicon and Intel · macOS 10.15 or later' },
+  { os: 'win', label: 'Windows', icon: 'windows-logo', file: 'Gantry-Windows-x64.exe', req: '64-bit · Windows 10 or later' },
+  { os: 'linux', label: 'Linux', icon: 'linux-logo', file: 'Gantry-Linux-x86_64.AppImage', req: 'x86_64 AppImage · WebKitGTK 4.1, e.g. Ubuntu 22.04 or later' },
+];
+---
+<BaseLayout title="Download" description="Download Gantry for macOS, Windows and Linux. Free, no account. Or build it from source.">
+  <section class="head">
+    <div class="wrap">
+      <p class="eyebrow">Download</p>
+      <h1 class="display">Get Gantry.</h1>
+      <p class="lede">One app for the three desktops. Free, no account: add a key from your provider on first launch and start.</p>
+      <p class="release" data-release-line hidden></p>
+      <p class="release" data-prerelease>No release yet. The buttons light up on their own when the first one ships; until then, watch the repository.</p>
+    </div>
+  </section>
+
+  <section class="wrap" aria-label="Builds">
+    <ul class="cards">
+      {builds.map((b, i) => (
+        <li class="card build" data-os-card={b.os} data-reveal style={`--reveal-delay: ${i * 70}ms`}>
+          <span class="build-icon"><Icon name={b.icon} size={24} /></span>
+          <span class="you">Your platform</span>
+          <h2 class="title-sm">{b.label}</h2>
+          <p class="req">{b.req}</p>
+          <a class="btn dl" data-dl={b.os} aria-disabled="true" href={`${REPO_URL}/releases`} rel="noopener"><Icon name="download-simple" size={18} /><span>Download</span><span class="dl-state" data-state>Coming soon</span></a>
+          <p class="file">{b.file}</p>
+        </li>
+      ))}
+    </ul>
+  </section>
+
+  <section class="section wrap notes" aria-label="After downloading">
+    <div class="note" data-reveal>
+      <h2 class="title-sm">Verify what you got</h2>
+      <p class="prose-muted">Every build is also on the GitHub release page with its notes and checksums. The buttons here point at the same files, through a stable URL that always resolves to the latest release.</p>
+      <a class="arrow-link" href={`${REPO_URL}/releases`} rel="noopener">Releases on GitHub</a>
+    </div>
+    <div class="note" data-reveal style="--reveal-delay: 70ms">
+      <h2 class="title-sm">Build from source</h2>
+      <p class="prose-muted">Gantry is a Tauri app: Rust for the backend, React for the interface. With a Rust toolchain, Node and pnpm installed, a build is one command.</p>
+      <pre class="code"><code>git clone https://github.com/oljodev/gantry
+cd gantry &amp;&amp; pnpm install
+pnpm tauri build</code></pre>
+    </div>
+    <div class="note" data-reveal style="--reveal-delay: 140ms">
+      <h2 class="title-sm">Then add a key</h2>
+      <p class="prose-muted">On first launch, paste an API key from Anthropic, OpenAI, Google, xAI or OpenRouter, or point Gantry at a local Ollama. Keys are encrypted with a master key in your OS keychain.</p>
+      <a class="arrow-link" href="/docs/start/keys/">Adding a provider key</a>
+    </div>
+  </section>
+  <script src="../../scripts/os.ts"></script>
+  <script src="../../scripts/releases.ts"></script>
+</BaseLayout>
+<style>
+  .head { padding: clamp(3.5rem, 8vw, 6rem) 0 clamp(2rem, 5vw, 3rem); }
+  .head .display { margin-top: 1rem; }
+  .head .lede { margin-top: 1.25rem; }
+  .release { margin-top: 1rem; font-family: var(--font-mono); font-size: 0.8rem; color: var(--color-fg-3); }
+  html[data-release="available"] [data-prerelease] { display: none; }
+  .cards { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.9rem; }
+  .build { display: grid; gap: 0.6rem; padding: 1.6rem 1.6rem 1.5rem; }
+  .build[data-primary] { border-color: rgb(255 122 31 / 0.5); box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.05), 0 0 60px -24px rgb(255 122 31 / 0.7); }
+  .build-icon { display: inline-grid; place-items: center; width: 2.75rem; height: 2.75rem; border-radius: 0.7rem; border: 1px solid var(--color-line); background: var(--color-bg); color: var(--color-fg-2); }
+  .build[data-primary] .build-icon { color: var(--color-brand); border-color: rgb(255 122 31 / 0.4); }
+  .you { font-family: var(--font-mono); font-size: 0.68rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-brand); display: none; }
+  .build[data-primary] .you { display: block; }
+  .req { color: var(--color-fg-3); font-size: 0.9rem; font-family: var(--font-mono); }
+  .dl { margin-top: 0.6rem; justify-content: center; }
+  .dl[aria-disabled="true"] { color: var(--color-fg-2); }
+  .dl:not([aria-disabled="true"]) { background: var(--color-brand); color: var(--color-brand-ink); border-color: transparent; }
+  .dl:not([aria-disabled="true"]) .dl-state { color: var(--color-brand-ink); border-color: rgb(26 10 0 / 0.3); }
+  .dl-state { font-family: var(--font-mono); font-size: 0.68rem; font-weight: 400; color: var(--color-fg-3); padding-left: 0.6rem; border-left: 1px solid var(--color-line-2); }
+  .file { font-family: var(--font-mono); font-size: 0.72rem; color: var(--color-fg-3); text-align: center; }
+  .notes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2.5rem; }
+  .note { display: grid; gap: 0.8rem; align-content: start; justify-items: start; padding-top: 1.5rem; border-top: 1px solid var(--color-line); }
+  .code { width: 100%; margin: 0; padding: 0.9rem 1rem; border-radius: 0.7rem; border: 1px solid var(--color-line); background: var(--color-surface); font-size: 0.8rem; color: var(--color-fg-2); overflow-x: auto; }
+  @media (max-width: 56rem) { .cards, .notes { grid-template-columns: 1fr; } }
+</style>

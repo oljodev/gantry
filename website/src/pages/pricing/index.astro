@@ -1,0 +1,78 @@
+---
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import DownloadButtons from '@/components/download/DownloadButtons.astro';
+const providers = [
+  { name: 'Anthropic', url: 'https://www.anthropic.com/pricing' },
+  { name: 'OpenAI', url: 'https://openai.com/api/pricing/' },
+  { name: 'Google Gemini', url: 'https://ai.google.dev/pricing' },
+  { name: 'xAI', url: 'https://x.ai/api' },
+  { name: 'OpenRouter', url: 'https://openrouter.ai/models' },
+];
+const faq = [
+  { q: 'Is there a paid plan?', a: 'No. Gantry is free to download and use, and there is nothing to unlock. Your costs are the API usage you buy from the model provider you choose.' },
+  { q: 'Do I need an account?', a: 'No Gantry account exists. You need an API key from at least one provider, which you create in that provider\'s console.' },
+  { q: 'How much does a day of use cost?', a: 'It depends entirely on the model and how much you send it. Providers charge per token in and out; their pricing pages are linked above. Gantry shows the token usage of every turn so you can see what a chat costs.' },
+  { q: 'Can I use a local model?', a: 'Yes, through Ollama or any OpenAI-compatible endpoint. Then there is no per-token cost at all.' },
+  { q: 'Do connectors cost anything?', a: 'Gantry\'s connectors are free. Some services need their own account or plan, and search or crawl services usually meter their API. That is between you and them.' },
+  { q: 'What does source-available mean for me?', a: 'You can read, build, modify and share the code under the Functional Source License. Each release becomes Apache 2.0 two years after it ships. The one thing the licence reserves is offering Gantry itself as a competing product.' },
+];
+---
+<BaseLayout title="Pricing" description="Gantry is free and source-available. You pay your model provider directly, per token, with your own API key. No account, no subscription, no plan.">
+  <section class="head">
+    <div class="wrap">
+      <p class="eyebrow">Pricing</p>
+      <h1 class="display">Free.</h1>
+      <p class="lede">Gantry costs nothing and has no account. What you pay is what your model provider charges for the tokens you use, billed by them, to you, at their rates.</p>
+    </div>
+  </section>
+
+  <section class="wrap cols" aria-label="What costs what">
+    <div class="card col" data-reveal>
+      <p class="eyebrow">Gantry</p>
+      <p class="big">$0</p>
+      <p class="prose-muted">The app, every connector, every update. Source-available under the FSL; Apache 2.0 two years after each release.</p>
+      <ul class="ticks"><li>macOS, Windows and Linux</li><li>No account, no telemetry</li><li>Build it from source if you like</li></ul>
+    </div>
+    <div class="card col is-mid" data-reveal style="--reveal-delay: 70ms">
+      <p class="eyebrow">Your model provider</p>
+      <p class="big">Per token</p>
+      <p class="prose-muted">You bring an API key. Requests go straight from your machine to the provider, who bills you at their published rates. Gantry shows the usage of every turn.</p>
+      <ul class="links">{providers.map((p) => <li><a class="link" href={p.url} rel="noopener">{p.name} pricing ↗</a></li>)}</ul>
+    </div>
+    <div class="card col" data-reveal style="--reveal-delay: 140ms">
+      <p class="eyebrow">Connectors and services</p>
+      <p class="big">Usually $0</p>
+      <p class="prose-muted">Built-in connectors and MCP servers are free. A few services meter their own API, search and crawl providers in particular, and some need a plan on their side.</p>
+      <ul class="ticks"><li>Ollama and local models: no per-token cost</li><li>Your own MCP servers: free</li></ul>
+    </div>
+  </section>
+
+  <section class="section wrap-narrow" aria-labelledby="faq-title">
+    <h2 id="faq-title" class="title">Questions people ask.</h2>
+    <dl class="faq">{faq.map((f) => <div data-reveal><dt>{f.q}</dt><dd>{f.a}</dd></div>)}</dl>
+  </section>
+
+  <section class="band wrap">
+    <div class="card band-inner"><div><h2 class="title-sm">Get Gantry</h2><p class="prose-muted mt-2">Free. Add a key and start.</p></div><DownloadButtons /></div>
+  </section>
+  <script src="../../scripts/os.ts"></script>
+  <script src="../../scripts/releases.ts"></script>
+</BaseLayout>
+<style>
+  .head { padding: clamp(3.5rem, 8vw, 6rem) 0 clamp(2rem, 5vw, 3.5rem); }
+  .head .display { margin-top: 1rem; }
+  .head .lede { margin-top: 1.25rem; }
+  .cols { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.9rem; }
+  .col { padding: 1.75rem 1.75rem 1.9rem; display: grid; gap: 0.9rem; align-content: start; }
+  .col.is-mid { border-color: rgb(255 122 31 / 0.45); box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.05), 0 0 60px -24px rgb(255 122 31 / 0.6); }
+  .big { font-size: 2.4rem; font-weight: 600; letter-spacing: -0.03em; line-height: 1; color: var(--color-fg); }
+  .ticks, .links { list-style: none; margin: 0.3rem 0 0; padding: 0; display: grid; gap: 0.45rem; color: var(--color-fg-2); font-size: 0.95rem; }
+  .ticks li::before { content: "✓"; color: var(--color-brand); margin-right: 0.5rem; }
+  .faq { display: grid; margin-top: 2rem; }
+  .faq div { padding: 1.4rem 0; border-top: 1px solid var(--color-line); }
+  .faq dt { font-weight: 600; color: var(--color-fg); font-size: 1.05rem; }
+  .faq dd { margin: 0.5rem 0 0; color: var(--color-fg-2); }
+  .band { padding-bottom: clamp(4rem, 8vw, 6rem); }
+  .band-inner { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 1.5rem; align-items: center; padding: 2rem 2.25rem; }
+  @media (max-width: 56rem) { .cols { grid-template-columns: 1fr; } .band-inner { grid-template-columns: 1fr; } }
+</style>

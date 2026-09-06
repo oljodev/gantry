@@ -1,0 +1,13 @@
+---
+import { getCollection, render } from 'astro:content';
+import ProseLayout from '@/layouts/ProseLayout.astro';
+export async function getStaticPaths() {
+  const posts = await getCollection('blog', ({ data }) => !data.draft);
+  return posts.map((post) => ({ params: { id: post.id }, props: { post } }));
+}
+const { post } = Astro.props;
+const { Content } = await render(post);
+---
+<ProseLayout title={post.data.title} description={post.data.description} eyebrow="Blog" date={post.data.pubDate} back={{ href: '/blog/', label: 'All posts' }}>
+  <div data-pagefind-body><Content /></div>
+</ProseLayout>

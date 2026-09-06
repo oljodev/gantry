@@ -1,0 +1,128 @@
+---
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import Mark from '@/components/connectors/Mark.astro';
+import ConnectorTile from '@/components/connectors/ConnectorTile.astro';
+import Icon from '@/components/Icon.astro';
+import { AUTH_LABEL, CATEGORIES, RUNTIME_LABEL, connectors } from '@/data/connectors';
+import { REQUEST_URL, kindLabel, related } from '@/lib/connectors';
+
+export function getStaticPaths() {
+  return connectors.map((c) => ({ params: { slug: c.slug }, props: { c } }));
+}
+const { c } = Astro.props;
+const cat = CATEGORIES[c.category];
+const others = related(c);
+const authNote: Record<string, string> = {
+  none: 'No account and no key. Install it and it is ready.',
+  'api-key': `You paste an API key from ${c.name} into the connector's settings. It is encrypted with the key in your OS keychain and never leaves your machine.`,
+  oauth: `Installing opens ${c.name} in your browser to sign in once. The token comes back to Gantry over a local callback and is stored encrypted on your machine.`,
+  'connection-string': 'You enter a connection string in the connector\'s settings. It is stored encrypted with the key in your OS keychain.',
+};
+const runtimeNote: Record<string, string> = {
+  native: 'Part of Gantry itself, written in Rust. No runtime to install.',
+  'mcp-remote': 'An MCP server hosted by the service, reached over HTTPS. Nothing runs on your machine beyond Gantry.',
+  'mcp-stdio': 'An MCP server that runs as a local process on the Node or Python you already have. Gantry checks the runtime is present before installing.',
+};
+---
+<BaseLayout title={`${c.name} connector`} description={`${c.name} in Gantry: ${c.does.toLowerCase()}. ${kindLabel(c) === 'Built in' ? 'Built into the app.' : 'An MCP server, installed with one click.'}`}>
+  <article class="wrap page">
+    <nav class="crumbs" aria-label="Breadcrumb"><a href="/connectors/">Connectors</a><span aria-hidden="true">/</span><a href={`/connectors/?category=${c.category}`}>{cat.label}</a></nav>
+    <header class="head">
+      <span class="big-mark"><Mark connector={c} size={40} labelled /></span>
+      <div>
+        <h1 class="title">{c.name}</h1>
+        <p class="lede">{c.does}.</p>
+        <p class="badges"><span class:list={['badge', c.firstParty && 'badge-brand']}>{kindLabel(c)}</span><span class="badge">{cat.label}</span><span class="badge">{AUTH_LABEL[c.auth]}</span></p>
+      </div>
+    </header>
+
+    <div class="body">
+      <div class="main">
+        <p class="prose-muted summary">{c.summary}</p>
+
+        <h2 class="h">What it can do</h2>
+        <p class="prose-muted">Examples of the tools the agent gets from this connector. Each call shows up in the activity feed with its input and result.</p>
+        <ol class="calls card">
+          {c.capabilities.map((cap) => <li><span class="call-tool">{c.slug}</span><code>{cap}</code></li>)}
+        </ol>
+
+        <h2 class="h">How it connects</h2>
+        <dl class="facts">
+          <div><dt>Sign-in</dt><dd><strong>{AUTH_LABEL[c.auth]}.</strong> {authNote[c.auth]}</dd></div>
+          <div><dt>Runs as</dt><dd><strong>{RUNTIME_LABEL[c.runtime]}.</strong> {runtimeNote[c.runtime]}</dd></div>
+          <div><dt>Permissions</dt><dd>Reads run in every mode. Writes outside your folders, messages and anything destructive follow the chat's permission mode: they ask in Manual and Auto-edit, and are judged by the guard model in Auto. <a class="link" href="/product/#permissions">How permissions work</a></dd></div>
+        </dl>
+
+        <h2 class="h">Install in Gantry</h2>
+        <ol class="steps">
+          <li><span>1</span><p>Open <strong>Connectors</strong> in the sidebar. The catalog ships with the app; nothing is downloaded until you ask.</p></li>
+          <li><span>2</span><p>Find <strong>{c.name}</strong> and choose <strong>Install</strong>. {c.auth === 'oauth' ? 'Your browser opens to sign in; close it when it says you can.' : c.auth === 'api-key' ? 'Paste your API key when asked.' : c.auth === 'connection-string' ? 'Enter the connection string when asked.' : 'That is all.'}</p></li>
+          <li><span>3</span><p>Attach it to a chat, or leave it available to every chat in a project. The agent sees its tools from then on.</p></li>
+        </ol>
+      </div>
+
+      <aside class="side">
+        <div class="card side-card">
+          <dl class="side-facts">
+            <div><dt>Category</dt><dd><a class="link" href={`/connectors/?category=${c.category}`}>{cat.label}</a></dd></div>
+            <div><dt>Kind</dt><dd>{kindLabel(c) === 'Built in' ? 'Built into Gantry' : 'MCP server'}</dd></div>
+            <div><dt>Sign-in</dt><dd>{AUTH_LABEL[c.auth]}</dd></div>
+            {c.website && <div><dt>Service</dt><dd><a class="link" href={c.website} rel="noopener">{c.website.replace(/^https?:\/\//, '').replace(/\/$/, '')} <Icon name="arrow-up-right" size={12} /></a></dd></div>}
+          </dl>
+          <a class="btn btn-primary side-cta" href="/download/">Get Gantry</a>
+          <p class="side-note">Free. The connector installs from inside the app.</p>
+        </div>
+        <a class="request-link" href={REQUEST_URL} rel="noopener">Not what you need? Request a connector <Icon name="arrow-up-right" size={12} /></a>
+      </aside>
+    </div>
+
+    {others.length > 0 && (
+      <section class="related" aria-labelledby="related-title">
+        <h2 id="related-title" class="h">More in {cat.label}</h2>
+        <div class="related-grid">{others.map((o) => <ConnectorTile connector={o} compact />)}</div>
+      </section>
+    )}
+  </article>
+</BaseLayout>
+<style>
+  .page { padding: clamp(2.5rem, 6vw, 4.5rem) 0 clamp(4rem, 8vw, 6rem); }
+  .crumbs { display: flex; gap: 0.6rem; font-size: 0.85rem; color: var(--color-fg-3); }
+  .crumbs a:hover { color: var(--color-fg); }
+  .head { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 1.5rem; align-items: start; margin-top: 1.5rem; }
+  .big-mark { display: inline-grid; place-items: center; width: 4.5rem; height: 4.5rem; border-radius: 1rem; border: 1px solid var(--color-line); background: var(--color-surface); box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.05); }
+  .head .lede { margin-top: 0.5rem; }
+  .badges { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.9rem; }
+  .body { display: grid; grid-template-columns: minmax(0, 1fr) 18rem; gap: clamp(2rem, 5vw, 4rem); margin-top: 2.5rem; padding-top: 2.5rem; border-top: 1px solid var(--color-line); }
+  .summary { font-size: 1.1rem; color: var(--color-fg-2); }
+  .h { font-size: 1.25rem; margin-top: 2.5rem; margin-bottom: 0.6rem; }
+  .calls { list-style: none; margin: 1rem 0 0; padding: 0.4rem 0.5rem; font-family: var(--font-mono); font-size: 0.85rem; }
+  .calls li { display: grid; grid-template-columns: 7.5rem minmax(0, 1fr); gap: 1rem; padding: 0.6rem 0.6rem; border-bottom: 1px solid var(--color-line); }
+  .calls li:last-child { border-bottom: 0; }
+  .call-tool { color: var(--color-fg-3); }
+  .calls code { color: var(--color-fg); overflow-wrap: anywhere; }
+  .facts { display: grid; gap: 1rem; margin: 1rem 0 0; }
+  .facts div { display: grid; grid-template-columns: 7rem minmax(0, 1fr); gap: 1rem; padding-top: 1rem; border-top: 1px solid var(--color-line); }
+  .facts dt { font-family: var(--font-mono); font-size: 0.75rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-fg-3); padding-top: 0.2rem; }
+  .facts dd { margin: 0; color: var(--color-fg-2); }
+  .facts strong { color: var(--color-fg); font-weight: 600; }
+  .steps { list-style: none; margin: 1rem 0 0; padding: 0; display: grid; gap: 0.9rem; }
+  .steps li { display: grid; grid-template-columns: 2rem minmax(0, 1fr); gap: 0.9rem; align-items: start; }
+  .steps span { display: inline-grid; place-items: center; width: 2rem; height: 2rem; border-radius: 50%; border: 1px solid var(--color-line-2); font-family: var(--font-mono); font-size: 0.8rem; color: var(--color-fg-2); }
+  .steps p { color: var(--color-fg-2); padding-top: 0.25rem; }
+  .steps strong { color: var(--color-fg); font-weight: 600; }
+  .side { display: grid; gap: 1rem; align-content: start; position: sticky; top: 5.5rem; }
+  .side-card { padding: 1.25rem; display: grid; gap: 1rem; }
+  .side-facts { display: grid; gap: 0.7rem; margin: 0; }
+  .side-facts div { display: grid; gap: 0.1rem; }
+  .side-facts dt { font-family: var(--font-mono); font-size: 0.7rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-fg-3); }
+  .side-facts dd { margin: 0; color: var(--color-fg); font-size: 0.95rem; }
+  .side-cta { width: 100%; }
+  .side-note { font-size: 0.8rem; color: var(--color-fg-3); text-align: center; }
+  .request-link { font-size: 0.9rem; color: var(--color-fg-2); }
+  .request-link:hover { color: var(--color-fg); }
+  .related { margin-top: 3.5rem; padding-top: 2.5rem; border-top: 1px solid var(--color-line); }
+  .related .h { margin-top: 0; margin-bottom: 1rem; }
+  .related-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.7rem; }
+  @media (max-width: 56rem) { .body { grid-template-columns: 1fr; } .side { position: static; } .related-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 30rem) { .head { grid-template-columns: 1fr; } .facts div { grid-template-columns: 1fr; gap: 0.3rem; } .related-grid { grid-template-columns: 1fr; } }
+</style>

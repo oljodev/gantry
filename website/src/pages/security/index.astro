@@ -1,0 +1,24 @@
+---
+import ProseLayout from '@/layouts/ProseLayout.astro';
+import { REPO_URL } from '@/lib/seo';
+---
+<ProseLayout title="Security" eyebrow="Trust" lede="How Gantry keeps keys, gates what an agent may do, and where to report a problem." description="How Gantry stores keys, what the permission modes and the guard model protect against, how artifacts are sandboxed, and how to report a vulnerability.">
+  <h2>Keys and tokens</h2>
+  <p>On first run Gantry generates one random <strong>master key</strong> and stores it in the operating system's credential store: the Keychain on macOS, Credential Manager on Windows, Secret Service on Linux. Every API key and OAuth token you add is encrypted with that key and stored in the app's local database. The interface layer never sees a secret in the clear; it asks the backend to make the request.</p>
+
+  <h2>What an agent may do</h2>
+  <p>Every tool a connector exposes is mapped to a <strong>risk tier</strong>: read, write, external write, execute, destructive, or app-internal. The chat's <strong>permission mode</strong> decides what each tier does: Manual asks for everything; Auto-edit lets reads and in-folder edits run and asks for the rest; Plan can only read; Auto runs everything. In Auto, the <strong>guard</strong>, a fast model from your own provider, reviews each risky call against the task and blocks what does not fit; destructive calls always ask. Every decision, allowed, denied or judged, is in the activity feed with its reasoning.</p>
+  <p>The agent only reaches files inside folders you attached to the chat, and only reaches services through connectors you installed and signed in to. Nothing installs itself.</p>
+
+  <h2>Artifacts run in a sandbox</h2>
+  <p>Interactive artifacts, the small apps a model can build, run in an isolated frame with no access to your files, your keys or the rest of the app, and with a strict content policy. Code the model wrote runs there and nowhere else.</p>
+
+  <h2>Connectors and MCP servers</h2>
+  <p>Third-party MCP servers run as ordinary processes with the permissions of your user, or are reached over HTTPS. Gantry shows what each server exposes before you install it and runs it under the same permission engine as everything else. Treat a connector like any software you install: prefer the vendor's official server, and read what it asks for.</p>
+
+  <h2>Updates</h2>
+  <p>Releases are built by the repository's public workflow and published on GitHub with checksums. The app does not update itself silently; a future update check would show a version number and let you decide.</p>
+
+  <h2>Reporting a vulnerability</h2>
+  <p>Please report security problems privately through <a href={`${REPO_URL}/security/advisories/new`} rel="noopener">GitHub's private vulnerability reporting</a> for the repository rather than in a public issue. Include what you found, how to reproduce it and what you think the impact is. You will get an acknowledgement, a fix or a plan, and credit in the release notes if you want it.</p>
+</ProseLayout>

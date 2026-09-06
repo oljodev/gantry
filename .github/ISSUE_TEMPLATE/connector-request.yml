@@ -1,0 +1,31 @@
+name: Connector request
+description: Ask for a service or tool Gantry cannot connect to yet.
+title: "Connector request: "
+labels: ["connector", "request"]
+body:
+  - type: input
+    id: service
+    attributes:
+      label: Service or tool
+      description: The name and, if it has one, the website.
+      placeholder: "Trello, https://trello.com"
+    validations:
+      required: true
+  - type: textarea
+    id: use
+    attributes:
+      label: What would you do with it in a chat?
+      description: One or two concrete examples help more than a feature list.
+      placeholder: "Pull the cards on my board into a chat and let the agent draft the weekly update."
+    validations:
+      required: true
+  - type: input
+    id: mcp
+    attributes:
+      label: Is there an MCP server for it already?
+      description: A link to an existing Model Context Protocol server, official or community, if you know one.
+  - type: dropdown
+    id: auth
+    attributes:
+      label: How do you sign in to it?
+      options: ["OAuth / sign in with an account", "API key", "Connection string", "No sign-in", "Not sure"]

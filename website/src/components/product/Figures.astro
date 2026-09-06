@@ -1,0 +1,102 @@
+---
+/** The five figures of the product tour, drawn in the app's own language. Rendered twice: inline under each chapter
+ *  (narrow screens, no JavaScript) and stacked on the sticky stage. */
+import Icon from '@/components/Icon.astro';
+interface Props { which: 'chat' | 'agent' | 'permissions' | 'connectors' | 'local' }
+const { which } = Astro.props;
+---
+{which === 'chat' && (
+  <div class="fig card" aria-hidden="true">
+    <div class="fig-bar"><span class="fig-pill">kinetic-api</span><span class="fig-pill is-on">Claude Opus 5</span><span class="fig-pill">Auto-edit</span></div>
+    <div class="fig-chat">
+      <p class="fig-user">Summarise what changed in the auth module this week and draft release notes.</p>
+      <p class="fig-assistant">Three changes landed: the token expiry fix (#412), rate limiting on <code>/auth/login</code> (#415) and the session cleanup job (#418). Draft notes are in the artifact on the right; I kept the tone of the 0.3 notes.</p>
+      <div class="fig-artifact"><span class="fig-art-tabs"><b>Release notes 0.4</b><i>Markdown</i><i>v2</i></span><span class="fig-line" style="width:82%"></span><span class="fig-line" style="width:64%"></span><span class="fig-line" style="width:71%"></span></div>
+    </div>
+  </div>
+)}
+{which === 'agent' && (
+  <div class="fig card" aria-hidden="true">
+    <div class="fig-bar"><span class="fig-pill">Activity</span><span class="fig-pill is-on">Auto-edit</span></div>
+    <ol class="fig-rows">
+      <li><span>code-editor</span><code>str_replace src/lib/auth.rs</code><em class="good">+6 −2</em></li>
+      <li><span>shell</span><code>cargo test -p api</code><em>31 passed</em></li>
+      <li><span>code-editor</span><code>str_replace tests/auth_test.rs</code><em class="good">+9 −0</em></li>
+    </ol>
+    <div class="fig-diff"><span class="del">- if token.expires_at &lt; now_ms {'{'}</span><span class="add">+ if token.expires_at * 1000 &lt; now_ms {'{'}</span></div>
+    <div class="fig-term"><span class="fig-prompt">$</span> cargo test -p api<br /><span class="dim">running 31 tests … </span><span class="good">ok</span></div>
+  </div>
+)}
+{which === 'permissions' && (
+  <div class="fig card" aria-hidden="true">
+    <div class="fig-modes">
+      {[['Manual', 'ask for everything'], ['Auto-edit', 'reads and edits run'], ['Plan', 'read only'], ['Auto', 'guard on']].map(([m, d], i) => <span class:list={['fig-mode', i === 3 && 'is-on']}><b>{m}</b><i>{d}</i></span>)}
+    </div>
+    <div class="fig-guard">
+      <p class="fig-guard-h"><Icon name="shield-check" size={14} /> Guard reviewed <code>shell · rm -rf build/</code></p>
+      <p class="fig-guard-t">Allowed: the path is inside the project and the command matches the task. Anything outside the folders you added would have been blocked.</p>
+    </div>
+  </div>
+)}
+{which === 'connectors' && (
+  <div class="fig card" aria-hidden="true">
+    <div class="fig-bar"><span class="fig-pill is-on">Installed</span><span class="fig-pill">Catalog</span><span class="fig-pill">Add your own</span></div>
+    <ul class="fig-conn">
+      <li><b>Filesystem</b><i>Built in</i><em>on</em></li>
+      <li><b>GitHub</b><i>MCP · signed in</i><em>on</em></li>
+      <li><b>PostgreSQL</b><i>MCP · local</i><em>on</em></li>
+      <li><b>Slack</b><i>MCP · not installed</i><em class="cta">Install</em></li>
+    </ul>
+  </div>
+)}
+{which === 'local' && (
+  <div class="fig card" aria-hidden="true">
+    <div class="fig-tree">
+      <p><Icon name="folder-simple" size={14} /> ~/Library/Application Support/Gantry</p>
+      <p class="in"><Icon name="database" size={14} /> gantry.db <i>chats, projects, memory · SQLite</i></p>
+      <p class="in"><Icon name="folder-simple" size={14} /> blobs/ <i>attachments and artifacts</i></p>
+      <p class="in"><Icon name="key" size={14} /> master key <i>in the OS keychain, not on disk</i></p>
+    </div>
+    <p class="fig-foot">No account. No Gantry server. Delete the folder and it is gone.</p>
+  </div>
+)}
+<style>
+  .fig { padding: 1.1rem 1.2rem 1.2rem; font-size: 0.85rem; color: var(--color-fg-2); display: grid; gap: 0.9rem; }
+  .fig-bar { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+  .fig-pill { font-family: var(--font-mono); font-size: 0.7rem; padding: 0.25rem 0.6rem; border-radius: var(--radius-pill); border: 1px solid var(--color-line-2); color: var(--color-fg-3); }
+  .fig-pill.is-on { color: var(--color-brand); border-color: rgb(255 122 31 / 0.45); }
+  .fig-chat { display: grid; gap: 0.7rem; }
+  .fig-user { justify-self: end; max-width: 80%; padding: 0.55rem 0.75rem; border-radius: 0.8rem 0.8rem 0.2rem 0.8rem; background: var(--color-surface-2); color: var(--color-fg); }
+  .fig-assistant { color: var(--color-fg-2); max-width: 60ch; }
+  .fig-assistant code { font-size: 0.85em; color: var(--color-fg); }
+  .fig-artifact { display: grid; gap: 0.4rem; padding: 0.7rem; border-radius: 0.6rem; border: 1px solid var(--color-line); background: var(--color-bg); }
+  .fig-art-tabs { display: flex; gap: 0.7rem; font-family: var(--font-mono); font-size: 0.7rem; }
+  .fig-art-tabs b { color: var(--color-fg); font-weight: 500; } .fig-art-tabs i { font-style: normal; color: var(--color-fg-3); }
+  .fig-line { height: 6px; border-radius: 3px; background: var(--color-line-2); }
+  .fig-rows { list-style: none; margin: 0; padding: 0; font-family: var(--font-mono); font-size: 0.76rem; }
+  .fig-rows li { display: grid; grid-template-columns: 5.6rem minmax(0, 1fr) auto; gap: 0.6rem; padding: 0.45rem 0.3rem; border-bottom: 1px solid var(--color-line); align-items: baseline; }
+  .fig-rows span { color: var(--color-fg-3); } .fig-rows code { color: var(--color-fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .fig-rows em { font-style: normal; color: var(--color-fg-3); }
+  .good { color: var(--color-good) !important; }
+  .fig-diff, .fig-term { font-family: var(--font-mono); font-size: 0.74rem; padding: 0.65rem 0.8rem; border-radius: 0.6rem; border: 1px solid var(--color-line); background: var(--color-bg); white-space: pre-wrap; }
+  .fig-diff { display: grid; gap: 0.15rem; } .del { color: var(--color-bad); } .add { color: var(--color-good); }
+  .fig-prompt { color: var(--color-brand); } .dim { color: var(--color-fg-3); }
+  .fig-modes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.5rem; }
+  .fig-mode { display: grid; gap: 0.1rem; padding: 0.7rem 0.8rem; border-radius: 0.7rem; border: 1px solid var(--color-line); background: var(--color-bg); }
+  .fig-mode b { color: var(--color-fg); font-weight: 600; } .fig-mode i { font-style: normal; font-size: 0.78rem; color: var(--color-fg-3); }
+  .fig-mode.is-on { border-color: rgb(255 122 31 / 0.5); box-shadow: 0 0 30px -12px rgb(255 122 31 / 0.6); }
+  .fig-guard { padding: 0.8rem 0.9rem; border-radius: 0.7rem; border: 1px solid var(--color-line); background: var(--color-bg); }
+  .fig-guard-h { display: flex; align-items: center; gap: 0.4rem; color: var(--color-fg); font-size: 0.85rem; }
+  .fig-guard-h code { font-size: 0.8em; }
+  .fig-guard-t { margin-top: 0.4rem; font-size: 0.8rem; color: var(--color-fg-3); }
+  .fig-conn { list-style: none; margin: 0; padding: 0; }
+  .fig-conn li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 0.8rem; align-items: center; padding: 0.55rem 0.3rem; border-bottom: 1px solid var(--color-line); }
+  .fig-conn li:last-child { border-bottom: 0; }
+  .fig-conn b { color: var(--color-fg); font-weight: 500; } .fig-conn i { font-style: normal; font-size: 0.78rem; color: var(--color-fg-3); }
+  .fig-conn em { font-style: normal; font-family: var(--font-mono); font-size: 0.72rem; color: var(--color-fg-3); }
+  .fig-conn em.cta { color: var(--color-brand); }
+  .fig-tree { display: grid; gap: 0.5rem; font-family: var(--font-mono); font-size: 0.78rem; }
+  .fig-tree p { display: flex; align-items: center; gap: 0.5rem; color: var(--color-fg); flex-wrap: wrap; }
+  .fig-tree p.in { padding-left: 1.4rem; }
+  .fig-tree i { font-style: normal; color: var(--color-fg-3); }
+  .fig-foot { font-size: 0.82rem; color: var(--color-fg-3); }
+</style>

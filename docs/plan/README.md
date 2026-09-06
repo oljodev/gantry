@@ -23,7 +23,7 @@ Read in order the first time. Each document is self-contained enough to be used 
 | 11 | [Settings and theming](11-settings-and-theming.md) | The settings sections, three-state theming across webview and native chrome, provider key management |
 | 12 | [Skills and memory](12-skills-and-memory.md) | Text-only skills (format, matching, the four flows) and the visible, user-confirmed memory store |
 | 13 | [Artifacts](13-artifacts.md) | Tool-call-based artifacts, the v1 types, the sandbox and its bridge, the React runtime, versioning, projects |
-| 14 | [Marketing website](14-marketing-site.md) | The art direction and technical approach of the three.js page in `website/`, its degradation tiers, the `oljo.dev` / `id.oljo.dev` split and release-linked download buttons |
+| 14 | [Marketing website](14-marketing-site.md) | The Astro site in `website/`: the design system, the sitemap (home, product tour, connectors and one page per connector, pricing, download, about, blog, changelog, docs, trust pages), the motion approach, the `oljo.dev` / `id.oljo.dev` split and release-linked download buttons |
 
 ## Decision register
 
@@ -49,7 +49,8 @@ Decisions the rest of the plan depends on. Each is justified where it is used.
 | D16 | Memory | SQLite table, fully visible and editable on a Memory page; the assistant proposes and the user confirms (non-blocking); two-tier selection with fixed token budgets. |
 | D17 | Artifacts | Created through `gantry__create_artifact`/`update`/`edit` tools in the normalized tool layer; six v1 types; executable types run in an opaque-origin `srcdoc` iframe with `sandbox="allow-scripts"` and a strict CSP; React compiled in-sandbox with Babel and loop protection; linear immutable versions; chat-owned, project-visible. |
 | D18 | Catalog distribution | The curated connector catalog ships statically with each release; a signed remote overlay is designed but deferred. |
-| D19 | Public sites | Marketing page in `website/` at `oljo.dev` (Vite-built static page with a lazily loaded three.js scene and an SVG poster fallback), MCP client metadata in `client-metadata/` at `id.oljo.dev`; two Cloudflare Pages projects; download buttons use stable asset names and `releases/latest/download/` URLs, enabled through the GitHub releases API. |
+| D19 | Public sites | Marketing site in `website/` at `oljo.dev`: an Astro 7 static site (Tailwind 4, one React island for the hero mock, Starlight for docs) with a company-style sitemap; MCP client metadata in `client-metadata/` at `id.oljo.dev`; two Cloudflare Pages projects; download buttons use stable asset names and `releases/latest/download/` URLs, enabled through the GitHub releases API. |
+| D20 | Site visual system | Dark only, Linear/Vercel style: neutral zinc ground, Gantry orange `#ff7a1f` as the one accent, Geist and Geist Mono self-hosted, a floating pill navbar with menus, reveals plus a few scroll-linked figures, a Ramp-style connector logo cloud, connector marks from Simple Icons in their own colours (initials where none exists). Tokens live once in `website/src/styles/theme.css`. 14 §2, §4. |
 
 ## Vocabulary
 

@@ -1,0 +1,43 @@
+---
+/** Long-form pages: one narrow column of prose with the site's type scale. Used by About, the trust pages, blog posts and changelog entries. */
+import BaseLayout from '@/layouts/BaseLayout.astro';
+interface Props { title: string; description?: string; eyebrow?: string; lede?: string; date?: Date; back?: { href: string; label: string } }
+const { title, description, eyebrow, lede, date, back } = Astro.props;
+---
+<BaseLayout title={title} description={description ?? lede}>
+  <article class="prose-page">
+    <header class="wrap-narrow head">
+      {back && <a class="back" href={back.href}>← {back.label}</a>}
+      {eyebrow && <p class="eyebrow">{eyebrow}</p>}
+      <h1 class="title">{title}</h1>
+      {lede && <p class="lede">{lede}</p>}
+      {date && <p class="date"><time datetime={date.toISOString()}>{date.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</time></p>}
+    </header>
+    <div class="wrap-narrow prose"><slot /></div>
+  </article>
+</BaseLayout>
+<style is:global>
+  .prose-page { padding: clamp(3.5rem, 8vw, 6rem) 0 clamp(4rem, 8vw, 6rem); }
+  .prose-page .head { display: grid; gap: 1rem; margin-bottom: 2.5rem; padding-bottom: 2rem; border-bottom: 1px solid var(--color-line); }
+  .prose-page .back { font-size: 0.9rem; color: var(--color-fg-3); }
+  .prose-page .back:hover { color: var(--color-fg); }
+  .prose-page .date { font-family: var(--font-mono); font-size: 0.8rem; color: var(--color-fg-3); }
+  .prose { color: var(--color-fg-2); font-size: 1.05rem; line-height: 1.7; }
+  .prose > * + * { margin-top: 1.1rem; }
+  .prose h2 { font-size: 1.5rem; color: var(--color-fg); margin-top: 2.6rem; }
+  .prose h3 { font-size: 1.15rem; color: var(--color-fg); margin-top: 2rem; }
+  .prose strong { color: var(--color-fg); font-weight: 600; }
+  .prose a { color: var(--color-fg); text-decoration: underline; text-underline-offset: 0.2em; text-decoration-color: var(--color-line-2); }
+  .prose a:hover { text-decoration-color: var(--color-brand); }
+  .prose ul, .prose ol { padding-left: 1.3rem; }
+  .prose li + li { margin-top: 0.4rem; }
+  .prose code { font-size: 0.9em; color: var(--color-fg); background: var(--color-surface); border: 1px solid var(--color-line); border-radius: 0.3rem; padding: 0.1em 0.35em; }
+  .prose pre { padding: 1rem 1.1rem; border-radius: 0.8rem; border: 1px solid var(--color-line); background: var(--color-surface); overflow-x: auto; font-size: 0.85rem; }
+  .prose pre code { background: none; border: 0; padding: 0; }
+  .prose blockquote { margin: 1.5rem 0; padding-left: 1.2rem; border-left: 2px solid var(--color-brand); color: var(--color-fg); }
+  .prose table { width: 100%; border-collapse: collapse; font-size: 0.95rem; }
+  .prose th, .prose td { text-align: left; padding: 0.6rem 0.8rem; border-bottom: 1px solid var(--color-line); vertical-align: top; }
+  .prose th { color: var(--color-fg-3); font-family: var(--font-mono); font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; font-weight: 500; }
+  .prose hr { border: 0; border-top: 1px solid var(--color-line); margin: 2.5rem 0; }
+  .prose .aside { padding: 1rem 1.2rem; border-radius: 0.8rem; border: 1px solid var(--color-line); background: var(--color-surface); font-size: 0.95rem; }
+</style>

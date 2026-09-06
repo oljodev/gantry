@@ -1,0 +1,86 @@
+---
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import Icon from '@/components/Icon.astro';
+import ConnectorTile from '@/components/connectors/ConnectorTile.astro';
+import { CATEGORIES, CATEGORY_IDS, connectors } from '@/data/connectors';
+import { REQUEST_URL } from '@/lib/connectors';
+const groups = CATEGORY_IDS.map((id) => ({ id, ...CATEGORIES[id], items: connectors.filter((c) => c.category === id) }));
+---
+<BaseLayout title="Connectors" description={`The ${connectors.length} connectors that ship with Gantry: built-in tools for your machine and MCP servers for GitHub, Notion, Postgres, Slack and more. Nothing installs itself.`}>
+  <section class="head">
+    <div class="wrap">
+      <p class="eyebrow">Connectors</p>
+      <h1 class="display">Every connector, one click away.</h1>
+      <p class="lede">Built-in tools for your machine and MCP servers for the services you use, all under the same permission model. Find one here, install it from inside the app.</p>
+    </div>
+  </section>
+
+  <section class="directory wrap" aria-labelledby="dir-title" data-directory>
+    <h2 id="dir-title" class="visually-hidden">Directory</h2>
+    <div class="toolbar">
+      <form class="search" role="search" onsubmit="return false">
+        <Icon name="magnifying-glass" size={18} class="search-icon" />
+        <label class="visually-hidden" for="csearch">Search connectors</label>
+        <input id="csearch" type="search" data-search placeholder="Search connectors" autocomplete="off" />
+      </form>
+      <div class="pills" role="group" aria-label="Filter by category">
+        <button type="button" class="pill" data-filter="all" aria-pressed="true">All</button>
+        {CATEGORY_IDS.map((id) => <button type="button" class="pill" data-filter={id} aria-pressed="false">{CATEGORIES[id].label}</button>)}
+      </div>
+    </div>
+    <p class="count" data-count aria-live="polite">{connectors.length} connectors</p>
+
+    {groups.map((g) => (
+      <div class="group" data-group>
+        <div class="group-head">
+          <h3 class="group-title">{g.label}</h3>
+          <p class="group-blurb">{g.blurb}</p>
+        </div>
+        <div class="grid">
+          {g.items.map((c) => <ConnectorTile connector={c} />)}
+        </div>
+      </div>
+    ))}
+    <p class="empty prose-muted" data-empty hidden>No connector matches. Try another word, or clear the filter.</p>
+
+    <div class="request card">
+      <div>
+        <h3 class="title-sm">Missing one?</h3>
+        <p class="prose-muted mt-2">Tell us which service you want to connect and how you would use it. Requests are GitHub issues, so you can see what others asked for and add your voice.</p>
+      </div>
+      <a class="btn" href={REQUEST_URL} rel="noopener">Request a connector</a>
+    </div>
+    <p class="note">Product names and logos belong to their owners and show which services Gantry can connect to, not endorsement. Connectors without a public mark are shown with their initials. Every connector, built in or MCP, waits for an explicit Install in the app.</p>
+  </section>
+  <script src="../../scripts/connector-filter.ts"></script>
+</BaseLayout>
+<style>
+  .head { padding: clamp(3.5rem, 8vw, 6rem) 0 2.5rem; }
+  .head .display { margin-top: 1rem; max-width: 16ch; }
+  .head .lede { margin-top: 1.25rem; }
+  .directory { padding-bottom: clamp(4rem, 8vw, 6rem); }
+  .toolbar { display: flex; flex-wrap: wrap; gap: 0.75rem 1rem; align-items: center; justify-content: space-between; padding-top: 1.5rem; border-top: 1px solid var(--color-line); }
+  html:not(.js-directory) .toolbar, html:not(.js-directory) .count { display: none; }
+  .search { position: relative; display: flex; align-items: center; min-width: min(20rem, 100%); }
+  .search-icon { position: absolute; left: 0.9rem; color: var(--color-fg-3); pointer-events: none; }
+  .search input { width: 100%; font: inherit; font-size: 0.95rem; color: var(--color-fg); background: var(--color-surface); border: 1px solid var(--color-line-2); border-radius: var(--radius-pill); padding: 0.55rem 1rem 0.55rem 2.6rem; min-height: 2.75rem; }
+  .search input::placeholder { color: var(--color-fg-3); }
+  .pills { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+  .pill { font: inherit; font-size: 0.88rem; font-weight: 500; padding: 0.4rem 0.9rem; border-radius: var(--radius-pill); border: 1px solid var(--color-line-2); background: transparent; color: var(--color-fg-2); cursor: pointer; transition: color 150ms ease, background-color 150ms ease, border-color 150ms ease; }
+  .pill:hover { color: var(--color-fg); border-color: #3f3f46; }
+  .pill[aria-pressed="true"] { background: var(--color-fg); color: var(--color-bg); border-color: var(--color-fg); }
+  .count { margin-top: 1.4rem; font-family: var(--font-mono); font-size: 0.78rem; color: var(--color-fg-3); }
+  .group { margin-top: 2.25rem; }
+  .group[hidden] { display: none; }
+  .group-head { display: flex; align-items: baseline; gap: 1rem; flex-wrap: wrap; margin-bottom: 0.9rem; }
+  .group-title { font-size: 1.1rem; }
+  .group-blurb { color: var(--color-fg-3); font-size: 0.9rem; }
+  .grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.7rem; }
+  .empty { margin-top: 2rem; }
+  .empty[hidden] { display: none; }
+  .request { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 1.5rem; align-items: center; padding: 1.75rem 2rem; margin-top: 3.5rem; }
+  .note { margin-top: 1.5rem; font-size: 0.85rem; color: var(--color-fg-3); max-width: 78ch; }
+  @media (max-width: 64rem) { .grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+  @media (max-width: 48rem) { .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .request { grid-template-columns: 1fr; } }
+  @media (max-width: 30rem) { .grid { grid-template-columns: 1fr; } }
+</style>

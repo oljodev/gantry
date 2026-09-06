@@ -1,0 +1,23 @@
+---
+import ProseLayout from '@/layouts/ProseLayout.astro';
+---
+<ProseLayout title="Privacy" eyebrow="Trust" lede="Short, because there is not much to say: this site does not track you, and the app has no server to send anything to." description="What the Gantry site and the Gantry app do and do not collect.">
+  <h2>This website</h2>
+  <ul>
+    <li>No cookies, no analytics, no third-party scripts, no fonts loaded from anyone else. Everything the page needs is served from oljo.dev.</li>
+    <li>Two optional requests go to <code>api.github.com</code>: one to show the repository's star count, one to find the latest release for the download buttons. GitHub's own <a href="https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement" rel="noopener">privacy statement</a> applies to those. If either fails, the page simply shows less.</li>
+    <li>The site is hosted on Cloudflare Pages, which keeps ordinary server logs to run the service.</li>
+  </ul>
+
+  <h2>The app</h2>
+  <ul>
+    <li><strong>There is no Gantry account and no Gantry server.</strong> Nothing you type, upload or generate is sent to us, because there is no us to send it to.</li>
+    <li>Your messages, attachments and tool results go to the <strong>model provider you configured</strong>, using your own API key, under that provider's terms. Which provider, which model and what is sent are visible in the app for every turn.</li>
+    <li>Connectors talk to the services they connect to (GitHub, Notion, your database, and so on) with credentials you gave them, and only when a tool call asks them to. Each call is listed in the activity feed.</li>
+    <li>Everything else, chats, projects, memory, artifacts and settings, is stored in a database and a folder on your machine. Keys and tokens are encrypted with a master key kept in your operating system's credential store.</li>
+    <li>The app does not phone home, has no crash reporting and no usage statistics. A future check for updates would ask the release feed for a version number and nothing else, and would be visible in the settings.</li>
+  </ul>
+
+  <h2>Questions</h2>
+  <p>Open an issue or a discussion in the repository. Because there is no data collection to speak of, there is also no data to request or delete: it is on your disk, and deleting the app's folder deletes it.</p>
+</ProseLayout>

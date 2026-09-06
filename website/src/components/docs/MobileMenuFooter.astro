@@ -1,0 +1,18 @@
+---
+/** The site's links at the bottom of Starlight's mobile sidebar, so docs readers on a phone can reach the rest of the site. */
+import { productMenu, resourcesMenu } from '@/lib/nav';
+---
+<nav class="site-links" aria-label="Site">
+  {[{ label: 'Product', links: productMenu }, { label: 'Resources', links: resourcesMenu }].map((g) => (
+    <div>
+      <p class="eyebrow">{g.label}</p>
+      <ul>{g.links.map((l) => <li><a href={l.href} rel={l.external ? 'noopener' : undefined}>{l.label}</a></li>)}</ul>
+    </div>
+  ))}
+</nav>
+<style>
+  .site-links { display: grid; gap: 1rem; padding: 1rem 0 0; border-top: 1px solid var(--sl-color-hairline); }
+  .site-links ul { list-style: none; margin: 0.4rem 0 0; padding: 0; display: grid; gap: 0.2rem; }
+  .site-links a { display: block; padding: 0.35rem 0; color: var(--sl-color-gray-2); text-decoration: none; }
+  .site-links a:hover { color: var(--sl-color-white); }
+</style>

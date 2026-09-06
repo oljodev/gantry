@@ -1,0 +1,27 @@
+---
+import ProseLayout from '@/layouts/ProseLayout.astro';
+import { REPO_URL } from '@/lib/seo';
+---
+<ProseLayout title="The licence, in plain words" eyebrow="Trust" lede="Gantry is released under the Functional Source License, version 1.1, with Apache 2.0 as the future licence. Here is what that means for you." description="What the Functional Source License allows and reserves, and the two-year conversion to Apache 2.0.">
+  <p class="aside">This page explains; it is not the licence. The binding text is <code>LICENSE.md</code> in <a href={REPO_URL} rel="noopener">the repository</a>, and the FSL itself is published by <a href="https://fsl.software" rel="noopener">fsl.software</a>.</p>
+
+  <h2>What you can do</h2>
+  <ul>
+    <li><strong>Use it</strong>, at home or at work, for anything, including commercial work.</li>
+    <li><strong>Read and study</strong> the source, and build it yourself.</li>
+    <li><strong>Modify it</strong>: fix bugs, add features, change what you like, and share your changes.</li>
+    <li><strong>Redistribute it</strong>, with or without your changes, as long as the licence and notices travel with it.</li>
+  </ul>
+
+  <h2>The one thing it reserves</h2>
+  <p>The FSL reserves <strong>competing use</strong>: offering Gantry, or something made from it, as a product or service that competes with Gantry. Everything else the licence calls a "permitted purpose". Using Gantry to build your own unrelated software, running it for your company, or writing connectors for it is all fine.</p>
+
+  <h2>Two years later, Apache 2.0</h2>
+  <p>Each version of Gantry converts to the <a href="https://www.apache.org/licenses/LICENSE-2.0" rel="noopener">Apache License 2.0</a> two years after it was released. From then on that version carries no competing-use restriction at all. This is the "ALv2" in FSL-1.1-ALv2.</p>
+
+  <h2>Why this licence</h2>
+  <p>It keeps the code open to read, run and change from day one, while giving a very small project a fair window before someone else can sell it as their own. The conversion date makes the openness a promise rather than a mood.</p>
+
+  <h2>Third-party marks and software</h2>
+  <p>Connector names and logos belong to their owners and are shown to indicate compatibility, not endorsement. Gantry itself is built on open-source software with its own licences, listed in the repository's notices.</p>
+</ProseLayout>

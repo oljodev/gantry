@@ -1,0 +1,19 @@
+/* Classes the shared chrome (navbar, footer, buttons, links, badges) needs. Loaded by both the marketing pages and the docs. */
+@layer components {
+  .eyebrow { font-family: var(--font-mono); font-size: 0.75rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-fg-3); }
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; min-height: 2.75rem; padding: 0.6rem 1.15rem; border-radius: var(--radius-pill); font-weight: 600; font-size: 0.95rem; white-space: nowrap; border: 1px solid var(--color-line-2); background: var(--color-surface); color: var(--color-fg); transition: background-color 150ms ease, border-color 150ms ease, transform 120ms ease, color 150ms ease; }
+  .btn:hover { border-color: #3f3f46; background: var(--color-surface-2); }
+  .btn:active { transform: translateY(1px); }
+  .btn-primary { background: var(--color-brand); color: var(--color-brand-ink); border-color: transparent; }
+  .btn-primary:hover { background: var(--color-brand-hover); border-color: transparent; }
+  .btn-sm { min-height: 2.25rem; padding: 0.35rem 0.9rem; font-size: 0.875rem; }
+  .badge { display: inline-flex; align-items: center; gap: 0.35rem; font-family: var(--font-mono); font-size: 0.68rem; letter-spacing: 0.06em; text-transform: uppercase; padding: 0.2rem 0.55rem; border-radius: var(--radius-pill); border: 1px solid var(--color-line-2); color: var(--color-fg-2); white-space: nowrap; }
+  .badge-brand { color: var(--color-brand); border-color: rgb(255 122 31 / 0.4); }
+  .arrow-link { display: inline-flex; align-items: center; gap: 0.35rem; font-weight: 500; color: var(--color-fg); }
+  .arrow-link::after { content: "→"; color: var(--color-fg-3); transition: translate 150ms ease, color 150ms ease; }
+  .arrow-link:hover::after { translate: 3px 0; color: var(--color-brand); }
+  .link { color: var(--color-fg); text-decoration: underline; text-underline-offset: 0.2em; text-decoration-color: var(--color-line-2); }
+  .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .skip { position: absolute; left: 1rem; top: -3rem; z-index: 100; padding: 0.5rem 0.9rem; background: var(--color-fg); color: var(--color-bg); border-radius: 0.5rem; }
+  .skip:focus { top: 1rem; }
+}
