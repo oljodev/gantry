@@ -21,13 +21,16 @@ Ordering principle: something visible in the first week, one risky subsystem ret
 | M13 | Hardening and release | 2 | ship v0.1.0 |
 | — | Marketing site (parallel track) | 2 days | publish the page any time after M0; download buttons go live with v0.1.0 |
 
-## M0 — Skeleton (1 week)
+## M0 — Skeleton (1 week) — done 2026-09-06
+
+Built in session 5 (commits "M0: …"). Deviations from the list below: the design tokens of 15 ship here rather than in M0b, since every later screen inherits them; CI builds only Ubuntu on push, with the macOS and Windows matrix behind a manual `full-matrix` input until the repository is public; the `LICENSE` notice carries a licensor placeholder to be filled before the first public release (M13); the icon set is generated from the placeholder tile in `assets/branding/app-icon/`.
+
 
 - Cargo workspace with every crate stubbed (compiles, no logic); `src-tauri` with Tauri 2.11, plugins wired (dialog, opener, log, window-state, single-instance, clipboard, notification).
 - Vite + React 19 + TypeScript strict + Tailwind v4 + shadcn (Base UI) initialized; TanStack Router with the route skeleton; `AppShell` with an empty sidebar and content area.
 - **Theming complete from day one** (11 §3): the token file with the three-state pattern, `data-theme` stamping before first paint, `getCurrentWindow().setTheme` wiring, window background colour from tokens. It is cheap now and every later screen inherits it.
 - `tauri-specta` pipeline: one `app_info` command typed end-to-end; `cargo xtask gen-bindings`; CI drift check.
-- CI on macOS, Windows, Linux producing unsigned builds; `rust-toolchain.toml`; `deny.toml`.
+- CI: `ci.yml` (fmt, clippy, tests including the bindings drift check, deny, frontend checks) on every push; `build.yml` with unsigned bundles, Ubuntu on push and the full matrix on manual dispatch; `rust-toolchain.toml`; `deny.toml`.
 - `LICENSE` (FSL-1.1-ALv2), `LICENSING.md`, `CONTRIBUTING.md`; `CLAUDE.md` updated with the build commands and the plan pointer.
 - App data directory, logging, `assets/` placeholders, `schemas/connector-manifest.schema.json` and `schemas/skill-frontmatter.schema.json`.
 
@@ -181,6 +184,7 @@ Done when: a skill written in the editor is injected for a matching message and 
 - The automated sandbox conformance test for artifacts (13 §5).
 - Performance pass on WebKitGTK and WebView2: batching thresholds, virtualization, markdown memoization, long outputs, artifact mount time.
 - Crash recovery and cancellation tests across all connectors; the blob sweeper; database backup before migration.
+- Fill the licensor name in `LICENSE` and the first row of the conversion table in `LICENSING.md`; remove the `full-matrix` gate in `build.yml` once the repository is public.
 - Packaging: macOS signing and notarization, Windows signing (NSIS), Linux AppImage/deb/rpm, `tauri-plugin-updater` with a static release feed; the stable-named release assets and `releases.json` step (14 §3); `THIRD_PARTY_LICENSES.md`; the M0b onboarding wired to real settings (add a key, choose a theme, add a folder and install the local connectors).
 - Documentation: `docs/dev/` setup per OS, the release checklist including the website items, and a first pass at user docs. Repository made public (08, 14 §3).
 

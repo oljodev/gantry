@@ -3,7 +3,7 @@ import { Gear, MagnifyingGlass, Plus, SidebarSimple } from '@phosphor-icons/reac
 import { type ReactNode, useCallback, useRef } from 'react';
 
 import { SIDEBAR_MAX, SIDEBAR_MIN, useUiStore } from '@/lib/stores/uiStore';
-import { cn, isMac } from '@/lib/utils';
+import { cn } from '@/lib/utils';
 
 /**
  * The single labelled sidebar (docs/plan/15 §7): New chat, Search, Pinned, Projects, Recents,
@@ -93,7 +93,6 @@ export function Sidebar() {
         className="absolute inset-y-0 -right-[3px] w-[6px] cursor-col-resize hover:bg-line-strong active:bg-line-strong transition-colors duration-(--dur-1)"
       />
       <div className="pointer-events-none absolute inset-y-0 right-0 w-px bg-line" />
-      {isMac() && null}
     </aside>
   );
 }
@@ -114,12 +113,14 @@ function SidebarItem({
   const inner = (
     <>
       <span className="flex w-4 shrink-0 items-center justify-center text-fg-2">{icon}</span>
-      <span className="flex-1 truncate">{label}</span>
+      <span className="flex-1 truncate text-left">{label}</span>
       {shortcut && <kbd className="font-sans text-meta text-fg-3">{shortcut}</kbd>}
     </>
   );
   const className =
     'flex h-(--row-sidebar) items-center gap-2 rounded-2 px-2 text-ui text-fg transition-colors duration-(--dur-1) hover:bg-hover data-[status=active]:bg-selected';
+  const actionClassName =
+    'flex h-(--row-sidebar) w-full items-center gap-2 rounded-2 px-2 text-ui text-fg transition-colors duration-(--dur-1) hover:bg-hover';
   if (to === '/settings/$section' && params) {
     return (
       <Link to={to} params={params} className={className} activeOptions={{ includeSearch: false }}>
@@ -128,14 +129,21 @@ function SidebarItem({
     );
   }
   if (to === '/chat') {
+    // New chat is an action, not a location: no active state.
     return (
-      <Link to={to} className={className}>
+      <Link to={to} className={actionClassName}>
         {inner}
       </Link>
     );
   }
   return (
-    <button type="button" className={className} disabled aria-disabled title="Arrives with M2">
+    <button
+      type="button"
+      className={actionClassName}
+      disabled
+      aria-disabled
+      title="Arrives with M2"
+    >
       {inner}
     </button>
   );

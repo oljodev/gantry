@@ -116,7 +116,7 @@ Used only to tell the frontend "re-fetch this": `chats:changed { chat_ids }`, `p
 
 ### Type generation
 
-`tauri-specta` collects every command and event type and writes `src/bindings.ts` (`commands.sendMessage(...)`, `events.chatsChanged.listen(...)`). `cargo xtask gen-bindings` regenerates it and CI fails on drift. `tauri-specta` 2 is still a release candidate (rc.25 as of May 2026); pin the exact version. The fallback, if it ever blocks an upgrade, is `ts-rs` for types plus thin hand-written `invoke` wrappers, which is why command signatures are kept simple (one request struct, one response struct).
+`tauri-specta` collects every command and event type and writes `src/bindings.ts` (`commands.sendMessage(...)`, `events.chatsChanged.listen(...)`). Debug starts export it; `cargo xtask gen-bindings` regenerates it on demand, and the app crate's `gen_bindings` test fails when the committed file differs, so a plain `cargo test --workspace` is the drift check in CI. `tauri-specta` 2 is still a release candidate (rc.25 as of May 2026); pin the exact version. The fallback, if it ever blocks an upgrade, is `ts-rs` for types plus thin hand-written `invoke` wrappers, which is why command signatures are kept simple (one request struct, one response struct).
 
 ## 5. Frontend architecture
 

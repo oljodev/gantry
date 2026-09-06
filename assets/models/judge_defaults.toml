@@ -1,0 +1,8 @@
+# Judge model per provider: the cheapest fast model of the provider the chat uses
+# (docs/plan/04 §6, D10). Also used for chat titles (M2). Filled in from M2/M8.
+#
+# [judge]
+# anthropic = "claude-haiku-4-5-20251001"
+# openai_responses = "..."
+# openai_chat = "..."
+# gemini = "..."

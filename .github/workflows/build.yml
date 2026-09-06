@@ -1,0 +1,83 @@
+name: Build
+
+# Unsigned builds. Ubuntu on every push to main; the macOS and Windows matrix is manual until the
+# repository is public and Actions minutes stop being billed (docs/plan/09 M0).
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      full-matrix:
+        description: Also build macOS (arm64, x86_64) and Windows
+        type: boolean
+        default: false
+
+concurrency:
+  group: build-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  matrix:
+    name: Matrix
+    runs-on: ubuntu-24.04
+    outputs:
+      include: ${{ steps.set.outputs.include }}
+    steps:
+      - id: set
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.full-matrix }}" = "true" ]; then
+            echo 'include=[{"os":"ubuntu-24.04","args":""},{"os":"macos-latest","args":"--target aarch64-apple-darwin"},{"os":"macos-latest","args":"--target x86_64-apple-darwin"},{"os":"windows-latest","args":""}]' >> "$GITHUB_OUTPUT"
+          else
+            echo 'include=[{"os":"ubuntu-24.04","args":""}]' >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    name: ${{ matrix.os }} ${{ matrix.args }}
+    needs: matrix
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.matrix.outputs.include) }}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Linux packages for Tauri
+        if: startsWith(matrix.os, 'ubuntu')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf xdg-utils
+
+      - name: Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.93.0
+          targets: ${{ startsWith(matrix.os, 'macos') && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile && pnpm fonts
+
+      - name: Build
+        id: tauri
+        uses: tauri-apps/tauri-action@v1
+        with:
+          args: ${{ matrix.args }}
+
+      - name: Upload bundles
+        uses: actions/upload-artifact@v4
+        with:
+          name: gantry-${{ matrix.os }}${{ matrix.args && format('-{0}', matrix.args) || '' }}
+          path: ${{ join(fromJSON(steps.tauri.outputs.artifactPaths), '
+') }}
+          if-no-files-found: error

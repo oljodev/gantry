@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oljo.dev/schemas/skill-frontmatter.schema.json",
+  "title": "Gantry skill frontmatter",
+  "description": "The YAML frontmatter of skills/<name>/SKILL.md: Agent Skills fields plus Gantry's under metadata (docs/plan/12-skills-and-memory.md §A2).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name", "description"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+      "minLength": 1,
+      "maxLength": 64,
+      "description": "Must equal the folder name."
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024,
+      "description": "What it does and when to use it; the primary matching signal."
+    },
+    "license": { "type": "string" },
+    "compatibility": { "type": "string", "maxLength": 500 },
+    "metadata": {
+      "type": "object",
+      "propertyNames": { "type": "string" },
+      "additionalProperties": { "type": "string" },
+      "properties": {
+        "gantry-triggers": {
+          "type": "string",
+          "description": "Comma-separated keywords and phrases that force a strong match."
+        },
+        "gantry-always": { "enum": ["true", "false"] },
+        "gantry-version": { "type": "string", "pattern": "^[0-9]+$" },
+        "author": { "type": "string" }
+      }
+    }
+  }
+}

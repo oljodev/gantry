@@ -1,0 +1,13 @@
+# Guardrails that hold in every mode, including unguarded Auto (docs/plan/04 §5). Filled in M7.
+#
+# [hard_deny]        # never runs; the user sees "Blocked by guardrail"
+# commands = ["rm -rf /", ...]
+#
+# [always_confirm]   # prompts even in Auto
+# commands = ["git push --force", ...]
+#
+# [sensitive_paths]  # never read or written without an explicit grant
+# globs = ["**/.env", "**/.ssh/**", ...]
+#
+# [secret_patterns]  # refused in memory proposals and redacted in logs
+# regex = ["sk-[A-Za-z0-9]{20,}", ...]

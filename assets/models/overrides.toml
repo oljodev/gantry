@@ -1,0 +1,12 @@
+# Model capabilities and pricing the provider APIs do not expose (docs/plan/02 §5).
+# One [[model]] table per entry, filled in from M4:
+#
+# [[model]]
+# provider = "anthropic"            # anthropic | openai_responses | openai_chat | gemini
+# id = "claude-opus-5"
+# context_window = 200000
+# max_output = 32000
+# thinking = true                   # supports extended / adaptive thinking
+# web_search = true                 # provider-side web search tool
+# input_price_per_mtok = 15.0       # USD
+# output_price_per_mtok = 75.0
