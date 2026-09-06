@@ -44,5 +44,6 @@ import LogoCloud from './LogoCloud.astro';
   .row { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: clamp(2rem, 6vw, 5rem); align-items: center; padding-block: clamp(2rem, 5vw, 3.5rem); border-top: 1px solid var(--color-line); }
   .row.is-flipped .copy { order: 2; }
   .copy { display: grid; gap: 1rem; justify-items: start; }
+  .figure, .copy { min-width: 0; }
   @media (max-width: 52rem) { .row { grid-template-columns: 1fr; } .row.is-flipped .copy { order: 0; } }
 </style>
