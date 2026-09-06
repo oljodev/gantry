@@ -1,0 +1,32 @@
+---
+import Logo from '@/components/Logo.astro';
+import { footerColumns } from '@/lib/nav';
+const year = new Date().getFullYear();
+---
+<footer class="site-footer hairline-top">
+  <div class="wrap grid">
+    <div class="brand">
+      <a href="/" aria-label="Gantry, home"><Logo /></a>
+      <p class="tagline">The AI workspace that stays on your machine. A chat client, a coding agent and connectors, with your own keys.</p>
+    </div>
+    {footerColumns.map((col) => (
+      <nav class="col" aria-label={col.title}>
+        <p class="eyebrow">{col.title}</p>
+        <ul>{col.links.map((l) => <li><a href={l.href} rel={l.external ? 'noopener' : undefined}>{l.label}{l.external && <span aria-hidden="true"> ↗</span>}</a></li>)}</ul>
+      </nav>
+    ))}
+    <p class="legal">© {year} Gantry. Source-available under the Functional Source License, FSL-1.1-ALv2. Product names and logos belong to their owners and indicate compatibility, not endorsement.</p>
+  </div>
+</footer>
+<style>
+  .site-footer { padding: 3.5rem 0 3rem; color: var(--color-fg-3); font-size: 0.92rem; }
+  .grid { display: grid; grid-template-columns: minmax(0, 1.6fr) repeat(3, minmax(0, 1fr)); gap: 2.5rem 2rem; }
+  .brand { display: grid; gap: 1rem; align-content: start; }
+  .tagline { max-width: 34ch; color: var(--color-fg-3); }
+  .col ul { list-style: none; margin: 0.9rem 0 0; padding: 0; display: grid; gap: 0.5rem; }
+  .col a { color: var(--color-fg-2); transition: color 150ms ease; }
+  .col a:hover { color: var(--color-fg); }
+  .legal { grid-column: 1 / -1; padding-top: 2rem; border-top: 1px solid var(--color-line); max-width: 78ch; font-size: 0.85rem; }
+  @media (max-width: 52rem) { .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .brand { grid-column: 1 / -1; } }
+  @media (max-width: 30rem) { .grid { grid-template-columns: 1fr; } }
+</style>

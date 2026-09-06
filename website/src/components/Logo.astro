@@ -1,0 +1,20 @@
+---
+/** The Gantry mark: a portal frame, two uprights and a beam, with the hoist below. Ours to draw. */
+interface Props { class?: string; size?: number; wordmark?: boolean }
+const { class: cls, size = 22, wordmark = true } = Astro.props;
+---
+<span class:list={['logo', cls]}>
+  <svg class="logo__mark" width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+    <g fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3 6.5h18"></path>
+      <path d="M5.5 6.5V21M18.5 6.5V21"></path>
+    </g>
+    <rect x="9.5" y="9" width="5" height="5" rx="1.2" fill="currentColor"></rect>
+  </svg>
+  {wordmark && <span class="logo__word">Gantry</span>}
+</span>
+<style>
+  .logo { display: inline-flex; align-items: center; gap: 0.5rem; font-weight: 600; letter-spacing: -0.01em; color: var(--color-fg); }
+  .logo__mark { color: var(--color-brand); flex: none; }
+  .logo__word { font-size: 1.1rem; line-height: 1; }
+</style>

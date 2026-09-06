@@ -1,0 +1,21 @@
+---
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import Hero from '@/components/home/Hero.astro';
+import Strip from '@/components/home/Strip.astro';
+import Capabilities from '@/components/home/Capabilities.astro';
+import Bento from '@/components/home/Bento.astro';
+import Principles from '@/components/home/Principles.astro';
+import OpenSource from '@/components/home/OpenSource.astro';
+import DownloadBand from '@/components/home/DownloadBand.astro';
+---
+<BaseLayout>
+  <Hero />
+  <Strip />
+  <Capabilities />
+  <Bento />
+  <Principles />
+  <OpenSource />
+  <DownloadBand />
+  <script src="../scripts/os.ts"></script>
+  <script src="../scripts/releases.ts"></script>
+</BaseLayout>

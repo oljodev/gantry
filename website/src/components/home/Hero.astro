@@ -1,0 +1,38 @@
+---
+import HeroDemo from '@/islands/hero/HeroDemo';
+import { REPO_URL } from '@/lib/seo';
+---
+<section class="hero" aria-labelledby="hero-title">
+  <div class="glow" aria-hidden="true"></div>
+  <div class="wrap copy">
+    <p class="eyebrow">Desktop AI workspace · macOS, Windows, Linux</p>
+    <h1 id="hero-title" class="display">The AI workspace that stays on your machine.</h1>
+    <p class="lede">A chat client, a coding agent and connectors to the tools you already use, in one desktop app. Bring your own API keys. Nothing leaves your computer except the requests you choose to make.</p>
+    <div class="ctas">
+      <a class="btn btn-primary btn-lg" href="/download/" data-dl-primary><span>Download <span data-os-name hidden></span></span></a>
+      <a class="btn btn-lg" href={REPO_URL} rel="noopener">View on GitHub</a>
+    </div>
+    <p class="note"><span data-release-version>Coming soon</span> · Free and source-available · No account</p>
+  </div>
+  <div class="wrap window">
+    <p class="visually-hidden">Illustration of a Gantry session: the user asks the agent to find out why the auth tests fail. The agent reads the test and the module, edits two files, runs the tests, and asks permission before opening a pull request on GitHub.</p>
+    <HeroDemo client:load />
+  </div>
+</section>
+<style>
+  .hero { position: relative; isolation: isolate; overflow: hidden; padding-top: clamp(4rem, 9vw, 7.5rem); }
+  .glow { position: absolute; inset: -20% -10% auto; height: 70vh; z-index: -1; background: radial-gradient(60% 55% at 50% 0%, rgb(255 122 31 / 0.16), transparent 70%); pointer-events: none; }
+  .copy { display: grid; justify-items: center; text-align: center; gap: 1.25rem; }
+  .copy .display { max-width: 24ch; }
+  .copy .lede { max-width: 56ch; margin-inline: auto; }
+  .ctas { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.75rem; margin-top: 0.5rem; }
+  .btn-lg { min-height: 3.1rem; padding-inline: 1.4rem; font-size: 1rem; }
+  .note { font-family: var(--font-mono); font-size: 0.78rem; color: var(--color-fg-3); }
+  .window { margin-top: clamp(2.5rem, 6vw, 4.5rem); max-height: clamp(240px, 40vw, 460px); overflow: hidden; -webkit-mask-image: linear-gradient(#000 70%, transparent); mask-image: linear-gradient(#000 70%, transparent); }
+  @media (prefers-reduced-motion: no-preference) and (min-width: 48rem) {
+    @supports (animation-timeline: scroll()) {
+      .window { animation: settle linear both; animation-timeline: scroll(root); animation-range: 0 600px; }
+      @keyframes settle { to { scale: 0.97; opacity: 0.85; } }
+    }
+  }
+</style>

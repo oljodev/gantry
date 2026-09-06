@@ -1,0 +1,23 @@
+---
+import DownloadButtons from '@/components/download/DownloadButtons.astro';
+---
+<section class="band" aria-labelledby="band-title">
+  <div class="wrap inner card" data-reveal>
+    <div>
+      <h2 id="band-title" class="title-sm">Get Gantry</h2>
+      <p class="prose-muted mt-2">Free. No account. Add a key and start.</p>
+    </div>
+    <div class="right">
+      <DownloadButtons />
+      <p class="line" data-release-line hidden></p>
+      <p class="line">Requirements, checksums and building from source on the <a class="link" href="/download/">download page</a>.</p>
+    </div>
+  </div>
+</section>
+<style>
+  .band { padding-block: 2rem clamp(4rem, 8vw, 6rem); }
+  .inner { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2rem; align-items: center; padding: 2rem 2.25rem; background: linear-gradient(135deg, rgb(255 122 31 / 0.08), transparent 55%), var(--color-surface); }
+  .right { display: grid; gap: 0.8rem; justify-items: start; }
+  .line { font-size: 0.85rem; color: var(--color-fg-3); }
+  @media (max-width: 52rem) { .inner { grid-template-columns: 1fr; } }
+</style>

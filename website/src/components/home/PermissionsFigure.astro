@@ -1,0 +1,44 @@
+---
+/** Four modes, one prompt. A line draws itself from the call to the prompt as the figure scrolls into view. */
+const modes = ['Manual', 'Auto-edit', 'Plan', 'Auto'];
+---
+<figure class="perm" aria-label="Permission modes and a permission prompt">
+  <div class="modes card" role="presentation">
+    {modes.map((m) => <span class:list={['mode', m === 'Auto-edit' && 'is-on']}>{m}</span>)}
+  </div>
+  <svg class="wire" viewBox="0 0 300 70" aria-hidden="true" preserveAspectRatio="none">
+    <path class="wire-bg" d="M40 0 V26 Q40 40 54 40 H246 Q260 40 260 54 V70" />
+    <path class="wire-fg" d="M40 0 V26 Q40 40 54 40 H246 Q260 40 260 54 V70" pathLength="1" />
+  </svg>
+  <div class="prompt card">
+    <p class="prompt-title"><span class="tool">github</span> wants to <code>create_pull_request</code></p>
+    <p class="prompt-detail">Fix token expiry comparison · api ← fix/token-expiry · write_external</p>
+    <div class="prompt-actions"><span class="pbtn is-primary">Allow once</span><span class="pbtn">Always for this chat</span><span class="pbtn">Deny</span></div>
+  </div>
+  <figcaption class="visually-hidden">Auto-edit mode lets reads and edits run; an external write such as opening a pull request produces a prompt with allow once, always and deny.</figcaption>
+</figure>
+<style>
+  .perm { display: grid; gap: 0; }
+  .modes { display: inline-grid; grid-template-columns: repeat(4, auto); gap: 0.25rem; padding: 0.3rem; width: fit-content; border-radius: var(--radius-pill); }
+  .mode { padding: 0.4rem 0.9rem; border-radius: var(--radius-pill); font-size: 0.85rem; font-weight: 500; color: var(--color-fg-3); }
+  .mode.is-on { background: var(--color-brand); color: var(--color-brand-ink); }
+  .wire { display: block; width: 100%; height: 70px; }
+  .wire path { fill: none; stroke-width: 1.5; }
+  .wire-bg { stroke: var(--color-line-2); }
+  .wire-fg { stroke: var(--color-brand); stroke-dasharray: 1; stroke-dashoffset: 0; }
+  @media (prefers-reduced-motion: no-preference) {
+    @supports (animation-timeline: view()) {
+      .wire-fg { stroke-dashoffset: 1; animation: draw linear both; animation-timeline: view(); animation-range: entry 30% cover 55%; }
+      @keyframes draw { to { stroke-dashoffset: 0; } }
+    }
+  }
+  .prompt { padding: 1rem 1.1rem 1.1rem; border-color: rgb(255 122 31 / 0.45); background: linear-gradient(180deg, rgb(255 122 31 / 0.07), rgb(255 122 31 / 0.02)), var(--color-surface); box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.05), 0 0 60px -20px rgb(255 122 31 / 0.5); max-width: 30rem; margin-left: auto; }
+  .prompt-title { color: var(--color-fg); }
+  .prompt-title code { font-size: 0.9em; }
+  .tool { font-family: var(--font-mono); color: var(--color-brand); font-size: 0.9em; }
+  .prompt-detail { margin-top: 0.4rem; font-family: var(--font-mono); font-size: 0.74rem; color: var(--color-fg-3); }
+  .prompt-actions { display: flex; flex-wrap: wrap; gap: 0.45rem; margin-top: 0.9rem; }
+  .pbtn { padding: 0.4rem 0.85rem; border-radius: var(--radius-pill); border: 1px solid var(--color-line-2); font-size: 0.82rem; font-weight: 500; color: var(--color-fg-2); }
+  .pbtn.is-primary { background: var(--color-brand); color: var(--color-brand-ink); border-color: transparent; font-weight: 600; }
+  @media (max-width: 40rem) { .modes { grid-template-columns: repeat(2, auto); } .mode { padding-inline: 0.7rem; } }
+</style>

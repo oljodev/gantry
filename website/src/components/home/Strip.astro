@@ -1,0 +1,24 @@
+---
+import Icon from '@/components/Icon.astro';
+const beats = [
+  { icon: 'laptop', title: 'Runs locally', text: 'One desktop app. Your chats live in a database file on your disk.' },
+  { icon: 'key', title: 'Your own keys', text: 'Add keys from Anthropic, OpenAI, Google, xAI or OpenRouter. Pay them, not us.' },
+  { icon: 'git-branch', title: 'Source-available', text: 'Read the code, build it yourself, file an issue. FSL, Apache 2.0 after two years.' },
+];
+---
+<section class="strip wrap" aria-label="In short">
+  {beats.map((b, i) => (
+    <div class="beat" data-reveal style={`--reveal-delay: ${i * 70}ms`}>
+      <span class="beat-icon"><Icon name={b.icon} size={18} /></span>
+      <div><p class="beat-title">{b.title}</p><p class="beat-text">{b.text}</p></div>
+    </div>
+  ))}
+</section>
+<style>
+  .strip { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; padding-block: 3rem; border-top: 1px solid var(--color-line); }
+  .beat { display: flex; gap: 0.9rem; align-items: flex-start; }
+  .beat-icon { display: inline-grid; place-items: center; width: 2.25rem; height: 2.25rem; flex: none; border-radius: 0.6rem; background: var(--color-surface); border: 1px solid var(--color-line); color: var(--color-brand); }
+  .beat-title { font-weight: 600; color: var(--color-fg); }
+  .beat-text { color: var(--color-fg-3); font-size: 0.95rem; max-width: 34ch; }
+  @media (max-width: 52rem) { .strip { grid-template-columns: 1fr; } }
+</style>

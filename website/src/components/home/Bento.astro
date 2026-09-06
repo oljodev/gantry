@@ -1,0 +1,99 @@
+---
+/** Five things Gantry is. Each cell carries a small figure in the app's own language, not a stock illustration. */
+import Icon from '@/components/Icon.astro';
+import { findSimpleIcon, legibleOnDark } from '@/lib/marks';
+
+const providers = [
+  { name: 'Anthropic', slug: 'anthropic' }, { name: 'OpenAI' }, { name: 'Google Gemini', slug: 'googlegemini' },
+  { name: 'xAI' }, { name: 'OpenRouter', slug: 'openrouter' }, { name: 'Ollama', slug: 'ollama' }, { name: 'Mistral', slug: 'mistralai' },
+].map((p) => { const i = p.slug ? findSimpleIcon(p.slug) : undefined; return { ...p, path: i?.path, color: i ? legibleOnDark(`#${i.hex}`) : undefined }; });
+---
+<section class="section" aria-labelledby="bento-title">
+  <div class="wrap">
+    <div class="head" data-reveal>
+      <p class="eyebrow">What Gantry is</p>
+      <h2 id="bento-title" class="title">One workspace, five things. <span class="dim">A chat client, a coding agent and connectors, kept together by projects and your own keys.</span></h2>
+    </div>
+    <ul class="bento">
+      <li class="cell card span-2" data-reveal>
+        <div class="cell-body">
+          <h3>Chat with any model</h3>
+          <p>Claude, GPT, Gemini and Grok, or anything on OpenRouter and Ollama, from one window. Switch per chat. Keys go to the provider, never through us.</p>
+        </div>
+        <ul class="providers" aria-label="Providers">
+          {providers.map((p) => (
+            <li>{p.path ? <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style={`color:${p.color}`} aria-hidden="true"><path d={p.path}></path></svg> : null}<span>{p.name}</span></li>
+          ))}
+        </ul>
+      </li>
+      <li class="cell card" data-reveal style="--reveal-delay: 60ms">
+        <div class="cell-body">
+          <h3>Projects</h3>
+          <p>Group chats with the folders, files and instructions they share. A project remembers its context so each chat starts informed.</p>
+        </div>
+        <div class="fig fig-project" aria-hidden="true">
+          <span class="fig-row is-h"><Icon name="folder-simple" size={14} /> kinetic-api</span>
+          <span class="fig-row"><Icon name="file-text" size={14} /> ARCHITECTURE.md</span>
+          <span class="fig-row"><Icon name="file-text" size={14} /> instructions.md</span>
+          <span class="fig-row"><Icon name="chat-circle" size={14} /> 12 chats</span>
+        </div>
+      </li>
+      <li class="cell card" data-reveal style="--reveal-delay: 120ms">
+        <div class="cell-body">
+          <h3>Artifacts</h3>
+          <p>Documents, code, diagrams and small interactive apps the model builds live beside the chat, versioned, and run in a sandbox that cannot reach your files.</p>
+        </div>
+        <div class="fig fig-artifact" aria-hidden="true">
+          <span class="tabs"><b>Preview</b><i>Code</i><i>v3</i></span>
+          <span class="bar" style="width: 72%"></span><span class="bar" style="width: 48%"></span><span class="bar" style="width: 60%"></span>
+        </div>
+      </li>
+      <li class="cell card span-2" data-reveal style="--reveal-delay: 60ms">
+        <div class="cell-body">
+          <h3>Skills and memory</h3>
+          <p>Reusable instructions and remembered facts, both plain text you can read and edit. The assistant proposes; you confirm. Nothing is remembered silently.</p>
+        </div>
+        <div class="fig fig-memory" aria-hidden="true">
+          <span class="chip"><Icon name="sparkle" size={12} /> Remember: you prefer pnpm</span>
+          <span class="chip-actions"><b>Save</b><i>Not now</i></span>
+        </div>
+      </li>
+      <li class="cell card span-2" data-reveal style="--reveal-delay: 120ms">
+        <div class="cell-body">
+          <h3>Every desktop</h3>
+          <p>One app for macOS, Windows and Linux, built with Rust and Tauri. Your data is a SQLite file next to your attachments; back it up, move it, delete it.</p>
+        </div>
+        <div class="fig fig-os" aria-hidden="true">
+          <span><Icon name="apple-logo" size={22} /> macOS</span><span><Icon name="windows-logo" size={22} /> Windows</span><span><Icon name="linux-logo" size={22} /> Linux</span>
+        </div>
+      </li>
+    </ul>
+  </div>
+</section>
+<style>
+  .head { max-width: 46rem; margin-bottom: clamp(2rem, 5vw, 3.5rem); }
+  .head .title { margin-top: 0.9rem; }
+  .bento { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.9rem; }
+  .cell { display: flex; flex-direction: column; justify-content: space-between; gap: 1.4rem; padding: 1.5rem 1.5rem 1.4rem; min-height: 15rem; }
+  .span-2 { grid-column: span 2; }
+  .cell h3 { font-size: 1.15rem; letter-spacing: -0.01em; }
+  .cell p { margin-top: 0.5rem; color: var(--color-fg-2); font-size: 0.97rem; max-width: 46ch; }
+  .providers { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.4rem; }
+  .providers li { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.3rem 0.65rem; border-radius: var(--radius-pill); border: 1px solid var(--color-line); background: var(--color-bg); font-size: 0.82rem; color: var(--color-fg-2); }
+  .fig { font-family: var(--font-mono); font-size: 0.78rem; color: var(--color-fg-2); }
+  .fig-project { display: grid; gap: 0.3rem; }
+  .fig-row { display: inline-flex; align-items: center; gap: 0.45rem; padding-left: 1rem; color: var(--color-fg-3); }
+  .fig-row.is-h { padding-left: 0; color: var(--color-fg); }
+  .fig-artifact { display: grid; gap: 0.45rem; padding: 0.7rem; border-radius: 0.6rem; background: var(--color-bg); border: 1px solid var(--color-line); }
+  .tabs { display: flex; gap: 0.7rem; font-size: 0.72rem; margin-bottom: 0.2rem; }
+  .tabs b { color: var(--color-fg); font-weight: 500; } .tabs i { font-style: normal; color: var(--color-fg-3); }
+  .bar { height: 6px; border-radius: 3px; background: var(--color-line-2); }
+  .fig-memory { display: grid; gap: 0.45rem; justify-items: start; }
+  .chip { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.4rem 0.7rem; border-radius: 0.6rem; border: 1px solid rgb(255 122 31 / 0.4); background: rgb(255 122 31 / 0.06); color: var(--color-fg); font-size: 0.78rem; }
+  .chip-actions { display: flex; gap: 0.6rem; font-size: 0.74rem; padding-left: 0.2rem; }
+  .chip-actions b { color: var(--color-brand); font-weight: 600; } .chip-actions i { font-style: normal; color: var(--color-fg-3); }
+  .fig-os { display: flex; flex-wrap: wrap; gap: 1.5rem; font-size: 0.95rem; font-family: var(--font-sans); color: var(--color-fg-2); }
+  .fig-os span { display: inline-flex; align-items: center; gap: 0.5rem; }
+  @media (max-width: 52rem) { .bento { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 34rem) { .bento { grid-template-columns: 1fr; } .span-2 { grid-column: auto; } .cell { min-height: 0; } }
+</style>

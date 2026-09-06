@@ -1,0 +1,11 @@
+---
+/** A Phosphor glyph inlined at build time. Icons come from the library, never hand-drawn. */
+import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+interface Props { name: string; size?: number; class?: string; weight?: 'thin' | 'light' | 'regular' | 'bold' | 'fill' | 'duotone' }
+const { name, size = 20, class: cls, weight = 'regular' } = Astro.props;
+const require = createRequire(import.meta.url);
+const file = readFileSync(require.resolve(`@phosphor-icons/core/assets/${weight}/${name}${weight === 'regular' ? '' : `-${weight}`}.svg`), 'utf8');
+const inner = file.replace(/^[\s\S]*?<svg[^>]*>/, '').replace(/<\/svg>\s*$/, '');
+---
+<svg class:list={['icon', cls]} width={size} height={size} viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" focusable="false" set:html={inner}></svg>

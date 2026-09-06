@@ -1,0 +1,43 @@
+---
+/** The activity feed, as it looks in the app: one row per tool call, results inline, one row waiting for a yes. */
+const rows = [
+  { tool: 'filesystem', action: 'read_file src/lib/auth.rs', meta: '212 lines' },
+  { tool: 'code-editor', action: 'str_replace src/lib/auth.rs', meta: '+6 −2', diff: true },
+  { tool: 'shell', action: 'cargo test --package api', meta: '31 passed' },
+  { tool: 'postgresql', action: 'query select count(*) from sessions', meta: '1 row' },
+  { tool: 'github', action: 'create_pull_request', meta: 'allow?', ask: true },
+];
+---
+<figure class="feed card" aria-label="The activity feed">
+  <div class="feed-head"><span>Activity</span><span class="feed-mode">Auto-edit</span></div>
+  <ol class="feed-rows">
+    {rows.map((r, i) => (
+      <li class:list={['row', r.ask && 'is-ask']} data-reveal style={`--reveal-delay: ${120 + i * 80}ms`}>
+        <span class="row-tool">{r.tool}</span>
+        <span class="row-action">{r.action}</span>
+        <span class:list={['row-meta', r.diff && 'is-diff']}>{r.meta}</span>
+      </li>
+    ))}
+  </ol>
+  <div class="feed-diff" aria-hidden="true">
+    <span class="del">- if token.expires_at &lt; now_ms {'{'}</span>
+    <span class="add">+ if token.expires_at * 1000 &lt; now_ms {'{'}</span>
+  </div>
+  <figcaption class="visually-hidden">An illustrative session: file read, a targeted edit shown as a diff, tests run, a database query, and a pull request waiting for permission.</figcaption>
+</figure>
+<style>
+  .feed { padding: 1rem 1.1rem 1.1rem; font-family: var(--font-mono); font-size: 0.78rem; }
+  .feed-head { display: flex; justify-content: space-between; font-size: 0.66rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-fg-3); padding-bottom: 0.7rem; border-bottom: 1px solid var(--color-line); }
+  .feed-mode { color: var(--color-brand); letter-spacing: 0.04em; }
+  .feed-rows { list-style: none; margin: 0.4rem 0 0; padding: 0; }
+  .row { display: grid; grid-template-columns: 6.2rem minmax(0, 1fr) auto; gap: 0.75rem; align-items: baseline; padding: 0.55rem 0.5rem; border-radius: 0.5rem; }
+  .row-tool { color: var(--color-fg-3); }
+  .row-action { color: var(--color-fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row-meta { color: var(--color-fg-3); white-space: nowrap; }
+  .row-meta.is-diff { color: var(--color-good); }
+  .row.is-ask { background: rgb(255 122 31 / 0.08); }
+  .row.is-ask .row-meta { color: var(--color-brand); font-weight: 500; }
+  .feed-diff { display: grid; gap: 0.15rem; margin-top: 0.8rem; padding: 0.7rem 0.8rem; border-radius: 0.6rem; background: var(--color-bg); border: 1px solid var(--color-line); font-size: 0.74rem; white-space: pre; overflow: hidden; }
+  .del { color: var(--color-bad); } .add { color: var(--color-good); }
+  @media (max-width: 30rem) { .row { grid-template-columns: 5rem minmax(0, 1fr) auto; gap: 0.5rem; } }
+</style>

@@ -1,0 +1,30 @@
+---
+/** The three OS buttons. Disabled (aria-disabled, "Coming soon") until the releases API reports stable assets;
+ *  then releases.ts points them at releases/latest/download/<asset>. Without JavaScript they stay disabled. */
+import Icon from '@/components/Icon.astro';
+interface Props { class?: string; size?: 'md' | 'lg' }
+const { class: cls, size = 'md' } = Astro.props;
+const builds = [
+  { os: 'mac', label: 'macOS', icon: 'apple-logo', file: '.dmg' },
+  { os: 'win', label: 'Windows', icon: 'windows-logo', file: '.exe' },
+  { os: 'linux', label: 'Linux', icon: 'linux-logo', file: '.AppImage' },
+] as const;
+---
+<div class:list={['dl-group', cls]} role="group" aria-label="Download Gantry">
+  {builds.map((b) => (
+    <a class:list={['btn dl', size === 'lg' && 'dl-lg']} data-dl={b.os} data-os-card={b.os} aria-disabled="true" href="/download/">
+      <Icon name={b.icon} size={18} />
+      <span>{b.label}</span>
+      <span class="dl-state" data-state>Coming soon</span>
+    </a>
+  ))}
+</div>
+<style>
+  .dl-group { display: flex; flex-wrap: wrap; gap: 0.6rem; }
+  .dl[aria-disabled="true"] { color: var(--color-fg-2); }
+  .dl[data-primary]:not([aria-disabled="true"]) { background: var(--color-brand); color: var(--color-brand-ink); border-color: transparent; }
+  .dl[data-primary]:not([aria-disabled="true"]) .dl-state { color: var(--color-brand-ink); border-color: rgb(26 10 0 / 0.3); }
+  .dl-state { font-family: var(--font-mono); font-size: 0.68rem; font-weight: 400; letter-spacing: 0.02em; color: var(--color-fg-3); padding-left: 0.6rem; border-left: 1px solid var(--color-line-2); }
+  .dl-lg { min-height: 3.1rem; padding-inline: 1.3rem; font-size: 1rem; }
+  @media (max-width: 30rem) { .dl-group { flex-direction: column; } .dl { justify-content: center; } }
+</style>

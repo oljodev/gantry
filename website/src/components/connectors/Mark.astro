@@ -1,0 +1,29 @@
+---
+/** A connector's mark: its Simple Icons glyph in a legible brand colour, Gantry's own glyph for first-party
+ *  connectors, or initials. Marks are decorative next to the name; pass `labelled` when the mark stands alone. */
+import { markFor, initials as initialsOf } from '@/lib/marks';
+import type { Connector } from '@/data/connectors';
+
+interface Props { connector: Pick<Connector, 'name' | 'slug' | 'icon' | 'firstParty'>; size?: number; class?: string; labelled?: boolean; mono?: boolean }
+const { connector, size = 22, class: cls, labelled = false, mono = false } = Astro.props;
+
+const GLYPHS: Record<string, string> = {
+  filesystem: 'M4 6.5A1.5 1.5 0 0 1 5.5 5h4.2l2 2h6.8A1.5 1.5 0 0 1 20 8.5V17a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z',
+  'code-editor': 'M9 8l-4 4 4 4M15 8l4 4-4 4M13 5l-2 14',
+  shell: 'M4 6.5A1.5 1.5 0 0 1 5.5 5h13A1.5 1.5 0 0 1 20 6.5v11a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5zM8 10l2.5 2.5L8 15M12.5 15H16',
+  web: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zm0 0c-2.5 2.5-3.5 5.5-3.5 9s1 6.5 3.5 9m0-18c2.5 2.5 3.5 5.5 3.5 9s-1 6.5-3.5 9M3.5 12h17',
+};
+const mark = connector.firstParty ? null : markFor(connector);
+const a11y: { role?: 'img'; 'aria-label'?: string; 'aria-hidden'?: 'true' } = labelled ? { role: 'img', 'aria-label': connector.name } : { 'aria-hidden': 'true' };
+---
+{connector.firstParty ? (
+  <svg class:list={['mark', cls]} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style={mono ? undefined : 'color: var(--color-brand)'} {...a11y} focusable="false"><path d={GLYPHS[connector.slug]}></path></svg>
+) : mark && mark.kind === 'icon' ? (
+  <svg class:list={['mark', cls]} width={size} height={size} viewBox="0 0 24 24" fill="currentColor" style={mono ? undefined : `color: ${mark.color}`} {...a11y} focusable="false"><path d={mark.path}></path></svg>
+) : (
+  <span class:list={['mark mark-initials', cls]} style={`--s: ${size}px`} {...a11y}>{mark?.kind === 'initials' ? mark.text : initialsOf(connector.name)}</span>
+)}
+<style>
+  .mark { display: inline-block; flex: none; }
+  .mark-initials { display: inline-grid; place-items: center; width: var(--s); height: var(--s); font-family: var(--font-sans); font-weight: 600; font-size: calc(var(--s) * 0.42); letter-spacing: 0.02em; color: var(--color-fg-2); }
+</style>

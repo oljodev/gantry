@@ -1,0 +1,48 @@
+---
+import FeedFigure from './FeedFigure.astro';
+import PermissionsFigure from './PermissionsFigure.astro';
+import LogoCloud from './LogoCloud.astro';
+---
+<section class="section caps" aria-labelledby="caps-title">
+  <div class="wrap">
+    <div class="head" data-reveal>
+      <p class="eyebrow">What agents can do</p>
+      <h2 id="caps-title" class="title">Watch it work. <span class="dim">Every action is a row in the feed, and every risky one waits for your yes.</span></h2>
+    </div>
+
+    <div class="row" data-reveal>
+      <div class="copy">
+        <h3 class="title-sm">Edits files, runs commands, shows everything</h3>
+        <p class="prose-muted">The agent works inside the folders you attach: targeted edits arrive as diffs you can revert, commands stream their output, and each tool call sits in the activity feed with its input and its result. Nothing happens off screen.</p>
+        <a class="arrow-link" href="/product/#agent">See the agent</a>
+      </div>
+      <div class="figure"><FeedFigure /></div>
+    </div>
+
+    <div class="row is-flipped" data-reveal>
+      <div class="copy">
+        <h3 class="title-sm">Asks first, on your terms</h3>
+        <p class="prose-muted">Four permission modes per chat, from approve-everything to hands-off with a guard model reviewing each risky call. Reads run freely; writes outside your folders, commands and anything destructive follow the mode you chose.</p>
+        <a class="arrow-link" href="/product/#permissions">How permissions work</a>
+      </div>
+      <div class="figure"><PermissionsFigure /></div>
+    </div>
+
+    <div class="row" data-reveal>
+      <div class="copy">
+        <h3 class="title-sm">Connects to the tools you already use</h3>
+        <p class="prose-muted">Built-in connectors for files, editor, shell and web, and MCP servers for GitHub, Notion, Postgres, Slack and more. The same permission model applies to all of them, and nothing installs itself.</p>
+        <a class="arrow-link" href="/connectors/">Browse the connectors</a>
+      </div>
+      <div class="figure"><LogoCloud /></div>
+    </div>
+  </div>
+</section>
+<style>
+  .head { max-width: 46rem; margin-bottom: clamp(2.5rem, 6vw, 4.5rem); }
+  .head .title { margin-top: 0.9rem; }
+  .row { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: clamp(2rem, 6vw, 5rem); align-items: center; padding-block: clamp(2rem, 5vw, 3.5rem); border-top: 1px solid var(--color-line); }
+  .row.is-flipped .copy { order: 2; }
+  .copy { display: grid; gap: 1rem; justify-items: start; }
+  @media (max-width: 52rem) { .row { grid-template-columns: 1fr; } .row.is-flipped .copy { order: 0; } }
+</style>

@@ -1,0 +1,122 @@
+---
+import Logo from '@/components/Logo.astro';
+import { productMenu, resourcesMenu } from '@/lib/nav';
+import { REPO_URL } from '@/lib/seo';
+
+const path = Astro.url.pathname;
+const current = (href: string) => (href !== '/' && path.startsWith(href) ? 'page' : undefined);
+const menus = [
+  { id: 'product', label: 'Product', links: productMenu },
+  { id: 'resources', label: 'Resources', links: resourcesMenu },
+];
+---
+<header class="site-nav">
+  <div class="pill" data-nav>
+    <a class="brand" href="/" aria-label="Gantry, home"><Logo /></a>
+
+    <nav class="links" aria-label="Primary">
+      <ul>
+        {menus.map((m) => (
+          <li class="has-menu">
+            <details class="menu" name="primary-nav" data-menu>
+              <summary aria-haspopup="true">{m.label}<span class="chev" aria-hidden="true"></span></summary>
+              <div class="panel" role="presentation">
+                <ul>
+                  {m.links.map((l) => (
+                    <li>
+                      <a href={l.href} aria-current={current(l.href)} rel={l.external ? 'noopener' : undefined}>
+                        <span class="panel__label">{l.label}{l.external && <span class="ext" aria-hidden="true">↗</span>}</span>
+                        {l.hint && <span class="panel__hint">{l.hint}</span>}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </details>
+          </li>
+        ))}
+        <li><a href="/connectors/" aria-current={current('/connectors/')}>Connectors</a></li>
+        <li><a href="/download/" aria-current={current('/download/')}>Download</a></li>
+      </ul>
+    </nav>
+
+    <div class="actions">
+      <a class="gh" href={REPO_URL} rel="noopener">
+        <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
+        <span>GitHub</span><span class="stars" data-stars hidden></span>
+      </a>
+      <a class="btn btn-primary btn-sm cta" href="/download/">Download</a>
+      <details class="sheet" data-sheet>
+        <summary aria-label="Menu"><span class="burger" aria-hidden="true"></span></summary>
+        <div class="sheet__panel">
+          {menus.map((m) => (
+            <div class="sheet__group">
+              <p class="eyebrow">{m.label}</p>
+              <ul>{m.links.map((l) => <li><a href={l.href} aria-current={current(l.href)}>{l.label}</a></li>)}</ul>
+            </div>
+          ))}
+          <div class="sheet__group">
+            <p class="eyebrow">Go</p>
+            <ul>
+              <li><a href="/connectors/">Connectors</a></li>
+              <li><a href="/download/">Download</a></li>
+              <li><a href={REPO_URL} rel="noopener">GitHub ↗</a></li>
+            </ul>
+          </div>
+        </div>
+      </details>
+    </div>
+  </div>
+</header>
+
+<style>
+  .site-nav { position: sticky; top: 0.75rem; z-index: 50; padding-inline: 0.75rem; pointer-events: none; }
+  .pill { pointer-events: auto; width: min(72rem, 100%); margin-inline: auto; display: flex; align-items: center; gap: 1rem; min-height: 3.5rem; padding: 0.4rem 0.6rem 0.4rem 1rem; border-radius: var(--radius-pill); background: rgb(10 10 10 / 0.7); border: 1px solid rgb(255 255 255 / 0.08); backdrop-filter: blur(14px) saturate(1.4); -webkit-backdrop-filter: blur(14px) saturate(1.4); box-shadow: 0 10px 40px -20px rgb(0 0 0 / 0.8), inset 0 1px 0 rgb(255 255 255 / 0.04); }
+  .brand { display: inline-flex; margin-right: 0.5rem; }
+  .links { flex: 1; }
+  .links > ul { display: flex; align-items: center; gap: 0.25rem; margin: 0; padding: 0; list-style: none; }
+  .links > ul > li > a, .menu > summary { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.45rem 0.75rem; border-radius: var(--radius-pill); font-size: 0.92rem; font-weight: 500; color: var(--color-fg-2); cursor: pointer; list-style: none; transition: color 150ms ease, background-color 150ms ease; }
+  .menu > summary::-webkit-details-marker { display: none; }
+  .links > ul > li > a:hover, .menu > summary:hover, .menu[open] > summary { color: var(--color-fg); background: rgb(255 255 255 / 0.06); }
+  .links a[aria-current="page"] { color: var(--color-fg); }
+  .chev { width: 0.45rem; height: 0.45rem; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; rotate: 45deg; translate: 0 -2px; opacity: 0.7; transition: rotate 150ms ease; }
+  .menu[open] .chev { rotate: 225deg; translate: 0 2px; }
+  .has-menu { position: relative; }
+  .panel { position: absolute; top: calc(100% + 0.6rem); left: 0; min-width: 19rem; padding: 0.5rem; border-radius: 1rem; background: rgb(17 17 19 / 0.96); border: 1px solid var(--color-line-2); box-shadow: 0 30px 60px -20px rgb(0 0 0 / 0.9), inset 0 1px 0 rgb(255 255 255 / 0.05); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); }
+  .panel ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.1rem; }
+  .panel a { display: grid; gap: 0.1rem; padding: 0.55rem 0.7rem; border-radius: 0.65rem; transition: background-color 120ms ease; }
+  .panel a:hover { background: rgb(255 255 255 / 0.06); }
+  .panel__label { font-weight: 500; color: var(--color-fg); font-size: 0.93rem; }
+  .panel__hint { color: var(--color-fg-3); font-size: 0.8rem; }
+  .ext { margin-left: 0.3rem; color: var(--color-fg-3); }
+  @media (prefers-reduced-motion: no-preference) {
+    .menu[open] .panel { animation: panel-in 180ms var(--ease-out-soft); }
+    @keyframes panel-in { from { opacity: 0; translate: 0 -6px; } }
+  }
+  .actions { display: flex; align-items: center; gap: 0.5rem; margin-left: auto; }
+  .gh { display: inline-flex; align-items: center; gap: 0.45rem; padding: 0.4rem 0.8rem; border-radius: var(--radius-pill); border: 1px solid var(--color-line-2); font-size: 0.85rem; font-weight: 500; color: var(--color-fg-2); transition: color 150ms ease, border-color 150ms ease; }
+  .gh:hover { color: var(--color-fg); border-color: #3f3f46; }
+  .stars { font-family: var(--font-mono); font-size: 0.75rem; color: var(--color-fg-3); padding-left: 0.45rem; border-left: 1px solid var(--color-line-2); }
+  .stars[hidden] { display: none; }
+  .sheet { display: none; }
+  .burger { display: block; width: 18px; height: 2px; background: currentColor; position: relative; border-radius: 2px; }
+  .burger::before, .burger::after { content: ''; position: absolute; left: 0; width: 18px; height: 2px; background: currentColor; border-radius: 2px; transition: translate 150ms ease, rotate 150ms ease; }
+  .burger::before { translate: 0 -6px; }
+  .burger::after { translate: 0 6px; }
+  .sheet[open] .burger { background: transparent; }
+  .sheet[open] .burger::before { translate: 0 0; rotate: 45deg; }
+  .sheet[open] .burger::after { translate: 0 0; rotate: -45deg; }
+  @media (max-width: 52rem) {
+    .links, .gh span:not(.stars) { display: none; }
+    .gh { display: none; }
+    .sheet { display: block; }
+    .sheet > summary { display: inline-grid; place-items: center; width: 2.5rem; height: 2.5rem; border-radius: var(--radius-pill); color: var(--color-fg); cursor: pointer; list-style: none; border: 1px solid var(--color-line-2); }
+    .sheet > summary::-webkit-details-marker { display: none; }
+    .sheet__panel { position: absolute; left: 0; right: 0; top: calc(100% + 0.6rem); max-height: calc(100dvh - 6rem); overflow: auto; padding: 1rem 1.25rem 1.25rem; border-radius: 1.25rem; background: rgb(17 17 19 / 0.98); border: 1px solid var(--color-line-2); box-shadow: 0 30px 60px -20px rgb(0 0 0 / 0.9); display: grid; gap: 1.1rem; }
+    .sheet__group ul { list-style: none; margin: 0.35rem 0 0; padding: 0; display: grid; }
+    .sheet__group a { display: block; padding: 0.55rem 0; font-size: 1.05rem; font-weight: 500; color: var(--color-fg); border-bottom: 1px solid var(--color-line); }
+    .sheet__group a[aria-current="page"] { color: var(--color-brand); }
+    .pill { position: relative; }
+  }
+  @media (max-width: 26rem) { .cta { display: none; } }
+</style>

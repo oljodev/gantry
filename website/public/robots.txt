@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://oljo.dev/sitemap-index.xml
