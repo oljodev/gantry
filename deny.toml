@@ -12,6 +12,10 @@ targets = [
 [advisories]
 version = 2
 yanked = "deny"
+# Tauri's Linux stack sits on the gtk-rs GTK3 bindings, which RustSec lists as unmaintained
+# (RUSTSEC-2024-0411…0420), alongside a few proc-macro helpers. Only Gantry's own direct
+# dependencies are held to the unmaintained rule; vulnerabilities are still checked everywhere.
+unmaintained = "workspace"
 ignore = []
 
 [licenses]
