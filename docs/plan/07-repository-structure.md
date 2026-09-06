@@ -177,7 +177,9 @@ gantry/
 │   ├── generated/artifact-runtime.html   # output of the artifact-runtime build, imported as a raw string
 │   ├── app/
 │   │   ├── router.tsx  providers.tsx  shortcuts.ts  theme.ts   # theme.ts: data-theme stamping + window.setTheme (11 §3)
-│   │   └── layout/{AppShell.tsx, Sidebar.tsx, Titlebar.tsx}
+│   │   └── layout/{AppShell.tsx, Sidebar.tsx, TitleStrip.tsx, WindowControls.tsx, RightPane.tsx}   # 15 §7
+│   ├── fixtures/                         # fixture data for the gallery and mock screens (15 §11)
+│   ├── assets/fonts/                     # Inter Variable, JetBrains Mono Variable (woff2) + licences
 │   ├── lib/
 │   │   ├── ipc/{client.ts, keys.ts, hooks/…, events.ts}
 │   │   ├── stores/{runStore.ts, uiStore.ts}
@@ -201,9 +203,12 @@ gantry/
 │   │   │               InstanceSettings.tsx, UserConfigForm.tsx, AuthStatus.tsx, customPanels.ts}   # customPanels: import.meta.glob of connectors/*/ui
 │   │   ├── settings/{SettingsPage.tsx, General.tsx, Appearance.tsx, Providers.tsx, Guard.tsx, Guardrails.tsx, Connectors.tsx,
 │   │   │             Skills.tsx, Memory.tsx, Data.tsx, Advanced.tsx, About.tsx}
-│   │   └── search/{SearchPalette.tsx}
-│   ├── components/ui/                    # shadcn/ui (Base UI) components
-│   └── styles/{globals.css, tokens.css}
+│   │   ├── palette/{CommandPalette.tsx, actions.ts}
+│   │   ├── onboarding/{Onboarding.tsx, Welcome.tsx}
+│   │   └── gallery/{GalleryPage.tsx, entries/…}   # development builds only (15 §11)
+│   ├── components/ui/                    # shadcn/ui (Base UI) primitives, reshaped to the tokens (15 §8)
+│   ├── components/gantry/                # composites: ActivityRow, InteractionCard, SettingsRow, EmptyState… (15 §8)
+│   └── styles/{globals.css, tokens.css}  # tokens.css is the only place a colour, size or duration is written (15)
 │
 ├── src-tauri/                            # package gantry-app
 │   ├── Cargo.toml
@@ -240,6 +245,8 @@ gantry/
 | A new artifact type | a renderer in `src/features/artifacts/renderers/` and an entry in both registries (`gantry-agent/src/artifacts/registry.rs`, `src/features/artifacts/registry.ts`) | if executable, a mount in `artifact-runtime/src/`; a line in `assets/prompts/core.md` |
 | A library artifacts may import | `artifact-runtime/src/react/modules.ts` | the allowlist line in `assets/prompts/core.md` and `skills/artifact-authoring/references/react-runtime.md` |
 | A runtime tool (`gantry__…`) | `crates/gantry-agent/src/runtime_tools/` | tier `app`; its card in `src/features/interactions/` if it needs a decision |
+| A colour, size, radius or duration in the app | `src/styles/tokens.css` and the table in 15 §3–§6, §10, in the same commit | the contrast script must still pass |
+| A new UI component | a primitive in `src/components/ui/` or a composite in `src/components/gantry/` | its gallery entry under `src/features/gallery/entries/` |
 | A settings key | `gantry-core/src/settings.rs` with a default | its section component under `src/features/settings/` |
 | A new model provider client | `crates/gantry-providers/src/<name>/` | a row in the normalization table in 02 and fixtures under `tests/fixtures/<name>/` |
 | A new IPC command | `src-tauri/src/commands/<area>.rs` | run `cargo xtask gen-bindings`; add a hook in `src/lib/ipc/hooks/` |

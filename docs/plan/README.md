@@ -1,6 +1,6 @@
 # Gantry — architecture plan
 
-**Status:** draft v3, 2026-09-05. Session 1 produced documents 01–09; session 2 added 10–14 and folded them into the roadmap; session 3 designed and built the marketing site (14, `website/`). This is the planning baseline for the from-scratch rebuild. It is a plan, not a spec frozen in stone: when implementation contradicts it, update the plan in the same commit.
+**Status:** draft v3, 2026-09-05. Session 1 produced documents 01–09; session 2 added 10–14 and folded them into the roadmap; session 3 designed and built the marketing site (14, `website/`); session 5 decided the application design system (15). This is the planning baseline for the from-scratch rebuild. It is a plan, not a spec frozen in stone: when implementation contradicts it, update the plan in the same commit.
 
 Gantry is a cross-platform desktop app (macOS, Windows, Linux) that combines a general AI chat client, a coding-agent environment, research tooling and an extensible connector (MCP) system in one Tauri/Rust/React application. Bring-your-own-key only. Local storage only in v1.
 
@@ -24,6 +24,7 @@ Read in order the first time. Each document is self-contained enough to be used 
 | 12 | [Skills and memory](12-skills-and-memory.md) | Text-only skills (format, matching, the four flows) and the visible, user-confirmed memory store |
 | 13 | [Artifacts](13-artifacts.md) | Tool-call-based artifacts, the v1 types, the sandbox and its bridge, the React runtime, versioning, projects |
 | 14 | [Marketing website](14-marketing-site.md) | The Astro site in `website/`: the design system, the sitemap (home, product tour, connectors and one page per connector, pricing, download, about, blog, changelog, docs, trust pages), the motion approach, the `oljo.dev` / `id.oljo.dev` split and release-linked download buttons |
+| 15 | [Application design system](15-app-design.md) | The desktop app's design table: the Linear-chrome / Claude-conversation read, both palettes, type scale, spacing and shape, elevation, the window layout, the component inventory, states, motion, the gallery route and the lint and contrast enforcement |
 
 ## Decision register
 
@@ -51,6 +52,8 @@ Decisions the rest of the plan depends on. Each is justified where it is used.
 | D18 | Catalog distribution | The curated connector catalog ships statically with each release; a signed remote overlay is designed but deferred. |
 | D19 | Public sites | Marketing site in `website/` at `oljo.dev`: an Astro 7 static site (Tailwind 4, one React island for the hero mock, Starlight for docs) with a company-style sitemap; MCP client metadata in `client-metadata/` at `id.oljo.dev`; two Cloudflare Pages projects; download buttons use stable asset names and `releases/latest/download/` URLs, enabled through the GitHub releases API. |
 | D20 | Site visual system | Dark only, Linear/Vercel style: neutral zinc ground, Gantry orange `#ff7a1f` as the one accent, Geist and Geist Mono self-hosted, a floating pill navbar with menus, reveals plus a few scroll-linked figures, a Ramp-style connector logo cloud, connector marks from Simple Icons in their own colours (initials where none exists). Tokens live once in `website/src/styles/theme.css`. 14 §2, §4. |
+| D21 | App design read | Linear chrome, Claude conversation: 13 px chrome at Linear density, a 15 px reading column; theme follows the OS, dark drafted first, light finished from the same table before M1; Gantry orange rationed to primary, focus, running and decisions; Inter and JetBrains Mono bundled; Phosphor icons; radius 4/6/8/12, hairlines, shadows only on floating layers; 120–200 ms functional motion; tokens in `src/styles/tokens.css`, enforced by a lint rule and a contrast script. 15 §1–§6, §10, §11. |
+| D22 | App shell | Overlay title bar on all three OSes with traffic lights inset in the sidebar; one labelled sidebar (240 px, hidden with `Cmd/Ctrl+B`); activity inline per turn behind a summary line; one resizable right pane holding artifacts and detail tabs; a floating composer card with the mode chip and model picker inside; tinted user block and plain assistant text; full-page settings with a section list; a global `Cmd/Ctrl+K` palette; three-step onboarding; dev-only `/dev/gallery`. New milestone M0b before M1. 15 §2, §7–§9, §15. |
 
 ## Vocabulary
 

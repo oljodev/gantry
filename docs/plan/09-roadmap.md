@@ -1,10 +1,11 @@
 # 09 — Phased build roadmap
 
-Ordering principle: something visible in the first week, one risky subsystem retired per milestone, and every milestone ends in a build that a person can use for something. Effort ranges assume one developer working roughly full time; the total is 22–30 weeks to a complete MVP (session 1 estimated 18–24 for documents 01–09; artifacts, skills, memory and the settings work add the rest). Where a milestone can be trimmed without breaking the next one, it says so.
+Ordering principle: something visible in the first week, one risky subsystem retired per milestone, and every milestone ends in a build that a person can use for something. Effort ranges assume one developer working roughly full time; the total is 23–31 weeks to a complete MVP (session 1 estimated 18–24 for documents 01–09; artifacts, skills, memory and the settings work add the rest). Where a milestone can be trimmed without breaking the next one, it says so.
 
 | # | Milestone | Weeks | You can, at the end |
 |---|-----------|-------|---------------------|
 | M0 | Skeleton | 1 | open the app on all three OSes, in light and dark, and see the shell |
+| M0b | Design system and mock screens | 1 | see the finished chat, connectors and settings screens on fixture data, in both themes, before any of it is wired |
 | M1 | First conversation | 1–2 | chat with Claude, streaming, with your own key |
 | M2 | Persistence, sidebar, settings | 1–2 | keep many chats, search them, survive restarts, set your defaults and instructions |
 | M3 | Tool loop and Manual mode | 1 | watch the model call a tool and approve it |
@@ -32,6 +33,19 @@ Ordering principle: something visible in the first week, one risky subsystem ret
 
 Done when: the app opens on all three OSes from CI artifacts, in both themes, and the typed command round-trips.
 
+## M0b — Design system and mock screens (1 week)
+
+Layers 2 and 3 of the design document (15), built before a single backend call is wired so that M1 fills an approved screen instead of designing under pressure.
+
+- Tokens (15 §3–§6, §10) in `src/styles/tokens.css` and the Tailwind theme, with the Tailwind palette disabled; Inter and JetBrains Mono bundled; the contrast script and the ESLint rule against raw values.
+- The reshape pass over the shadcn primitives (15 §8): tokens only, the three control sizes, Phosphor in place of Lucide, one focus ring, default shadows and rings removed.
+- The composites (15 §8) and `/dev/gallery` showing every one in every state, both themes, both densities, on `src/fixtures/`.
+- The title strip and window controls on all three OSes; the sidebar with collapse and resize; the right pane; the settings frame; the palette shell.
+- The three mock screens on fixtures: a chat with a full coding turn and a pending permission card, connector browse, Settings → Providers. Onboarding and the empty-chat welcome.
+- The app icon (15 §13) generated into `src-tauri/icons/`.
+
+Done when: the gallery and the three screens pass a screenshot review in both themes and densities on WebKitGTK and on the macOS and Windows CI builds, and the light theme passes the contrast script.
+
 ## M1 — First conversation (1–2 weeks)
 
 - `gantry-core`: ids, `Message`/`ContentPart`, `StreamEvent`, `AgentEvent`, `Settings` with defaults, errors.
@@ -40,7 +54,7 @@ Done when: the app opens on all three OSes from CI artifacts, in both themes, an
 - **System prompt v1** (10): `assets/prompts/core.md` and the mode fragments; `SystemPromptBuilder` assembling the layers in order (layers 4–7 empty for now); the prompt fixture test.
 - Settings infrastructure (`get_settings`/`update_settings`, `settings:changed`) and the **Providers** page: enter an Anthropic key (write-only), test it, list models.
 - `gantry-agent`: a minimal `TurnRunner` (no tools), `EventSink` + `Batcher`; `send_message` with a channel; cancel.
-- Frontend: run store, rAF drain, `ChatView` with streaming markdown (block memoization, shiki), `Composer` with model picker and Stop. Chats are in memory only.
+- Frontend: run store, rAF drain, streaming markdown (block memoization, shiki) and Stop wired into the M0b `ChatView` and `Composer`; no new visual design in this milestone. Chats are in memory only.
 
 Done when: streaming feels instant, cancel works mid-stream, and the key never appears in logs or the frontend.
 
@@ -52,7 +66,7 @@ Done when: streaming feels instant, cancel works mid-stream, and the key never a
 - Settings pages **General** (default mode and guard, global custom instructions), **Appearance**, **Data & privacy** (data dir, export a chat) and **Advanced** (developer mode: show the assembled system prompt).
 - Title generation with the same provider's cheapest model (first use of `judge_defaults.toml`).
 - Attachments: text files and images as message parts; drag-and-drop and paste.
-- Search palette over `messages_fts` + `chats_fts`.
+- The command palette (15 A15) gains real search over `messages_fts` + `chats_fts` alongside its actions.
 - `subscribe_turn` and `turn.snapshot` so switching chats mid-stream works.
 
 Done when: you can close the app during a stream and reopen to a consistent chat marked "interrupted", with your instructions and theme intact.
@@ -167,7 +181,7 @@ Done when: a skill written in the editor is injected for a matching message and 
 - The automated sandbox conformance test for artifacts (13 §5).
 - Performance pass on WebKitGTK and WebView2: batching thresholds, virtualization, markdown memoization, long outputs, artifact mount time.
 - Crash recovery and cancellation tests across all connectors; the blob sweeper; database backup before migration.
-- Packaging: macOS signing and notarization, Windows signing (NSIS), Linux AppImage/deb/rpm, `tauri-plugin-updater` with a static release feed; the stable-named release assets and `releases.json` step (14 §3); `THIRD_PARTY_LICENSES.md`; onboarding screen (add a key, choose a theme, add a folder and install the local connectors, pick a mode).
+- Packaging: macOS signing and notarization, Windows signing (NSIS), Linux AppImage/deb/rpm, `tauri-plugin-updater` with a static release feed; the stable-named release assets and `releases.json` step (14 §3); `THIRD_PARTY_LICENSES.md`; the M0b onboarding wired to real settings (add a key, choose a theme, add a folder and install the local connectors).
 - Documentation: `docs/dev/` setup per OS, the release checklist including the website items, and a first pass at user docs. Repository made public (08, 14 §3).
 
 Done when: v0.1.0 builds from `release.yml`, installs cleanly on all three OSes, the website's download buttons resolve to it, and the whole MVP scope of both briefs is exercised by the conformance checklists.
