@@ -1,0 +1,20 @@
+{
+  "client_id": "https://id.oljo.dev/client-metadata.json",
+  "client_name": "Gantry",
+  "client_uri": "https://oljo.dev",
+  "redirect_uris": [
+    "http://127.0.0.1:17321/callback",
+    "http://localhost:17321/callback",
+    "http://127.0.0.1:17322/callback",
+    "http://localhost:17322/callback",
+    "http://127.0.0.1:17323/callback",
+    "http://localhost:17323/callback",
+    "http://127.0.0.1:17324/callback",
+    "http://localhost:17324/callback",
+    "http://127.0.0.1:17325/callback",
+    "http://localhost:17325/callback"
+  ],
+  "grant_types": ["authorization_code"],
+  "response_types": ["code"],
+  "token_endpoint_auth_method": "none"
+}
