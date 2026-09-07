@@ -4,7 +4,7 @@
 
 | Term | Meaning | Where it lives |
 |------|---------|----------------|
-| **Connector** (catalog entry) | Something Gantry knows how to install and describe: a manifest plus, for native connectors, Rust code | `connectors/<id>/`, embedded into the binary at build time |
+| **Connector** (catalog entry) | Something Gantry knows how to install and describe: a manifest plus, for native connectors, Rust code | `desktop/connectors/<id>/`, embedded into the binary at build time |
 | **Instance** | An installed, configured connector. Nothing is installed without an explicit **Install** action, first-party connectors included (§11); first-party native connectors are singletons; some connectors allow several instances (two GitHub accounts) via `multi_instance: true` | `connector_instances` table |
 | **Tool** | One callable capability with a JSON-schema input, a risk tier and flags | From the manifest (native) or discovered at runtime (MCP) |
 | **Attachment** | Which instances offer their tools in a given chat | `chat_connectors` table |
@@ -12,13 +12,13 @@
 
 A user-added custom MCP server is an instance without a catalog entry (`catalog_id = NULL`). Everything downstream (attachment, permissions, activity feed) treats catalog-backed and custom instances identically.
 
-## 2. The `connectors/` folder contract
+## 2. The `desktop/connectors/` folder contract
 
 Every connector, first-party or bundled third-party, is one folder:
 
 ```
-connectors/<id>/
-  manifest.json      required   catalog entry; validated against schemas/connector-manifest.schema.json
+desktop/connectors/<id>/
+  manifest.json      required   catalog entry; validated against desktop/schemas/connector-manifest.schema.json
   icon.svg           required   24-px grid, currentColor-friendly
   README.md          required   what it does, setup steps, risk notes; rendered on the detail page
   Cargo.toml         native     crate `gantry-connector-<id>` implementing `Connector`
@@ -30,8 +30,8 @@ connectors/<id>/
 
 How the folder is consumed:
 
-- **Rust.** `crates/gantry-connectors/build.rs` walks `../../connectors/*/manifest.json`, validates each against the JSON schema, and generates `catalog.rs` with all manifests embedded as a static string. At startup this becomes the `Catalog`. Native connector crates are explicit dependencies of `gantry-connectors` and are registered in `native/registry.rs`; the build fails if a manifest says `native` and no factory is registered for its id, and vice versa. `cargo xtask validate-connectors` runs the same checks plus icon/README presence and is part of CI.
-- **Frontend.** Vite picks up custom panels with `import.meta.glob('/connectors/*/ui/index.tsx')` (lazy chunks keyed by id) and icons with `import.meta.glob('/connectors/*/icon.svg', { query: '?url' })`; `server.fs.allow` includes `connectors/`. Manifests themselves are fetched from the backend (`list_catalog`), so custom servers and runtime state show up in the same list.
+- **Rust.** `desktop/crates/gantry-connectors/build.rs` walks `../../connectors/*/manifest.json`, validates each against the JSON schema, and generates `catalog.rs` with all manifests embedded as a static string. At startup this becomes the `Catalog`. Native connector crates are explicit dependencies of `gantry-connectors` and are registered in `native/registry.rs`; the build fails if a manifest says `native` and no factory is registered for its id, and vice versa. `cargo xtask validate-connectors` runs the same checks plus icon/README presence and is part of CI.
+- **Frontend.** Vite picks up custom panels with `import.meta.glob('../../connectors/*/ui/index.tsx')` (lazy chunks keyed by id) and icons with `import.meta.glob('../../connectors/*/icon.svg', { query: '?url' })`; `server.fs.allow` includes `desktop/connectors/`. Manifests themselves are fetched from the backend (`list_catalog`), so custom servers and runtime state show up in the same list.
 - **Custom panels** receive `{ instance, manifest, api }`, where `api` wraps the connector commands (`updateSettings`, `test`, `startOAuth`, `listTools`). They cannot reach secrets.
 
 The Cargo workspace lists native connector crates explicitly (glob members would trip over manifest-only folders).
@@ -95,7 +95,7 @@ Auth shapes:
   "instructions": "markdown shown in the connect dialog" }
 ```
 
-### Example: `connectors/filesystem/manifest.json` (first-party, native)
+### Example: `desktop/connectors/filesystem/manifest.json` (first-party, native)
 
 ```json
 {
@@ -149,7 +149,7 @@ Auth shapes:
 }
 ```
 
-### Example: `connectors/google-drive/manifest.json` (bundled third-party, remote MCP, user-supplied OAuth client)
+### Example: `desktop/connectors/google-drive/manifest.json` (bundled third-party, remote MCP, user-supplied OAuth client)
 
 Google's official Drive MCP server requires each client to bring its own OAuth client id and secret from Google Cloud Console, which maps onto the `user_supplied` registration mode.
 
@@ -201,13 +201,13 @@ Google's official Drive MCP server requires each client to bring its own OAuth c
 Two shorter shapes to complete the pattern:
 
 ```jsonc
-// connectors/github/manifest.json — remote MCP with standards-based registration
+// desktop/connectors/github/manifest.json — remote MCP with standards-based registration
 { "id": "github", "runtime": { "kind": "mcp-remote", "url": "https://api.githubcopilot.com/mcp/" },
   "auth": { "type": "oauth2", "registration": ["cimd", "dcr", "user_supplied"], "scopes": [] },
   "risk": { "network": "internet", "local_system": "none", "default_tool_tier": "write_external" },
   "tools_generated": true, "tool_overrides": { "delete_repository": { "risk": "destructive", "always_confirm": true } }, … }
 
-// connectors/playwright/manifest.json — stdio MCP on the user's Node runtime
+// desktop/connectors/playwright/manifest.json — stdio MCP on the user's Node runtime
 { "id": "playwright", "runtime": { "kind": "mcp-stdio", "command": "npx", "args": ["-y", "@playwright/mcp@latest"], "requires": { "node": ">=20" } },
   "auth": { "type": "none" },
   "risk": { "network": "internet", "local_system": "execute", "default_tool_tier": "execute",
@@ -356,7 +356,7 @@ Auth types: `none`, `api_key`, `headers`, `oauth2`. Instance state machine: `unc
 **OAuth flow** (MCP 2026-07-28 authorization rules):
 
 1. On connect, or on the first 401 with a `WWW-Authenticate` challenge, fetch the Protected Resource Metadata (RFC 9728), then the authorization server's metadata (RFC 8414), and read `client_id_metadata_document_supported`.
-2. Registration, in the manifest's priority order: **pre-registered** client (manifest `auth.client` or `user_supplied_fields` entered by the user, as Google Drive requires) → **Client ID Metadata Document**: the client id is `https://id.oljo.dev/client-metadata.json`, a static file in `client-metadata/` deployed to its own subdomain (14 §1) listing loopback redirect URIs on a fixed port set (17321–17325), `token_endpoint_auth_method: "none"`, `grant_types: ["authorization_code"]` → **Dynamic Client Registration** with `application_type: "native"` for older servers, the result persisted per issuer in `oauth_clients` → **prompt the user** for a client id/secret as the last resort.
+2. Registration, in the manifest's priority order: **pre-registered** client (manifest `auth.client` or `user_supplied_fields` entered by the user, as Google Drive requires) → **Client ID Metadata Document**: the client id is `https://id.oljo.dev/client-metadata.json`, a static file in `web/client-metadata/` deployed to its own subdomain (14 §1) listing loopback redirect URIs on a fixed port set (17321–17325), `token_endpoint_auth_method: "none"`, `grant_types: ["authorization_code"]` → **Dynamic Client Registration** with `application_type: "native"` for older servers, the result persisted per issuer in `oauth_clients` → **prompt the user** for a client id/secret as the last resort.
 3. Authorization code + PKCE (S256), `state`, RFC 8707 `resource` indicator; open the system browser through `tauri-plugin-opener`; the loopback listener binds the first free port in the set; validate the `iss` parameter against the recorded issuer before redeeming the code; exchange; store `{ access_token, refresh_token, expires_at, scope, issuer }` in the vault as one credential.
 4. Refresh proactively when under 60 seconds to expiry and once on a 401. A failed refresh moves the instance to `expired`, shows "Reconnect", and if it happens mid-turn raises an `Interaction::AuthRequired` so the turn can continue after the user reconnects.
 5. Credentials are bound to the issuer that produced them; if the resource's authorization server changes, Gantry re-registers rather than reusing credentials.
@@ -391,7 +391,7 @@ Session 1 modelled this as an always-installed "meta-connector". Session 2's rul
 
 ### Curation
 
-The curated catalog is hand-authored. Vendor and community directories (mcpservers.org's official-server listings among them) are the *input*: a candidate is picked from a directory, tried against the real server, and turned into a folder under `connectors/<id>/` with a manifest, icon and README written by hand (§2, §3). Nothing is consumed from a directory at runtime. A catalog entry is therefore a tested artifact with the same review path as code, which is what makes the distribution decision below reasonable.
+The curated catalog is hand-authored. Vendor and community directories (mcpservers.org's official-server listings among them) are the *input*: a candidate is picked from a directory, tried against the real server, and turned into a folder under `desktop/connectors/<id>/` with a manifest, icon and README written by hand (§2, §3). Nothing is consumed from a directory at runtime. A catalog entry is therefore a tested artifact with the same review path as code, which is what makes the distribution decision below reasonable.
 
 ### Nothing is installed by default
 

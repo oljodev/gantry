@@ -49,7 +49,7 @@ metadata:
 
 Two sources, one index:
 
-- **Bundled skills** live in the repository at `skills/<name>/SKILL.md`, mirror the `connectors/` folder pattern (a `README.md` in `skills/` states the contract), and are embedded at build time by `gantry-agent`'s `build.rs` the same way connector manifests are. They ship enabled but not pinned; a starter set of three or four (commit messages, code review, writing a plan, the artifact authoring guide) is enough.
+- **Bundled skills** live in the repository at `desktop/skills/<name>/SKILL.md`, mirror the `desktop/connectors/` folder pattern (a `README.md` in `desktop/skills/` states the contract), and are embedded at build time by `gantry-agent`'s `build.rs` the same way connector manifests are. They ship enabled but not pinned; a starter set of three or four (commit messages, code review, writing a plan, the artifact authoring guide) is enough.
 - **User skills** live on disk at `<app_data>/skills/<name>/SKILL.md` so a user can edit them with any editor, put the folder in Git, or delete it. Gantry rescans the folder when the Skills page opens, when the app regains focus, and before each turn (a `stat` per folder is cheap); a changed hash re-indexes the file and records an `external_change` version.
 - The **index** is the `skills` table (06 §3): id, source (`bundled` | `user` | `imported`), path, name, description, triggers, `always`, enabled, content hash, size, version, timestamps, usage counters. `skill_versions` keeps full-text snapshots on every save, import, proposal or external change, so "Replace" is always reversible. Pinning is per project (`project_skills`) and per chat (`chat_skills`).
 

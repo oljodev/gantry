@@ -11,5 +11,5 @@ next. The previous codebase is on the `archive/gantry-v1` branch.
 
 - Plan: [`docs/plan/README.md`](docs/plan/README.md)
 - Build it: [`docs/dev/setup.md`](docs/dev/setup.md)
-- Website: [oljo.dev](https://oljo.dev) (source in `website/`)
+- Website: [oljo.dev](https://oljo.dev) (source in `web/site/`)
 - Licence: Functional Source License, `FSL-1.1-ALv2`; plain language in [`LICENSING.md`](LICENSING.md)

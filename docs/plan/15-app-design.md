@@ -1,6 +1,6 @@
 # 15 — Application design system
 
-**Status:** all three layers, decided and built in session 5 (2026-09-06/07); M0b landed the tokens, primitives, composites, gallery and mock screens. This document is the design table: every visual and interaction decision for the desktop app, with its reason. Layer 2 turns it into tokens in code (`src/styles/tokens.css` and the Tailwind theme); layer 3 is the component library (reshaped shadcn primitives plus Gantry composites, each shown in a dev-only gallery route). Nothing in a feature may contradict this document; when it must, the document changes in the same commit.
+**Status:** all three layers, decided and built in session 5 (2026-09-06/07); M0b landed the tokens, primitives, composites, gallery and mock screens. This document is the design table: every visual and interaction decision for the desktop app, with its reason. Layer 2 turns it into tokens in code (`desktop/frontend/src/styles/tokens.css` and the Tailwind theme); layer 3 is the component library (reshaped shadcn primitives plus Gantry composites, each shown in a dev-only gallery route). Nothing in a feature may contradict this document; when it must, the document changes in the same commit.
 
 The website (14) is designed on its own terms and is not a reference for the app. The two share the wordmark and the portal-frame mark and nothing else.
 
@@ -126,7 +126,7 @@ The five connector risk tiers (04 §1) plus `app` are shown with a small filled 
 
 ## 4. Typography
 
-Inter Variable and JetBrains Mono Variable, bundled as woff2 in `src/assets/fonts/` with `font-display: block` (the app is local; a swap flash is worse than a 30 ms delay). `-webkit-font-smoothing: antialiased` on macOS only; Windows and Linux keep the OS rendering. Inter features: `cv11` (single-storey a) everywhere; `tnum` wherever digits align (tables, timers, token counts, diff stats). Tracking is zero at or below 15 px and `-0.01em` from 18 px up.
+Inter Variable and JetBrains Mono Variable, bundled as woff2 in `desktop/frontend/src/assets/fonts/` with `font-display: block` (the app is local; a swap flash is worse than a 30 ms delay). `-webkit-font-smoothing: antialiased` on macOS only; Windows and Linux keep the OS rendering. Inter features: `cv11` (single-storey a) everywhere; `tnum` wherever digits align (tables, timers, token counts, diff stats). Tracking is zero at or below 15 px and `-0.01em` from 18 px up.
 
 | Role | Face | Size / line | Weight | Used for |
 |------|------|-------------|--------|----------|
@@ -187,7 +187,7 @@ A 1 px inner top highlight (`rgb(255 255 255 / 0.04)`) is allowed on level 2 and
 │ ⌕ Search ⌘K│      ┌─────────────── 720px ───────────┐   │ ┌─────────────────┐ │
 │            │      │ Assistant text …               │   │ │ tab   tab   ×   │ │
 │ Pinned     │      │ ▸ 7 tool calls · 3 files · 2 cmd│   │ ├─────────────────┤ │
-│  · Chat    │      │   ✎ src/auth.rs   +12 −3        │   │ │                 │ │
+│  · Chat    │      │   ✎ src/auth.rs                    +12 −3        │   │ │                 │ │
 │  · Project │      │   $ cargo test -p api   ✓ 1.4s  │   │ │  artifact or    │ │
 │            │      │ ┌─ Permission ─────────────────┐│   │ │  unified diff   │ │
 │ Projects   │      │ │ GitHub · create_pull_request ││   │ │                 │ │
@@ -214,7 +214,7 @@ A 1 px inner top highlight (`rgb(255 255 255 / 0.04)`) is allowed on level 2 and
 
 ## 8. Components
 
-Two tiers. Both live in the app repository, in `src/components/ui/` (primitives) and `src/components/gantry/` (composites), and every one has an entry in the gallery route (§11).
+Two tiers. Both live in the app repository, in `desktop/frontend/src/components/ui/` (primitives) and `desktop/frontend/src/components/gantry/` (composites), and every one has an entry in the gallery route (§11).
 
 ### Primitives (shadcn on Base UI, reshaped once)
 
@@ -275,7 +275,7 @@ No spring physics, no layout animation on lists, no animated empty states, no pa
 ## 11. Gallery and enforcement
 
 - `/dev/gallery` is a route compiled only in development builds: every primitive and composite in every state with fixture data, both themes side by side, both densities. It is the contract for layer 3 and the page reviewed by screenshot at the end of every milestone.
-- `src/fixtures/` holds the fixture data that fills the gallery and the three mock screens: one chat with a full coding turn (reads, edits, a command, a permission card, a guard block, an artifact), one connector catalog, one settings state with two providers. The mock screens become the real screens when the backend arrives; the fixtures stay for the gallery.
+- `desktop/frontend/src/fixtures/` holds the fixture data that fills the gallery and the three mock screens: one chat with a full coding turn (reads, edits, a command, a permission card, a guard block, an artifact), one connector catalog, one settings state with two providers. The mock screens become the real screens when the backend arrives; the fixtures stay for the gallery.
 - An ESLint rule (`no-restricted-syntax` on colour literals and `px` values outside `tokens.css` and the Tailwind theme) fails the build on raw values. Tailwind's palette is disabled with `--color-*: initial` so only the tokens exist as utilities.
 - A contrast script (`pnpm design:contrast`) checks every text/surface pair in §3 in both themes and fails under 4.5:1 for text and 3:1 for UI edges.
 - Screenshots: WebKitGTK locally through agent-eyes; macOS and Windows from CI artifacts once M0's builds exist. Both themes, both densities, the three mock screens and the gallery.
@@ -300,7 +300,7 @@ Raw colour or pixel values in components · shadows for hierarchy · page-level 
 - **11 §2.** Appearance gains nothing; density and theme already exist. The composer placeholder and the onboarding are the only new copy.
 - **13 §4.** The artifact panel is the right pane; its toolbar sits under the pane tabs.
 - **Website.** The hero mock's side feed stays as marketing; it is not updated to match A7.
-- **What M0b built (2026-09-07).** Everything in §8 except the `⋯` row menu (the context menu covers it), plus `src/scripts/contrast.mjs`-style enforcement as `scripts/contrast.mjs` and the ESLint rule. Two library constraints worth knowing: Base UI menu labels must sit inside a group, and floating layers portal to `<body>`, so the gallery's dark frame shows them in the app's theme.
+- **What M0b built (2026-09-07).** Everything in §8 except the `⋯` row menu (the context menu covers it), plus the contrast script (`desktop/frontend/scripts/contrast.mjs`) and the ESLint rule. Two library constraints worth knowing: Base UI menu labels must sit inside a group, and floating layers portal to `<body>`, so the gallery's dark frame shows them in the app's theme.
 
 ## 16. Left out, on purpose
 

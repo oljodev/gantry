@@ -23,32 +23,32 @@ Ordering principle: something visible in the first week, one risky subsystem ret
 
 ## M0 — Skeleton (1 week) — done 2026-09-06
 
-Built in session 5 (commits "M0: …"). Deviations from the list below: the design tokens of 15 ship here rather than in M0b, since every later screen inherits them; CI builds only Ubuntu on push, with the macOS and Windows matrix behind a manual `full-matrix` input until the repository is public; the `LICENSE` notice carries a licensor placeholder to be filled before the first public release (M13); the icon set is generated from the placeholder tile in `assets/branding/app-icon/`.
+Built in session 5 (commits "M0: …"). Deviations from the list below: the design tokens of 15 ship here rather than in M0b, since every later screen inherits them; CI builds only Ubuntu on push, with the macOS and Windows matrix behind a manual `full-matrix` input until the repository is public; the `LICENSE` notice carries a licensor placeholder to be filled before the first public release (M13); the icon set is generated from the placeholder tile in `desktop/assets/branding/app-icon/`.
 
 
-- Cargo workspace with every crate stubbed (compiles, no logic); `src-tauri` with Tauri 2.11, plugins wired (dialog, opener, log, window-state, single-instance, clipboard, notification).
+- Cargo workspace with every crate stubbed (compiles, no logic); `desktop/app` with Tauri 2.11, plugins wired (dialog, opener, log, window-state, single-instance, clipboard, notification).
 - Vite + React 19 + TypeScript strict + Tailwind v4 + shadcn (Base UI) initialized; TanStack Router with the route skeleton; `AppShell` with an empty sidebar and content area.
 - **Theming complete from day one** (11 §3): the token file with the three-state pattern, `data-theme` stamping before first paint, `getCurrentWindow().setTheme` wiring, window background colour from tokens. It is cheap now and every later screen inherits it.
 - `tauri-specta` pipeline: one `app_info` command typed end-to-end; `cargo xtask gen-bindings`; CI drift check.
 - CI: `ci.yml` (fmt, clippy, tests including the bindings drift check, deny, frontend checks) on every push; `build.yml` with unsigned bundles, Ubuntu on push and the full matrix on manual dispatch; `rust-toolchain.toml`; `deny.toml`.
 - `LICENSE` (FSL-1.1-ALv2), `LICENSING.md`, `CONTRIBUTING.md`; `CLAUDE.md` updated with the build commands and the plan pointer.
-- App data directory, logging, `assets/` placeholders, `schemas/connector-manifest.schema.json` and `schemas/skill-frontmatter.schema.json`.
+- App data directory, logging, `desktop/assets/` placeholders, `desktop/schemas/connector-manifest.schema.json` and `desktop/schemas/skill-frontmatter.schema.json`.
 
 Done when: the app opens on all three OSes from CI artifacts, in both themes, and the typed command round-trips.
 
 ## M0b — Design system and mock screens (1 week) — done 2026-09-07
 
-Built in session 5. Landed: the contrast script and the raw-value lint rule in CI; every primitive reshaped on Base UI (the Button, Input, Textarea, Checkbox, Switch, Radio and Segmented, Select, Tabs, Dialog, Popover, Tooltip, Dropdown and Context menus, Toast, ScrollArea, Separator, Badge, Kbd, Skeleton, Command); the composites for the chat (user message, markdown with shiki code blocks, activity rows in every kind, turn summary, hunk preview, interaction and permission cards, turn footer), the composer with mode chip and model picker, the right pane with diff, command and tool-call tabs, sidebar chat rows with day groups and context menus, connector tiles, provider rows with the add-key dialog, the command palette, empty state, onboarding and welcome; `/dev/gallery`; and the mock screens `/chat/c-auth`, `/connectors`, `/settings/providers`, `/onboarding` on `src/fixtures/`. Not landed: the sidebar's `⋯` menu (the context menu covers it), the `+` menu's actions, CodeMirror (M6), Simple Icons marks in the app (monograms until cleared, M9). Contrast forced four light values and one dark value to change (15 §3).
+Built in session 5. Landed: the contrast script and the raw-value lint rule in CI; every primitive reshaped on Base UI (the Button, Input, Textarea, Checkbox, Switch, Radio and Segmented, Select, Tabs, Dialog, Popover, Tooltip, Dropdown and Context menus, Toast, ScrollArea, Separator, Badge, Kbd, Skeleton, Command); the composites for the chat (user message, markdown with shiki code blocks, activity rows in every kind, turn summary, hunk preview, interaction and permission cards, turn footer), the composer with mode chip and model picker, the right pane with diff, command and tool-call tabs, sidebar chat rows with day groups and context menus, connector tiles, provider rows with the add-key dialog, the command palette, empty state, onboarding and welcome; `/dev/gallery`; and the mock screens `/chat/c-auth`, `/connectors`, `/settings/providers`, `/onboarding` on `desktop/frontend/src/fixtures/`. Not landed: the sidebar's `⋯` menu (the context menu covers it), the `+` menu's actions, CodeMirror (M6), Simple Icons marks in the app (monograms until cleared, M9). Contrast forced four light values and one dark value to change (15 §3).
 
 
 Layers 2 and 3 of the design document (15), built before a single backend call is wired so that M1 fills an approved screen instead of designing under pressure.
 
-- Tokens (15 §3–§6, §10) in `src/styles/tokens.css` and the Tailwind theme, with the Tailwind palette disabled; Inter and JetBrains Mono bundled; the contrast script and the ESLint rule against raw values.
+- Tokens (15 §3–§6, §10) in `desktop/frontend/src/styles/tokens.css` and the Tailwind theme, with the Tailwind palette disabled; Inter and JetBrains Mono bundled; the contrast script and the ESLint rule against raw values.
 - The reshape pass over the shadcn primitives (15 §8): tokens only, the three control sizes, Phosphor in place of Lucide, one focus ring, default shadows and rings removed.
-- The composites (15 §8) and `/dev/gallery` showing every one in every state, both themes, both densities, on `src/fixtures/`.
+- The composites (15 §8) and `/dev/gallery` showing every one in every state, both themes, both densities, on `desktop/frontend/src/fixtures/`.
 - The title strip and window controls on all three OSes; the sidebar with collapse and resize; the right pane; the settings frame; the palette shell.
 - The three mock screens on fixtures: a chat with a full coding turn and a pending permission card, connector browse, Settings → Providers. Onboarding and the empty-chat welcome.
-- The app icon (15 §13) generated into `src-tauri/icons/`.
+- The app icon (15 §13) generated into `desktop/app/icons/`.
 
 Done when: the gallery and the three screens pass a screenshot review in both themes and densities on WebKitGTK and on the macOS and Windows CI builds, and the light theme passes the contrast script.
 
@@ -57,7 +57,7 @@ Done when: the gallery and the three screens pass a screenshot review in both th
 - `gantry-core`: ids, `Message`/`ContentPart`, `StreamEvent`, `AgentEvent`, `Settings` with defaults, errors.
 - `gantry-secrets`: master key in the OS store on all three platforms, envelope encryption, vault API, Linux fallback with warning.
 - `gantry-providers`: the trait, SSE parsing, retry policy, the **Anthropic** client (text only, thinking, usage, stop reasons, refusal handling).
-- **System prompt v1** (10): `assets/prompts/core.md` and the mode fragments; `SystemPromptBuilder` assembling the layers in order (layers 4–7 empty for now); the prompt fixture test.
+- **System prompt v1** (10): `desktop/assets/prompts/core.md` and the mode fragments; `SystemPromptBuilder` assembling the layers in order (layers 4–7 empty for now); the prompt fixture test.
 - Settings infrastructure (`get_settings`/`update_settings`, `settings:changed`) and the **Providers** page: enter an Anthropic key (write-only), test it, list models.
 - `gantry-agent`: a minimal `TurnRunner` (no tools), `EventSink` + `Batcher`; `send_message` with a channel; cancel.
 - Frontend: run store, rAF drain, streaming markdown (block memoization, shiki) and Stop wired into the M0b `ChatView` and `Composer`; no new visual design in this milestone. Chats are in memory only.
@@ -91,7 +91,7 @@ Rationale for placing this before the other providers: the tool loop is the harn
 ## M4 — All providers (2 weeks)
 
 - `openai_responses` (stateless, encrypted reasoning replay, function calls, built-in web search), `openai_chat` with the `xai`, `openrouter` and `custom` profiles, `gemini` on the Interactions API (function calls with ids, thought signatures, streaming argument deltas).
-- Model catalog with live lists merged with `assets/models/overrides.toml`; capability-driven UI (thinking selector, web search toggle availability).
+- Model catalog with live lists merged with `desktop/assets/models/overrides.toml`; capability-driven UI (thinking selector, web search toggle availability).
 - Fixture tests for every row of the normalization table; the 12-scenario live conformance checklist run once per provider by hand, **now including "streams partial tool arguments" as a recorded per-provider result** (13 §2 depends on it).
 - Provider error surfaces (rate limit, auth, context too long) with a Retry affordance.
 
@@ -104,7 +104,7 @@ Placed here because it depends only on the tool loop and on argument streaming, 
 - Runtime tools `gantry__create_artifact`, `update`, `edit`, `read`; the type registry; `artifacts`/`artifact_versions` tables and repos; `artifact.*` events.
 - The panel: tabs, toolbar, version stepper, Rendered/Source, Problems tab, Copy/Download; streaming into the panel with the buffered fallback.
 - Parent-rendered types: `markdown`, `code`, `svg`.
-- `artifact-runtime/`: the inlined sandbox document, the bridge, error capture; `SandboxHost` with `srcdoc` + `sandbox="allow-scripts"` + CSP; `html` and `mermaid`.
+- `desktop/artifact-runtime/`: the inlined sandbox document, the bridge, error capture; `SandboxHost` with `srcdoc` + `sandbox="allow-scripts"` + CSP; `html` and `mermaid`.
 - `react`: Babel with the loop-guard and import-rewrite plugins, the module allowlist, Tailwind's browser runtime, the error boundary, **Fix this**, the render-verified tool result.
 - The sandbox conformance artifact, run by hand on all three platforms; **Open in window**.
 - User edits and restores as versions with the `SystemNote` rule; core prompt guidance for artifacts.
@@ -116,8 +116,8 @@ Trim option: ship `react` after `html`/`mermaid` if the Babel work runs long; no
 ## M6 — Filesystem and code editor (2–3 weeks)
 
 - `gantry-workspace`: scope, canonicalization, sensitive-path patterns, atomic writes with encoding preservation, edit journal, `similar`-based hunks, `ignore`/`grep-searcher` search.
-- `gantry-connectors`: the `Connector` trait, `ConnectorContext`, `ToolEventSink`, registry, manifest parsing and validation, `build.rs` catalog embedding, `connectors/README.md`, and the **install flow skeleton** (03 §11): first-party connectors appear in the catalog and are installed by the "Add folder to workspace" dialog's explicit action, never automatically.
-- `connectors/filesystem` and `connectors/code-editor` complete, with tests on temp directories.
+- `gantry-connectors`: the `Connector` trait, `ConnectorContext`, `ToolEventSink`, registry, manifest parsing and validation, `build.rs` catalog embedding, `desktop/connectors/README.md`, and the **install flow skeleton** (03 §11): first-party connectors appear in the catalog and are installed by the "Add folder to workspace" dialog's explicit action, never automatically.
+- `desktop/connectors/filesystem` and `desktop/connectors/code-editor` complete, with tests on temp directories.
 - Root chips in the composer, `chat_roots`.
 - Activity: edit rows with live argument streaming, inline hunks, the diff drawer (CodeMirror merge), **Revert** through the journal; read/search rows.
 - **Auto-edit** mode.
@@ -126,11 +126,11 @@ Done when: a real repository can be modified by the model, every change is visib
 
 ## M7 — Shell, Plan mode, grants (1–2 weeks)
 
-- `connectors/shell`: run with streaming output, caps, timeouts, kill, process-group termination, PowerShell/cmd on Windows, login-shell `PATH` on macOS; `CommandClassifier` with its fixture corpus.
+- `desktop/connectors/shell`: run with streaming output, caps, timeouts, kill, process-group termination, PowerShell/cmd on Windows, login-shell `PATH` on macOS; `CommandClassifier` with its fixture corpus.
 - Command rows and the command drawer with ANSI rendering.
 - **Plan** mode: filtered tool set, read prompts with "Allow all reads", the "Switch to Auto-edit and execute" action.
 - Grants: `chat_grants`, scope options in the prompt (tool / path prefix / command prefix / all reads), the chat Permissions panel with revoke.
-- Guardrails from `assets/guardrails/defaults.toml` (hard-deny, always-confirm, sensitive paths, secret patterns) and the **Guardrails** settings page.
+- Guardrails from `desktop/assets/guardrails/defaults.toml` (hard-deny, always-confirm, sensitive paths, secret patterns) and the **Guardrails** settings page.
 
 Done when: a coding task can be run in Manual, Auto-edit and Plan with the matrix in 04 §3 holding in every cell.
 
@@ -146,7 +146,7 @@ Done when: a multi-step task completes hands-off in Guarded Auto, with at least 
 ## M9 — MCP connectors and the install flow (3 weeks)
 
 - `mcp/` adapter on rmcp: stdio and Streamable HTTP; version negotiation with the `server/discover` probe and legacy handshake fallback; tool listing with `ttlMs` and change notifications; risk mapping from annotations; MRTR `input_required` and legacy elicitation into `Interaction::Elicitation` with a form renderer; process supervision, idle stop, stderr logs.
-- `auth/`: discovery, registration priority (pre-registered / user-supplied → CIMD → DCR), PKCE, loopback listener on the fixed port set, `iss` validation, token storage and refresh, `AuthRequired` interaction; `client-metadata/` deployed to its subdomain.
+- `auth/`: discovery, registration priority (pre-registered / user-supplied → CIMD → DCR), PKCE, loopback listener on the fixed port set, `iss` validation, token storage and refresh, `AuthRequired` interaction; `web/client-metadata/` deployed to its subdomain.
 - **The full install flow of 03 §11**: `InstallDialog` with the runtime check step (`RuntimeCheck`, per-OS guidance, Check again), configuration, command preview, first start with discovered tools; remote installs going straight to OAuth; uninstall.
 - UI: Browse, ConnectorDetail (README, tools with tiers, settings form from `user_config`, custom panels via glob import, auth, health, logs), AddCustomServer with JSON import, AuthStatus, and **Settings → Connectors** (installed list).
 - Bundled manifests: `github`, `google-drive` (with its helper panel), `playwright`.
@@ -168,13 +168,13 @@ Done when: "what's in my Google Drive?" in a chat without Drive leads to a sugge
 - Projects: create, pin, instructions (layer 5 of 10 §2), workspace folder (default roots and cwd), default mode/guard/connectors/grants/pinned skills, knowledge files with text extraction (text, markdown, code, CSV, JSON, PDF text), the project page listing its chats and its **Artifacts** tab (13 §9); "Add to project" and "move to project"; **Continue in new chat** on an artifact.
 - Chat-level instructions (layer 6) in the chat settings panel.
 - The attach menu complete: files, folder (with the install-all-three dialog), project, connectors checklist, web search toggle (provider server tools with opaque-part rendering; `web` connector fallback, installed on demand), thinking selector.
-- `connectors/web` (`fetch_url`, optional `search` with a BYOK search key).
+- `desktop/connectors/web` (`fetch_url`, optional `search` with a BYOK search key).
 
 Done when: a project with instructions, two knowledge files, a workspace folder and a pinned skill gives every new chat the right context and defaults, and an artifact from one chat can be read from another.
 
 ## M12 — Skills and memory (2 weeks)
 
-- Skills (12 §A): `skills/` bundled set and `build.rs` embedding; the on-disk user folder and rescan; the `skills`/`skill_versions` index; the keyword matcher and `context.injected`; the runtime tools; `/skills` page with editor, Test match, import review (file, zip, folder, URL), export; `SkillProposalCard` with the collision rule; `/` slash menu and pinning; the `artifact-authoring` bundled skill.
+- Skills (12 §A): `desktop/skills/` bundled set and `build.rs` embedding; the on-disk user folder and rescan; the `skills`/`skill_versions` index; the keyword matcher and `context.injected`; the runtime tools; `/skills` page with editor, Test match, import review (file, zip, folder, URL), export; `SkillProposalCard` with the collision rule; `/` slash menu and pinning; the `artifact-authoring` bundled skill.
 - Memory (12 §B): `memories` table and FTS; the core set in the frozen prompt and the long-tail selector; `gantry__propose_memory`/`propose_forget`/`search_memory`; `MemoryProposalCard`; `/remember` and **Remember this**; the Memory page with Recently deleted, export/import, pause switches; the `SystemNote` delta rule; the secret-pattern refusal.
 - Settings → Skills and Settings → Memory.
 
@@ -195,7 +195,7 @@ Done when: v0.1.0 builds from `release.yml`, installs cleanly on all three OSes,
 
 ## Parallel track — marketing site (2 days, any time after M0)
 
-Done in session 4: the Astro site is in `website/` (14) with home, product tour, connectors and a page per connector, pricing, download, about, blog, changelog, docs and the trust pages. Remaining: create the two Cloudflare Pages projects (`website/` with `pnpm build`, Node 22; `client-metadata/` without a build), point `oljo.dev` and `id.oljo.dev`, verify the first deploy (14 §7), and add the stable-named asset upload step to `release.yml` so the download buttons resolve. Nothing in the app depends on it until M9 needs `client-metadata/` live for CIMD registrations, which is the one date to respect.
+Done in session 4: the Astro site is in `web/site/` (14) with home, product tour, connectors and a page per connector, pricing, download, about, blog, changelog, docs and the trust pages. Remaining: create the two Cloudflare Pages projects (`web/site/` with `pnpm build`, Node 22; `web/client-metadata/` without a build), point `oljo.dev` and `id.oljo.dev`, verify the first deploy (14 §7), and add the stable-named asset upload step to `release.yml` so the download buttons resolve. Nothing in the app depends on it until M9 needs `web/client-metadata/` live for CIMD registrations, which is the one date to respect.
 
 ## Post-MVP backlog (in likely order)
 

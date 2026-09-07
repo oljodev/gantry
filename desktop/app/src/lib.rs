@@ -30,7 +30,7 @@ pub fn run() {
 
     #[cfg(debug_assertions)]
     builder
-        .export(typescript(), "../src/bindings.ts")
+        .export(typescript(), "../frontend/src/bindings.ts")
         .expect("failed to export the TypeScript bindings");
 
     let mut app = tauri::Builder::default();
@@ -72,7 +72,8 @@ mod tests {
     /// plain `cargo test` is also the drift check.
     #[test]
     fn gen_bindings() {
-        let committed = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../src/bindings.ts");
+        let committed =
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../frontend/src/bindings.ts");
         match std::env::var_os("GANTRY_BINDINGS_OUT") {
             Some(out) => super::specta_builder()
                 .export(super::typescript(), out)
@@ -88,7 +89,7 @@ mod tests {
                 let current = std::fs::read_to_string(&committed).unwrap_or_default();
                 assert_eq!(
                     fresh, current,
-                    "src/bindings.ts is out of date: run `cargo xtask gen-bindings`"
+                    "desktop/frontend/src/bindings.ts is out of date: run `cargo xtask gen-bindings`"
                 );
             }
         }

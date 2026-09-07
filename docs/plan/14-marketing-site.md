@@ -6,18 +6,18 @@ Session 4 replaced the three.js site with a company-style site for an open-sourc
 
 | Folder | Contents | Deployed as | Host |
 |--------|----------|-------------|------|
-| `website/` | the Astro site: pages, components, one React island, content collections, docs; a standalone package with its own lockfile | Cloudflare Pages project `gantry-website`: root directory `website`, build command `pnpm build` (`astro check && astro build`), output `dist`, `NODE_VERSION=22`, `PNPM_VERSION=10.34.5`, build watch paths `website/**` | `oljo.dev` (apex); `www.oljo.dev` redirects to it |
-| `client-metadata/` | the MCP OAuth Client ID Metadata Document and a one-paragraph `index.html` | Cloudflare Pages project `gantry-client-metadata`, root `client-metadata`, no build | `id.oljo.dev` |
+| `web/site/` | the Astro site: pages, components, one React island, content collections, docs; a standalone package with its own lockfile | Cloudflare Pages project `gantry-website`: root directory `web/site`, build command `pnpm build` (`astro check && astro build`), output `dist`, `NODE_VERSION=22`, `PNPM_VERSION=10.34.5`, build watch paths `web/site/**` | `oljo.dev` (apex); `www.oljo.dev` redirects to it |
+| `web/client-metadata/` | the MCP OAuth Client ID Metadata Document and a one-paragraph `index.html` | Cloudflare Pages project `gantry-client-metadata`, root `web/client-metadata`, no build | `id.oljo.dev` |
 
 **Domain.** The site is served from the apex. The client-metadata document keeps its own host because Pages serves one project per hostname and the metadata URL is Gantry's OAuth identity, which must never move with a redesign (03 §7). The single-project alternative (serve it from `website/public/oauth/` at `https://oljo.dev/oauth/client-metadata.json`) is recorded and still available.
 
-**Node.** Astro 7 requires Node ≥ 22.12. The development machine runs a user-local Node 22 (`~/.local/share/node-22`, on the PATH for the site's scripts); `website/.node-version` says `22`; Pages gets `NODE_VERSION=22`. TypeScript is pinned to 5.9 until `@astrojs/check` accepts 7.
+**Node.** Astro 7 requires Node ≥ 22.12. The development machine runs a user-local Node 22 (`~/.local/share/node-22`, on the PATH for the site's scripts); `web/site/.node-version` says `22`; Pages gets `NODE_VERSION=22`. TypeScript is pinned to 5.9 until `@astrojs/check` accepts 7.
 
 ## 2. Direction
 
 **Dark, one accent, company-style.** The references were n8n, Linear, Vercel, Ramp, Replit, Notion and Tavily. From them: a floating pill navbar with dropdown menus (n8n), two-tone headlines and product-mock figures inside bordered cells (Linear), a bento of small figures (Vercel), a searchable connector directory grouped by category (Ramp, Vercel Connect), line drawings for principles (Linear), a monospace eyebrow (Tavily). Nothing 3D.
 
-**Design system** (`website/src/styles/theme.css`, the single source):
+**Design system** (`web/site/src/styles/theme.css`, the single source):
 
 | Token | Value | Role |
 |-------|-------|------|
@@ -67,7 +67,7 @@ Neutral zinc, no blue bias, one soft radial glow behind the hero and nowhere els
 **Stack.** Astro 7.3 (static output, `trailingSlash: 'always'`, directory build format, `compressHTML`), Tailwind CSS 4.3 through `@tailwindcss/vite` with the tokens in `@theme`, React 19 for the hero island, Motion 13, Starlight 0.42 (pinned to the minor) for docs, `simple-icons` 16 resolved at build time, `@phosphor-icons/core` glyphs inlined at build time, `@astrojs/rss`. Starlight registers MDX, the sitemap and Expressive Code itself, so they are not listed separately.
 
 ```
-website/
+web/site/
   .node-version  package.json  pnpm-lock.yaml  astro.config.mjs  tsconfig.json  README.md
   scripts/sync-fonts.mjs             copies the Fontsource woff2 files and licence into src/assets/fonts/
   public/                            _headers  _redirects  robots.txt  favicon.svg  connectors/ (cleared logo overrides)

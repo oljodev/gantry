@@ -144,7 +144,7 @@ Rules: decryption happens only inside `gantry-secrets`, on demand, with plaintex
 
 ## 8. Migrations
 
-Numbered SQL files under `crates/gantry-store/migrations/` applied with `rusqlite_migration`; forward-only; each milestone adds files rather than editing earlier ones once a build has shipped. Repositories expose typed methods; no SQL outside `gantry-store`.
+Numbered SQL files under `desktop/crates/gantry-store/migrations/` applied with `rusqlite_migration`; forward-only; each milestone adds files rather than editing earlier ones once a build has shipped. Repositories expose typed methods; no SQL outside `gantry-store`.
 
 ## 9. Toward sync (not designed now)
 

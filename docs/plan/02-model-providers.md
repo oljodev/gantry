@@ -119,7 +119,7 @@ pub struct ModelCapabilities {
 }
 ```
 
-Capabilities come from the provider's model list where it carries them (Anthropic's `/v1/models` has `max_input_tokens` and `capabilities`; OpenRouter's list has context, pricing and `supported_parameters`) merged with a shipped `assets/models/overrides.toml` for what the APIs do not say. Unknown model → conservative defaults (tools on, everything else off).
+Capabilities come from the provider's model list where it carries them (Anthropic's `/v1/models` has `max_input_tokens` and `capabilities`; OpenRouter's list has context, pricing and `supported_parameters`) merged with a shipped `desktop/assets/models/overrides.toml` for what the APIs do not say. Unknown model → conservative defaults (tools on, everything else off).
 
 ## 3. Tool-calling normalization
 

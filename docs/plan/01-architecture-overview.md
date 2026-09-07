@@ -11,7 +11,7 @@
        invoke() typed commands (tauri-specta)          Channel<AgentEventBatch> per turn
                                                        + global events (invalidation only)
 ┌──────────────┴──────────────────────────────────────────────────┴────────────────────┐
-│ gantry-app (src-tauri)   commands · AppState · ChannelSink · plugins · startup        │
+│ gantry-app (desktop/app)   commands · AppState · ChannelSink · plugins · startup        │
 ├───────────────────────────────────────────────────────────────────────────────────────┤
 │ gantry-agent   TurnManager · TurnRunner · Transcript projection · ContextBudget       │
 │                PermissionEngine · Judge · Interactions · EventSink/Batcher            │
@@ -46,13 +46,13 @@ All crates live in one Cargo workspace. Types shared across the IPC boundary der
 | `gantry-store` | SQLite schema + migrations, repositories (`chats`, `messages`, `events`, `tool_calls`, `file_edits`, `command_runs`, `interactions`, `projects`, `connectors`, `credentials`, `settings`), `BlobStore`, FTS | core, secrets | Single writer connection behind an actor; a small pool of read connections. WAL mode. |
 | `gantry-secrets` | `MasterKey` (OS credential store via `keyring-core` + platform store crates), `SecretBox` (XChaCha20-Poly1305), `SecretVault` API | core | Secrets are ciphertext in SQLite; the only thing in the OS store is one 32-byte key. See 06 §5. |
 | `gantry-providers` | `Provider` trait, `ProviderRegistry`, clients (`anthropic`, `openai_responses`, `openai_chat`, `gemini`), `ToolSchemaSanitizer`, SSE parsing, retry policy, `ModelCatalog`, judge defaults | core | See 02. |
-| `gantry-connectors` | `Connector` trait, `ConnectorRegistry`, manifest schema + validation, native runtime, MCP runtime (rmcp adapter), OAuth client, catalog (manifests embedded by `build.rs`), runtime detection | core, store, secrets, workspace | See 03. Native connector crates from `connectors/*/` are linked here. |
+| `gantry-connectors` | `Connector` trait, `ConnectorRegistry`, manifest schema + validation, native runtime, MCP runtime (rmcp adapter), OAuth client, catalog (manifests embedded by `build.rs`), runtime detection | core, store, secrets, workspace | See 03. Native connector crates from `desktop/connectors/*/` are linked here. |
 | `gantry-workspace` | `Scope` (roots, canonicalization, sensitive-path patterns), `Fs` (atomic writes, encoding and line-ending preservation, edit journal), `Diff` (`similar` → hunks), `Search` (`ignore` + `grep-searcher`), `Runner` (`tokio::process`, timeouts, streaming output, kill), `CommandClassifier` | core | Shared by the filesystem, code-editor and shell connectors so scope enforcement is implemented once. |
 | `gantry-agent` | `TurnManager`, `TurnRunner` (the loop), `Transcript` (append-only builder + per-provider projection), `ContextBudget`, `SystemPromptBuilder` (10), `PermissionEngine`, `Judge`, `Interactions`, `EventSink` + `Batcher`, `TitleGenerator`, `runtime_tools` (access requests, connector search and suggestions, artifacts, skills, memory), `skills` (index, matcher, import), `memory` (store, selector) | core, store, providers, connectors | See 04, 05, 12 and 13. |
-| `gantry-app` (`src-tauri/`) | Tauri builder, plugins, `AppState`, command modules per feature, `ChannelSink`, startup and crash recovery, app menu, updater (later) | everything | The only crate that knows about Tauri. |
-| `connectors/<id>/` crates | One crate per native connector (`gantry-connector-filesystem`, `-code-editor`, `-shell`, `-web`, `-catalog`) | core, workspace | Each implements `Connector` and embeds its own `manifest.json`. |
+| `gantry-app` (`desktop/app/`) | Tauri builder, plugins, `AppState`, command modules per feature, `ChannelSink`, startup and crash recovery, app menu, updater (later) | everything | The only crate that knows about Tauri. |
+| `desktop/connectors/<id>/` crates | One crate per native connector (`gantry-connector-filesystem`, `-code-editor`, `-shell`, `-web`, `-catalog`) | core, workspace | Each implements `Connector` and embeds its own `manifest.json`. |
 | `xtask` | `validate-connectors`, `validate-skills`, `gen-bindings`, `icons`, `release-notes` | — | Developer tasks, run with `cargo xtask <task>`. |
-| `artifact-runtime/` (frontend package, not a crate) | The sandboxed artifact runtime: React, Babel with the loop-guard plugin, Tailwind's browser runtime, Mermaid, the bridge client and error capture, built into one inlined HTML document | — | See 13 §5–§6. |
+| `desktop/artifact-runtime/` (frontend package, not a crate) | The sandboxed artifact runtime: React, Babel with the loop-guard plugin, Tailwind's browser runtime, Mermaid, the bridge client and error capture, built into one inlined HTML document | — | See 13 §5–§6. |
 
 ### AppState
 
@@ -116,7 +116,7 @@ Used only to tell the frontend "re-fetch this": `chats:changed { chat_ids }`, `p
 
 ### Type generation
 
-`tauri-specta` collects every command and event type and writes `src/bindings.ts` (`commands.sendMessage(...)`, `events.chatsChanged.listen(...)`). Debug starts export it; `cargo xtask gen-bindings` regenerates it on demand, and the app crate's `gen_bindings` test fails when the committed file differs, so a plain `cargo test --workspace` is the drift check in CI. `tauri-specta` 2 is still a release candidate (rc.25 as of May 2026); pin the exact version. The fallback, if it ever blocks an upgrade, is `ts-rs` for types plus thin hand-written `invoke` wrappers, which is why command signatures are kept simple (one request struct, one response struct).
+`tauri-specta` collects every command and event type and writes `desktop/frontend/src/bindings.ts` (`commands.sendMessage(...)`, `events.chatsChanged.listen(...)`). Debug starts export it; `cargo xtask gen-bindings` regenerates it on demand, and the app crate's `gen_bindings` test fails when the committed file differs, so a plain `cargo test --workspace` is the drift check in CI. `tauri-specta` 2 is still a release candidate (rc.25 as of May 2026); pin the exact version. The fallback, if it ever blocks an upgrade, is `ts-rs` for types plus thin hand-written `invoke` wrappers, which is why command signatures are kept simple (one request struct, one response struct).
 
 ## 5. Frontend architecture
 
@@ -135,7 +135,7 @@ Used only to tell the frontend "re-fetch this": `chats:changed { chat_ids }`, `p
 ### Module map
 
 ```
-src/
+desktop/frontend/src/
   app/            router, providers (Query, theme), layout (TitleStrip + Sidebar + Outlet + right pane), keyboard shortcuts
   fixtures/       fixture data for the gallery and the mock screens (15 §11)
   bindings.ts     generated by tauri-specta
@@ -230,7 +230,7 @@ Outside the menu, the composer shows the **mode chip** (Manual · Auto-edit · P
 | T7 | "Use the OS credential store" vs Windows blob limits, macOS ACL prompts and Linux systems without Secret Service | The OS store holds one master key; secrets are envelope-encrypted in SQLite. Same security boundary, none of the platform edge cases. |
 | T8 | Uniform JSON-schema tools vs provider-native coding tools the models are trained on (Anthropic `text_editor`/`bash`, OpenAI `apply_patch`/`shell`) | Connectors expose schema tools everywhere; the provider layer can additionally map the code-editor and shell connectors onto native tool types where supported. Scheduled after the MVP loop works (post-MVP backlog in 09). |
 | T9 | Gemini `generateContent` (legacy) vs the Interactions API (default since June 2026) | Target Interactions. The trait is agnostic; if a model is only reachable through the legacy endpoint, that is a second Gemini client, not a redesign. |
-| T10 | CIMD (the preferred MCP client registration) needs an HTTPS-hosted metadata document | Gantry hosts a static `client-metadata.json` from the `client-metadata/` folder on its own subdomain (14 §1). Fallbacks: Dynamic Client Registration, pre-registered ids, and user-supplied client credentials (Google's Drive MCP requires the last). |
+| T10 | CIMD (the preferred MCP client registration) needs an HTTPS-hosted metadata document | Gantry hosts a static `client-metadata.json` from the `web/client-metadata/` folder on its own subdomain (14 §1). Fallbacks: Dynamic Client Registration, pre-registered ids, and user-supplied client credentials (Google's Drive MCP requires the last). |
 | T11 | tauri-specta is still a release candidate | Pin it. Keep command signatures simple so `ts-rs` plus thin wrappers is a one-day fallback. |
 | T12 | "No connector is ever auto-installed" (session 2) vs session 1's auto-installed first-party connectors and an always-on meta-connector | First-party connectors are catalog entries like any other and are installed by an explicit action; "Add folder to workspace" offers to install the three local connectors in one click. Connector search and suggestions are reclassified as runtime tools owned by the app (`gantry__search_connectors`, `gantry__suggest_connector`), because they are app behaviour, not a connector; a General setting turns suggestions off. 03 §9 and §11. |
 | T13 | Manual mode "asks before every tool call, no exceptions" vs tools whose only effect is Gantry's own state (artifacts, skill and memory proposals, catalog search) | A sixth tier, `app`, never prompts in any mode. Its members either only produce output the user sees (artifacts) or persist nothing without the user's own card (memory, skills). Prompting for them would be a prompt to allow being asked. 04 §2. |
@@ -238,7 +238,7 @@ Outside the menu, the composer shows the **mode chip** (Manual · Auto-edit · P
 | T15 | "The system prompt is fixed" vs standing user preferences, project instructions, memory and skills | The core scaffold is fixed; instruction layers are additive, size-limited and ranked below the core by a precedence rule the model reads first. 10. |
 | T16 | Memory and pinned skills live in the frozen prompt prefix, but the user can edit or delete them any time | Changes are appended as `SystemNote`s (including "forget: …" for deletions); the old text stays in existing chats' snapshots and the UI says so. Same mechanism as T5. 12 §B6. |
 | T17 | A static catalog needs an app release to add a connector; a dynamic one needs infrastructure and a trust story | Static per release in v1, made cheap by the auto-updater; the remote overlay is specified (signed, additive, cached, never blocking) and deferred. 03 §11. |
-| T18 | `site/` would have hosted both the OAuth client metadata and the marketing page | `client-metadata/` and `website/`, two Pages projects on two hosts. 14 §1. |
+| T18 | `site/` would have hosted both the OAuth client metadata and the marketing page | `web/client-metadata/` and `web/site/`, two Pages projects on two hosts. 14 §1. |
 | T19 | The instruction "just use oljo.dev as domain" vs the session-3 brief text naming `gantry.oljo.dev` and vs the client-metadata document needing a host that never changes | The page lives at the apex `oljo.dev`; the metadata document keeps `id.oljo.dev` because Pages serves one project per host and the OAuth identity must not move with the marketing site. The no-subdomain alternative is recorded. 14 §1. |
 | T20 | Session 2's "no build tooling" for the site vs a three.js scene | Vite as a bundler only, no framework: a tree-shaken lazy scene chunk, hashed assets, and the "no third-party scripts at runtime" rule kept by self-hosting everything. The output is still a static folder. 14 §4. |
 | T21 | Session 2's `releases.json` fetched from the release assets vs browsers blocking cross-origin fetches of `github.com/…/releases/download` | The GitHub releases API (which sends CORS headers) is the only lookup; stable asset names stay; `releases.json` is dropped. 14 §5. |

@@ -74,7 +74,7 @@ Rules run before the judge and are free:
 
 ### Model
 
-The judge uses the cheapest fast model of the provider the chat already uses, so no extra key is needed. Defaults ship in `assets/models/judge_defaults.toml` and are overridable in Settings and per project:
+The judge uses the cheapest fast model of the provider the chat already uses, so no extra key is needed. Defaults ship in `desktop/assets/models/judge_defaults.toml` and are overridable in Settings and per project:
 
 | Chat provider | Default judge model (as of September 2026) |
 |---------------|--------------------------------------------|

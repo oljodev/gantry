@@ -1,7 +1,7 @@
 # Gantry OAuth client metadata
 
 This folder is served as-is at `https://id.oljo.dev` (Cloudflare Pages project `gantry-client-metadata`, root directory
-`client-metadata`, no build step). It holds Gantry's OAuth **Client ID Metadata Document**: the MCP authorization flow
+`web/client-metadata`, no build step). It holds Gantry's OAuth **Client ID Metadata Document**: the MCP authorization flow
 uses the document's URL as Gantry's `client_id` when a connector's authorization server supports that registration
 method (docs/plan/03-connector-system.md §7).
 

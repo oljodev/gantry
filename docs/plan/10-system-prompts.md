@@ -82,4 +82,4 @@ Anything that varies per message must not live in the frozen prompt. It travels 
 
 ## 6. Where the core lives
 
-`assets/prompts/core.md` plus `assets/prompts/modes/{manual,auto_edit,plan,auto}.md`, embedded with `include_str!`, assembled by `gantry-agent::system_prompt`. The core carries a version number that is recorded in `chats.system_snapshot_version` so prompt regressions can be correlated with reports. Editing these files is a code change reviewed like any other; the roadmap adds a prompt fixture test that assembles a prompt for each mode and pins its shape.
+`desktop/assets/prompts/core.md` plus `desktop/assets/prompts/modes/{manual,auto_edit,plan,auto}.md`, embedded with `include_str!`, assembled by `gantry-agent::system_prompt`. The core carries a version number that is recorded in `chats.system_snapshot_version` so prompt regressions can be correlated with reports. Editing these files is a code change reviewed like any other; the roadmap adds a prompt fixture test that assembles a prompt for each mode and pins its shape.

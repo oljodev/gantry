@@ -7,8 +7,8 @@ is the unit of packaging and the catalog is built from it at compile time. The f
 ## The folder
 
 ```
-connectors/<id>/
-  manifest.json     required · id, name, runtime, auth, risk, tools (schema: schemas/connector-manifest.schema.json)
+desktop/connectors/<id>/
+  manifest.json     required · id, name, runtime, auth, risk, tools (schema: desktop/schemas/connector-manifest.schema.json)
   icon.svg          required · 24×24 viewBox, single colour, no text
   README.md         required · what it does, what it needs, what it can reach
   Cargo.toml + src/ native connectors only · a crate named gantry-connector-<id> implementing `Connector`

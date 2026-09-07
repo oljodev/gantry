@@ -13,7 +13,7 @@ pnpm install && pnpm fonts       # frontend dependencies and the bundled fonts
 pnpm tauri dev                   # the app, with hot reload
 cargo test --workspace           # Rust tests
 pnpm typecheck && pnpm lint      # frontend checks
-cargo xtask check-bindings       # src/bindings.ts must match the Rust commands
+cargo xtask check-bindings       # desktop/frontend/src/bindings.ts must match the Rust commands
 ```
 
 ## Changes
@@ -22,10 +22,10 @@ cargo xtask check-bindings       # src/bindings.ts must match the Rust commands
 - Rust: `cargo fmt`, `cargo clippy --workspace --all-targets -- -D warnings`, tests next to the
   code. Frontend: Prettier, ESLint, Vitest.
 - UI work follows `docs/plan/15-app-design.md`. Colours, sizes, radii and durations come from
-  `src/styles/tokens.css`; a component never carries its own.
+  `desktop/frontend/src/styles/tokens.css`; a component never carries its own.
 - A change that contradicts a plan document updates that document in the same commit.
 - Bindings: after adding or changing a command, run `cargo xtask gen-bindings` and commit
-  `src/bindings.ts`.
+  `desktop/frontend/src/bindings.ts`.
 
 ## Sign-off
 

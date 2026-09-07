@@ -1,7 +1,7 @@
 //! Developer tasks, run as `cargo xtask <task>` (alias in `.cargo/config.toml`).
 //!
-//! - `gen-bindings`    regenerate `src/bindings.ts` from the Tauri commands
-//! - `check-bindings`  regenerate into a temp file and fail if `src/bindings.ts` differs
+//! - `gen-bindings`    regenerate `desktop/frontend/src/bindings.ts` from the Tauri commands
+//! - `check-bindings`  regenerate into a temp file and fail if the committed bindings differ
 //! - `validate-connectors`, `validate-skills`, `icons`  arrive with M6, M12 and M13
 
 #![forbid(unsafe_code)]
@@ -14,7 +14,7 @@ use std::{
 
 use anyhow::{Context, bail};
 
-const BINDINGS: &str = "src/bindings.ts";
+const BINDINGS: &str = "desktop/frontend/src/bindings.ts";
 
 fn main() -> ExitCode {
     let task = env::args().nth(1).unwrap_or_default();
@@ -42,11 +42,11 @@ fn main() -> ExitCode {
 }
 
 fn workspace_root() -> PathBuf {
-    // crates/xtask -> crates -> root
+    // The first ancestor holding the workspace lockfile, wherever this crate sits below it.
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .ancestors()
-        .nth(2)
-        .expect("xtask lives two levels below the workspace root")
+        .find(|dir| dir.join("Cargo.lock").is_file())
+        .expect("xtask lives below the workspace root")
         .to_path_buf()
 }
 

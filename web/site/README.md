@@ -21,8 +21,8 @@ pnpm preview     # serve dist/ (docs search only works here, not in dev)
 
 ## Deploy
 
-Cloudflare Pages project `gantry-website`: root directory `website`, build command `pnpm build`, output directory
-`dist`, environment `NODE_VERSION=22` and `PNPM_VERSION=10.34.5`, build watch paths `website/**`. The package is
+Cloudflare Pages project `gantry-website`: root directory `web/site`, build command `pnpm build`, output directory
+`dist`, environment `NODE_VERSION=22` and `PNPM_VERSION=10.34.5`, build watch paths `web/site/**`. The package is
 standalone (its own lockfile) so Pages builds it without the rest of the repository.
 
 ## Editing

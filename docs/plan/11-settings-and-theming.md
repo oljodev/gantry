@@ -25,7 +25,7 @@
 
 ### Tokens
 
-All colour, radius and spacing come from CSS custom properties in `src/styles/tokens.css`, defined exactly the way the plan's own artifact page is: the complete light palette on `:root`, the dark palette under `@media (prefers-color-scheme: dark)` guarded as `:root:not([data-theme="light"])`, and again under `:root[data-theme="dark"]`. Components only ever reference tokens. Tailwind v4 reads the same variables through `@theme`, so utility classes and hand-written CSS share one palette. `color-scheme` is set on `:root` per theme so native scrollbars, form controls and the `<select>` popups match.
+All colour, radius and spacing come from CSS custom properties in `desktop/frontend/src/styles/tokens.css`, defined exactly the way the plan's own artifact page is: the complete light palette on `:root`, the dark palette under `@media (prefers-color-scheme: dark)` guarded as `:root:not([data-theme="light"])`, and again under `:root[data-theme="dark"]`. Components only ever reference tokens. Tailwind v4 reads the same variables through `@theme`, so utility classes and hand-written CSS share one palette. `color-scheme` is set on `:root` per theme so native scrollbars, form controls and the `<select>` popups match.
 
 ### The three states
 

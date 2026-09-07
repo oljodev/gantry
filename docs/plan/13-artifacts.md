@@ -84,7 +84,7 @@ features/artifacts/
   registry.ts        type → renderer, mirrors the Rust registry
   bridge.ts          the parent side of the postMessage protocol (§5)
   store.ts           open artifacts, streaming buffers, render states (part of the run store)
-artifact-runtime/    separate Vite package that builds the sandbox document (§6)
+desktop/artifact-runtime/    separate Vite package that builds the sandbox document (§6)
 ```
 
 - The panel opens automatically the first time a turn creates an artifact (setting) and stays where the user left it afterwards. `Ctrl/Cmd+Shift+A` toggles it.
@@ -138,7 +138,7 @@ When Tauri stabilizes multi-webview, a `WebviewHost` implementing the same rende
 
 ## 6. The React runtime
 
-`artifact-runtime/` is a small Vite project that builds one self-contained `runtime.html` (bundled and inlined at build time, imported by the app as a raw string). It contains:
+`desktop/artifact-runtime/` is a small Vite project that builds one self-contained `runtime.html` (bundled and inlined at build time, imported by the app as a raw string). It contains:
 
 | Piece | Choice | Why |
 |-------|--------|-----|
@@ -151,7 +151,7 @@ When Tauri stabilizes multi-webview, a `WebviewHost` implementing the same rende
 
 Component contract: the file's default export is the component (a named `App` export is accepted as a fallback); it is rendered into `#root` with no props; it may use hooks and state freely; it has no network, storage or tool access, and the core prompt says so. Errors show in the Problems tab with the line and column mapped back to the artifact source. **Fix this** sends a visible user message quoting the error; the render-verified tool result (§2) handles the common case where the error is immediate.
 
-The bundle is roughly 4–6 MB of JavaScript, loaded once per mounted artifact; mount time on a mid-range laptop is well under a second. Adding a library is a registry change in `artifact-runtime/src/modules.ts` plus a line in the core prompt.
+The bundle is roughly 4–6 MB of JavaScript, loaded once per mounted artifact; mount time on a mid-range laptop is well under a second. Adding a library is a registry change in `desktop/artifact-runtime/src/modules.ts` plus a line in the core prompt.
 
 ## 7. Versioning
 

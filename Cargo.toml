@@ -1,12 +1,12 @@
 [workspace]
 resolver = "3"
 members = [
-  "src-tauri",
-  "crates/*",
-  "connectors/filesystem",
-  "connectors/code-editor",
-  "connectors/shell",
-  "connectors/web",
+  "desktop/app",
+  "desktop/crates/*",
+  "desktop/connectors/filesystem",
+  "desktop/connectors/code-editor",
+  "desktop/connectors/shell",
+  "desktop/connectors/web",
 ]
 
 [workspace.package]
@@ -20,17 +20,17 @@ publish = false
 
 [workspace.dependencies]
 # Gantry crates
-gantry-core = { path = "crates/gantry-core" }
-gantry-store = { path = "crates/gantry-store" }
-gantry-secrets = { path = "crates/gantry-secrets" }
-gantry-providers = { path = "crates/gantry-providers" }
-gantry-connectors = { path = "crates/gantry-connectors" }
-gantry-workspace = { path = "crates/gantry-workspace" }
-gantry-agent = { path = "crates/gantry-agent" }
-gantry-connector-filesystem = { path = "connectors/filesystem" }
-gantry-connector-code-editor = { path = "connectors/code-editor" }
-gantry-connector-shell = { path = "connectors/shell" }
-gantry-connector-web = { path = "connectors/web" }
+gantry-core = { path = "desktop/crates/gantry-core" }
+gantry-store = { path = "desktop/crates/gantry-store" }
+gantry-secrets = { path = "desktop/crates/gantry-secrets" }
+gantry-providers = { path = "desktop/crates/gantry-providers" }
+gantry-connectors = { path = "desktop/crates/gantry-connectors" }
+gantry-workspace = { path = "desktop/crates/gantry-workspace" }
+gantry-agent = { path = "desktop/crates/gantry-agent" }
+gantry-connector-filesystem = { path = "desktop/connectors/filesystem" }
+gantry-connector-code-editor = { path = "desktop/connectors/code-editor" }
+gantry-connector-shell = { path = "desktop/connectors/shell" }
+gantry-connector-web = { path = "desktop/connectors/web" }
 
 # Shared third-party versions. Pin here, inherit everywhere.
 serde = { version = "1", features = ["derive"] }

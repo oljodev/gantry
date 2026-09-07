@@ -2,9 +2,8 @@ dist
 target
 node_modules
 pnpm-lock.yaml
-src/routeTree.gen.ts
-src/bindings.ts
-src-tauri/gen
-website
-client-metadata
+desktop/frontend/src/routeTree.gen.ts
+desktop/frontend/src/bindings.ts
+desktop/app/gen
+web
 *.md

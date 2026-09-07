@@ -28,13 +28,13 @@ Apache License 2.0. Every release lists its own conversion date here:
 
 ## What else is in this repository
 
-- `connectors/`: first-party connectors are under the same licence. Manifests for third-party
+- `desktop/connectors/`: first-party connectors are under the same licence. Manifests for third-party
   MCP servers only *describe* servers that have their own licences; nothing of theirs is
   included.
-- `schemas/` and `connectors/README.md`: the connector folder contract and the manifest schema
+- `desktop/schemas/` and `desktop/connectors/README.md`: the connector folder contract and the manifest schema
   are additionally offered under the MIT licence, so anyone can ship Gantry-compatible connectors
   without touching the FSL. (Formalised before the first public release.)
-- `website/` and `client-metadata/`: the public sites, same licence as the app.
+- `web/site/` and `web/client-metadata/`: the public sites, same licence as the app.
 - Third-party components are listed with their licences in `THIRD_PARTY_LICENSES.md`
   (generated at release time).
 

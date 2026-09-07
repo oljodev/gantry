@@ -1,4 +1,4 @@
 packages:
-  - '.'
+  - desktop/frontend
 onlyBuiltDependencies:
   - esbuild

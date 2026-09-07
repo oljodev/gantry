@@ -21,21 +21,34 @@ What this means for the way you work:
   up.
 - Do not force-push and do not rewrite history on `main`.
 
+## Layout
+
+- `desktop/` is the product: `app/` (the Tauri crate `gantry-app`), `frontend/` (the React
+  package `@gantry/frontend`), `crates/` (the engine crates and `xtask`), `connectors/`, `skills/`,
+  `assets/` (prompts, model overrides, guardrails, branding) and `schemas/`.
+- `web/` holds the two Cloudflare Pages sites: `site/` (oljo.dev, its own package and lockfile)
+  and `client-metadata/` (id.oljo.dev).
+- `docs/plan/` is the plan; the root keeps only the Cargo and pnpm workspace files, the licence
+  documents and this file. `docs/plan/07-repository-structure.md` has the full tree.
+
 ## The plan and the code
 
 `docs/plan/README.md` is the architecture plan; read it before changing structure. Document 15 is
-the app's design system: every colour, size, radius and duration lives in `src/styles/tokens.css`
-and nowhere else. When code contradicts a plan document, update the document in the same commit.
+the app's design system: every colour, size, radius and duration lives in
+`desktop/frontend/src/styles/tokens.css` and nowhere else. When code contradicts a plan document,
+update the document in the same commit.
 
 ## Building
 
-- Frontend: `pnpm install && pnpm fonts`, then `pnpm dev` (browser only), `pnpm typecheck`,
-  `pnpm lint`, `pnpm test`, `pnpm build`.
+- Everything runs from the repository root. Frontend: `pnpm install && pnpm fonts`, then
+  `pnpm dev` (browser only), `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm build`; the root
+  scripts forward to `desktop/frontend`, and `pnpm format` covers the whole repository.
 - Rust: `cargo test --workspace`, `cargo clippy --workspace --all-targets -- -D warnings`,
   `cargo fmt --all`.
-- The app: `pnpm tauri dev`. After changing a command: `cargo xtask gen-bindings` and commit
-  `src/bindings.ts` (the `gen_bindings` test fails on drift).
+- The app: `pnpm tauri dev` (the Tauri CLI finds `desktop/app/tauri.conf.json` by itself). After
+  changing a command: `cargo xtask gen-bindings` and commit `desktop/frontend/src/bindings.ts` (the
+  `gen_bindings` test fails on drift).
 - On this machine the editor runs in a Flatpak sandbox without WebKitGTK; anything that compiles
-  `src-tauri` (`cargo build`, `cargo test --workspace`, `cargo xtask …`, `pnpm tauri …`) runs on
+  `desktop/app` (`cargo build`, `cargo test --workspace`, `cargo xtask …`, `pnpm tauri …`) runs on
   the host through `host-spawn`, e.g. `host-spawn cargo test --workspace`. Pure crates check fine
   inside the sandbox. The website needs the user-local Node 22 in `~/.local/share/node-22/bin`.
