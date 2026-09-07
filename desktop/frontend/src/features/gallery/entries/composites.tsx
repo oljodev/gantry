@@ -198,6 +198,33 @@ function ComposerEntry() {
           />
         </div>
       </State>
+      <State label="With attachments in the tray">
+        <div className="w-full">
+          <Composer
+            mode={mode}
+            guard={guard}
+            model={model}
+            roots={[]}
+            initialAttachments={[
+              {
+                id: 'g1',
+                name: 'notes.md',
+                kind: 'file',
+                input: { kind: 'path', path: 'notes.md' },
+              },
+              {
+                id: 'g2',
+                name: 'screenshot.png',
+                kind: 'image',
+                input: { kind: 'path', path: 'screenshot.png' },
+              },
+            ]}
+            onModeChange={setMode}
+            onGuardChange={setGuard}
+            onModelChange={setModel}
+          />
+        </div>
+      </State>
     </>
   );
 }
