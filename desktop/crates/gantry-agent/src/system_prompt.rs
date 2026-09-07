@@ -4,7 +4,7 @@
 use gantry_core::Mode;
 
 /// Bumped whenever `assets/prompts/core.md` or a mode fragment changes meaning.
-pub const CORE_VERSION: u32 = 1;
+pub const CORE_VERSION: u32 = 2;
 
 const CORE: &str = include_str!("../../../assets/prompts/core.md");
 const MODE_MANUAL: &str = include_str!("../../../assets/prompts/modes/manual.md");
@@ -147,7 +147,7 @@ mod tests {
         .global_instructions("  Answer in Norwegian.  ")
         .build();
         assert!(!prompt.contains("{{"));
-        assert!(prompt.starts_with("<gantry_core version=\"1\">"));
+        assert!(prompt.starts_with("<gantry_core version=\"2\">"));
         let core = prompt.find("</gantry_core>").unwrap();
         let ctx = prompt.find("<gantry_context>").unwrap();
         let instr = prompt.find("<instructions scope=\"global\">").unwrap();

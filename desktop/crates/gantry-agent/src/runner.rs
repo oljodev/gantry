@@ -6,7 +6,7 @@
 use std::{collections::BTreeMap, sync::Arc, time::Instant};
 
 use futures_util::StreamExt;
-use gantry_connectors::{ChatScope, NoopToolEvents, ToolCallRequest, ToolOutcome};
+use gantry_connectors::{ChatScope, ToolCallRequest, ToolEventSink, ToolOutcome};
 use gantry_core::{
     AgentEventKind, CallId, ContentPart, DecisionSource, Interaction, InteractionPayload,
     InteractionResolution, Message, MessageId, PermissionDecision, PermissionRequest,
@@ -857,9 +857,12 @@ async fn execute(ctx: &RunContext, call: &Call, entry: ToolEntry) -> ContentPart
         },
     };
     let cancel = ctx.active.cancel.child_token();
+    let sink = Arc::new(TurnToolEvents {
+        batcher: ctx.active.batcher.clone(),
+    });
     let outcome = tokio::select! {
         _ = ctx.active.cancel.cancelled() => None,
-        r = entry.connector.call(req, Arc::new(NoopToolEvents), cancel) => Some(r),
+        r = entry.connector.call(req, sink, cancel) => Some(r),
     };
     let elapsed = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
     let (status, is_error, content) = match outcome {
@@ -882,6 +885,18 @@ async fn execute(ctx: &RunContext, call: &Call, entry: ToolEntry) -> ContentPart
         })) => (ToolCallStatus::Completed, is_error, cap_result(content)),
     };
     complete_call(ctx, &call.id, status, is_error, elapsed, content)
+}
+
+/// The sink a running call reports through: events a runtime tool produces itself
+/// (`artifact.*`) join the turn stream; output and progress arrive with the shell (M7).
+struct TurnToolEvents {
+    batcher: Arc<crate::events::Batcher>,
+}
+
+impl ToolEventSink for TurnToolEvents {
+    fn event(&self, event: AgentEventKind) {
+        self.batcher.push(event);
+    }
 }
 
 /// Keeps a result under the transcript limit: head and tail with a marker between (05 §8).

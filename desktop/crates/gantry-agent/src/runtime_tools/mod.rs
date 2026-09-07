@@ -2,9 +2,10 @@
 //! model under the `gantry__` namespace. They implement the [`Connector`] trait so the turn
 //! loop has one call path, but they are not catalog entries: no install, no auth, no process.
 //!
-//! M3 ships `gantry__clock`. Access requests, connector search and suggestions, artifacts,
-//! skills and memory follow with their milestones.
+//! `gantry__clock` (M3) and the artifact tools (M5). Access requests, connector search and
+//! suggestions, skills and memory follow with their milestones.
 
+pub mod artifacts;
 pub mod clock;
 
 use std::sync::Arc;
@@ -16,11 +17,14 @@ use gantry_connectors::{
 use gantry_core::ToolDef;
 use tokio_util::sync::CancellationToken;
 
+use crate::artifacts::Artifacts;
+
 /// The namespace prefix of every runtime tool.
 pub const NAMESPACE: &str = "gantry";
 
 pub struct RuntimeTools {
     descriptor: ConnectorDescriptor,
+    artifacts: Option<Arc<Artifacts>>,
 }
 
 impl Default for RuntimeTools {
@@ -30,6 +34,7 @@ impl Default for RuntimeTools {
 }
 
 impl RuntimeTools {
+    /// The clock only; tests and tool-less contexts.
     #[must_use]
     pub fn new() -> Self {
         Self {
@@ -39,7 +44,16 @@ impl RuntimeTools {
                 instance_id: None,
                 first_party: true,
             },
+            artifacts: None,
         }
+    }
+
+    /// With the artifact tools.
+    #[must_use]
+    pub fn with_artifacts(artifacts: Arc<Artifacts>) -> Self {
+        let mut tools = Self::new();
+        tools.artifacts = Some(artifacts);
+        tools
     }
 }
 
@@ -50,17 +64,25 @@ impl Connector for RuntimeTools {
     }
 
     async fn tools(&self) -> Result<Vec<ToolDef>, ConnectorError> {
-        Ok(vec![clock::definition()])
+        let mut defs = vec![clock::definition()];
+        if self.artifacts.is_some() {
+            defs.extend(artifacts::definitions());
+        }
+        Ok(defs)
     }
 
     async fn call(
         &self,
         req: ToolCallRequest,
-        _sink: Arc<dyn ToolEventSink>,
+        sink: Arc<dyn ToolEventSink>,
         _cancel: CancellationToken,
     ) -> Result<ToolOutcome, ConnectorError> {
         match req.tool.as_str() {
             clock::NAME => Ok(clock::call(&req.args)),
+            t if artifacts::NAMES.contains(&t) => match &self.artifacts {
+                Some(service) => Ok(artifacts::call(service, &req, &sink).await),
+                None => Err(ConnectorError::UnknownTool(t.to_owned())),
+            },
             other => Err(ConnectorError::UnknownTool(other.to_owned())),
         }
     }

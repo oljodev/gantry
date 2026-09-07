@@ -11,7 +11,7 @@ use gantry_core::{
 use gantry_store::{
     BlobStore, Store,
     repos::{
-        blobs,
+        artifacts, blobs,
         chats::{self, ChatRecord},
         messages::{self, AttachmentRecord, MessageRecord},
         tool_calls,
@@ -552,14 +552,16 @@ impl ChatBook {
         let blobs = self.blobs.clone();
         self.store
             .write_blocking(move |conn| {
-                let hashes: Vec<String> = messages::list_for_chat(conn, chat_id)?
-                    .into_iter()
-                    .filter(|m| m.message.role == Role::User)
-                    .flat_map(|m| {
-                        messages::list_attachments(conn, m.message.id).unwrap_or_default()
-                    })
-                    .map(|a| a.blob_hash)
-                    .collect();
+                let mut hashes: Vec<String> = artifacts::hashes_for_chat(conn, chat_id)?;
+                hashes.extend(
+                    messages::list_for_chat(conn, chat_id)?
+                        .into_iter()
+                        .filter(|m| m.message.role == Role::User)
+                        .flat_map(|m| {
+                            messages::list_attachments(conn, m.message.id).unwrap_or_default()
+                        })
+                        .map(|a| a.blob_hash),
+                );
                 let existed = chats::delete(conn, chat_id)?;
                 for h in hashes {
                     if blobs::release(conn, &h)? {
