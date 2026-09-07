@@ -72,39 +72,129 @@ Settled with Olav on 2026-09-07.
 | D8 | **Reading never returns line-number prefixes inside the content.** Line positions are reported as separate fields. | Measured evidence from other tools: a line-number prefix in read output bleeds into what the model reproduces later, and shows up as edits indented one level too deep. Position information is useful; putting it inside the text is not. |
 | D9 | **Nothing is silently truncated.** Every cut reports what was cut and how to continue. | Same rule as the web connector, for the same reason: a model that cannot see something concludes it does not exist. |
 | D10 | **Binary files return metadata and an honest refusal**, never decoded bytes. | Feeding a model the mangled text of a PNG wastes its context and teaches it nothing. |
+| D11 | **Containment is enforced by opening through a directory handle that cannot escape, not by comparing paths.** | §4. String comparison is what every published failure has in common. The filesystem itself is a better judge of where a path leads than any amount of string work. |
+| D12 | **Nothing is ever cached as "already validated".** Every operation re-resolves. | The model can plant a symlink in one turn and use it in a later one. That is not a race condition, it is patience, and a cache defeats the whole boundary. |
+| D13 | **Tauri's own filesystem scope is not used as the boundary.** | §16. It is glob-based, frontend-only, and has had three separate escapes. Its deny-wins precedence rule is worth copying; nothing else is. |
 
 ## 4. Scope: the containment algorithm
 
-> **Pending.** The precise mechanism, the platform checklist and the literal test corpus are
-> being researched now. What follows is the shape it must have; the specifics land before this
-> document is final.
+The governing idea, which reverses the obvious approach:
 
-Roots come from "Add folder to workspace", a project's workspace folder, or an approved access
-request. They are resolved once, when added, and stored canonical.
+> **Do not decide containment by comparing paths. Open through a directory handle that cannot
+> escape, then verify what you actually opened.** String work exists only to choose which root a
+> path claims, and to reject obviously hostile syntax before it reaches the filesystem.
 
-The rules a candidate path must satisfy, in order:
+Every published failure in §2 is a variation on trusting string manipulation to answer a question
+the filesystem answers better. The kernel already knows where a path leads, including through
+symlinks, junctions, short names and case folding. Asking it is both simpler and correct.
 
-1. **Reject before resolving.** Anything malformed enough to be a trick rather than a path is
-   refused without further processing: device namespaces, reserved device names, alternate data
-   stream syntax, and any form the platform is known to silently rewrite.
-2. **Resolve fully**, following every symlink, to a real path. For a file that does not exist yet,
-   resolve the deepest existing ancestor and treat the remainder as literal components, with no
-   `..` surviving.
-3. **Compare on path components, never on strings.** A root is a prefix of a candidate only if
-   every component of the root matches, in order, with the boundary falling on a separator.
-   String comparison is what let `project-evil` pass as `project`.
-4. **Fail closed** if any step cannot complete (D2).
-5. **Re-check after opening**, so the thing that was opened is the thing that was checked. This
-   is what closes the gap between validating a path and using it, during which a symlink could
-   have appeared.
-6. **Repeat for every path in the call**, including both ends of a move or a copy.
+### Roots
 
-Two further rules that do not follow from containment alone:
+A root is created from a folder the user picked in a native dialog, never from model output. It
+is resolved to its canonical form once, at that moment, and a directory handle is opened and held
+for the session. Holding the handle means the folder cannot be renamed or replaced underneath us.
 
-- **Roots are host-controlled.** The model can request one (D5) but can never supply one as a
-  tool argument.
-- **Gantry's own data directory and configuration are refused always** (D6), even if a root
-  contains them, and even if the user approves the enclosing folder.
+Stored with each root: its canonical path, its open handle, its filesystem identity, and whether
+its volume is case-sensitive. That last one is **detected empirically** by probing, not inferred
+from the operating system, because macOS and Windows can both go either way per volume.
+
+The macOS `/tmp` to `/private/tmp` case is handled here rather than everywhere else: whatever the
+user picked, the canonical form is what gets stored and reported back.
+
+### The five phases
+
+**Phase 0, the syntax gate.** Reject, never sanitise. An empty path, an embedded null, anything
+that is not valid UTF-8, an unpaired surrogate, or anything past the length and depth caps. On
+Windows this phase also rejects the whole family of alternate spellings: any colon outside a
+drive prefix, which eliminates alternate data streams in a single rule; the reserved device names
+including the superscript forms of `COM` and `LPT` that are easy to forget and were a real
+vulnerability in the library recommended below; any component ending in a dot or a space, because
+Windows silently strips those, so two different strings open the same file; the verbatim, device
+and network prefixes, since a model has no legitimate use for any of them and the first of them
+is literally a request to disable path parsing; and drive-relative paths, which resolve against a
+per-drive working directory that any thread can change.
+
+**Phase 1, anchoring.** An absolute path must component-prefix-match exactly one root. Zero
+matches is a request to add a folder (§8); more than one is an error rather than a guess. A
+relative path resolves against the named root, never against the process working directory.
+
+One primitive is specifically ruled out here: the standard library's function for making a path
+absolute must not be used. It keeps `..` components on Unix, it resolves against the
+process-global working directory on Windows, and it does not expand short names. It gives neither
+containment nor a canonical spelling.
+
+**Phase 2, the lexical pre-check.** Refuse any `..` component outright rather than resolving it.
+This is stricter than necessary and costs an agent nothing, since it can always name a path from
+the root. Note that path components deliberately do not resolve `..` for the good reason that an
+intervening component might be a symlink, so resolving it lexically can change which file a path
+names.
+
+**Phase 3, the capability open. This is the boundary.** The path is opened through the root's
+handle using only its relative components, never rejoined into an absolute string. On Linux this
+is enforced by the kernel, which refuses to resolve outside the handle's subtree and blocks the
+process filesystem's magic links. Elsewhere it is a component walk that holds every parent
+descriptor open, so that even a concurrent rename cannot move the ground underneath it.
+
+For a file that does not exist yet, which is the case the standard canonicalization function
+cannot serve because it requires existence, the parent directory is **opened as a handle** and
+the final component is created relative to that. Canonicalizing the parent and then joining the
+filename back on is the classic mistake: it reintroduces a string join across a boundary that was
+just proven, and it is racy.
+
+**Phase 4, identity verification.** With the file open, read the identity of the object actually
+opened and confirm it lies beneath the root. On Windows, additionally ask the operating system
+for the final path of the open handle. That answer is authoritative in a way no string is,
+because it is derived from the handle rather than from the argument, and it has already resolved
+junctions, short names and case. This is the single highest-value check on that platform.
+
+The application's own deny list is applied last, by identity rather than by name (D6).
+
+Every failure at every phase is a denial. The resolver returns either a scoped file or a refusal,
+and there is no other way to construct the former.
+
+### Comparison, where it is still needed
+
+Where paths are compared at all, comparison is component by component on canonical forms, never
+by string prefix. The standard library's prefix test has the right shape but is case-sensitive on
+every platform, which is wrong for a case-insensitive volume, so the comparator is ours. Windows
+adds a trap worth naming: the ordinary and verbatim forms of a drive prefix are different values
+that do not compare equal, so both sides must be normalised to one form first.
+
+### Unicode: do not normalise
+
+This is counterintuitive enough to state explicitly. Apple's current filesystem is
+normalisation-insensitive, so a name opens whichever composition is on disk. Microsoft documents
+that the filesystem treats names as an opaque sequence and that no normalisation is needed. So
+normalising here would not help and could break a legitimate open. What is refused is malformed
+input: non-UTF-8, unpaired surrogates, and embedded nulls.
+
+Filenames that are not valid UTF-8 do exist on Linux and will be encountered when listing. They
+are shown lossily and carry an opaque token the model can pass back, which is resolved to the
+real name internally. They are never round-tripped through the model as text.
+
+### Symlinks and links
+
+| Case | Policy |
+|------|--------|
+| Relative link inside the root, staying inside | Allowed. This is normal and must work |
+| Link inside the root pointing outside | Denied. Shown in listings as a link, target elided |
+| Link outside the root pointing inside | Denied. A path must be reachable *from* the root, not merely resolve to something inside it |
+| Link with an absolute target, even one inside the root | Denied. Simple, and matches what comparable sandboxes do |
+| Dangling link | Denied as not-found, not as a scope violation. Two different problems, two different messages |
+| A link the model creates | Cannot happen. No tool creates symlinks |
+| Hard link to a file outside the root | **Not solvable by path inspection**, since a hard link is indistinguishable from the original. Creating them is refused, and a file with more than one link is noted in the audit trail. The honest position is that this is bounded rather than closed |
+| Mount points, device files, the process filesystem | Outside the path guard's remit and stated as such, not silently assumed away |
+
+### Why re-resolution matters (D12)
+
+The usual framing of a time-of-check race assumes an attacker fast enough to win a microsecond
+window. That framing understates the problem here. A model can create a link in one turn and use
+it three turns later. There is no race to win, only patience. Any design that validates a path
+once and caches the result loses to this flatly, which is why every operation re-resolves from
+the root handle.
+
+The remaining genuine race, on the final component, is closed by refusing to follow a link there
+and by verifying identity after opening.
 
 ## 5. Tools
 
@@ -126,6 +216,14 @@ toolset elsewhere is immediately fluent.
 
 `write_file` and `read_file` are the two whose ownership the code-editor session may change
 (§19). Everything else is unambiguously this connector's.
+
+**Paths are absolute**, in the form the user sees in the interface and the form other agents have
+trained models to produce. They must resolve into exactly one attached folder; matching none is a
+request to add one (§8), and matching more than one is an error rather than a guess. When several
+folders are attached and a relative path would be ambiguous, the tools accept an explicit folder
+argument to disambiguate rather than picking. There is no notion of a current directory, because
+a process-wide working directory is shared mutable state that any thread can change underneath a
+security check.
 
 ### `read_file`
 
@@ -304,15 +402,36 @@ Changes from the placeholder in `desktop/connectors/filesystem/manifest.json`:
 
 ## 13. Libraries
 
-> **Pending.** Crate selection is being researched now, covering directory walking with ignore
-> rules, glob matching, content search, binary and encoding detection, atomic writes, diffing,
-> trash, and document text extraction, with licences checked including build dependencies.
+**The containment layer is not hand-rolled.** A capability-based filesystem library exists that
+does exactly phase 3 of §4: directory handles that cannot escape, using the kernel's own
+containment on Linux and a held-descriptor component walk elsewhere. It is permissively licensed,
+widely used, actively maintained, and has had one vulnerability in six years, which was a missing
+entry in the Windows reserved-name table, fixed in a patch release.
 
-Two constraints are already fixed. Every dependency must be permissively licensed, because
-Gantry ships under a commercial licence; an audit during the web connector's planning caught a
-crate that looks permissive on its registry page while running a copyleft code generator in its
-build script, so `deny.toml` must cover build dependencies. And nothing may require a new C
-toolchain beyond the one SQLite already costs.
+That last detail is the argument, not against it, but for it. The superscript forms of the
+Windows device names are exactly the kind of thing a solo developer writing this from scratch
+would miss, and would keep missing. Roughly fifteen hundred lines of platform-specific walking
+code, maintained forever against new path syntax, is not a good use of the time available.
+
+So `gantry-workspace` is the thin, strict layer *above* that library: the syntax gate, root
+selection and discipline, the identity check after opening, and the application's own deny list.
+None of those come from the library, and all of them are where Gantry's specific risk lives.
+
+Two supporting notes. A small path crate is worth taking for **display only**, to convert
+Windows verbatim paths back into the form a person recognises; it must never be used for
+comparison, though its refusal to simplify a dangerous path is itself a useful signal. And the
+dependency it brings has one component under a single permissive licence rather than the usual
+dual, which the notice file has to reflect.
+
+> **Pending.** The rest of the crate selection is still being researched: directory walking with
+> ignore rules, glob matching, content search, binary and encoding detection, atomic writes,
+> diffing, trash, and document text extraction.
+
+Two constraints are fixed. Every dependency must be permissively licensed, because Gantry ships
+under a commercial licence; an audit during the web connector's planning caught a crate that
+looks permissive on its registry page while running a copyleft code generator in its build
+script, so `deny.toml` must cover build dependencies and run in CI. And nothing may require a new
+C toolchain beyond the one SQLite already costs.
 
 ## 14. Testing
 
@@ -321,9 +440,11 @@ is the half that must not be wrong.
 
 | Layer | How |
 |-------|-----|
-| Containment | Table-driven tests over a literal corpus of paths that must be refused and paths that must be accepted, per platform. Built from the failure table in §2, so every published bypass in a comparable tool is a case here |
-| Symlinks and links | Fixtures built in a temporary directory: a link inside pointing out, one outside pointing in, a relative link, a dangling link, a hard link, and a link created mid-session |
+| Containment | Table-driven over a literal corpus: **sixty-five paths that must be refused and twenty-two that must be accepted**, drafted during this research and grouped by platform. Built from the failure table in §2, so every published bypass in a comparable tool is a case here |
+| The accepts matter as much as the refusals | A boundary that refuses everything is easy. The corpus includes the awkward ones that must work: a relative link staying inside, a name in one Unicode composition when the disk holds the other, a file called `...` on Unix, a lowercase drive letter on Windows, a two-hundred-component path, and creating a file that does not exist yet |
+| Symlinks and links | Fixtures built in a temporary directory: a link inside pointing out, one outside pointing in, a relative link, an absolute one, a dangling link, and a hard link |
 | Fail-closed | That every resolution failure denies, verified by making resolution fail rather than by trusting the code path |
+| Platform splits asserted explicitly | Several cases are legal on one platform and forbidden on another. The test says which, rather than silently passing on whichever machine ran it |
 | Reading | Fixtures for each encoding, each line ending, mixed line endings, no trailing newline, empty files, very long lines, and binary content |
 | Truncation | That `offset` and `limit` reach the end of a file exactly once, with no overlap and no gap |
 | Search | A fixture tree with nested ignore files, verifying that search filters and that reading by name does not |
@@ -353,7 +474,9 @@ confirmation and one journal entry, is the right shape. Not in the first version
 | `03-connector-system.md` §5 | The shared rules paragraph is superseded by §4, which is a specification rather than a summary |
 | `04-permissions.md` §2 | The examples for `write` should include `move_path`, since the reversible-and-local reading of Auto-edit is easy to misread |
 | `06-data-model.md` | Nothing, which is the point: `file_edits` already carries what the journal needs |
-| `deny.toml` | Must fail the build on copyleft licences including build dependencies |
+| `01-architecture-overview.md` §2 | The `gantry-workspace` row describes `Scope` as roots, canonicalization and sensitive-path patterns. §4 replaces that with a capability-based design, which is a different thing and worth saying so |
+| Tauri configuration | Its filesystem scope stays configured tightly as an independent second layer for the webview, but it is explicitly not the boundary (D13), and `gantry-workspace` must not depend on Tauri at all so it stays headless-testable and shared |
+| `deny.toml` | Must fail the build on copyleft licences including build dependencies, and run in CI. The containment library's one historical vulnerability was fixed in a patch release, which only helps if patch releases are actually taken |
 
 ## 17. Open questions
 
@@ -365,6 +488,13 @@ confirmation and one journal entry, is the right shape. Not in the first version
    desktop session, and what `delete_path` promises when it does not.
 4. **Bulk operations.** Whether the first version can really live without them, given that
    organising files is one of the two jobs in §1.
+5. **macOS firmlinks.** Whether resolving a path under the user's home returns the familiar form
+   or the underlying data-volume one. This has to be checked on a real machine before shipping,
+   because if it returns the latter, the canonical roots stored in §4 will look alien to the user
+   and the identity check becomes the only thing holding the boundary up.
+6. **Windows short names.** Whether they exist at all on a given volume, since generation has
+   been off by default for years. The relevant test has to create the fixture explicitly or skip,
+   never assume.
 
 ## 18. What this connector is not
 
