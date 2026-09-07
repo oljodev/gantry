@@ -14,9 +14,11 @@ export async function copyText(text: string): Promise<void> {
  * Opens an `https:` link in the system browser after the user confirms the full URL (13 §5:
  * links inside artifacts never navigate anything themselves).
  */
-export async function openExternal(url: string): Promise<void> {
+export async function openExternal(url: string, confirmFirst = true): Promise<void> {
   if (!/^https?:\/\//i.test(url)) return;
-  if (!window.confirm(`Open this link in your browser?\n\n${url}`)) return;
+  // A link inside an answer is the model's, so it is confirmed; a button in Gantry's own UI is
+  // the user's own click and asking twice is noise.
+  if (confirmFirst && !window.confirm(`Open this link in your browser?\n\n${url}`)) return;
   if (isTauri()) {
     const { openUrl } = await import('@tauri-apps/plugin-opener');
     await openUrl(url);

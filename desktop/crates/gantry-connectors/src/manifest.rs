@@ -89,11 +89,15 @@ pub enum Auth {
         inject: Inject,
         #[serde(default)]
         instructions: Option<String>,
+        #[serde(default)]
+        setup_url: Option<String>,
     },
     Headers {
         fields: Vec<HeaderField>,
         #[serde(default)]
         instructions: Option<String>,
+        #[serde(default)]
+        setup_url: Option<String>,
     },
     Oauth2 {
         #[serde(default)]
@@ -106,6 +110,8 @@ pub enum Auth {
         user_supplied_fields: Vec<String>,
         #[serde(default)]
         instructions: Option<String>,
+        #[serde(default)]
+        setup_url: Option<String>,
     },
 }
 
@@ -128,6 +134,17 @@ impl Auth {
             Auth::ApiKey { instructions, .. }
             | Auth::Headers { instructions, .. }
             | Auth::Oauth2 { instructions, .. } => instructions.as_deref(),
+        }
+    }
+
+    /// The page where this credential is created, for the button that opens it.
+    #[must_use]
+    pub fn setup_url(&self) -> Option<&str> {
+        match self {
+            Auth::None => None,
+            Auth::ApiKey { setup_url, .. }
+            | Auth::Headers { setup_url, .. }
+            | Auth::Oauth2 { setup_url, .. } => setup_url.as_deref(),
         }
     }
 
@@ -340,11 +357,17 @@ impl Manifest {
             multi_instance: self.multi_instance,
             long_description: self.long_description.clone(),
             auth_instructions: self.auth.instructions().map(str::to_owned),
+            auth_setup_url: self.auth.setup_url().map(str::to_owned),
             auth_alternate: self.auth_alternate.as_ref().map(Auth::kind),
             auth_alternate_instructions: self
                 .auth_alternate
                 .as_ref()
                 .and_then(|a| a.instructions())
+                .map(str::to_owned),
+            auth_alternate_setup_url: self
+                .auth_alternate
+                .as_ref()
+                .and_then(|a| a.setup_url())
                 .map(str::to_owned),
         }
     }

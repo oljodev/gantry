@@ -394,11 +394,17 @@ export type CatalogEntryDto = {
 	long_description: string | null,
 	auth_instructions: string | null,
 	/**
+	 *  The page where the credential is created, opened by a button rather than described in
+	 *  prose the user has to follow by hand.
+	 */
+	auth_setup_url: string | null,
+	/**
 	 *  A second accepted credential, when the server takes one (03 §7): GitHub signs in with
 	 *  OAuth or takes a token, and the install dialog offers both.
 	 */
 	auth_alternate: AuthType | null,
 	auth_alternate_instructions: string | null,
+	auth_alternate_setup_url: string | null,
 };
 
 /**  Everything the chat view needs. */

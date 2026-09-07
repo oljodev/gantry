@@ -13,11 +13,13 @@ import { TierLabel } from '@/components/gantry/TierLabel';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
+import { toast } from '@/components/ui/toast';
 import type { CatalogEntryDto, ConnectorInstanceDto } from '@/bindings';
 import { AddCustomServer } from '@/features/connectors/AddCustomServer';
 import { InstallDialog } from '@/features/connectors/InstallDialog';
 import { isTauri } from '@/lib/ipc/client';
 import { useCatalog, useConnectorMutations, useConnectors } from '@/lib/ipc/hooks/connectors';
+import { describe } from '@/lib/errors';
 import { cn } from '@/lib/utils';
 
 type Tab = 'discover' | 'yours';
@@ -30,11 +32,38 @@ type Tab = 'discover' | 'yours';
 export function ConnectorsSection() {
   const [tab, setTab] = useState<Tab>('discover');
   const [query, setQuery] = useState('');
-  const [installing, setInstalling] = useState<CatalogEntryDto | null>(null);
+  /** The entry whose install needs something from the user; the fallback dialog, not the path. */
+  const [asking, setAsking] = useState<{ entry: CatalogEntryDto; reason?: string } | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const catalog = useCatalog();
   const connectors = useConnectors();
-  const { connect, setEnabled, remove } = useConnectorMutations();
+  const { install, authorize, connect, setEnabled, remove } = useConnectorMutations();
+
+  /**
+   * One click, all the way (03 §11). Install, and then do whatever that server needs without
+   * asking first: nothing at all, or a browser sign-in. Only a server that will not register a
+   * client by itself — GitHub is the one in this catalog — has anything left to ask, and only
+   * then does a dialog appear.
+   */
+  const runInstall = async (entry: CatalogEntryDto) => {
+    setBusy(entry.id);
+    try {
+      const existing = (connectors.data ?? []).find((i) => i.catalog_id === entry.id);
+      const instance = existing ?? (await install.mutateAsync(entry.id));
+      if (entry.auth === 'none') return;
+      if (instance.auth_state === 'authorized' && instance.tools.length > 0) return;
+      toast.add({
+        title: `Sign in to ${entry.name}`,
+        description: 'Your browser is opening; come back when it says you can.',
+      });
+      await authorize.mutateAsync({ instanceId: instance.id });
+    } catch (err) {
+      setAsking({ entry, reason: describe(err) });
+    } finally {
+      setBusy(null);
+    }
+  };
 
   const entries = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -117,7 +146,12 @@ export function ConnectorsSection() {
         ) : (
           <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
             {entries.map((entry) => (
-              <CatalogRow key={entry.id} entry={entry} onInstall={() => setInstalling(entry)} />
+              <CatalogRow
+                key={entry.id}
+                entry={entry}
+                busy={busy === entry.id}
+                onInstall={() => void runInstall(entry)}
+              />
             ))}
           </div>
         )
@@ -144,7 +178,7 @@ export function ConnectorsSection() {
               onRemove={() => remove.mutate(instance.id)}
               onFinishSetup={() => {
                 const entry = (catalog.data ?? []).find((c) => c.id === instance.catalog_id);
-                if (entry) setInstalling(entry);
+                if (entry) void runInstall(entry);
               }}
             />
           ))}
@@ -163,11 +197,12 @@ export function ConnectorsSection() {
         </Button>
       </div>
 
-      {installing && (
+      {asking && (
         <InstallDialog
-          entry={installing}
-          instance={(connectors.data ?? []).find((i) => i.catalog_id === installing.id)}
-          onClose={() => setInstalling(null)}
+          entry={asking.entry}
+          instance={(connectors.data ?? []).find((i) => i.catalog_id === asking.entry.id)}
+          reason={asking.reason}
+          onClose={() => setAsking(null)}
         />
       )}
       {adding && <AddCustomServer onClose={() => setAdding(false)} />}
@@ -176,7 +211,15 @@ export function ConnectorsSection() {
 }
 
 /** One catalog entry: what it is, what it needs, and the one button that installs it. */
-function CatalogRow({ entry, onInstall }: { entry: CatalogEntryDto; onInstall: () => void }) {
+function CatalogRow({
+  entry,
+  busy,
+  onInstall,
+}: {
+  entry: CatalogEntryDto;
+  busy: boolean;
+  onInstall: () => void;
+}) {
   const installed = entry.installed.length > 0;
   return (
     <div className="flex items-start gap-3 rounded-3 border border-line-subtle bg-raised p-3">
@@ -196,8 +239,13 @@ function CatalogRow({ entry, onInstall }: { entry: CatalogEntryDto; onInstall: (
           ))}
         </div>
       </div>
-      <Button variant={installed ? 'ghost' : 'secondary'} size="sm" onClick={onInstall}>
-        {installed ? 'Installed' : 'Install'}
+      <Button
+        variant={installed ? 'ghost' : 'secondary'}
+        size="sm"
+        disabled={busy}
+        onClick={onInstall}
+      >
+        {busy ? 'Connecting…' : installed ? 'Installed' : 'Install'}
       </Button>
     </div>
   );

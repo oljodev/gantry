@@ -352,6 +352,11 @@
             },
             "instructions": {
               "type": "string"
+            },
+            "setup_url": {
+              "type": "string",
+              "format": "uri",
+              "description": "The page where the user creates this credential, opened by a button in the install dialog. Query parameters that prefill the form are welcome."
             }
           }
         },
@@ -389,6 +394,11 @@
             },
             "instructions": {
               "type": "string"
+            },
+            "setup_url": {
+              "type": "string",
+              "format": "uri",
+              "description": "The page where the user creates this credential, opened by a button in the install dialog. Query parameters that prefill the form are welcome."
             }
           }
         },
@@ -432,6 +442,11 @@
             },
             "instructions": {
               "type": "string"
+            },
+            "setup_url": {
+              "type": "string",
+              "format": "uri",
+              "description": "The page where the user creates this credential, opened by a button in the install dialog. Query parameters that prefill the form are welcome."
             }
           }
         }
