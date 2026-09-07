@@ -32,7 +32,13 @@ export function Logo({
         </g>
         <rect x="9.5" y="9" width="5" height="5" rx="1.2" fill="currentColor" />
       </svg>
-      {wordmark && <span className="text-ui font-semibold tracking-[-0.01em]">Gantry</span>}
+      {wordmark && (
+        <span
+          className={cn('font-semibold tracking-[-0.01em]', size >= 22 ? 'text-title' : 'text-ui')}
+        >
+          Gantry
+        </span>
+      )}
     </span>
   );
 }

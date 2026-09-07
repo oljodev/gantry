@@ -143,7 +143,7 @@ src/
   lib/stores/     runStore (streaming), uiStore (sidebar width, theme, collapsed groups; persisted)
   lib/markdown/   block splitter, memoized renderer, shiki loader
   lib/partial/    partial JSON helpers for live tool previews
-  features/sidebar        SidebarNav, ChatListItem, ProjectList, PinnedSection, date grouping
+  features/sidebar        SidebarNav, ChatListItem, PinnedSection
   features/chat           ChatView, MessageList, UserMessage, AssistantMessage, TurnStatusBar
   features/composer       Composer, AttachMenu, ModeChip, ModelPicker, RootsChips, AttachmentTray
   features/activity       ActivityFeed, ActivityItem (tool/edit/command/connector/judge), detail drawer:
@@ -176,11 +176,11 @@ The run store is filled only by channel events. When a chat view mounts and a tu
 
 ### Sidebar
 
-Structure (Claude Desktop-inspired): **New chat** · **Search** · **Pinned** (chats and projects) · **Projects** (pinned projects, then "All projects") · **Recents** grouped Today / Yesterday / Previous 7 days / Previous 30 days / Older, ordered by `last_message_at`.
+Structure (Claude Desktop's, settled in session 5): **New chat** · **Search** · **Projects** · **Artifacts** · **Pinned** (chats) · **Chats**, a flat list ordered by `last_message_at`, newest first, with no day groups. Projects are not pinned in the sidebar.
 
 Keeping the list in sync with a streaming chat:
 
-- The list is one Query (`['chats', { project? }]`) returning light rows (id, title, project, pinned, `last_message_at`, `archived`). Groups are computed in a selector, not stored.
+- The list is one Query (`['chats', { project? }]`) returning light rows (id, title, project, pinned, `last_message_at`, `archived`), sorted in a selector.
 - `send_message` bumps `last_message_at` before the model is even called and emits `chats:changed`, so the active chat jumps to the top immediately.
 - The running spinner and the "needs your decision" badge come from the run store (`useRunStore(s => s.byChat[id]?.status)`), not from the query, so they update at channel speed without re-fetching.
 - The title arrives later (`TitleGenerator`) through another `chats:changed`; until then the row shows the first words of the user message.

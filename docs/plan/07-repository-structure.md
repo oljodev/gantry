@@ -188,7 +188,7 @@ gantry/
 │   │   ├── partial/{partialJson.ts}
 │   │   └── utils/
 │   ├── features/
-│   │   ├── sidebar/{SidebarNav.tsx, ChatListItem.tsx, ProjectList.tsx, PinnedSection.tsx, grouping.ts}
+│   │   ├── sidebar/{SidebarNav.tsx, ChatListItem.tsx, PinnedSection.tsx}
 │   │   ├── chat/{ChatView.tsx, MessageList.tsx, UserMessage.tsx, AssistantMessage.tsx, TurnStatusBar.tsx}
 │   │   ├── composer/{Composer.tsx, AttachMenu.tsx, ModeChip.tsx, ModelPicker.tsx, RootsChips.tsx, AttachmentTray.tsx, SlashMenu.tsx}
 │   │   ├── activity/{ActivityFeed.tsx, ActivityItem.tsx, items/{EditItem.tsx, CommandItem.tsx, ConnectorItem.tsx, ReadItem.tsx, ArtifactItem.tsx, ContextItem.tsx, GuardMark.tsx},
@@ -210,7 +210,7 @@ gantry/
 │   ├── components/ui/                    # shadcn/ui (Base UI) primitives, reshaped to the tokens (15 §8)
 │   ├── components/gantry/                # composites (15 §8): activity/{ActivityRow, HunkPreview, TurnSummary}, chat/{UserMessage, TurnView, TurnFooter, InteractionCard},
 │   │                                     #   composer/{Composer, ModeChip, ModelPicker}, pane/{RightPane, DiffView, CommandOutput, ToolCallDetail},
-│   │                                     #   markdown/{Markdown, CodeBlock}, sidebar/{ChatRow, DayGroup}, connectors/ConnectorTile, ConnectorMark, TierLabel, EmptyState
+│   │                                     #   markdown/{Markdown, CodeBlock}, sidebar/ChatRow, connectors/ConnectorTile, ConnectorMark, TierLabel, EmptyState
 │   ├── styles/{globals.css, tokens.css, fonts.css}  # tokens.css is the only place a colour, size or duration is written (15)
 │   └── assets/fonts/                     # Inter Variable, JetBrains Mono Variable (woff2), copied by scripts/sync-fonts.mjs
 │

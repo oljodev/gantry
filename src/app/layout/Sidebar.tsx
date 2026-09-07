@@ -4,15 +4,14 @@ import {
   GearIcon,
   MagnifyingGlassIcon,
   PlusIcon,
-  PushPinIcon,
+  SparkleIcon,
   SidebarSimpleIcon,
 } from '@phosphor-icons/react';
 import { type ReactNode, useCallback, useRef } from 'react';
 
 import { Logo } from '@/components/gantry/Logo';
 import { ChatRow } from '@/components/gantry/sidebar/ChatRow';
-import { groupByDay } from '@/components/gantry/sidebar/DayGroup';
-import { chats, projects } from '@/fixtures/chat';
+import { chats } from '@/fixtures/chat';
 import { SIDEBAR_MAX, SIDEBAR_MIN, useUiStore } from '@/lib/stores/uiStore';
 import { cn, isMac } from '@/lib/utils';
 
@@ -26,8 +25,10 @@ export function Sidebar() {
   const toggleSidebar = useUiStore((s) => s.toggleSidebar);
   const dragging = useRef(false);
   const pinned = chats.filter((c) => c.pinned);
-  const pinnedProjects = projects.filter((p) => p.pinned);
-  const groups = groupByDay(chats.filter((c) => !c.pinned));
+  // Most recently used first; no day groups (session 5 decision, 15 §7).
+  const recents = chats
+    .filter((c) => !c.pinned)
+    .sort((a, b) => b.lastMessageAt.localeCompare(a.lastMessageAt));
 
   const onPointerDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
@@ -64,7 +65,7 @@ export function Sidebar() {
           isMac() && 'pl-(--traffic-lights)',
         )}
       >
-        <Logo />
+        <Logo size={22} />
         <button
           type="button"
           aria-label="Hide sidebar"
@@ -77,7 +78,7 @@ export function Sidebar() {
         </button>
       </div>
 
-      <nav className="flex min-h-0 flex-1 flex-col gap-1 px-2" aria-label="Main">
+      <nav className="flex min-h-0 flex-1 flex-col gap-0.5 px-2" aria-label="Main">
         <SidebarItem to="/chat" icon={<PlusIcon size={16} />} label="New chat" shortcut="⌘N" />
         <SidebarItem
           icon={<MagnifyingGlassIcon size={16} />}
@@ -85,52 +86,23 @@ export function Sidebar() {
           shortcut="⌘K"
           onClick={() => window.dispatchEvent(new CustomEvent('gantry:palette'))}
         />
+        <SidebarItem to="/projects" icon={<FolderSimpleIcon size={16} />} label="Projects" />
+        <SidebarItem to="/artifacts" icon={<SparkleIcon size={16} />} label="Artifacts" />
 
         <div className="min-h-0 flex-1 overflow-y-auto">
           {pinned.length > 0 && (
             <>
               <SectionLabel>Pinned</SectionLabel>
-              {pinnedProjects.map((p) => (
-                <div
-                  key={p.id}
-                  className="flex h-(--row-sidebar) items-center gap-2 rounded-2 px-2 text-ui text-fg hover:bg-hover"
-                >
-                  <FolderSimpleIcon size={16} className="text-fg-2" />
-                  <span className="truncate">{p.name}</span>
-                  <PushPinIcon size={12} className="ml-auto text-fg-3" />
-                </div>
-              ))}
               {pinned.map((c) => (
                 <ChatRow key={c.id} chat={c} />
               ))}
             </>
           )}
-          <SectionLabel>Projects</SectionLabel>
-          {projects.length === 0 ? (
-            <Muted>No projects yet</Muted>
-          ) : (
-            projects.map((p) => (
-              <div
-                key={p.id}
-                className="flex h-(--row-sidebar) items-center gap-2 rounded-2 px-2 text-ui text-fg hover:bg-hover"
-              >
-                <FolderSimpleIcon size={16} className="text-fg-2" />
-                <span className="truncate">{p.name}</span>
-              </div>
-            ))
-          )}
-          <SectionLabel>Recents</SectionLabel>
-          {groups.length === 0 ? (
+          <SectionLabel>Chats</SectionLabel>
+          {recents.length === 0 ? (
             <Muted>No chats yet</Muted>
           ) : (
-            groups.map((g) => (
-              <div key={g.label}>
-                <div className="px-2 pt-2 pb-1 text-meta text-fg-3">{g.label}</div>
-                {g.chats.map((c) => (
-                  <ChatRow key={c.id} chat={c} />
-                ))}
-              </div>
-            ))
+            recents.map((c) => <ChatRow key={c.id} chat={c} />)
           )}
         </div>
 
@@ -167,7 +139,7 @@ function SidebarItem({
   shortcut,
   onClick,
 }: {
-  to?: '/chat' | '/settings/$section';
+  to?: '/chat' | '/projects' | '/artifacts' | '/settings/$section';
   params?: { section: string };
   icon: ReactNode;
   label: string;
@@ -200,6 +172,13 @@ function SidebarItem({
       </Link>
     );
   }
+  if (to === '/projects' || to === '/artifacts') {
+    return (
+      <Link to={to} className={className}>
+        {inner}
+      </Link>
+    );
+  }
   return (
     <button type="button" className={actionClassName} onClick={onClick}>
       {inner}
@@ -209,7 +188,7 @@ function SidebarItem({
 
 function SectionLabel({ children }: { children: ReactNode }) {
   return (
-    <div className="mt-4 px-2 pb-1 text-micro font-medium uppercase tracking-[0.04em] text-fg-3">
+    <div className="mt-3 px-2 pb-1 text-micro font-medium uppercase tracking-[0.04em] text-fg-3">
       {children}
     </div>
   );
