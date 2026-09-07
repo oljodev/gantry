@@ -6,6 +6,7 @@ use std::{
 };
 
 use gantry_agent::{Artifacts, TurnManager};
+use gantry_connectors::ConnectorRegistry;
 use gantry_core::Settings;
 use gantry_providers::ProviderRegistry;
 use gantry_secrets::SecretVault;
@@ -27,6 +28,10 @@ pub struct AppState {
     /// The cached `settings` table; every write goes through `update_settings`.
     pub settings: Arc<RwLock<Settings>>,
     pub turns: Arc<TurnManager>,
+    /// Every connector the turn loop can call, runtime tools included.
+    pub tools: Arc<ConnectorRegistry>,
+    /// Installing, connecting and authorizing (03 §7, §11).
+    pub connectors: Arc<crate::connectors::ConnectorService>,
     pub artifacts: Arc<Artifacts>,
     /// Providers whose last key test failed with an auth error; cleared when the key changes.
     pub invalid_keys: Mutex<HashSet<String>>,

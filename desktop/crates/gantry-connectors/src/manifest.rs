@@ -340,6 +340,12 @@ impl Manifest {
             multi_instance: self.multi_instance,
             long_description: self.long_description.clone(),
             auth_instructions: self.auth.instructions().map(str::to_owned),
+            auth_alternate: self.auth_alternate.as_ref().map(Auth::kind),
+            auth_alternate_instructions: self
+                .auth_alternate
+                .as_ref()
+                .and_then(|a| a.instructions())
+                .map(str::to_owned),
         }
     }
 

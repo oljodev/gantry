@@ -1546,6 +1546,8 @@ dependencies = [
  "gantry-secrets",
  "gantry-store",
  "log",
+ "reqwest",
+ "secrecy",
  "serde",
  "serde_json",
  "specta",
@@ -1562,6 +1564,7 @@ dependencies = [
  "tauri-plugin-window-state",
  "tauri-specta",
  "tokio",
+ "ulid",
 ]
 
 [[package]]

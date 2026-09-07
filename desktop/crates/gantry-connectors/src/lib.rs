@@ -143,8 +143,8 @@ pub trait Connector: Send + Sync {
     ) -> Result<ToolOutcome, ConnectorError>;
 }
 
-/// Every connector that can be called, by namespace id. Attachment per chat (which of these a
-/// chat may use) arrives with M9; until then every registered connector is offered.
+/// Every connector that can be called, by namespace id. Which of them a given chat may use is
+/// decided by `chat_connectors` when the turn's tool set is assembled (03 §11).
 #[derive(Default)]
 pub struct ConnectorRegistry {
     by_id: RwLock<BTreeMap<String, Arc<dyn Connector>>>,
@@ -162,6 +162,14 @@ impl ConnectorRegistry {
             .write()
             .unwrap_or_else(|e| e.into_inner())
             .insert(id, connector);
+    }
+
+    /// Drops a connector: uninstalled, disabled, or no longer authorized.
+    pub fn remove(&self, id: &str) {
+        self.by_id
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(id);
     }
 
     #[must_use]

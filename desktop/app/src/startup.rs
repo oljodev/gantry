@@ -20,6 +20,7 @@ use tauri_specta::Event;
 
 use crate::{
     AppState,
+    connectors::ConnectorService,
     events::{ChatsChanged, InteractionsChanged},
 };
 
@@ -149,15 +150,20 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn Error>> {
     ));
     providers.rebuild()?;
 
-    // Runtime tools are always registered; installed connectors join the registry with M9.
+    // Runtime tools are always registered; installed connectors join them below.
     let artifacts = Arc::new(Artifacts::new(store.clone(), blobs.clone()));
-    let connectors = Arc::new(ConnectorRegistry::new());
-    connectors.register(Arc::new(RuntimeTools::with_artifacts(artifacts.clone())));
+    let tools = Arc::new(ConnectorRegistry::new());
+    tools.register(Arc::new(RuntimeTools::with_artifacts(artifacts.clone())));
+    let connectors = Arc::new(ConnectorService::new(
+        store.clone(),
+        secrets.clone(),
+        tools.clone(),
+    ));
 
     let turns = TurnManager::new(
         Arc::new(ChatBook::new(store.clone(), blobs.clone())),
         providers.clone(),
-        connectors,
+        tools.clone(),
         settings.clone(),
         PromptContext {
             platform: std::env::consts::OS.to_owned(),
@@ -179,8 +185,18 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn Error>> {
         providers,
         settings,
         turns,
+        tools,
+        connectors: connectors.clone(),
         artifacts,
         invalid_keys: Mutex::new(Default::default()),
+    });
+
+    // Installed connectors are registered without waiting for the window: a chat that starts
+    // immediately still sees its tools. A server that cannot be reached is logged, not fatal.
+    tauri::async_runtime::spawn(async move {
+        if let Err(err) = connectors.rebuild().await {
+            log::warn!("registering the installed connectors: {err}");
+        }
     });
     Ok(())
 }

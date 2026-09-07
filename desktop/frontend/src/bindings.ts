@@ -120,12 +120,40 @@ export const commands = {
 	 *  frameless treatment as the main one (the app draws its own title strip, `startup.rs`).
 	 */
 	openArtifactWindow: (artifactId: ArtifactId) => typedError<null, ErrorDto>(__TAURI_INVOKE("open_artifact_window", { artifactId })),
+	listCatalog: () => typedError<CatalogEntryDto[], ErrorDto>(__TAURI_INVOKE("list_catalog")),
+	listConnectors: () => typedError<ConnectorInstanceDto[], ErrorDto>(__TAURI_INVOKE("list_connectors")),
+	getConnector: (instanceId: InstanceId) => typedError<ConnectorInstanceDto, ErrorDto>(__TAURI_INVOKE("get_connector", { instanceId })),
+	/**
+	 *  Installs a catalog entry. A server that needs nothing is connected straight away, so the
+	 *  tool list is on screen before the dialog closes; anything else waits for a credential.
+	 */
+	installConnector: (catalogId: string) => typedError<ConnectorInstanceDto, ErrorDto>(__TAURI_INVOKE("install_connector", { catalogId })),
+	installCustomConnector: (server: CustomServer) => typedError<ConnectorInstanceDto, ErrorDto>(__TAURI_INVOKE("install_custom_connector", { server })),
+	/**  Connects and refreshes the tool list. */
+	connectConnector: (instanceId: InstanceId) => typedError<ToolInfo[], ErrorDto>(__TAURI_INVOKE("connect_connector", { instanceId })),
+	/**
+	 *  Runs the browser sign-in end to end: discovery, the browser hand-off, the code, the token,
+	 *  and a first connection. It can take minutes, because a person is in the middle of it.
+	 */
+	authorizeConnector: (instanceId: InstanceId, clientId: string | null) => typedError<ConnectorInstanceDto, ErrorDto>(__TAURI_INVOKE("authorize_connector", { instanceId, clientId })),
+	/**  Stores a pasted token or key and connects with it. */
+	setConnectorToken: (instanceId: InstanceId, token: string) => typedError<ConnectorInstanceDto, ErrorDto>(__TAURI_INVOKE("set_connector_token", { instanceId, token })),
+	setConnectorEnabled: (instanceId: InstanceId, enabled: boolean) => typedError<null, ErrorDto>(__TAURI_INVOKE("set_connector_enabled", { instanceId, enabled })),
+	/**  Uninstalls: the credentials go, the registered clients go, the history stays readable. */
+	removeConnector: (instanceId: InstanceId) => typedError<null, ErrorDto>(__TAURI_INVOKE("remove_connector", { instanceId })),
+	/**
+	 *  Which connectors a chat may use (03 §11: installing something never changes what an
+	 *  existing conversation can reach).
+	 */
+	listChatConnectors: (chatId: ChatId) => typedError<InstanceId[], ErrorDto>(__TAURI_INVOKE("list_chat_connectors", { chatId })),
+	attachConnector: (chatId: ChatId, instanceId: InstanceId, attached: boolean) => typedError<InstanceId[], ErrorDto>(__TAURI_INVOKE("attach_connector", { chatId, instanceId, attached })),
 };
 
 /** Events */
 export const events = {
 	artifactsChanged: makeEvent<ArtifactsChanged>("artifacts-changed"),
 	chatsChanged: makeEvent<ChatsChanged>("chats-changed"),
+	connectorsChanged: makeEvent<ConnectorsChanged>("connectors-changed"),
 	interactionsChanged: makeEvent<InteractionsChanged>("interactions-changed"),
 	providersChanged: makeEvent<ProvidersChanged>("providers-changed"),
 	settingsChanged: makeEvent<SettingsChanged>("settings-changed"),
@@ -319,6 +347,23 @@ export type AttachmentInput =
 /**  Bytes the webview already holds (a pasted image or file). */
 { kind: "bytes"; name: string; mime: string; data_base64: string };
 
+/**
+ *  Where an instance stands in the auth state machine (03 §7). A server that needs nothing is
+ *  `Authorized` from the moment it is installed.
+ */
+export type AuthState = 
+/**  Installed, but the key or the connection is still missing. */
+"unconfigured" | 
+/**  Configured and ready to authorize. */
+"configured" | 
+/**  The browser is open and we are waiting for the redirect. */
+"authorizing" | "authorized" | 
+/**  The refresh token no longer works: "Reconnect". */
+"expired" | "revoked" | "error";
+
+/**  How a connector proves who it is (03 §7). */
+export type AuthType = "none" | "api_key" | "headers" | "oauth2";
+
 export type CacheSupport = "none" | "automatic" | "explicit";
 
 /**
@@ -326,6 +371,35 @@ export type CacheSupport = "none" | "automatic" | "explicit";
  *  unchanged; synthesized as `gantry_<ulid>` when a provider sends none (02 §3).
  */
 export type CallId = string;
+
+/**  A catalog entry as the Discover list shows it (03 §10). */
+export type CatalogEntryDto = {
+	id: string,
+	name: string,
+	description: string,
+	category: string,
+	kind: ConnectorKind,
+	auth: AuthType,
+	first_party: boolean,
+	keywords: string[],
+	homepage: string | null,
+	/**  What the entry will run or connect to, for the install dialog's preview. */
+	preview: string,
+	requires: RuntimeRequirement[],
+	/**  Instances already installed from this entry. */
+	installed: InstanceId[],
+	/**  Whether a second instance may be installed (03 §3, `multi_instance`). */
+	multi_instance: boolean,
+	/**  The manifest's `long_description`, for the detail view. */
+	long_description: string | null,
+	auth_instructions: string | null,
+	/**
+	 *  A second accepted credential, when the server takes one (03 §7): GitHub signs in with
+	 *  OAuth or takes a token, and the install dialog offers both.
+	 */
+	auth_alternate: AuthType | null,
+	auth_alternate_instructions: string | null,
+};
 
 /**  Everything the chat view needs. */
 export type ChatDetail = ChatDetail_Serialize | ChatDetail_Deserialize;
@@ -435,6 +509,45 @@ export type ChatsChanged = {
 	chat_ids: ChatId[],
 };
 
+/**  What an instance runs or talks to. Secret values are never in here (06 §3). */
+export type ConnectorConfig = { kind: "native" } | { kind: "mcp-stdio"; command: string; args?: string[]; 
+/**  Plain environment variables, and the *names* of the ones filled from the vault. */
+env?: ([string, string])[]; secret_env?: string[]; cwd?: string | null } | { kind: "mcp-remote"; url: string; headers?: ([string, string])[]; 
+/**  Header names whose value comes from the vault, e.g. `Authorization`. */
+secret_headers?: string[] };
+
+/**  An installed connector, as Settings → Customize and the composer show it. */
+export type ConnectorInstanceDto = {
+	id: InstanceId,
+	/**  The catalog entry it came from; `None` for a server the user added by hand. */
+	catalog_id: string | null,
+	/**  The tool namespace prefix, unique across installed instances. */
+	namespace: string,
+	name: string,
+	kind: ConnectorKind,
+	config: ConnectorConfig,
+	auth: AuthType,
+	auth_state: AuthState,
+	enabled: boolean,
+	tools: ToolInfo[],
+	server: ServerInfo | null,
+	last_error: string | null,
+	installed_at: number,
+	last_connected_at: number | null,
+};
+
+/**  How a connector runs (03 §3, `runtime.kind`). */
+export type ConnectorKind = 
+/**  Compiled into Gantry. */
+"native" | 
+/**  A local process speaking MCP over stdio. */
+"mcp-stdio" | 
+/**  An HTTP server speaking MCP. */
+"mcp-remote";
+
+/**  The installed connectors, their auth state or their attachment to a chat changed (03 §10). */
+export type ConnectorsChanged = null;
+
 /**  One block of a message. */
 export type ContentPart = ContentPart_Serialize | ContentPart_Deserialize;
 
@@ -485,6 +598,12 @@ export type CustomEndpoint = {
 	base_url: string,
 };
 
+/**  A server the user described by hand, or pasted from another client's configuration (03 §8). */
+export type CustomServer = {
+	name: string,
+	config: ConnectorConfig,
+};
+
 /**  What Settings → Data & privacy shows and what its buttons do. */
 export type DataInfo = {
 	data_dir: string,
@@ -528,6 +647,9 @@ export type GrantSource =
 "access_request" | 
 /**  Inherited from the project the chat belongs to. */
 "project_default";
+
+/**  An installed, configured connector. */
+export type InstanceId = string;
 
 export type Interaction = {
 	id: InteractionId,
@@ -782,6 +904,14 @@ export type RiskTier =
 /**  Who wrote a message. */
 export type Role = "user" | "assistant" | "tool" | "system";
 
+/**  A runtime an entry needs before it can be installed (03 §11 step 1). */
+export type RuntimeRequirement = {
+	/**  `node`, `python`, `uv` or `docker`. */
+	name: string,
+	/**  The version range asked for, as written in the manifest. */
+	version: string,
+};
+
 /**  One row of the palette's search (docs/plan/06 §3): a chat by title or a message by text. */
 export type SearchHit = {
 	kind: SearchHitKind,
@@ -802,6 +932,14 @@ export type SecretStoreStatus =
 { kind: "os_store"; backend: string } | 
 /**  A file in the data directory, readable by the user only. Linux without Secret Service. */
 { kind: "file_fallback"; path: string };
+
+/**  What the server said about itself on the last connection (06 §3, `server_info_json`). */
+export type ServerInfo = {
+	name: string,
+	version: string,
+	/**  The negotiated MCP revision, shown on the detail page (03 §6). */
+	protocol: string,
+};
 
 /**  Every setting, with a default in code. Persisted one section per row (11 §1). */
 export type Settings = {
@@ -878,6 +1016,17 @@ export type ToolDisplay = {
 
 /**  How the activity row renders a call (05 §2, `tool_call.ready.display`). */
 export type ToolDisplayKind = "edit" | "command" | "connector" | "read";
+
+/**
+ *  One tool an instance offers, as the UI lists it. The schema is not carried here: the browse
+ *  list wants names and tiers, and the model gets the schema from the live session.
+ */
+export type ToolInfo = {
+	name: string,
+	title: string | null,
+	description: string,
+	tier: RiskTier,
+};
 
 /**  One user message and everything the assistant did in reply. */
 export type TurnDto = TurnDto_Serialize | TurnDto_Deserialize;

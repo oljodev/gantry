@@ -32,12 +32,21 @@ pub struct ToolSet {
     names: ToolNameMap,
 }
 
+/// Runtime tools (`gantry__clock`, the artifact tools) belong to the app, not to a connector a
+/// chat attaches, so they are never filtered out.
+pub const RUNTIME_NAMESPACE: &str = "gantry";
+
 impl ToolSet {
-    /// Every tool of every registered connector that the mode offers (04 §4: Plan mode hides
-    /// tools it would deny rather than letting the model waste rounds on them).
-    pub async fn assemble(registry: &ConnectorRegistry, mode: Mode) -> Self {
+    /// The tools this turn may call: every runtime tool, plus the connectors the chat attached
+    /// (03 §11), minus what the mode hides (04 §4: Plan mode hides tools it would deny rather
+    /// than letting the model waste rounds on them).
+    pub async fn assemble(registry: &ConnectorRegistry, mode: Mode, attached: &[String]) -> Self {
         let mut set = ToolSet::default();
         for connector in registry.list() {
+            let id = &connector.descriptor().id;
+            if id != RUNTIME_NAMESPACE && !attached.iter().any(|a| a == id) {
+                continue;
+            }
             let defs = match connector.tools().await {
                 Ok(defs) => defs,
                 Err(err) => {

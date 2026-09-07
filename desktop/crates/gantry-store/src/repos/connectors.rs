@@ -248,6 +248,16 @@ pub fn attached(conn: &Connection, chat_id: ChatId) -> Result<Vec<InstanceId>> {
     Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
 }
 
+/// The tool namespaces one chat may call, for assembling its tool set (03 §11).
+pub fn attached_namespaces(conn: &Connection, chat_id: ChatId) -> Result<Vec<String>> {
+    let mut stmt = conn.prepare(
+        "SELECT i.namespace FROM chat_connectors c JOIN connector_instances i \
+         ON i.id = c.instance_id WHERE c.chat_id = ?1 AND i.enabled = 1 ORDER BY c.attached_at",
+    )?;
+    let rows = stmt.query_map(params![chat_id.to_string()], |r| r.get(0))?;
+    Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
+}
+
 fn from_row(r: &Row<'_>) -> rusqlite::Result<ConnectorInstanceDto> {
     let config: ConnectorConfig = from_json(r, 5)?;
     let kind: ConnectorKind = enum_from_str(r, 4)?;

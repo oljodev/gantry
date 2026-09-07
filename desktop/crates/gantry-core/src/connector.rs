@@ -185,7 +185,9 @@ pub struct ConnectorInstanceDto {
     pub tools: Vec<ToolInfo>,
     pub server: Option<ServerInfo>,
     pub last_error: Option<String>,
+    #[specta(type = specta_typescript::Number)]
     pub installed_at: i64,
+    #[specta(type = Option<specta_typescript::Number>)]
     pub last_connected_at: Option<i64>,
 }
 
@@ -220,4 +222,8 @@ pub struct CatalogEntryDto {
     /// The manifest's `long_description`, for the detail view.
     pub long_description: Option<String>,
     pub auth_instructions: Option<String>,
+    /// A second accepted credential, when the server takes one (03 §7): GitHub signs in with
+    /// OAuth or takes a token, and the install dialog offers both.
+    pub auth_alternate: Option<AuthType>,
+    pub auth_alternate_instructions: Option<String>,
 }

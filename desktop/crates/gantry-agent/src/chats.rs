@@ -13,7 +13,7 @@ use gantry_store::{
     repos::{
         artifacts, blobs,
         chats::{self, ChatRecord},
-        grants,
+        connectors, grants,
         messages::{self, AttachmentRecord, MessageRecord},
         tool_calls,
         turns::{self, TurnRecord},
@@ -38,6 +38,9 @@ pub struct TurnInput {
     /// The model of the chat's previous turn, so the runner can say when thinking from another
     /// model is left behind (02 §5).
     pub previous_model: Option<ModelRef>,
+    /// The tool namespaces this chat attached (03 §11). Runtime tools are always available;
+    /// a connector is not, until the chat asks for it.
+    pub connectors: Vec<String>,
 }
 
 /// Chat settings the composer and the sidebar can change; `None` leaves a field alone.
@@ -273,6 +276,7 @@ impl ChatBook {
                     messages: inline_media(&blobs, transcript),
                     first_turn,
                     previous_model,
+                    connectors: connectors::attached_namespaces(conn, chat_id)?,
                 })
             })
             .map_err(|e| match e {

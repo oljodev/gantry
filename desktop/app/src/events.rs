@@ -27,3 +27,7 @@ pub struct ArtifactsChanged {
     pub chat_id: ChatId,
     pub artifact_id: ArtifactId,
 }
+
+/// The installed connectors, their auth state or their attachment to a chat changed (03 §10).
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type, tauri_specta::Event)]
+pub struct ConnectorsChanged;

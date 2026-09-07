@@ -24,8 +24,11 @@ gantry-providers.workspace = true
 gantry-secrets.workspace = true
 gantry-store.workspace = true
 tokio.workspace = true
+reqwest.workspace = true
+secrecy.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+ulid.workspace = true
 specta.workspace = true
 specta-typescript.workspace = true
 tauri-specta = { version = "=2.0.0-rc.25", features = ["derive", "typescript"] }

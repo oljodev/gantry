@@ -339,8 +339,9 @@ impl TurnManager {
         let user_text = input.messages.last().map(Message::text).unwrap_or_default();
         let model = input.model.clone();
         let mode = input.mode;
+        let attached = input.connectors.clone();
         self.runtime.spawn(async move {
-            let tools = ToolSet::assemble(&connectors, mode).await;
+            let tools = ToolSet::assemble(&connectors, mode, &attached).await;
             runner::run_turn(RunContext {
                 input,
                 provider: provider.clone(),

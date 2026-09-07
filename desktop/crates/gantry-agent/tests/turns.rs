@@ -215,6 +215,49 @@ impl Harness {
     fn requests(&self) -> Vec<ChatRequest> {
         self.provider.requests.lock().unwrap().clone()
     }
+
+    /// A chat with the fake connector installed and attached, which is what a chat looks like
+    /// once the user has added a connector to it (03 §11). A chat with nothing attached sees
+    /// only the runtime tools, which is what `a_chat_sees_only_what_it_attached` checks.
+    fn chat(&self) -> gantry_core::ChatSummary {
+        let chat = self.m.create_chat(None).unwrap();
+        attach_fake(self.m.chats().store(), chat.id);
+        chat
+    }
+}
+
+/// Installs the fake connector as an instance and attaches it to one chat.
+fn attach_fake(store: &Arc<gantry_store::Store>, chat_id: gantry_core::ChatId) {
+    use gantry_store::repos::connectors::{self, NewInstance};
+    let id = gantry_core::InstanceId::new();
+    store
+        .write_blocking(move |c| {
+            if connectors::get(c, id)?.is_none()
+                && !connectors::namespaces(c)?.iter().any(|n| n == "fake")
+            {
+                connectors::insert(
+                    c,
+                    &NewInstance {
+                        id,
+                        catalog_id: None,
+                        namespace: "fake".into(),
+                        display_name: "Fake".into(),
+                        config: gantry_core::ConnectorConfig::Native,
+                        auth: gantry_core::AuthType::None,
+                        auth_state: gantry_core::AuthState::Authorized,
+                    },
+                )?;
+                connectors::attach(c, chat_id, id, "user")?;
+                return Ok(());
+            }
+            let existing = connectors::list(c)?;
+            let instance = existing
+                .iter()
+                .find(|i| i.namespace == "fake")
+                .expect("the fake instance");
+            connectors::attach(c, chat_id, instance.id, "user")
+        })
+        .unwrap();
 }
 
 fn manager_with(rounds: Vec<Script>, delay: Duration, settings: Settings) -> Harness {
@@ -337,7 +380,7 @@ async fn a_text_turn_completes_and_is_recorded() {
         ],
         Duration::ZERO,
     );
-    let chat = m.create_chat(None).unwrap();
+    let chat = m.chat();
     let sink = Arc::new(Collect::default());
     let turn = m
         .start(chat.id, "Hi there".into(), Vec::new(), sink.clone())
@@ -395,7 +438,7 @@ async fn cancel_keeps_the_partial_text() {
         .chain([end()])
         .collect();
     let m = manager(events, Duration::from_millis(20));
-    let chat = m.create_chat(None).unwrap();
+    let chat = m.chat();
     let sink = Arc::new(Collect::default());
     let turn = m
         .start(chat.id, "go".into(), Vec::new(), sink.clone())
@@ -424,7 +467,7 @@ async fn a_mid_stream_error_fails_the_turn_and_keeps_the_text() {
         ],
         Duration::ZERO,
     );
-    let chat = m.create_chat(None).unwrap();
+    let chat = m.chat();
     let sink = Arc::new(Collect::default());
     m.start(chat.id, "go".into(), Vec::new(), sink.clone())
         .unwrap();
@@ -449,7 +492,7 @@ async fn a_late_subscriber_gets_a_snapshot_then_live_events() {
         .chain([end()])
         .collect();
     let m = manager(events, Duration::from_millis(15));
-    let chat = m.create_chat(None).unwrap();
+    let chat = m.chat();
     let first = Arc::new(Collect::default());
     let turn = m
         .start(chat.id, "go".into(), Vec::new(), first.clone())
@@ -522,7 +565,7 @@ async fn without_a_provider_the_turn_fails_cleanly() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_turn_can_be_started_from_a_plain_thread() {
     let m = manager(vec![text("ok"), end()], Duration::ZERO);
-    let chat = m.create_chat(None).unwrap();
+    let chat = m.chat();
     let sink = Arc::new(Collect::default());
     let (m2, sink2) = (m.clone(), sink.clone());
     std::thread::spawn(move || m2.start(chat.id, "go".into(), Vec::new(), sink2).unwrap())
@@ -544,7 +587,7 @@ async fn an_allowed_call_runs_and_its_result_goes_back_to_the_model() {
         Duration::ZERO,
         Settings::default(), // Auto-edit: reads run without asking
     );
-    let chat = m.create_chat(None).unwrap();
+    let chat = m.chat();
     let sink = Arc::new(Collect::default());
     let turn = m
         .start(chat.id, "echo hi".into(), Vec::new(), sink.clone())
@@ -619,7 +662,7 @@ async fn manual_mode_asks_and_allow_once_runs_the_call() {
         Duration::ZERO,
         Settings::default(),
     );
-    let chat = m.create_chat(None).unwrap();
+    let chat = m.chat();
     manual(&m, chat.id);
     let sink = Arc::new(Collect::default());
     let turn = m
@@ -692,7 +735,7 @@ async fn a_denial_with_a_message_reaches_the_model() {
         Duration::ZERO,
         Settings::default(),
     );
-    let chat = m.create_chat(None).unwrap();
+    let chat = m.chat();
     manual(&m, chat.id);
     let sink = Arc::new(Collect::default());
     m.start(chat.id, "go".into(), Vec::new(), sink.clone())
@@ -738,7 +781,7 @@ async fn cancelling_while_a_card_waits_ends_the_turn() {
         Duration::ZERO,
         Settings::default(),
     );
-    let chat = m.create_chat(None).unwrap();
+    let chat = m.chat();
     manual(&m, chat.id);
     let sink = Arc::new(Collect::default());
     let turn = m
@@ -800,7 +843,7 @@ async fn unknown_and_failing_tools_become_error_results() {
         Duration::ZERO,
         Settings::default(),
     );
-    let chat = m.create_chat(None).unwrap();
+    let chat = m.chat();
     let sink = Arc::new(Collect::default());
     m.start(chat.id, "go".into(), Vec::new(), sink.clone())
         .unwrap();
@@ -843,7 +886,7 @@ async fn the_round_cap_stops_a_looping_model() {
         Duration::ZERO,
         settings,
     );
-    let chat = m.create_chat(None).unwrap();
+    let chat = m.chat();
     let sink = Arc::new(Collect::default());
     m.start(chat.id, "loop".into(), Vec::new(), sink.clone())
         .unwrap();
@@ -876,7 +919,7 @@ async fn the_round_cap_stops_a_looping_model() {
 #[tokio::test]
 async fn plan_mode_offers_only_tools_it_would_allow() {
     let m = manager(vec![text("plan"), end()], Duration::ZERO);
-    let chat = m.create_chat(None).unwrap();
+    let chat = m.chat();
     m.update_chat(
         chat.id,
         ChatPatch {
@@ -895,4 +938,26 @@ async fn plan_mode_offers_only_tools_it_would_allow() {
         .map(|t| t.name.clone())
         .collect();
     assert_eq!(names, ["fake__echo", "fake__boom", "gantry__clock"]);
+}
+
+/// Installing a connector does not give it to every conversation: a chat sees a connector only
+/// once it has attached it (03 §11). The runtime tools are the app's own and are always there.
+#[tokio::test]
+async fn a_chat_sees_only_the_connectors_it_attached() {
+    let m = manager(vec![text("hi"), end()], Duration::ZERO);
+    let bare = m.create_chat(None).unwrap();
+    let sink = Arc::new(Collect::default());
+    m.start(bare.id, "go".into(), Vec::new(), sink.clone())
+        .unwrap();
+    wait_for(|| sink.completed().is_some()).await;
+    let names: Vec<String> = m.requests()[0]
+        .tools
+        .iter()
+        .map(|t| t.name.clone())
+        .collect();
+    assert_eq!(
+        names,
+        ["gantry__clock"],
+        "the fake connector is installed but not attached"
+    );
 }

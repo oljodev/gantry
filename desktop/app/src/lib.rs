@@ -6,6 +6,7 @@
 #![forbid(unsafe_code)]
 
 mod commands;
+mod connectors;
 mod events;
 mod startup;
 mod state;
@@ -63,6 +64,18 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::artifacts::export_artifact,
             commands::artifacts::report_artifact_render,
             commands::artifacts::open_artifact_window,
+            commands::connectors::list_catalog,
+            commands::connectors::list_connectors,
+            commands::connectors::get_connector,
+            commands::connectors::install_connector,
+            commands::connectors::install_custom_connector,
+            commands::connectors::connect_connector,
+            commands::connectors::authorize_connector,
+            commands::connectors::set_connector_token,
+            commands::connectors::set_connector_enabled,
+            commands::connectors::remove_connector,
+            commands::connectors::list_chat_connectors,
+            commands::connectors::attach_connector,
         ])
         .events(tauri_specta::collect_events![
             events::ChatsChanged,
@@ -70,6 +83,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             events::SettingsChanged,
             events::InteractionsChanged,
             events::ArtifactsChanged,
+            events::ConnectorsChanged,
         ])
 }
 
