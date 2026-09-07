@@ -3,10 +3,10 @@
 use gantry_core::{ContentPart, Message, ProviderKind, ReasoningEffort, Role};
 use serde_json::{Value, json};
 
-use super::profiles::{CompatProfile, ReasoningParam};
+use super::profiles::{CompatProfile, ReasoningParam, WebSearchParam};
 use crate::{
-    provider::{ChatRequest, ModelInfo, ReasoningSupport, ToolChoice},
-    tools::ToolSchemaSanitizer,
+    provider::{ChatRequest, ModelInfo, ReasoningSupport, ServerTool, ToolChoice},
+    tools::{ToolSchemaSanitizer, call_origins, wire_call_id},
 };
 
 /// `info` is what the model list said about the model, when it is known: the reasoning
@@ -19,12 +19,13 @@ pub fn build_body(profile: &CompatProfile, req: &ChatRequest, info: Option<&Mode
         Some(cap) if cap > 0 => req.max_output_tokens.min(cap),
         _ => req.max_output_tokens,
     };
+    let origins = call_origins(&req.messages);
     let mut messages = Vec::with_capacity(req.messages.len() + 1);
     if !req.system.is_empty() {
         messages.push(json!({ "role": profile.system_role, "content": req.system }));
     }
     for m in &req.messages {
-        messages.extend(project(profile, m));
+        messages.extend(project(profile, m, &origins));
     }
 
     let mut body = json!({
@@ -86,6 +87,20 @@ pub fn build_body(profile: &CompatProfile, req: &ChatRequest, info: Option<&Mode
             obj.insert("parallel_tool_calls".into(), json!(true));
         }
     }
+    for tool in &req.server_tools {
+        match (tool, profile.web_search) {
+            (ServerTool::WebSearch { max_uses }, WebSearchParam::OpenRouterPlugin) => {
+                let mut plugin = json!({ "id": "web" });
+                if let Some(n) = max_uses {
+                    plugin["max_results"] = json!(n);
+                }
+                obj.insert("plugins".into(), json!([plugin]));
+            }
+            (ServerTool::WebSearch { .. }, WebSearchParam::None) => {
+                log::debug!("{} has no web search tool; ignored", profile.label);
+            }
+        }
+    }
     if let Some(extra) = req.provider_options.as_object() {
         for (k, v) in extra {
             obj.insert(k.clone(), v.clone());
@@ -105,7 +120,11 @@ fn effort_name(effort: ReasoningEffort) -> &'static str {
 }
 
 /// One transcript message → zero or more wire messages.
-fn project(profile: &CompatProfile, m: &Message) -> Vec<Value> {
+fn project(
+    profile: &CompatProfile,
+    m: &Message,
+    origins: &std::collections::HashMap<String, ProviderKind>,
+) -> Vec<Value> {
     match m.role {
         Role::User => vec![json!({ "role": "user", "content": user_content(&m.parts) })],
         Role::System => {
@@ -139,8 +158,8 @@ fn project(profile: &CompatProfile, m: &Message) -> Vec<Value> {
                         provider: ProviderKind::OpenAiChat,
                         ..
                     } => reasoning.push_str(t),
-                    ContentPart::ToolCall { id, name, args } => tool_calls.push(json!({
-                        "id": id.as_str(),
+                    ContentPart::ToolCall { id, name, args, .. } => tool_calls.push(json!({
+                        "id": wire_call_id(id.as_str(), m.origin, ProviderKind::OpenAiChat),
                         "type": "function",
                         "function": { "name": name, "arguments": args.to_string() },
                     })),
@@ -164,7 +183,11 @@ fn project(profile: &CompatProfile, m: &Message) -> Vec<Value> {
                     call_id, content, ..
                 } => Some(json!({
                     "role": "tool",
-                    "tool_call_id": call_id.as_str(),
+                    "tool_call_id": wire_call_id(
+                        call_id.as_str(),
+                        origins.get(call_id.as_str()).copied(),
+                        ProviderKind::OpenAiChat
+                    ),
                     "content": result_text(content),
                 })),
                 _ => None,
@@ -289,6 +312,7 @@ mod tests {
             id: MessageId::new(),
             role: Role::Assistant,
             parts: vec![ContentPart::ToolCall {
+                signature: None,
                 id: call.clone(),
                 name: "gantry__clock".into(),
                 args: serde_json::json!({}),
@@ -350,11 +374,13 @@ mod tests {
             role: Role::Assistant,
             parts: vec![
                 ContentPart::Thinking {
+                    item_id: None,
                     text: "mine".into(),
                     signature: None,
                     provider: ProviderKind::OpenAiChat,
                 },
                 ContentPart::Thinking {
+                    item_id: None,
                     text: "theirs".into(),
                     signature: None,
                     provider: ProviderKind::Anthropic,

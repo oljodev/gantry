@@ -25,13 +25,15 @@ pub struct ChatRequest {
     pub tool_choice: ToolChoice,
     pub max_output_tokens: u32,
     pub reasoning: ReasoningEffort,
+    /// Tools the provider runs on its own servers (02 §3); ignored where none exist.
+    pub server_tools: Vec<ServerTool>,
     pub metadata: RequestMetadata,
     /// Merged into the wire request last; an escape hatch, empty by default.
     pub provider_options: serde_json::Value,
 }
 
 impl ChatRequest {
-    /// A text-only request with the defaults of M1.
+    /// A text-only request with default settings.
     #[must_use]
     pub fn new(
         model: impl Into<String>,
@@ -46,6 +48,7 @@ impl ChatRequest {
             tool_choice: ToolChoice::Auto,
             max_output_tokens: 8192,
             reasoning: ReasoningEffort::Off,
+            server_tools: Vec::new(),
             metadata: RequestMetadata::default(),
             provider_options: serde_json::Value::Null,
         }
@@ -56,6 +59,12 @@ impl ChatRequest {
 pub struct RequestMetadata {
     pub chat_id: Option<ChatId>,
     pub turn_id: Option<TurnId>,
+}
+
+/// A tool the provider executes itself and reports as opaque blocks (02 §5).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ServerTool {
+    WebSearch { max_uses: Option<u32> },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -21,6 +21,24 @@ struct PlainModel {
 }
 
 #[derive(Debug, Deserialize)]
+struct XaiList {
+    #[serde(default)]
+    models: Vec<XaiModel>,
+}
+
+/// xAI prices are in hundred-thousandths of a US cent per token, i.e. `/ 10_000` gives
+/// dollars per million tokens (grok-4: `30000` → $3).
+#[derive(Debug, Deserialize)]
+struct XaiModel {
+    id: String,
+    #[serde(default)]
+    input_modalities: Vec<String>,
+    prompt_text_token_price: Option<f64>,
+    cached_prompt_text_token_price: Option<f64>,
+    completion_text_token_price: Option<f64>,
+}
+
+#[derive(Debug, Deserialize)]
 struct OrModel {
     id: String,
     name: Option<String>,
@@ -75,6 +93,10 @@ pub fn parse(
             let list: List<OrModel> = serde_json::from_value(json.clone()).map_err(bad)?;
             list.data.into_iter().map(from_openrouter).collect()
         }
+        ModelsParser::XAi => {
+            let list: XaiList = serde_json::from_value(json.clone()).map_err(bad)?;
+            list.models.into_iter().map(from_xai).collect()
+        }
     };
     models.sort_by(|a, b| a.id.cmp(&b.id));
     Ok(models)
@@ -86,6 +108,39 @@ fn per_mtok(s: &Option<String>) -> Option<f64> {
         .parse::<f64>()
         .ok()
         .map(|v| v * 1_000_000.0)
+}
+
+fn from_xai(m: XaiModel) -> ModelInfo {
+    let per_mtok = |p: Option<f64>| p.map(|v| v / 10_000.0);
+    let pricing = match (
+        per_mtok(m.prompt_text_token_price),
+        per_mtok(m.completion_text_token_price),
+    ) {
+        (Some(input), Some(output)) => Some(Pricing {
+            input_per_mtok: input,
+            output_per_mtok: output,
+            cache_read_per_mtok: per_mtok(m.cached_prompt_text_token_price),
+        }),
+        _ => None,
+    };
+    ModelInfo {
+        display_name: m.id.clone(),
+        context_window: None,
+        max_output: None,
+        pricing,
+        capabilities: ModelCapabilities {
+            vision: m.input_modalities.iter().any(|x| x == "image"),
+            parallel_tools: true,
+            streams_tool_args: true,
+            prompt_caching: if m.cached_prompt_text_token_price.is_some() {
+                CacheSupport::Automatic
+            } else {
+                CacheSupport::None
+            },
+            ..Default::default()
+        },
+        id: m.id,
+    }
 }
 
 fn from_openrouter(m: OrModel) -> ModelInfo {
@@ -161,6 +216,21 @@ mod tests {
         assert_eq!(m.capabilities.reasoning, ReasoningSupport::Effort);
         assert!(!m.capabilities.vision);
         assert!(m.capabilities.structured_output);
+    }
+
+    #[test]
+    fn xai_prices_are_scaled_to_dollars_per_million() {
+        let json = serde_json::json!({ "models": [{
+            "id": "grok-4", "input_modalities": ["text", "image"], "output_modalities": ["text"],
+            "prompt_text_token_price": 30000, "cached_prompt_text_token_price": 7500,
+            "completion_text_token_price": 150000, "aliases": ["grok-4-latest"]
+        }]});
+        let models = parse(ModelsParser::XAi, &json).unwrap();
+        let p = models[0].pricing.unwrap();
+        assert!((p.input_per_mtok - 3.0).abs() < 1e-9);
+        assert!((p.output_per_mtok - 15.0).abs() < 1e-9);
+        assert!((p.cache_read_per_mtok.unwrap() - 0.75).abs() < 1e-9);
+        assert!(models[0].capabilities.vision);
     }
 
     #[test]

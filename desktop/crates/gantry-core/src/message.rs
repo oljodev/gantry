@@ -1,8 +1,7 @@
 //! The provider-neutral transcript model (docs/plan/02 §2).
 //!
 //! Every provider client maps its wire format onto these types and back, so the agent loop,
-//! the store and the UI never see a vendor shape. M1 produces `Text`, `Thinking` and
-//! `SystemNote`; the other parts exist so later milestones add no breaking change.
+//! the store and the UI never see a vendor shape.
 
 use serde::{Deserialize, Serialize};
 
@@ -99,6 +98,11 @@ pub enum ContentPart {
         name: String,
         #[specta(type = specta_typescript::Unknown)]
         args: serde_json::Value,
+        /// A provider token bound to the call that must be echoed on replay (Gemini thought
+        /// signatures). Opaque; only the provider that produced it reads it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[specta(optional)]
+        signature: Option<String>,
     },
     ToolResult {
         call_id: CallId,
@@ -110,6 +114,11 @@ pub enum ContentPart {
         text: String,
         signature: Option<String>,
         provider: ProviderKind,
+        /// The provider's own id for the block when replay needs it (OpenAI Responses reasoning
+        /// items carry an `rs_…` id next to their encrypted content).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[specta(optional)]
+        item_id: Option<String>,
     },
     /// Server-tool blocks, citations and other vendor content persisted and replayed verbatim.
     ProviderOpaque {
@@ -208,6 +217,7 @@ mod tests {
     #[test]
     fn parts_serialise_with_a_kind_tag() {
         let part = ContentPart::Thinking {
+            item_id: None,
             text: "hm".into(),
             signature: None,
             provider: ProviderKind::OpenAiChat,

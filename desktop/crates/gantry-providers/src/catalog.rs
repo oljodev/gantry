@@ -3,18 +3,28 @@
 
 use std::sync::Arc;
 
-use gantry_core::GantryError;
+use gantry_core::{GantryError, ProviderKind};
 use gantry_store::{Store, repos::models};
 
-use crate::provider::{ModelCapabilities, ModelInfo, Pricing, Provider};
+use crate::{
+    overrides,
+    provider::{ModelCapabilities, ModelInfo, Pricing, Provider},
+};
 
 /// How long a cached list is trusted before a background refresh is worth it.
 pub const TTL_MS: i64 = 24 * 60 * 60 * 1000;
 
-/// The cached list as it is, without touching the network.
-pub fn cached(store: &Store, provider_id: &str) -> Result<Vec<ModelInfo>, GantryError> {
+/// The cached list as it is, without touching the network; `overrides.toml` applied.
+pub fn cached(
+    store: &Store,
+    provider_id: &str,
+    kind: ProviderKind,
+) -> Result<Vec<ModelInfo>, GantryError> {
     let rows = store.read(|c| models::list_for(c, provider_id))?;
-    Ok(rows.into_iter().map(from_record).collect())
+    Ok(rows
+        .into_iter()
+        .map(|r| from_record(kind, provider_id, r))
+        .collect())
 }
 
 /// The cached list, refreshed when `refresh` is set, the cache is empty, or it is older than
@@ -25,17 +35,24 @@ pub async fn list_models(
     refresh: bool,
 ) -> Result<Vec<ModelInfo>, GantryError> {
     let pid = provider.id().to_string();
+    let kind = provider.kind();
     let cached = store.read(|c| models::list_for(c, &pid))?;
     let fetched_at = cached.iter().map(|m| m.fetched_at).max();
     let stale = fetched_at.is_none_or(|t| gantry_core::now_ms() - t > TTL_MS);
     if !provider.has_key() || (!refresh && !stale) {
-        return Ok(cached.into_iter().map(from_record).collect());
+        return Ok(cached
+            .into_iter()
+            .map(|r| from_record(kind, &pid, r))
+            .collect());
     }
     let fresh = match provider.list_models().await {
         Ok(list) => list,
         Err(err) if !cached.is_empty() && !refresh => {
             log::warn!("model list refresh for {pid} failed ({err}); using the cache");
-            return Ok(cached.into_iter().map(from_record).collect());
+            return Ok(cached
+                .into_iter()
+                .map(|r| from_record(kind, &pid, r))
+                .collect());
         }
         Err(err) => return Err(err.into()),
     };
@@ -61,8 +78,8 @@ fn to_record(provider_id: &str, m: &ModelInfo, fetched_at: i64) -> models::Model
     }
 }
 
-fn from_record(r: models::ModelRecord) -> ModelInfo {
-    ModelInfo {
+fn from_record(kind: ProviderKind, provider_id: &str, r: models::ModelRecord) -> ModelInfo {
+    let mut m = ModelInfo {
         id: r.model_id,
         display_name: r.display_name,
         context_window: r.context_window,
@@ -73,5 +90,7 @@ fn from_record(r: models::ModelRecord) -> ModelInfo {
             .and_then(|p| serde_json::from_str::<Pricing>(p).ok()),
         capabilities: serde_json::from_str::<ModelCapabilities>(&r.capabilities_json)
             .unwrap_or_default(),
-    }
+    };
+    overrides::apply(kind, provider_id, &mut m);
+    m
 }

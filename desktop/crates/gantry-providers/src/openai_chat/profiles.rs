@@ -1,4 +1,5 @@
-//! Per-vendor differences of the Chat Completions dialect (docs/plan/02 §4).
+//! Per-vendor differences of the Chat Completions dialect (docs/plan/02 §4): `openrouter`,
+//! `xai` and `custom` (any OpenAI-compatible endpoint, Ollama and LM Studio included).
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ReasoningParam {
@@ -15,6 +16,16 @@ pub enum ModelsParser {
     Plain,
     /// OpenRouter's rich list: context, pricing, supported parameters, modalities.
     OpenRouter,
+    /// xAI's `language-models` list: modalities, prices, aliases.
+    XAi,
+}
+
+/// How a provider-side web search is requested on this endpoint, if at all.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WebSearchParam {
+    None,
+    /// OpenRouter's `plugins: [{ id: "web" }]`.
+    OpenRouterPlugin,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -43,8 +54,13 @@ pub struct CompatProfile {
     pub supports_parallel_flag: bool,
     pub supports_strict: bool,
     pub models_parser: ModelsParser,
+    /// The path of the model list under `base_url`.
+    pub models_path: &'static str,
+    pub web_search: WebSearchParam,
     pub tool_id_quirk: ToolIdQuirk,
     pub key_check: KeyCheck,
+    /// Local servers (Ollama, LM Studio) take requests without a key.
+    pub key_optional: bool,
 }
 
 impl CompatProfile {
@@ -64,8 +80,11 @@ impl CompatProfile {
             supports_parallel_flag: true,
             supports_strict: false,
             models_parser: ModelsParser::OpenRouter,
+            models_path: "models",
+            web_search: WebSearchParam::OpenRouterPlugin,
             tool_id_quirk: ToolIdQuirk::SynthesizeIfEmpty,
             key_check: KeyCheck::OpenRouterKey,
+            key_optional: false,
         }
     }
 
@@ -80,9 +99,12 @@ impl CompatProfile {
             supports_stream_usage: true,
             supports_parallel_flag: true,
             supports_strict: false,
-            models_parser: ModelsParser::Plain,
+            models_parser: ModelsParser::XAi,
+            models_path: "language-models",
+            web_search: WebSearchParam::None,
             tool_id_quirk: ToolIdQuirk::None,
             key_check: KeyCheck::ListModels,
+            key_optional: false,
         }
     }
 
@@ -99,8 +121,11 @@ impl CompatProfile {
             supports_parallel_flag: false,
             supports_strict: false,
             models_parser: ModelsParser::Plain,
+            models_path: "models",
+            web_search: WebSearchParam::None,
             tool_id_quirk: ToolIdQuirk::SynthesizeIfEmpty,
             key_check: KeyCheck::ListModels,
+            key_optional: true,
         }
     }
 

@@ -3,12 +3,12 @@
 
 use std::collections::BTreeMap;
 
-use futures_util::{Stream, StreamExt};
+use futures_util::Stream;
 use gantry_core::{CallId, ProviderErrorKind, StopReason, Usage};
 use serde::Deserialize;
 
 use super::profiles::ToolIdQuirk;
-use crate::{error::ProviderError, provider::StreamEvent, sse::SseEvent};
+use crate::{error::ProviderError, provider::StreamEvent, pump::StreamParser, sse::SseEvent};
 
 #[derive(Debug, Deserialize)]
 struct Chunk {
@@ -329,63 +329,24 @@ fn wire_error(err: WireError) -> ProviderError {
     }
 }
 
+impl StreamParser for ChunkParser {
+    fn parse(&mut self, event: &SseEvent) -> Result<Vec<StreamEvent>, ProviderError> {
+        ChunkParser::parse(self, &event.data)
+    }
+
+    fn finish(&mut self) -> Vec<StreamEvent> {
+        ChunkParser::finish(self)
+    }
+
+    fn ended(&self) -> bool {
+        self.ended
+    }
+}
+
 /// Wraps an SSE event stream into a [`ChatStream`](crate::provider::ChatStream).
 pub fn into_chat_stream<S>(sse: S, quirk: ToolIdQuirk) -> crate::provider::ChatStream
 where
     S: Stream<Item = Result<SseEvent, ProviderError>> + Send + 'static,
 {
-    let stream = futures_util::stream::unfold(
-        (
-            Box::pin(sse),
-            ChunkParser::new(quirk),
-            Vec::<StreamEvent>::new(),
-            false,
-            None::<ProviderError>,
-        ),
-        |(mut sse, mut parser, mut pending, mut done, mut pending_error)| async move {
-            loop {
-                if !pending.is_empty() {
-                    let ev = pending.remove(0);
-                    return Some((Ok(ev), (sse, parser, pending, done, pending_error)));
-                }
-                if let Some(err) = pending_error.take() {
-                    return Some((Err(err), (sse, parser, pending, done, None)));
-                }
-                if done {
-                    return None;
-                }
-                match sse.next().await {
-                    None => {
-                        done = true;
-                        if !parser.ended() {
-                            // The connection closed without `[DONE]`: flush usage and open
-                            // tool calls, drop the synthetic end, then report the interruption
-                            // so the turn ends as failed with its partial text kept (02 §7).
-                            pending.extend(parser.finish());
-                            pending.retain(|e| !matches!(e, StreamEvent::MessageEnd { .. }));
-                            pending_error =
-                                Some(ProviderError::interrupted("the stream ended early"));
-                        }
-                    }
-                    Some(Err(e)) => {
-                        done = true;
-                        return Some((Err(e), (sse, parser, pending, done, pending_error)));
-                    }
-                    Some(Ok(ev)) => match parser.parse(&ev.data) {
-                        Ok(events) => {
-                            pending.extend(events);
-                            if parser.ended() {
-                                done = true;
-                            }
-                        }
-                        Err(e) => {
-                            done = true;
-                            return Some((Err(e), (sse, parser, pending, done, pending_error)));
-                        }
-                    },
-                }
-            }
-        },
-    );
-    Box::pin(stream)
+    crate::pump::into_chat_stream(sse, ChunkParser::new(quirk))
 }

@@ -1,0 +1,12 @@
+event: interaction.created
+data: {"event_type":"interaction.created","event_id":"e1","interaction":{"id":"int_03","status":"in_progress"}}
+
+event: step.start
+data: {"event_type":"step.start","event_id":"e2","index":0,"step":{"type":"model_output"}}
+
+event: step.delta
+data: {"event_type":"step.delta","event_id":"e3","index":0,"delta":{"type":"text","text":"Partial"}}
+
+event: error
+data: {"event_type":"error","event_id":"e4","error":{"code":429,"message":"Quota exceeded","status":"RESOURCE_EXHAUSTED"}}
+

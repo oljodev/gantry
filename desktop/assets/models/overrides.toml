@@ -1,12 +1,312 @@
-# Model capabilities and pricing the provider APIs do not expose (docs/plan/02 §5).
-# One [[model]] table per entry, filled in from M4:
+# Model capabilities and pricing the provider APIs do not expose (docs/plan/02 §2).
 #
-# [[model]]
-# provider = "anthropic"            # anthropic | openai_responses | openai_chat | gemini
-# id = "claude-opus-5"
-# context_window = 200000
-# max_output = 32000
-# thinking = true                   # supports extended / adaptive thinking
-# web_search = true                 # provider-side web search tool
-# input_price_per_mtok = 15.0       # USD
-# output_price_per_mtok = 75.0
+# One [[model]] table per entry. `provider` is an account id (anthropic, openai, google, xai,
+# openrouter, custom) or a client kind (anthropic, openai_responses, openai_chat, gemini).
+# `id` is exact or a prefix ending in `*`. Entries apply in file order: put the pattern first
+# and the specific model after it. Prices are US dollars per million tokens. Only the fields an
+# entry sets are changed.
+#
+# Fields: display_name, context_window, max_output, thinking (true | false | "effort" |
+# "budget"), web_search, tools, parallel_tools, streams_tool_args, vision, pdf_input,
+# structured_output, prompt_caching ("explicit" | "automatic" | "none"),
+# input_price_per_mtok, output_price_per_mtok, cache_read_price_per_mtok.
+
+# ---------------------------------------------------------------------------------------------
+# Anthropic (Messages API). Thinking is a token budget up to 4.5 and adaptive from 4.6 on;
+# both take the chat's effort setting. Every current model streams tool arguments, reads
+# images and PDFs, runs the web search tool and caches explicit prefixes.
+# ---------------------------------------------------------------------------------------------
+
+[[model]]
+provider = "anthropic"
+id = "claude-*"
+context_window = 200000
+max_output = 32000
+thinking = "budget"
+web_search = true
+tools = true
+parallel_tools = true
+streams_tool_args = true
+vision = true
+pdf_input = true
+structured_output = true
+prompt_caching = "explicit"
+
+[[model]]
+provider = "anthropic"
+id = "claude-3-5-haiku*"
+thinking = false
+pdf_input = false
+max_output = 8192
+input_price_per_mtok = 0.8
+output_price_per_mtok = 4.0
+cache_read_price_per_mtok = 0.08
+
+[[model]]
+provider = "anthropic"
+id = "claude-haiku-4-5*"
+max_output = 64000
+input_price_per_mtok = 1.0
+output_price_per_mtok = 5.0
+cache_read_price_per_mtok = 0.1
+
+[[model]]
+provider = "anthropic"
+id = "claude-sonnet-4-5*"
+max_output = 64000
+input_price_per_mtok = 3.0
+output_price_per_mtok = 15.0
+cache_read_price_per_mtok = 0.3
+
+[[model]]
+provider = "anthropic"
+id = "claude-opus-4-1*"
+input_price_per_mtok = 15.0
+output_price_per_mtok = 75.0
+cache_read_price_per_mtok = 1.5
+
+[[model]]
+provider = "anthropic"
+id = "claude-opus-4-5*"
+max_output = 64000
+input_price_per_mtok = 5.0
+output_price_per_mtok = 25.0
+cache_read_price_per_mtok = 0.5
+
+[[model]]
+provider = "anthropic"
+id = "claude-sonnet-4-6*"
+max_output = 64000
+thinking = "effort"
+
+[[model]]
+provider = "anthropic"
+id = "claude-opus-4-6*"
+max_output = 128000
+thinking = "effort"
+
+[[model]]
+provider = "anthropic"
+id = "claude-opus-4-7*"
+max_output = 128000
+thinking = "effort"
+
+[[model]]
+provider = "anthropic"
+id = "claude-opus-4-8*"
+max_output = 128000
+thinking = "effort"
+
+[[model]]
+provider = "anthropic"
+id = "claude-sonnet-5*"
+max_output = 128000
+thinking = "effort"
+
+[[model]]
+provider = "anthropic"
+id = "claude-opus-5*"
+max_output = 128000
+thinking = "effort"
+
+[[model]]
+provider = "anthropic"
+id = "claude-fable-5*"
+max_output = 128000
+thinking = "effort"
+
+# ---------------------------------------------------------------------------------------------
+# OpenAI (Responses API). The model list only carries ids.
+# ---------------------------------------------------------------------------------------------
+
+[[model]]
+provider = "openai"
+id = "gpt-5*"
+context_window = 400000
+max_output = 128000
+thinking = "effort"
+web_search = true
+tools = true
+parallel_tools = true
+streams_tool_args = true
+vision = true
+pdf_input = true
+structured_output = true
+prompt_caching = "automatic"
+
+[[model]]
+provider = "openai"
+id = "gpt-5-mini*"
+input_price_per_mtok = 0.25
+output_price_per_mtok = 2.0
+cache_read_price_per_mtok = 0.025
+
+[[model]]
+provider = "openai"
+id = "gpt-5-nano*"
+input_price_per_mtok = 0.05
+output_price_per_mtok = 0.4
+cache_read_price_per_mtok = 0.005
+
+[[model]]
+provider = "openai"
+id = "gpt-5.1*"
+input_price_per_mtok = 1.25
+output_price_per_mtok = 10.0
+cache_read_price_per_mtok = 0.125
+
+[[model]]
+provider = "openai"
+id = "gpt-5.2*"
+input_price_per_mtok = 1.75
+output_price_per_mtok = 14.0
+cache_read_price_per_mtok = 0.175
+
+[[model]]
+provider = "openai"
+id = "gpt-4.1*"
+context_window = 1047576
+max_output = 32768
+thinking = false
+web_search = true
+tools = true
+parallel_tools = true
+streams_tool_args = true
+vision = true
+pdf_input = true
+structured_output = true
+prompt_caching = "automatic"
+input_price_per_mtok = 2.0
+output_price_per_mtok = 8.0
+cache_read_price_per_mtok = 0.5
+
+[[model]]
+provider = "openai"
+id = "gpt-4o*"
+context_window = 128000
+max_output = 16384
+thinking = false
+web_search = true
+tools = true
+parallel_tools = true
+streams_tool_args = true
+vision = true
+pdf_input = true
+structured_output = true
+prompt_caching = "automatic"
+input_price_per_mtok = 2.5
+output_price_per_mtok = 10.0
+cache_read_price_per_mtok = 1.25
+
+[[model]]
+provider = "openai"
+id = "o3*"
+context_window = 200000
+max_output = 100000
+thinking = "effort"
+web_search = true
+tools = true
+parallel_tools = true
+streams_tool_args = true
+vision = true
+pdf_input = true
+structured_output = true
+prompt_caching = "automatic"
+
+[[model]]
+provider = "openai"
+id = "o4-mini*"
+context_window = 200000
+max_output = 100000
+thinking = "effort"
+web_search = true
+tools = true
+parallel_tools = true
+streams_tool_args = true
+vision = true
+pdf_input = true
+structured_output = true
+prompt_caching = "automatic"
+
+# ---------------------------------------------------------------------------------------------
+# Google (Interactions API). The model list carries context sizes; the rest is here.
+# ---------------------------------------------------------------------------------------------
+
+[[model]]
+provider = "google"
+id = "gemini-2.5*"
+context_window = 1048576
+max_output = 65536
+thinking = "effort"
+web_search = true
+tools = true
+parallel_tools = true
+streams_tool_args = false
+vision = true
+pdf_input = true
+structured_output = true
+prompt_caching = "automatic"
+
+[[model]]
+provider = "google"
+id = "gemini-2.5-pro*"
+input_price_per_mtok = 1.25
+output_price_per_mtok = 10.0
+cache_read_price_per_mtok = 0.31
+
+[[model]]
+provider = "google"
+id = "gemini-2.5-flash*"
+input_price_per_mtok = 0.3
+output_price_per_mtok = 2.5
+cache_read_price_per_mtok = 0.075
+
+[[model]]
+provider = "google"
+id = "gemini-3*"
+context_window = 1048576
+max_output = 65536
+thinking = "effort"
+web_search = true
+tools = true
+parallel_tools = true
+streams_tool_args = true
+vision = true
+pdf_input = true
+structured_output = true
+prompt_caching = "automatic"
+
+# ---------------------------------------------------------------------------------------------
+# xAI (Chat Completions). `/v1/language-models` gives modalities and prices, not context.
+# ---------------------------------------------------------------------------------------------
+
+[[model]]
+provider = "xai"
+id = "grok-*"
+context_window = 131072
+tools = true
+parallel_tools = true
+streams_tool_args = true
+structured_output = true
+prompt_caching = "automatic"
+
+[[model]]
+provider = "xai"
+id = "grok-4*"
+context_window = 256000
+thinking = "effort"
+
+[[model]]
+provider = "xai"
+id = "grok-4-fast*"
+context_window = 2000000
+
+[[model]]
+provider = "xai"
+id = "grok-3*"
+thinking = false
+
+[[model]]
+provider = "xai"
+id = "grok-3-mini*"
+thinking = "effort"

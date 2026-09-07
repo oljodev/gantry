@@ -252,6 +252,7 @@ fn recovery_closes_calls_prompts_and_transcripts() {
                         id: message_id,
                         role: Role::Assistant,
                         parts: vec![ContentPart::ToolCall {
+                            signature: None,
                             id: call_id.clone(),
                             name: "gantry__clock".into(),
                             args: serde_json::json!({}),

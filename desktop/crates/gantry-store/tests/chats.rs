@@ -81,6 +81,7 @@ fn a_chat_with_a_turn_round_trips() {
             a.parts.insert(
                 0,
                 ContentPart::Thinking {
+                    item_id: None,
                     text: "hm".into(),
                     signature: None,
                     provider: gantry_core::ProviderKind::OpenAiChat,

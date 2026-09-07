@@ -1,0 +1,39 @@
+event: interaction.created
+data: {"event_type":"interaction.created","event_id":"e1","interaction":{"id":"int_02","status":"in_progress","model":"gemini-3-pro"}}
+
+event: step.start
+data: {"event_type":"step.start","event_id":"e2","index":0,"step":{"type":"thought"}}
+
+event: step.delta
+data: {"event_type":"step.delta","event_id":"e3","index":0,"delta":{"type":"thought_summary","content":{"type":"text","text":"Need the time."}}}
+
+event: step.delta
+data: {"event_type":"step.delta","event_id":"e4","index":0,"delta":{"type":"thought_signature","signature":"TS_thought"}}
+
+event: step.stop
+data: {"event_type":"step.stop","event_id":"e5","index":0}
+
+event: step.start
+data: {"event_type":"step.start","event_id":"e6","index":1,"step":{"type":"function_call","id":"fc-1","name":"gantry__clock"}}
+
+event: step.delta
+data: {"event_type":"step.delta","event_id":"e7","index":1,"delta":{"type":"arguments_delta","arguments":"{\"zone\":"}}
+
+event: step.delta
+data: {"event_type":"step.delta","event_id":"e8","index":1,"delta":{"type":"arguments_delta","arguments":"\"local\"}"}}
+
+event: step.delta
+data: {"event_type":"step.delta","event_id":"e9","index":1,"delta":{"type":"thought_signature","signature":"TS_call"}}
+
+event: step.stop
+data: {"event_type":"step.stop","event_id":"e10","index":1,"step":{"type":"function_call","id":"fc-1","name":"gantry__clock","arguments":{"zone":"local"}}}
+
+event: step.start
+data: {"event_type":"step.start","event_id":"e11","index":2,"step":{"type":"function_call","id":"fc-2","name":"gantry__clock","arguments":{"zone":"utc"}}}
+
+event: step.stop
+data: {"event_type":"step.stop","event_id":"e12","index":2}
+
+event: interaction.completed
+data: {"event_type":"interaction.completed","event_id":"e13","interaction":{"id":"int_02","status":"completed","usage":{"total_input_tokens":300,"total_output_tokens":40,"total_cached_tokens":100,"total_thought_tokens":25}}}
+

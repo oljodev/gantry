@@ -6,15 +6,30 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use gantry_core::{GantryError, ProviderId};
+use gantry_core::{GantryError, ProviderId, ProviderKind};
 use gantry_secrets::SecretVault;
 use gantry_store::{Store, repos::providers};
 
 use crate::{
+    anthropic::AnthropicProvider,
     catalog,
+    gemini::GeminiProvider,
     openai_chat::{CompatProfile, OpenAiChatProvider},
+    openai_responses::OpenAiResponsesProvider,
     provider::Provider,
 };
+
+/// The client kind of a `providers.kind` column value, if this build has one.
+#[must_use]
+pub fn kind_of(kind: &str) -> Option<ProviderKind> {
+    match kind {
+        "anthropic" => Some(ProviderKind::Anthropic),
+        "openai_responses" => Some(ProviderKind::OpenAiResponses),
+        "openai_chat" => Some(ProviderKind::OpenAiChat),
+        "gemini" => Some(ProviderKind::Gemini),
+        _ => None,
+    }
+}
 
 pub struct ProviderRegistry {
     store: Arc<Store>,
@@ -44,7 +59,7 @@ impl ProviderRegistry {
         }
     }
 
-    /// Reloads every provider row. Rows whose kind has no client yet are skipped with a log line.
+    /// Reloads every provider row. Rows whose kind has no client are skipped with a log line.
     pub fn rebuild(&self) -> Result<(), GantryError> {
         let rows = self.store.read(providers::list)?;
         let mut next: HashMap<ProviderId, Arc<dyn Provider>> = HashMap::new();
@@ -60,25 +75,55 @@ impl ProviderRegistry {
                         None
                     }
                 });
-            match row.kind.as_str() {
-                "openai_chat" => {
+            let Some(kind) = kind_of(&row.kind) else {
+                log::info!("provider {} of kind {} has no client", row.id, row.kind);
+                continue;
+            };
+            let known = catalog::cached(&self.store, &row.id, kind).unwrap_or_default();
+            let base_url = row.base_url.clone().filter(|u| !u.trim().is_empty());
+            let provider: Arc<dyn Provider> = match kind {
+                ProviderKind::OpenAiChat => {
                     let mut profile =
                         CompatProfile::for_provider_id(&row.id).unwrap_or_else(|| {
                             CompatProfile::custom(
                                 row.label.clone(),
-                                row.base_url.clone().unwrap_or_default(),
+                                base_url.clone().unwrap_or_default(),
                             )
                         });
-                    if let Some(url) = row.base_url.as_deref().filter(|u| !u.is_empty()) {
-                        profile.base_url = url.to_owned();
+                    if let Some(url) = &base_url {
+                        profile.base_url = url.clone();
                     }
-                    let known = catalog::cached(&self.store, &row.id).unwrap_or_default();
-                    let provider =
-                        OpenAiChatProvider::new(id.clone(), profile, key, self.http.clone(), known);
-                    next.insert(id, Arc::new(provider));
+                    Arc::new(OpenAiChatProvider::new(
+                        id.clone(),
+                        profile,
+                        key,
+                        self.http.clone(),
+                        known,
+                    ))
                 }
-                other => log::info!("provider {} of kind {other} has no client yet", row.id),
-            }
+                ProviderKind::Anthropic => Arc::new(AnthropicProvider::new(
+                    id.clone(),
+                    base_url,
+                    key,
+                    self.http.clone(),
+                    known,
+                )),
+                ProviderKind::OpenAiResponses => Arc::new(OpenAiResponsesProvider::new(
+                    id.clone(),
+                    base_url,
+                    key,
+                    self.http.clone(),
+                    known,
+                )),
+                ProviderKind::Gemini => Arc::new(GeminiProvider::new(
+                    id.clone(),
+                    base_url,
+                    key,
+                    self.http.clone(),
+                    known,
+                )),
+            };
+            next.insert(id, provider);
         }
         *self.providers.write().unwrap_or_else(|e| e.into_inner()) = next;
         Ok(())

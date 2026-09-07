@@ -1,0 +1,18 @@
+event: interaction.created
+data: {"event_type":"interaction.created","event_id":"e1","interaction":{"id":"int_01","status":"in_progress","model":"gemini-2.5-flash"}}
+
+event: step.start
+data: {"event_type":"step.start","event_id":"e2","index":0,"step":{"type":"model_output"}}
+
+event: step.delta
+data: {"event_type":"step.delta","event_id":"e3","index":0,"delta":{"type":"text","text":"Hello, "}}
+
+event: step.delta
+data: {"event_type":"step.delta","event_id":"e4","index":0,"delta":{"type":"text","text":"world."}}
+
+event: step.stop
+data: {"event_type":"step.stop","event_id":"e5","index":0}
+
+event: interaction.completed
+data: {"event_type":"interaction.completed","event_id":"e6","interaction":{"id":"int_01","status":"completed","usage":{"total_input_tokens":12,"total_output_tokens":4,"total_cached_tokens":0,"total_thought_tokens":0,"total_tokens":16}}}
+

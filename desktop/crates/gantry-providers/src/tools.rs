@@ -57,6 +57,56 @@ fn short_hash(s: &str) -> String {
     format!("{:06x}", h & 0xff_ffff)
 }
 
+/// A tool call id every provider accepts: `[A-Za-z0-9_-]`, at most 64 characters, never
+/// empty. Ids round-trip unchanged to the provider that issued them; this is for replaying a
+/// transcript to another provider after a model switch (02 §3, shared rules).
+#[must_use]
+pub fn sanitize_call_id(id: &str) -> String {
+    let cleaned: String = id
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '_' || c == '-' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .take(NAME_MAX)
+        .collect();
+    if cleaned.is_empty() {
+        format!("call_{}", short_hash(id))
+    } else {
+        cleaned
+    }
+}
+
+/// Which provider issued each tool call id in a transcript, so the result that answers a call
+/// gets the same id treatment as the call itself.
+#[must_use]
+pub fn call_origins(transcript: &[gantry_core::Message]) -> HashMap<String, ProviderKind> {
+    let mut out = HashMap::new();
+    for m in transcript {
+        if let Some(origin) = m.origin {
+            for p in &m.parts {
+                if let gantry_core::ContentPart::ToolCall { id, .. } = p {
+                    out.insert(id.as_str().to_owned(), origin);
+                }
+            }
+        }
+    }
+    out
+}
+
+/// `id` unchanged when `origin` is `this` provider, sanitized otherwise (02 §3).
+#[must_use]
+pub fn wire_call_id(id: &str, origin: Option<ProviderKind>, this: ProviderKind) -> String {
+    if origin == Some(this) {
+        id.to_owned()
+    } else {
+        sanitize_call_id(id)
+    }
+}
+
 /// Model-facing name → `(connector, tool)`, built per request.
 #[derive(Debug, Default, Clone)]
 pub struct ToolNameMap {
