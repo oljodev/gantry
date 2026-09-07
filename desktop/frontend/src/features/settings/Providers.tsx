@@ -1,4 +1,4 @@
-import { ArrowsClockwiseIcon, CaretDownIcon } from '@phosphor-icons/react';
+import { ArrowsClockwiseIcon, CaretDownIcon, PlusIcon } from '@phosphor-icons/react';
 import { useState } from 'react';
 
 import type {
@@ -24,13 +24,14 @@ import { useModelCatalog, useProviderMutations, useProviders } from '@/lib/ipc/h
 import { useSecretStoreStatus } from '@/lib/ipc/hooks/settings';
 import { cn } from '@/lib/utils';
 
-/** Providers this build knows about but has no client for yet (docs/plan/09 M4). */
-const COMING: { id: string; label: string }[] = [
-  { id: 'anthropic', label: 'Anthropic' },
-  { id: 'openai', label: 'OpenAI' },
-  { id: 'google', label: 'Google' },
-  { id: 'xai', label: 'xAI' },
-];
+/** What a key looks like, so the field hints at the right one (never validated). */
+const KEY_HINT: Record<string, string> = {
+  openrouter: 'sk-or-…',
+  anthropic: 'sk-ant-…',
+  openai: 'sk-…',
+  google: 'AIza…',
+  xai: 'xai-…',
+};
 
 function describe(err: unknown): string {
   if (err && typeof err === 'object' && 'message' in err)
@@ -47,8 +48,10 @@ export function Providers() {
   const providers = useProviders();
   const store = useSecretStoreStatus();
   const catalog = useModelCatalog();
-  const { setKey, clearKey, test, refreshModels, update } = useProviderMutations();
+  const { setKey, clearKey, test, refreshModels, update, addCustom, remove } =
+    useProviderMutations();
   const [adding, setAdding] = useState<ProviderRowDto | null>(null);
+  const [addingEndpoint, setAddingEndpoint] = useState(false);
 
   if (!isTauri()) {
     return (
@@ -60,8 +63,6 @@ export function Providers() {
   }
 
   const rows = providers.data ?? [];
-  const known = new Set(rows.map((r) => r.id));
-  const coming = COMING.filter((c) => !known.has(c.id));
 
   const onTest = async (p: ProviderRowDto) => {
     const r = await test.mutateAsync(p.id);
@@ -136,17 +137,28 @@ export function Providers() {
                 });
               }}
               onTest={() => void onTest(p)}
+              onRemoveEndpoint={
+                p.custom
+                  ? () =>
+                      remove.mutate(p.id, {
+                        onSuccess: () =>
+                          toast.add({ title: `${p.label} removed`, type: 'success' }),
+                        onError: (err) =>
+                          toast.add({
+                            title: 'Could not remove the endpoint',
+                            description: describe(err),
+                            type: 'error',
+                          }),
+                      })
+                  : undefined
+              }
             />
           ))}
-          {coming.map((c) => (
-            <div key={c.id} className="flex min-h-(--row) items-center gap-4 py-2.5">
-              <div className="min-w-0 flex-1">
-                <span className="text-ui font-medium text-fg-2">{c.label}</span>
-              </div>
-              <span className="text-meta text-fg-3">Arrives with M4</span>
-            </div>
-          ))}
         </div>
+        <Button variant="ghost" size="sm" className="mt-2" onClick={() => setAddingEndpoint(true)}>
+          <PlusIcon />
+          Add custom endpoint
+        </Button>
         {store.data?.kind === 'os_store' && (
           <p className="mt-3 text-meta text-fg-3">Master key in {store.data.backend}.</p>
         )}
@@ -171,6 +183,26 @@ export function Providers() {
         <ModelTable catalog={catalog.providers} />
       </section>
 
+      <AddEndpointDialog
+        open={addingEndpoint}
+        onClose={() => setAddingEndpoint(false)}
+        onSave={async (label, baseUrl) => {
+          try {
+            await addCustom.mutateAsync({ label, base_url: baseUrl });
+            toast.add({
+              title: `${label} added`,
+              description: 'Add a key if it needs one.',
+              type: 'success',
+            });
+          } catch (err) {
+            toast.add({
+              title: 'Could not add the endpoint',
+              description: describe(err),
+              type: 'error',
+            });
+          }
+        }}
+      />
       <AddKeyDialog
         provider={adding}
         onClose={() => setAdding(null)}
@@ -278,12 +310,14 @@ function ProviderRow({
   onAdd,
   onClear,
   onTest,
+  onRemoveEndpoint,
 }: {
   provider: ProviderRowDto;
   busy: boolean;
   onAdd: () => void;
   onClear: () => void;
   onTest: () => void;
+  onRemoveEndpoint?: () => void;
 }) {
   const { key } = provider;
   return (
@@ -291,6 +325,8 @@ function ProviderRow({
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className="text-ui font-medium text-fg">{provider.label}</span>
+          {provider.custom && <Badge>Custom</Badge>}
+          {!provider.available && <Badge variant="bad">No client</Badge>}
           <KeyStatus status={key} />
         </div>
         {provider.base_url && (
@@ -316,12 +352,102 @@ function ProviderRow({
             </Button>
           </>
         ) : (
-          <Button variant="secondary" size="sm" onClick={onAdd}>
-            Add key
+          <>
+            {provider.custom && (
+              <Button variant="ghost" size="sm" onClick={onTest} disabled={busy}>
+                {busy ? 'Testing…' : 'Test'}
+              </Button>
+            )}
+            <Button variant="secondary" size="sm" onClick={onAdd}>
+              Add key
+            </Button>
+          </>
+        )}
+        {onRemoveEndpoint && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-bad hover:bg-bad-subtle"
+            onClick={onRemoveEndpoint}
+          >
+            Remove endpoint
           </Button>
         )}
       </div>
     </div>
+  );
+}
+
+/** A user-supplied OpenAI-compatible endpoint (11 §4): Ollama, LM Studio, a proxy. */
+function AddEndpointDialog({
+  open,
+  onClose,
+  onSave,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onSave: (label: string, baseUrl: string) => Promise<void>;
+}) {
+  const [label, setLabel] = useState('');
+  const [baseUrl, setBaseUrl] = useState('');
+  const [saving, setSaving] = useState(false);
+  const valid = label.trim().length > 0 && /^https?:\/\/\S+$/.test(baseUrl.trim());
+  const close = () => {
+    setLabel('');
+    setBaseUrl('');
+    onClose();
+  };
+  const save = async () => {
+    if (!valid) return;
+    setSaving(true);
+    try {
+      await onSave(label.trim(), baseUrl.trim());
+    } finally {
+      setSaving(false);
+      close();
+    }
+  };
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && close()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Add a custom endpoint</DialogTitle>
+          <DialogDescription>
+            Any OpenAI-compatible Chat Completions server: Ollama, LM Studio, a proxy. A key is
+            optional and can be added afterwards.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="flex flex-col gap-3">
+          <label className="flex flex-col gap-1.5">
+            <span className="text-ui font-medium text-fg">Name</span>
+            <Input
+              autoFocus
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+              placeholder="Local Ollama"
+            />
+          </label>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-ui font-medium text-fg">Base URL</span>
+            <Input
+              value={baseUrl}
+              onChange={(e) => setBaseUrl(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && valid) void save();
+              }}
+              placeholder="http://localhost:11434/v1"
+              className="font-mono"
+            />
+          </label>
+        </div>
+        <DialogFooter>
+          <DialogClose render={<Button variant="secondary" />}>Close</DialogClose>
+          <Button variant="primary" disabled={!valid || saving} onClick={() => void save()}>
+            {saving ? 'Adding…' : 'Add endpoint'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -386,7 +512,7 @@ function AddKeyDialog({
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && value.trim().length >= 8) void save();
               }}
-              placeholder={provider?.id === 'openrouter' ? 'sk-or-…' : 'sk-…'}
+              placeholder={KEY_HINT[provider?.id ?? ''] ?? 'sk-…'}
               className="font-mono"
             />
           </label>

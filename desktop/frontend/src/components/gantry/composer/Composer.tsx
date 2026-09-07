@@ -47,6 +47,11 @@ export interface ComposerProps {
   /** Controlled thinking toggle; uncontrolled when absent (the gallery). */
   thinking?: boolean;
   onThinkingChange?: (on: boolean) => void;
+  /** The provider's own web search (02 §3); shown only when the model has one. */
+  webSearch?: boolean;
+  onWebSearchChange?: (on: boolean) => void;
+  /** What the current model can do; both default to on when the catalog does not know. */
+  capabilities?: { thinking?: boolean; webSearch?: boolean };
   /** Text to place in the field; a new `nonce` re-applies the same text. */
   prefill?: { text: string; nonce: number };
   /** Attachments to show at first (the gallery). */
@@ -72,6 +77,9 @@ export function Composer({
   placeholder,
   thinking: thinkingProp,
   onThinkingChange,
+  webSearch = false,
+  onWebSearchChange,
+  capabilities,
   prefill,
   initialAttachments,
   onModeChange,
@@ -83,7 +91,9 @@ export function Composer({
   const [text, setText] = useState('');
   const [attachments, setAttachments] = useState<PendingAttachment[]>(initialAttachments ?? []);
   const [thinkingLocal, setThinkingLocal] = useState(true);
-  const thinking = thinkingProp ?? thinkingLocal;
+  const canThink = capabilities?.thinking ?? true;
+  const canSearch = capabilities?.webSearch ?? false;
+  const thinking = canThink && (thinkingProp ?? thinkingLocal);
   const setThinking = (on: boolean) => {
     setThinkingLocal(on);
     onThinkingChange?.(on);
@@ -170,13 +180,27 @@ export function Composer({
                 Connectors…
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuCheckboxItem checked={false} disabled>
+              <DropdownMenuCheckboxItem
+                checked={canSearch && webSearch}
+                disabled={!canSearch}
+                onCheckedChange={(on) => onWebSearchChange?.(on)}
+              >
                 <GlobeIcon />
                 Web search
+                {!canSearch && (
+                  <span className="ml-auto text-meta text-fg-3">Not on this model</span>
+                )}
               </DropdownMenuCheckboxItem>
-              <DropdownMenuCheckboxItem checked={thinking} onCheckedChange={setThinking}>
+              <DropdownMenuCheckboxItem
+                checked={thinking}
+                disabled={!canThink}
+                onCheckedChange={setThinking}
+              >
                 <BrainIcon />
                 Thinking
+                {!canThink && (
+                  <span className="ml-auto text-meta text-fg-3">Not on this model</span>
+                )}
               </DropdownMenuCheckboxItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -191,6 +215,25 @@ export function Composer({
             <RootChip key={root} root={root} />
           ))}
           <div className="ml-auto flex items-center gap-1">
+            {canSearch && webSearch && (
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-pressed
+                      aria-label="Web search"
+                      onClick={() => onWebSearchChange?.(false)}
+                      className="text-fg"
+                    />
+                  }
+                >
+                  <GlobeIcon weight="fill" />
+                </TooltipTrigger>
+                <TooltipContent>Web search on</TooltipContent>
+              </Tooltip>
+            )}
             <Tooltip>
               <TooltipTrigger
                 render={
@@ -199,6 +242,7 @@ export function Composer({
                     size="icon-sm"
                     aria-pressed={thinking}
                     aria-label="Thinking"
+                    disabled={!canThink}
                     onClick={() => setThinking(!thinking)}
                     className={cn(thinking && 'text-fg')}
                   />
@@ -206,7 +250,9 @@ export function Composer({
               >
                 <BrainIcon weight={thinking ? 'fill' : 'regular'} />
               </TooltipTrigger>
-              <TooltipContent>Thinking {thinking ? 'on' : 'off'}</TooltipContent>
+              <TooltipContent>
+                {canThink ? `Thinking ${thinking ? 'on' : 'off'}` : 'This model does not think'}
+              </TooltipContent>
             </Tooltip>
             {running ? (
               <Button

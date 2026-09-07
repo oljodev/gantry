@@ -1,6 +1,14 @@
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import type { ModelInfo, ModelRef, ProviderId, ProviderRow, ProviderUpdate } from '@/bindings';
+import type {
+  CustomEndpoint,
+  ModelCapabilities,
+  ModelInfo,
+  ModelRef,
+  ProviderId,
+  ProviderRow,
+  ProviderUpdate,
+} from '@/bindings';
 import { commands, isTauri, unwrap } from '@/lib/ipc/client';
 import { keys } from '@/lib/ipc/keys';
 
@@ -55,6 +63,15 @@ export function useModelCatalog(): { providers: CatalogProvider[]; isPending: bo
   };
 }
 
+/** What the catalog knows a model can do; `undefined` when the model is not listed. */
+export function modelCapabilities(
+  catalog: CatalogProvider[],
+  ref: ModelRef,
+): ModelCapabilities | undefined {
+  const p = catalog.find((c) => c.id === ref.provider);
+  return p?.models.find((m) => m.id === ref.model)?.capabilities;
+}
+
 /** The display name of a model, or its id when the catalog does not know it. */
 export function modelLabel(catalog: CatalogProvider[], ref: ModelRef): string {
   const p = catalog.find((c) => c.id === ref.provider);
@@ -92,5 +109,16 @@ export function useProviderMutations() {
       unwrap(commands.updateProvider(providerId, update)),
     onSuccess: () => void invalidate(),
   });
-  return { setKey, clearKey, test, refreshModels, update };
+  const addCustom = useMutation({
+    mutationFn: (endpoint: CustomEndpoint) => unwrap(commands.addCustomProvider(endpoint)),
+    onSuccess: () => void invalidate(),
+  });
+  const remove = useMutation({
+    mutationFn: (providerId: ProviderId) => unwrap(commands.removeProvider(providerId)),
+    onSuccess: (_, providerId) => {
+      void invalidate();
+      qc.removeQueries({ queryKey: keys.models(providerId) });
+    },
+  });
+  return { setKey, clearKey, test, refreshModels, update, addCustom, remove };
 }

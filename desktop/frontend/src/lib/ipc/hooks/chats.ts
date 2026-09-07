@@ -62,6 +62,7 @@ const EMPTY_UPDATE: ChatUpdate = {
   mode: null,
   guard: null,
   effort: null,
+  web_search: null,
   title: null,
   pinned: null,
   archived: null,

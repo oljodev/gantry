@@ -12,7 +12,7 @@ import { ToolCallDetail } from '@/components/gantry/pane/ToolCallDetail';
 import type { ActivityItem, ModelRef } from '@/fixtures/types';
 import { copyText } from '@/lib/clipboard';
 import { useChat, useChatMutations } from '@/lib/ipc/hooks/chats';
-import { modelLabel, useModelCatalog } from '@/lib/ipc/hooks/providers';
+import { modelCapabilities, modelLabel, useModelCatalog } from '@/lib/ipc/hooks/providers';
 import { useSettings } from '@/lib/ipc/hooks/settings';
 import { useRunStore } from '@/lib/stores/runStore';
 import { toTurns } from '@/lib/view/toTurns';
@@ -83,7 +83,8 @@ export function ChatView({ chatId }: { chatId: string }) {
   // Follow mode: while the user sits at the bottom, streaming keeps the newest text in view.
   const liveLength =
     live?.messages.reduce(
-      (n, m) => n + m.parts.reduce((k, p) => k + (p && 'text' in p ? p.text.length : 0), 0),
+      (n, m) =>
+        n + m.parts.reduce((k, p) => k + (typeof p?.text === 'string' ? p.text.length : 0), 0),
       0,
     ) ?? 0;
   const liveCalls = live ? live.callOrder.length + live.pending.length : 0;
@@ -106,6 +107,13 @@ export function ChatView({ chatId }: { chatId: string }) {
   const turns = toTurns(detail, live, (ref) => modelLabel(providers, ref));
   const defaultEffort = settings.data?.chat?.default_effort ?? 'medium';
   const thinking = detail.effort !== 'off';
+  // Capability-driven controls (02 §2): the catalog says what the model can do; an unlisted
+  // model keeps thinking available and hides web search.
+  const caps = modelCapabilities(providers, detail.model);
+  const capabilities = {
+    thinking: caps ? caps.reasoning.kind !== 'none' : true,
+    webSearch: caps?.server_web_search ?? false,
+  };
   const patch = (u: Parameters<typeof update.mutate>[0]['update']) =>
     update.mutate({ chatId, update: u });
   const decide = (interactionId: string, answer: PermissionAnswer) => {
@@ -174,6 +182,9 @@ export function ChatView({ chatId }: { chatId: string }) {
           running={running}
           thinking={thinking}
           onThinkingChange={(on) => patch({ effort: on ? defaultEffort : 'off' })}
+          webSearch={detail.web_search}
+          onWebSearchChange={(on) => patch({ web_search: on })}
+          capabilities={capabilities}
           onModeChange={(mode) => patch({ mode })}
           onGuardChange={(guard) => patch({ guard })}
           onModelChange={(model: ModelRef) => patch({ model })}

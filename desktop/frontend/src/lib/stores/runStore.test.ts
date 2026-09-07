@@ -54,6 +54,7 @@ const chat = (turn: Partial<TurnDto>): ChatDetail => ({
   mode: 'manual',
   guard: true,
   effort: 'off',
+  web_search: false,
   active_turn: TURN,
   turns: [
     {

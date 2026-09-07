@@ -58,7 +58,7 @@ export function ModelPicker({
               <CommandGroup key={p.id} heading={p.label}>
                 {!p.available ? (
                   <CommandItem disabled value={`${p.id}-unavailable`}>
-                    <span className="text-fg-disabled">Arrives with M4</span>
+                    <span className="text-fg-disabled">No client in this build</span>
                   </CommandItem>
                 ) : !p.hasKey ? (
                   <CommandItem disabled value={`${p.id}-none`}>
