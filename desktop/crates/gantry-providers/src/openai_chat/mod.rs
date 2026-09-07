@@ -8,7 +8,7 @@ mod profiles;
 mod request;
 pub mod stream;
 
-use std::time::Duration;
+use std::{collections::HashMap, sync::RwLock, time::Duration};
 
 use async_trait::async_trait;
 use gantry_core::{ProviderId, ProviderKind};
@@ -29,6 +29,8 @@ pub struct OpenAiChatProvider {
     profile: CompatProfile,
     key: Option<SecretString>,
     http: reqwest::Client,
+    /// What the last model list said, by model id; seeded from the catalog cache.
+    models: RwLock<HashMap<String, ModelInfo>>,
 }
 
 impl std::fmt::Debug for OpenAiChatProvider {
@@ -57,12 +59,19 @@ impl OpenAiChatProvider {
         profile: CompatProfile,
         key: Option<SecretString>,
         http: reqwest::Client,
+        known_models: Vec<ModelInfo>,
     ) -> Self {
         Self {
             id,
             profile,
             key,
             http,
+            models: RwLock::new(
+                known_models
+                    .into_iter()
+                    .map(|m| (m.id.clone(), m))
+                    .collect(),
+            ),
         }
     }
 
@@ -140,9 +149,20 @@ impl Provider for OpenAiChatProvider {
         self.key.is_some()
     }
 
+    fn model_info(&self, model: &str) -> Option<ModelInfo> {
+        self.models
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(model)
+            .cloned()
+    }
+
     async fn list_models(&self) -> Result<Vec<ModelInfo>, ProviderError> {
         let json = retry::with_retry(|| self.get_json("models")).await?;
-        models::parse(self.profile.models_parser, &json)
+        let list = models::parse(self.profile.models_parser, &json)?;
+        *self.models.write().unwrap_or_else(|e| e.into_inner()) =
+            list.iter().map(|m| (m.id.clone(), m.clone())).collect();
+        Ok(list)
     }
 
     async fn check_key(&self) -> Result<KeyInfo, ProviderError> {
@@ -160,7 +180,8 @@ impl Provider for OpenAiChatProvider {
 
     async fn stream(&self, req: ChatRequest) -> Result<ChatStream, ProviderError> {
         let key = self.key()?;
-        let body = request::build_body(&self.profile, &req);
+        let info = self.model_info(&req.model);
+        let body = request::build_body(&self.profile, &req, info.as_ref());
         if log::log_enabled!(log::Level::Trace) {
             log::trace!("chat request to {}: {}", self.profile.label, body);
         }

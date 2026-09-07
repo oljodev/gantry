@@ -4,9 +4,18 @@ use gantry_core::{ContentPart, Message, ProviderKind, ReasoningEffort, Role};
 use serde_json::{Value, json};
 
 use super::profiles::{CompatProfile, ReasoningParam};
-use crate::provider::{ChatRequest, ToolChoice};
+use crate::provider::{ChatRequest, ModelInfo, ReasoningSupport, ToolChoice};
 
-pub fn build_body(profile: &CompatProfile, req: &ChatRequest) -> Value {
+/// `info` is what the model list said about the model, when it is known: the reasoning
+/// parameter is sent only to models that accept it, and `max_tokens` never exceeds the
+/// model's maximum output. An unknown model gets the conservative body.
+pub fn build_body(profile: &CompatProfile, req: &ChatRequest, info: Option<&ModelInfo>) -> Value {
+    let supports_reasoning =
+        info.is_some_and(|i| i.capabilities.reasoning != ReasoningSupport::None);
+    let max_tokens = match info.and_then(|i| i.max_output) {
+        Some(cap) if cap > 0 => req.max_output_tokens.min(cap),
+        _ => req.max_output_tokens,
+    };
     let mut messages = Vec::with_capacity(req.messages.len() + 1);
     if !req.system.is_empty() {
         messages.push(json!({ "role": profile.system_role, "content": req.system }));
@@ -19,7 +28,7 @@ pub fn build_body(profile: &CompatProfile, req: &ChatRequest) -> Value {
         "model": req.model,
         "messages": messages,
         "stream": true,
-        "max_tokens": req.max_output_tokens,
+        "max_tokens": max_tokens,
     });
     let obj = body.as_object_mut().expect("body is an object");
 
@@ -27,6 +36,7 @@ pub fn build_body(profile: &CompatProfile, req: &ChatRequest) -> Value {
         obj.insert("stream_options".into(), json!({ "include_usage": true }));
     }
     match (profile.reasoning_param, req.reasoning) {
+        _ if !supports_reasoning => {}
         (_, ReasoningEffort::Off) | (ReasoningParam::None, _) => {}
         (ReasoningParam::OpenRouterObject, effort) => {
             obj.insert("reasoning".into(), json!({ "effort": effort_name(effort) }));
@@ -197,6 +207,41 @@ mod tests {
     use gantry_core::MessageId;
 
     use super::*;
+    use crate::provider::ModelCapabilities;
+
+    fn info(reasoning: ReasoningSupport, max_output: Option<u32>) -> ModelInfo {
+        ModelInfo {
+            id: "m".into(),
+            display_name: "m".into(),
+            context_window: None,
+            max_output,
+            pricing: None,
+            capabilities: ModelCapabilities {
+                reasoning,
+                ..Default::default()
+            },
+        }
+    }
+
+    #[test]
+    fn reasoning_is_sent_only_to_models_that_accept_it_and_max_tokens_is_capped() {
+        let mut req = ChatRequest::new("google/gemma-3-27b-it", "", vec![Message::user_text("hi")]);
+        req.reasoning = ReasoningEffort::Medium;
+        req.max_output_tokens = 8192;
+        let plain = info(ReasoningSupport::None, Some(4096));
+        let body = build_body(&CompatProfile::openrouter(), &req, Some(&plain));
+        assert!(
+            body.get("reasoning").is_none(),
+            "no reasoning for a plain model"
+        );
+        assert_eq!(body["max_tokens"], 4096);
+        let unknown = build_body(&CompatProfile::openrouter(), &req, None);
+        assert!(
+            unknown.get("reasoning").is_none(),
+            "unknown models get the conservative body"
+        );
+        assert_eq!(unknown["max_tokens"], 8192);
+    }
 
     #[test]
     fn openrouter_body_has_system_first_reasoning_object_and_no_usage_flag() {
@@ -207,7 +252,8 @@ mod tests {
         );
         req.reasoning = ReasoningEffort::Low;
         req.max_output_tokens = 512;
-        let body = build_body(&CompatProfile::openrouter(), &req);
+        let thinking = info(ReasoningSupport::Effort, None);
+        let body = build_body(&CompatProfile::openrouter(), &req, Some(&thinking));
         assert_eq!(body["messages"][0]["role"], "system");
         assert_eq!(body["messages"][1]["content"], "hi");
         assert_eq!(body["reasoning"]["effort"], "low");
@@ -241,7 +287,7 @@ mod tests {
             created_at: 0,
         };
         let req = ChatRequest::new("m", "", vec![assistant]);
-        let body = build_body(&CompatProfile::openrouter(), &req);
+        let body = build_body(&CompatProfile::openrouter(), &req, None);
         assert_eq!(body["messages"][0]["reasoning"], "mine");
         assert_eq!(body["messages"][0]["content"], "answer");
     }

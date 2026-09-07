@@ -1,6 +1,6 @@
 import { type QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import type { ChatId, ChatUpdate, ModelRef } from '@/bindings';
+import type { ChatId, ChatUpdate, Feedback, ModelRef, TurnId } from '@/bindings';
 import { commands, isTauri, unwrap } from '@/lib/ipc/client';
 import { keys } from '@/lib/ipc/keys';
 
@@ -44,6 +44,7 @@ export function useChatMutations() {
           effort: null,
           title: null,
           pinned: null,
+          archived: null,
           ...update,
         }),
       ),
@@ -56,5 +57,17 @@ export function useChatMutations() {
       void qc.invalidateQueries({ queryKey: keys.chats });
     },
   });
-  return { create, update, remove };
+  const rate = useMutation({
+    mutationFn: ({
+      chatId,
+      turnId,
+      feedback,
+    }: {
+      chatId: ChatId;
+      turnId: TurnId;
+      feedback: Feedback | null;
+    }) => unwrap(commands.rateTurn(chatId, turnId, feedback)),
+    onSuccess: (_, { chatId }) => invalidateChat(qc, chatId),
+  });
+  return { create, update, remove, rate };
 }

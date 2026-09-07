@@ -45,6 +45,26 @@ pub fn send_message(
     Ok(turn)
 }
 
+/// Drops the chat's last turn and sends its user message again over a fresh channel.
+#[tauri::command]
+#[specta::specta]
+pub fn retry_turn(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    chat_id: ChatId,
+    turn_id: TurnId,
+    on_event: Channel<AgentEventBatch>,
+) -> Result<TurnId, ErrorDto> {
+    let turn = state
+        .turns
+        .retry(chat_id, turn_id, Arc::new(ChannelSink(on_event)))?;
+    let _ = ChatsChanged {
+        chat_ids: vec![chat_id],
+    }
+    .emit(&app);
+    Ok(turn)
+}
+
 /// Whether the turn was running.
 #[tauri::command]
 #[specta::specta]

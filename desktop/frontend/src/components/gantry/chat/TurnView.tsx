@@ -3,7 +3,7 @@ import { WarningCircleIcon } from '@phosphor-icons/react';
 import { TurnSummary } from '@/components/gantry/activity/TurnSummary';
 import { PermissionCard } from '@/components/gantry/chat/InteractionCard';
 import { ThinkingBlock } from '@/components/gantry/chat/ThinkingBlock';
-import { TurnFooter } from '@/components/gantry/chat/TurnFooter';
+import { TurnActions, type TurnActionsProps } from '@/components/gantry/chat/TurnActions';
 import { UserMessage } from '@/components/gantry/chat/UserMessage';
 import { Markdown } from '@/components/gantry/markdown/Markdown';
 import type { ActivityItem, Turn } from '@/fixtures/types';
@@ -15,10 +15,15 @@ import type { ActivityItem, Turn } from '@/fixtures/types';
 export function TurnView({
   turn,
   onOpenItem,
+  isLast,
+  onCopy,
+  onRate,
+  onRetry,
 }: {
   turn: Turn;
   onOpenItem?: (item: ActivityItem) => void;
-}) {
+  isLast?: boolean;
+} & Pick<TurnActionsProps, 'onCopy' | 'onRate' | 'onRetry'>) {
   const hasText = turn.blocks.some((b) => b.kind === 'text');
   return (
     <article className="group/turn flex flex-col gap-3 py-4">
@@ -72,7 +77,15 @@ export function TurnView({
           />
         )}
         {turn.status === 'cancelled' && <div className="mt-1 text-meta text-fg-3">Stopped</div>}
-        {turn.footer && <TurnFooter footer={turn.footer} />}
+        {turn.status !== 'running' && turn.status !== 'waiting' && (
+          <TurnActions
+            turn={turn}
+            pinned={isLast}
+            onCopy={onCopy}
+            onRate={onRate}
+            onRetry={isLast ? onRetry : undefined}
+          />
+        )}
       </div>
     </article>
   );

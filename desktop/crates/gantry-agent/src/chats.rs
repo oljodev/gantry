@@ -6,8 +6,8 @@ use std::{
 };
 
 use gantry_core::{
-    ChatDetail, ChatId, ChatSummary, GantryError, Message, Mode, ModelRef, ReasoningEffort,
-    StopReason, TurnDto, TurnId, TurnStatus, Usage, now_ms,
+    ChatDetail, ChatId, ChatSummary, Feedback, GantryError, Message, Mode, ModelRef,
+    ReasoningEffort, StopReason, TurnDto, TurnId, TurnStatus, Usage, now_ms,
 };
 
 #[derive(Debug, Clone)]
@@ -15,6 +15,7 @@ pub struct Chat {
     pub id: ChatId,
     pub title: String,
     pub pinned: bool,
+    pub archived_at: Option<i64>,
     pub created_at: i64,
     pub last_message_at: i64,
     pub model: ModelRef,
@@ -37,6 +38,7 @@ pub struct TurnRecord {
     pub usage: Option<Usage>,
     pub stop_reason: Option<StopReason>,
     pub error: Option<String>,
+    pub feedback: Option<Feedback>,
     pub started_at: i64,
     pub ended_at: Option<i64>,
 }
@@ -64,6 +66,7 @@ pub struct ChatPatch {
     pub effort: Option<ReasoningEffort>,
     pub title: Option<String>,
     pub pinned: Option<bool>,
+    pub archived: Option<bool>,
 }
 
 /// How a finished turn is recorded.
@@ -116,6 +119,7 @@ impl ChatBook {
             id: ChatId::new(),
             title: "New chat".to_owned(),
             pinned: false,
+            archived_at: None,
             created_at: now,
             last_message_at: now,
             model,
@@ -190,6 +194,7 @@ impl ChatBook {
             usage: None,
             stop_reason: None,
             error: None,
+            feedback: None,
             started_at: now,
             ended_at: None,
         };
@@ -250,7 +255,48 @@ impl ChatBook {
         if let Some(p) = patch.pinned {
             chat.pinned = p;
         }
+        if let Some(a) = patch.archived {
+            chat.archived_at = if a { Some(now_ms()) } else { None };
+        }
         Ok(summary(chat, active_turn(chat)))
+    }
+
+    /// Records the user's verdict on a finished turn; `None` clears it.
+    pub fn rate_turn(
+        &self,
+        chat_id: ChatId,
+        turn_id: TurnId,
+        feedback: Option<Feedback>,
+    ) -> Result<(), GantryError> {
+        let mut chats = self.chats.write().unwrap_or_else(|e| e.into_inner());
+        let chat = chats
+            .get_mut(&chat_id)
+            .ok_or_else(|| GantryError::not_found(format!("chat {chat_id}")))?;
+        let turn = chat
+            .turns
+            .iter_mut()
+            .find(|t| t.id == turn_id)
+            .ok_or_else(|| GantryError::not_found(format!("turn {turn_id}")))?;
+        turn.feedback = feedback;
+        Ok(())
+    }
+
+    /// Removes the chat's last turn so it can be re-run, returning its user message. Only the
+    /// last turn can be retried, and not while it runs.
+    pub fn take_last_turn(&self, chat_id: ChatId, turn_id: TurnId) -> Result<Message, GantryError> {
+        let mut chats = self.chats.write().unwrap_or_else(|e| e.into_inner());
+        let chat = chats
+            .get_mut(&chat_id)
+            .ok_or_else(|| GantryError::not_found(format!("chat {chat_id}")))?;
+        match chat.turns.last() {
+            Some(t) if t.id == turn_id && t.status != TurnStatus::Running => {}
+            Some(t) if t.id == turn_id => {
+                return Err(GantryError::invalid("the turn is still running"));
+            }
+            _ => return Err(GantryError::invalid("only the last turn can be retried")),
+        }
+        let turn = chat.turns.pop().expect("checked above");
+        Ok(turn.user)
     }
 
     pub fn delete(&self, chat_id: ChatId) -> bool {
@@ -278,6 +324,7 @@ fn summary(chat: &Chat, active: Option<TurnId>) -> ChatSummary {
         id: chat.id,
         title: chat.title.clone(),
         pinned: chat.pinned,
+        archived: chat.archived_at.is_some(),
         project_id: None,
         created_at: chat.created_at,
         last_message_at: chat.last_message_at,
@@ -290,6 +337,7 @@ fn detail(chat: &Chat) -> ChatDetail {
         id: chat.id,
         title: chat.title.clone(),
         pinned: chat.pinned,
+        archived: chat.archived_at.is_some(),
         project_id: None,
         created_at: chat.created_at,
         last_message_at: chat.last_message_at,
@@ -310,6 +358,7 @@ fn detail(chat: &Chat) -> ChatDetail {
                 usage: t.usage,
                 stop_reason: t.stop_reason.clone(),
                 error: t.error.clone(),
+                feedback: t.feedback,
                 started_at: t.started_at,
                 ended_at: t.ended_at,
             })
@@ -387,5 +436,30 @@ mod tests {
         let next = book.begin_turn(id, Message::user_text("more")).unwrap();
         assert_eq!(next.messages.len(), 3);
         assert_eq!(book.get(id).unwrap().turns[0].status, TurnStatus::Completed);
+    }
+
+    #[test]
+    fn only_the_last_finished_turn_can_be_retried() {
+        let (book, id) = book_with_chat();
+        let first = book.begin_turn(id, Message::user_text("one")).unwrap();
+        assert!(book.take_last_turn(id, first.turn_id).is_err(), "running");
+        book.finish_turn(
+            id,
+            first.turn_id,
+            TurnOutcome {
+                status: TurnStatus::Failed,
+                assistant: None,
+                usage: None,
+                stop_reason: None,
+                error: Some("x".into()),
+            },
+        );
+        book.rate_turn(id, first.turn_id, Some(Feedback::Bad))
+            .unwrap();
+        assert_eq!(book.get(id).unwrap().turns[0].feedback, Some(Feedback::Bad));
+        let user = book.take_last_turn(id, first.turn_id).unwrap();
+        assert_eq!(user.text(), "one");
+        assert!(book.get(id).unwrap().turns.is_empty());
+        assert!(book.take_last_turn(id, first.turn_id).is_err(), "gone");
     }
 }

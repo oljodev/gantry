@@ -34,17 +34,22 @@ export function Sidebar() {
     id: c.id,
     title: c.title,
     pinned: c.pinned,
+    archived: c.archived,
     lastMessageAt: c.last_message_at,
     running: live[c.id]?.status === 'running' || c.active_turn !== null,
   }));
-  const pinned = rows.filter((c) => c.pinned);
+  const byRecent = (a: ChatSummary, b: ChatSummary) => b.lastMessageAt - a.lastMessageAt;
+  const pinned = rows.filter((c) => c.pinned && !c.archived);
   // Most recently used first; no day groups (session 5 decision, 15 §7).
-  const recents = rows.filter((c) => !c.pinned).sort((a, b) => b.lastMessageAt - a.lastMessageAt);
+  const recents = rows.filter((c) => !c.pinned && !c.archived).sort(byRecent);
+  const archived = rows.filter((c) => c.archived).sort(byRecent);
   const row = (c: ChatSummary) => (
     <ChatRow
       key={c.id}
       chat={c}
       onPin={(p) => update.mutate({ chatId: c.id, update: { pinned: p } })}
+      onRename={(title) => update.mutate({ chatId: c.id, update: { title } })}
+      onArchive={(a) => update.mutate({ chatId: c.id, update: { archived: a } })}
       onDelete={() => remove.mutate(c.id)}
     />
   );
@@ -117,6 +122,12 @@ export function Sidebar() {
           )}
           <SectionLabel>Chats</SectionLabel>
           {recents.length === 0 ? <Muted>No chats yet</Muted> : recents.map(row)}
+          {archived.length > 0 && (
+            <>
+              <SectionLabel>Archived</SectionLabel>
+              {archived.map(row)}
+            </>
+          )}
         </div>
 
         <div className="mt-auto pb-2">

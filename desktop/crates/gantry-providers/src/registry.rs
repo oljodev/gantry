@@ -11,6 +11,7 @@ use gantry_secrets::SecretVault;
 use gantry_store::{Store, repos::providers};
 
 use crate::{
+    catalog,
     openai_chat::{CompatProfile, OpenAiChatProvider},
     provider::Provider,
 };
@@ -71,8 +72,9 @@ impl ProviderRegistry {
                     if let Some(url) = row.base_url.as_deref().filter(|u| !u.is_empty()) {
                         profile.base_url = url.to_owned();
                     }
+                    let known = catalog::cached(&self.store, &row.id).unwrap_or_default();
                     let provider =
-                        OpenAiChatProvider::new(id.clone(), profile, key, self.http.clone());
+                        OpenAiChatProvider::new(id.clone(), profile, key, self.http.clone(), known);
                     next.insert(id, Arc::new(provider));
                 }
                 other => log::info!("provider {} of kind {other} has no client yet", row.id),

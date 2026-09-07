@@ -28,6 +28,7 @@ export interface ChatSummary {
   lastMessageAt: number;
   running?: boolean;
   pending?: number;
+  archived?: boolean;
 }
 
 export interface HunkLine {
@@ -101,6 +102,11 @@ export interface Turn {
   blocks: Block[];
   footer?: { model: string; durationMs: number; tokensIn: number; tokensOut: number };
   status: 'done' | 'running' | 'waiting' | 'failed' | 'cancelled';
+  /** When the turn ended, for "2 min ago"; absent while running. */
+  endedAt?: number;
+  feedback?: 'good' | 'bad';
+  /** The assistant text as markdown, for Copy. */
+  text?: string;
 }
 
 export interface ChatDetail extends ChatSummary {

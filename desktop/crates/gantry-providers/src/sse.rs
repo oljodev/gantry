@@ -61,6 +61,12 @@ impl SseDecoder {
         if line.starts_with(':') {
             return None;
         }
+        // A bare JSON object is not SSE at all: a provider answered the streaming request with a
+        // plain error body. Hand it to the parser as data so the message is classified.
+        if line.starts_with('{') {
+            self.data.push(line.to_owned());
+            return self.dispatch();
+        }
         let (field, value) = match line.split_once(':') {
             Some((f, v)) => (f, v.strip_prefix(' ').unwrap_or(v)),
             None => (line, ""),
@@ -167,6 +173,15 @@ mod tests {
             events.iter().map(|e| e.data.as_str()).collect::<Vec<_>>(),
             vec!["{\"a\":1}", "line1\nline2", "[DONE]"]
         );
+    }
+
+    #[test]
+    fn a_bare_json_body_becomes_a_data_event() {
+        let mut d = SseDecoder::new();
+        let ev =
+            d.push(b"{\"error\":{\"message\":\"Missing Authentication header\",\"code\":401}}\n");
+        assert_eq!(ev.len(), 1);
+        assert!(ev[0].data.contains("Missing Authentication header"));
     }
 
     #[test]

@@ -1,0 +1,120 @@
+import {
+  ArrowClockwiseIcon,
+  CheckIcon,
+  CopyIcon,
+  ThumbsDownIcon,
+  ThumbsUpIcon,
+} from '@phosphor-icons/react';
+import { useState } from 'react';
+
+import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import type { Turn } from '@/fixtures/types';
+import { useRelativeTime } from '@/lib/relativeTime';
+import { cn } from '@/lib/utils';
+
+export interface TurnActionsProps {
+  turn: Turn;
+  /** The last turn keeps its toolbar visible; earlier ones show it on hover. */
+  pinned?: boolean;
+  onCopy?: (text: string) => Promise<void> | void;
+  onRate?: (feedback: 'good' | 'bad' | null) => void;
+  onRetry?: () => void;
+}
+
+/**
+ * The row under a finished reply (15 §7): copy, good, bad, retry, then when it ended and the
+ * `meta` stats (model, duration, tokens). Icon buttons at `control-sm`, `fg-3` until hover.
+ */
+export function TurnActions({ turn, pinned, onCopy, onRate, onRetry }: TurnActionsProps) {
+  const [copied, setCopied] = useState(false);
+  const ago = useRelativeTime(turn.endedAt);
+  const f = turn.footer;
+  const copy = async () => {
+    if (!turn.text) return;
+    await onCopy?.(turn.text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+  return (
+    <div
+      className={cn(
+        'mt-1 flex h-7 items-center gap-0.5 text-meta text-fg-3 tnum transition-opacity duration-(--dur-1)',
+        pinned ? 'opacity-100' : 'opacity-0 group-hover/turn:opacity-100 focus-within:opacity-100',
+      )}
+    >
+      {turn.text !== undefined && (
+        <Action label={copied ? 'Copied' : 'Copy'} onClick={() => void copy()}>
+          {copied ? <CheckIcon /> : <CopyIcon />}
+        </Action>
+      )}
+      {onRate && (
+        <>
+          <Action
+            label="Good response"
+            active={turn.feedback === 'good'}
+            onClick={() => onRate(turn.feedback === 'good' ? null : 'good')}
+          >
+            <ThumbsUpIcon weight={turn.feedback === 'good' ? 'fill' : 'regular'} />
+          </Action>
+          <Action
+            label="Bad response"
+            active={turn.feedback === 'bad'}
+            onClick={() => onRate(turn.feedback === 'bad' ? null : 'bad')}
+          >
+            <ThumbsDownIcon weight={turn.feedback === 'bad' ? 'fill' : 'regular'} />
+          </Action>
+        </>
+      )}
+      {onRetry && (
+        <Action label="Retry" onClick={onRetry}>
+          <ArrowClockwiseIcon />
+        </Action>
+      )}
+      <span className="ml-2 flex items-center gap-3 whitespace-nowrap">
+        {ago && <span>{ago}</span>}
+        {f && (
+          <>
+            <span>{f.model}</span>
+            <span>{(f.durationMs / 1000).toFixed(1)} s</span>
+            <span>
+              {f.tokensIn.toLocaleString()} in · {f.tokensOut.toLocaleString()} out
+            </span>
+          </>
+        )}
+      </span>
+    </div>
+  );
+}
+
+function Action({
+  label,
+  active,
+  onClick,
+  children,
+}: {
+  label: string;
+  active?: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={label}
+            aria-pressed={active}
+            onClick={onClick}
+            className={cn('text-fg-3 hover:text-fg', active && 'text-fg')}
+          />
+        }
+      >
+        {children}
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
+  );
+}

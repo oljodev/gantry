@@ -41,6 +41,9 @@ function finishedTurn(
         }
       : undefined,
     status: t.status === 'running' ? 'running' : t.status === 'completed' ? 'done' : t.status,
+    endedAt: t.ended_at ?? undefined,
+    feedback: t.feedback ?? undefined,
+    text: t.assistant ? textOf(t.assistant.parts) : undefined,
   };
 }
 

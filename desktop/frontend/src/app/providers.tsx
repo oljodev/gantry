@@ -1,4 +1,4 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import { type ReactNode, useEffect, useState } from 'react';
 
 import { useBackendEvents } from '@/lib/ipc/events';
@@ -7,13 +7,12 @@ import { bindRunStore } from '@/lib/stores/runStore';
 import { useUiStore } from '@/lib/stores/uiStore';
 
 export function Providers({ children }: { children: ReactNode }) {
-  const [client] = useState(() => {
-    const qc = new QueryClient({
-      defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
-    });
-    bindRunStore(qc);
-    return qc;
-  });
+  const [client] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
+      }),
+  );
   return (
     <QueryClientProvider client={client}>
       <BackendSync />
@@ -22,9 +21,15 @@ export function Providers({ children }: { children: ReactNode }) {
   );
 }
 
-/** Global events invalidate queries; the backend's appearance wins over the local mirror. */
+/**
+ * Global events invalidate queries; the backend's appearance wins over the local mirror. The run
+ * store is bound to the client in an effect, because StrictMode runs state initialisers twice
+ * and keeps only one result.
+ */
 function BackendSync() {
   useBackendEvents();
+  const qc = useQueryClient();
+  useEffect(() => bindRunStore(qc), [qc]);
   const settings = useSettings();
   const appearance = settings.data?.appearance;
   useEffect(() => {

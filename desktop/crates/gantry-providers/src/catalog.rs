@@ -11,6 +11,12 @@ use crate::provider::{ModelCapabilities, ModelInfo, Pricing, Provider};
 /// How long a cached list is trusted before a background refresh is worth it.
 pub const TTL_MS: i64 = 24 * 60 * 60 * 1000;
 
+/// The cached list as it is, without touching the network.
+pub fn cached(store: &Store, provider_id: &str) -> Result<Vec<ModelInfo>, GantryError> {
+    let rows = store.read(|c| models::list_for(c, provider_id))?;
+    Ok(rows.into_iter().map(from_record).collect())
+}
+
 /// The cached list, refreshed when `refresh` is set, the cache is empty, or it is older than
 /// [`TTL_MS`]. Without a key the cache is returned as it is.
 pub async fn list_models(

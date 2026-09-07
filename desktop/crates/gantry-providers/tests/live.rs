@@ -15,6 +15,7 @@ fn provider() -> Option<OpenAiChatProvider> {
         CompatProfile::openrouter(),
         Some(SecretString::from(key)),
         http_client("test"),
+        Vec::new(),
     ))
 }
 

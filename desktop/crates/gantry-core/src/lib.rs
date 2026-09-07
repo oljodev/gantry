@@ -15,7 +15,7 @@ pub mod settings;
 pub mod time;
 
 pub use app_info::AppInfo;
-pub use chat::{ChatDetail, ChatSummary, TurnDto, TurnStatus};
+pub use chat::{ChatDetail, ChatSummary, Feedback, TurnDto, TurnStatus};
 pub use error::{ErrorDto, GantryError, ProviderErrorKind};
 pub use event::{AgentEvent, AgentEventBatch, AgentEventKind, TurnSnapshot};
 pub use ids::{ArtifactId, CallId, ChatId, EventId, InstanceId, MessageId, ProjectId, TurnId};

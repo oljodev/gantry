@@ -8,6 +8,7 @@ import { DiffView } from '@/components/gantry/pane/DiffView';
 import { type PaneTab, RightPane } from '@/components/gantry/pane/RightPane';
 import { ToolCallDetail } from '@/components/gantry/pane/ToolCallDetail';
 import type { ActivityItem, ModelRef } from '@/fixtures/types';
+import { copyText } from '@/lib/clipboard';
 import { useChat, useChatMutations } from '@/lib/ipc/hooks/chats';
 import { modelLabel, useModelCatalog } from '@/lib/ipc/hooks/providers';
 import { useSettings } from '@/lib/ipc/hooks/settings';
@@ -26,7 +27,8 @@ export function ChatView({ chatId }: { chatId: string }) {
   const stop = useRunStore((s) => s.stop);
   const attach = useRunStore((s) => s.attach);
   const clear = useRunStore((s) => s.clear);
-  const { update } = useChatMutations();
+  const retry = useRunStore((s) => s.retry);
+  const { update, rate } = useChatMutations();
   const { providers } = useModelCatalog();
   const settings = useSettings();
   const [tabs, setTabs] = useState<PaneTab[]>([]);
@@ -105,8 +107,19 @@ export function ChatView({ chatId }: { chatId: string }) {
       <div className="flex min-w-0 flex-1 flex-col">
         <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto pt-(--title-strip)">
           <div className="mx-auto w-full max-w-(--measure) px-6 pt-2 pb-6">
-            {turns.map((turn) => (
-              <TurnView key={turn.id} turn={turn} onOpenItem={openItem} />
+            {turns.map((turn, i) => (
+              <TurnView
+                key={turn.id}
+                turn={turn}
+                isLast={i === turns.length - 1}
+                onOpenItem={openItem}
+                onCopy={copyText}
+                onRate={(feedback) => rate.mutate({ chatId, turnId: turn.id, feedback })}
+                onRetry={() => {
+                  clear(chatId);
+                  void retry(chatId, turn.id);
+                }}
+              />
             ))}
           </div>
         </div>

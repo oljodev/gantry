@@ -1,6 +1,7 @@
 use gantry_agent::ChatPatch;
 use gantry_core::{
-    ChatDetail, ChatId, ChatSummary, ErrorDto, GantryError, Mode, ModelRef, ReasoningEffort,
+    ChatDetail, ChatId, ChatSummary, ErrorDto, Feedback, GantryError, Mode, ModelRef,
+    ReasoningEffort, TurnId,
 };
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, State};
@@ -17,6 +18,7 @@ pub struct ChatUpdate {
     pub effort: Option<ReasoningEffort>,
     pub title: Option<String>,
     pub pinned: Option<bool>,
+    pub archived: Option<bool>,
 }
 
 #[tauri::command]
@@ -70,6 +72,7 @@ pub fn update_chat(
                 .map(|t| t.trim().to_owned())
                 .filter(|t| !t.is_empty()),
             pinned: update.pinned,
+            archived: update.archived,
         },
     )?;
     let _ = ChatsChanged {
@@ -92,6 +95,24 @@ pub fn delete_chat(
     if !state.turns.chats().delete(chat_id) {
         return Err(GantryError::not_found(format!("chat {chat_id}")).into());
     }
+    let _ = ChatsChanged {
+        chat_ids: vec![chat_id],
+    }
+    .emit(&app);
+    Ok(())
+}
+
+/// The user's verdict on a reply; `None` clears it.
+#[tauri::command]
+#[specta::specta]
+pub fn rate_turn(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    chat_id: ChatId,
+    turn_id: TurnId,
+    feedback: Option<Feedback>,
+) -> Result<(), ErrorDto> {
+    state.turns.chats().rate_turn(chat_id, turn_id, feedback)?;
     let _ = ChatsChanged {
         chat_ids: vec![chat_id],
     }

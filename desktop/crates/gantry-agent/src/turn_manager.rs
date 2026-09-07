@@ -118,7 +118,27 @@ impl TurnManager {
         if text.is_empty() {
             return Err(GantryError::invalid("the message is empty"));
         }
-        let input = self.chats.begin_turn(chat_id, Message::user_text(text))?;
+        self.start_message(chat_id, Message::user_text(text), sink)
+    }
+
+    /// Re-runs the chat's last turn: the old turn is dropped and its user message sent again.
+    pub fn retry(
+        self: &Arc<Self>,
+        chat_id: ChatId,
+        turn_id: TurnId,
+        sink: Arc<dyn EventSink>,
+    ) -> Result<TurnId, GantryError> {
+        let user = self.chats.take_last_turn(chat_id, turn_id)?;
+        self.start_message(chat_id, user, sink)
+    }
+
+    fn start_message(
+        self: &Arc<Self>,
+        chat_id: ChatId,
+        user: Message,
+        sink: Arc<dyn EventSink>,
+    ) -> Result<TurnId, GantryError> {
+        let input = self.chats.begin_turn(chat_id, user)?;
         let provider = self.providers.provider(&input.model.provider);
         let max_output_tokens = self
             .settings

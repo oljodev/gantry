@@ -34,8 +34,12 @@ export const commands = {
 	getChat: (chatId: ChatId) => typedError<ChatDetail, ErrorDto>(__TAURI_INVOKE("get_chat", { chatId })),
 	updateChat: (chatId: ChatId, update: ChatUpdate) => typedError<ChatSummary, ErrorDto>(__TAURI_INVOKE("update_chat", { chatId, update })),
 	deleteChat: (chatId: ChatId) => typedError<null, ErrorDto>(__TAURI_INVOKE("delete_chat", { chatId })),
+	/**  The user's verdict on a reply; `None` clears it. */
+	rateTurn: (chatId: ChatId, turnId: TurnId, feedback: "good" | "bad" | null) => typedError<null, ErrorDto>(__TAURI_INVOKE("rate_turn", { chatId, turnId, feedback })),
 	/**  Starts a turn and returns at once; the channel carries the turn's events until it ends. */
 	sendMessage: (chatId: ChatId, text: string, onEvent: Channel<AgentEventBatch>) => typedError<TurnId, ErrorDto>(__TAURI_INVOKE("send_message", { chatId, text, onEvent })),
+	/**  Drops the chat's last turn and sends its user message again over a fresh channel. */
+	retryTurn: (chatId: ChatId, turnId: TurnId, onEvent: Channel<AgentEventBatch>) => typedError<TurnId, ErrorDto>(__TAURI_INVOKE("retry_turn", { chatId, turnId, onEvent })),
 	/**  Whether the turn was running. */
 	cancelTurn: (turnId: TurnId) => typedError<boolean, ErrorDto>(__TAURI_INVOKE("cancel_turn", { turnId })),
 	/**  Reattaches to a running turn: one snapshot, then live batches (05 §3). */
@@ -122,6 +126,7 @@ export type ChatDetail = {
 	id: ChatId,
 	title: string,
 	pinned: boolean,
+	archived: boolean,
 	project_id: ProjectId | null,
 	created_at: number,
 	last_message_at: number,
@@ -154,6 +159,7 @@ export type ChatSummary = {
 	id: ChatId,
 	title: string,
 	pinned: boolean,
+	archived: boolean,
 	project_id: ProjectId | null,
 	created_at: number,
 	last_message_at: number,
@@ -169,6 +175,7 @@ export type ChatUpdate = {
 	effort: ReasoningEffort | null,
 	title: string | null,
 	pinned: boolean | null,
+	archived: boolean | null,
 };
 
 export type ChatsChanged = {
@@ -193,6 +200,9 @@ export type Density = "comfortable" | "compact";
  *  user did not choose. Rendered by the UI as an inline error row.
  */
 export type ErrorDto = { kind: "internal"; message: string } | { kind: "invalid_input"; message: string } | { kind: "not_found"; message: string } | { kind: "io"; message: string } | { kind: "provider"; provider_kind: ProviderErrorKind; message: string } | { kind: "secrets"; message: string } | { kind: "store"; message: string };
+
+/**  The user's verdict on an assistant reply. */
+export type Feedback = "good" | "bad";
 
 /**  What a key check returns (OpenRouter's `GET /key`; other providers report less). */
 export type KeyInfo = {
@@ -377,6 +387,7 @@ export type TurnDto = {
 	usage: Usage | null,
 	stop_reason: StopReason | null,
 	error: string | null,
+	feedback: Feedback | null,
 	started_at: number,
 	ended_at: number | null,
 };

@@ -1,4 +1,6 @@
+import { DotsThreeIcon } from '@phosphor-icons/react';
 import { Link } from '@tanstack/react-router';
+import { type ComponentType, type ReactNode, useState } from 'react';
 
 import { Badge } from '@/components/ui/badge';
 import {
@@ -8,23 +10,67 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import type { ChatSummary } from '@/fixtures/types';
 import { cn } from '@/lib/utils';
 
+export interface ChatRowActions {
+  onPin?: (pinned: boolean) => void;
+  onRename?: (title: string) => void;
+  onArchive?: (archived: boolean) => void;
+  onDelete?: () => void;
+}
+
+type ItemProps = {
+  onClick?: () => void;
+  disabled?: boolean;
+  variant?: 'default' | 'danger';
+  children: ReactNode;
+};
+
 /**
  * A chat in the sidebar (15 §7): a small dot, the title, a pending-decision count. The dot is
- * hollow at rest and filled accent while a turn runs. Right-click opens the context menu.
+ * hollow at rest and filled accent while a turn runs. Right-click or the `⋯` that appears on
+ * hover open the same menu; Rename edits the title in place.
  */
-export function ChatRow({
-  chat,
-  onPin,
-  onDelete,
-}: {
-  chat: ChatSummary;
-  onPin?: (pinned: boolean) => void;
-  onDelete?: () => void;
-}) {
+export function ChatRow({ chat, ...actions }: { chat: ChatSummary } & ChatRowActions) {
+  const [editing, setEditing] = useState(false);
   const running = chat.running === true;
+  const menu = (Item: ComponentType<ItemProps>, Separator: ComponentType) => (
+    <>
+      <Item onClick={() => actions.onPin?.(!chat.pinned)}>{chat.pinned ? 'Unpin' : 'Pin'}</Item>
+      <Item onClick={() => setEditing(true)} disabled={!actions.onRename}>
+        Rename
+      </Item>
+      <Item disabled>Move to project (M11)</Item>
+      <Separator />
+      <Item onClick={() => actions.onArchive?.(!chat.archived)}>
+        {chat.archived ? 'Unarchive' : 'Archive'}
+      </Item>
+      <Item variant="danger" onClick={() => actions.onDelete?.()}>
+        Delete
+      </Item>
+    </>
+  );
+
+  if (editing) {
+    return (
+      <RenameField
+        title={chat.title}
+        onDone={(title) => {
+          setEditing(false);
+          if (title && title !== chat.title) actions.onRename?.(title);
+        }}
+      />
+    );
+  }
+
   return (
     <ContextMenu>
       <ContextMenuTrigger
@@ -32,7 +78,7 @@ export function ChatRow({
           <Link
             to="/chat/$chatId"
             params={{ chatId: chat.id }}
-            className="flex h-(--row-sidebar) items-center gap-2.5 rounded-2 px-2 text-ui text-fg transition-colors duration-(--dur-1) hover:bg-hover data-[status=active]:bg-selected"
+            className="group/row flex h-(--row-sidebar) items-center gap-2.5 rounded-2 px-2 text-ui text-fg transition-colors duration-(--dur-1) hover:bg-hover data-[status=active]:bg-selected"
           />
         }
       >
@@ -43,25 +89,52 @@ export function ChatRow({
             running ? 'animate-pulse border-accent bg-accent' : 'border-fg-3',
           )}
         />
-        <span className="min-w-0 flex-1 truncate">{chat.title}</span>
+        <span className={cn('min-w-0 flex-1 truncate', chat.archived && 'text-fg-2')}>
+          {chat.title}
+        </span>
         {chat.pending !== undefined && chat.pending > 0 && (
           <Badge variant="accent" aria-label={`${chat.pending} pending decision`}>
             {chat.pending}
           </Badge>
         )}
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={
+              <button
+                type="button"
+                aria-label="Chat actions"
+                onClick={(e) => e.preventDefault()}
+                className="flex size-5 shrink-0 items-center justify-center rounded-1 text-fg-3 opacity-0 transition-opacity duration-(--dur-1) group-hover/row:opacity-100 hover:bg-hover hover:text-fg focus-visible:opacity-100 data-[popup-open]:opacity-100"
+              />
+            }
+          >
+            <DotsThreeIcon weight="bold" className="size-4" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start">
+            {menu(DropdownMenuItem, DropdownMenuSeparator)}
+          </DropdownMenuContent>
+        </DropdownMenu>
       </ContextMenuTrigger>
-      <ContextMenuContent>
-        <ContextMenuItem onClick={() => onPin?.(!chat.pinned)}>
-          {chat.pinned ? 'Unpin' : 'Pin'}
-        </ContextMenuItem>
-        <ContextMenuItem disabled>Rename</ContextMenuItem>
-        <ContextMenuItem disabled>Move to project</ContextMenuItem>
-        <ContextMenuSeparator />
-        <ContextMenuItem disabled>Archive</ContextMenuItem>
-        <ContextMenuItem variant="danger" onClick={() => onDelete?.()}>
-          Delete
-        </ContextMenuItem>
-      </ContextMenuContent>
+      <ContextMenuContent>{menu(ContextMenuItem, ContextMenuSeparator)}</ContextMenuContent>
     </ContextMenu>
+  );
+}
+
+function RenameField({ title, onDone }: { title: string; onDone: (title: string) => void }) {
+  const [value, setValue] = useState(title);
+  return (
+    <input
+      autoFocus
+      value={value}
+      aria-label="Chat title"
+      onChange={(e) => setValue(e.target.value)}
+      onFocus={(e) => e.target.select()}
+      onBlur={() => onDone(value.trim())}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') onDone(value.trim());
+        if (e.key === 'Escape') onDone(title);
+      }}
+      className="h-(--row-sidebar) w-full rounded-2 bg-inset px-2 text-ui text-fg outline-none ring-1 ring-accent"
+    />
   );
 }

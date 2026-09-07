@@ -42,6 +42,8 @@ interface RunState {
   stop: (chatId: ChatId) => Promise<void>;
   /** Reattaches to a running turn after a reload or a chat switch. */
   attach: (chatId: ChatId, turnId: TurnId) => Promise<void>;
+  /** Drops the chat's last turn and runs its message again. */
+  retry: (chatId: ChatId, turnId: TurnId) => Promise<TurnId>;
   clear: (chatId: ChatId) => void;
 }
 
@@ -75,7 +77,8 @@ function drain() {
   useRunStore.setState((state) => {
     const byChat = { ...state.byChat };
     for (const [chatId, batches] of pending) {
-      let live = byChat[chatId];
+      // The first batch can beat the command's reply; the turn id in the batch is authoritative.
+      let live = byChat[chatId] ?? (batches[0] ? fresh(batches[0].turn_id) : undefined);
       if (!live) continue;
       for (const batch of batches) {
         if (batch.turn_id !== live.turnId) continue;
@@ -168,6 +171,18 @@ function channelFor(chatId: ChatId) {
   return channel;
 }
 
+/** Registers a started turn unless its first batch already did. */
+function adopt(
+  set: (fn: (s: RunState) => Partial<RunState>) => void,
+  chatId: ChatId,
+  turnId: TurnId,
+) {
+  set((s) => {
+    if (s.byChat[chatId]?.turnId === turnId) return {};
+    return { byChat: { ...s.byChat, [chatId]: fresh(turnId) } };
+  });
+}
+
 function fresh(turnId: TurnId): LiveTurn {
   return { turnId, status: 'running', parts: [], notices: [], startedAt: Date.now(), seq: 0 };
 }
@@ -177,8 +192,14 @@ export const useRunStore = create<RunState>()((set, get) => ({
   send: async (chatId, text) => {
     const channel = channelFor(chatId);
     const turnId = await unwrap(commands.sendMessage(chatId, text, channel));
-    set((s) => ({ byChat: { ...s.byChat, [chatId]: fresh(turnId) } }));
+    adopt(set, chatId, turnId);
     return turnId;
+  },
+  retry: async (chatId, turnId) => {
+    const channel = channelFor(chatId);
+    const next = await unwrap(commands.retryTurn(chatId, turnId, channel));
+    adopt(set, chatId, next);
+    return next;
   },
   stop: async (chatId) => {
     const live = get().byChat[chatId];

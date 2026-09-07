@@ -25,12 +25,21 @@ impl TurnStatus {
     }
 }
 
+/// The user's verdict on an assistant reply.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "snake_case")]
+pub enum Feedback {
+    Good,
+    Bad,
+}
+
 /// A sidebar row.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 pub struct ChatSummary {
     pub id: ChatId,
     pub title: String,
     pub pinned: bool,
+    pub archived: bool,
     pub project_id: Option<ProjectId>,
     #[specta(type = specta_typescript::Number)]
     pub created_at: i64,
@@ -52,6 +61,7 @@ pub struct TurnDto {
     pub usage: Option<Usage>,
     pub stop_reason: Option<StopReason>,
     pub error: Option<String>,
+    pub feedback: Option<Feedback>,
     #[specta(type = specta_typescript::Number)]
     pub started_at: i64,
     #[specta(type = Option<specta_typescript::Number>)]
@@ -64,6 +74,7 @@ pub struct ChatDetail {
     pub id: ChatId,
     pub title: String,
     pub pinned: bool,
+    pub archived: bool,
     pub project_id: Option<ProjectId>,
     #[specta(type = specta_typescript::Number)]
     pub created_at: i64,

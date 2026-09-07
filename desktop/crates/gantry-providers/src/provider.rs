@@ -203,6 +203,11 @@ pub trait Provider: Send + Sync {
     fn kind(&self) -> ProviderKind;
     /// Whether a key is configured; without one every network call fails with `Auth`.
     fn has_key(&self) -> bool;
+    /// What the provider knows about a model from its last model list; `None` when unknown.
+    fn model_info(&self, model: &str) -> Option<ModelInfo> {
+        let _ = model;
+        None
+    }
     async fn list_models(&self) -> Result<Vec<ModelInfo>, ProviderError>;
     /// Verifies the key with the cheapest call the provider offers.
     async fn check_key(&self) -> Result<KeyInfo, ProviderError>;

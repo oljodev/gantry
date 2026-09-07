@@ -8,6 +8,8 @@ import { ConnectorMark } from '@/components/gantry/ConnectorMark';
 import { ConnectorTile } from '@/components/gantry/connectors/ConnectorTile';
 import { EmptyState } from '@/components/gantry/EmptyState';
 import { ThinkingBlock } from '@/components/gantry/chat/ThinkingBlock';
+import { TurnActions } from '@/components/gantry/chat/TurnActions';
+import { ChatRow } from '@/components/gantry/sidebar/ChatRow';
 import { Markdown } from '@/components/gantry/markdown/Markdown';
 import { CommandOutput } from '@/components/gantry/pane/CommandOutput';
 import { DiffView } from '@/components/gantry/pane/DiffView';
@@ -313,6 +315,12 @@ export const compositeEntries: GalleryEntry[] = [
   { id: 'messages', title: 'Messages · Markdown', group: 'Composites', render: () => <Messages /> },
   { id: 'thinking', title: 'Thinking block', group: 'Composites', render: () => <Thinking /> },
   {
+    id: 'turn-actions',
+    title: 'Turn actions · Chat rows',
+    group: 'Composites',
+    render: () => <TurnActionsEntry />,
+  },
+  {
     id: 'streaming',
     title: 'Streaming markdown',
     group: 'Composites',
@@ -368,3 +376,51 @@ function Streaming() {
 }
 
 const WORDS = MARKDOWN_SAMPLE.split(' ');
+
+function TurnActionsEntry() {
+  const turn = authChat.turns[0]!;
+  const done = {
+    ...turn,
+    status: 'done' as const,
+    endedAt: AN_HOUR_AGO,
+    text: 'Copied text',
+    feedback: 'good' as const,
+  };
+  return (
+    <div className="flex flex-col gap-4">
+      <State label="Pinned (last turn)">
+        <div className="group/turn w-full max-w-(--measure)">
+          <TurnActions
+            turn={done}
+            pinned
+            onCopy={() => undefined}
+            onRate={() => undefined}
+            onRetry={() => undefined}
+          />
+        </div>
+      </State>
+      <State label="Chat rows · hover for ⋯">
+        <div className="flex w-60 flex-col gap-0.5 rounded-3 bg-base p-2">
+          <ChatRow
+            chat={{
+              id: 'g1',
+              title: 'Fix the failing auth tests',
+              lastMessageAt: 0,
+              running: true,
+            }}
+            onPin={() => undefined}
+            onRename={() => undefined}
+            onArchive={() => undefined}
+            onDelete={() => undefined}
+          />
+          <ChatRow
+            chat={{ id: 'g2', title: 'An archived chat', lastMessageAt: 0, archived: true }}
+            onPin={() => undefined}
+          />
+        </div>
+      </State>
+    </div>
+  );
+}
+
+const AN_HOUR_AGO = Date.now() - 65 * 60 * 1000;
