@@ -5,39 +5,30 @@ import { Advanced } from '@/features/settings/Advanced';
 import { Data } from '@/features/settings/Data';
 import { General } from '@/features/settings/General';
 import { Providers } from '@/features/settings/Providers';
-import { isSection, SECTIONS, type Section } from '@/features/settings/sections';
+import { isSection, type Section } from '@/features/settings/sections';
 import { isTauri } from '@/lib/ipc/client';
 import { useAppInfo } from '@/lib/ipc/hooks/useAppInfo';
 import { useSettings, useUpdateSettings } from '@/lib/ipc/hooks/settings';
 import { type Density, type ThemePref, useUiStore } from '@/lib/stores/uiStore';
 import { Segmented } from '@/components/ui/radio-group';
 
-const ARRIVES: Partial<Record<Section, string>> = {
-  guard: 'M7',
-  connectors: 'M9',
-  skills: 'M12',
-  memory: 'M12',
-};
+const ARRIVES: Partial<Record<Section, string>> = { guard: 'M7' };
 
-export function SettingsSection({ section }: { section: string }) {
-  const id: Section = isSection(section) ? section : 'appearance';
-  const label = SECTIONS.find(([s]) => s === id)?.[1] ?? id;
-
+/** One settings section's rows, inside the dialog that titles it (15 A18). */
+export function SettingsBody({ section }: { section: string }) {
+  const id: Section = isSection(section) ? section : 'general';
   return (
-    <div className="mx-auto w-full max-w-(--measure) px-6 py-8">
-      <h1 className="text-page font-semibold text-fg">{label}</h1>
-      <div className="mt-6">
-        {id === 'general' && <General />}
-        {id === 'appearance' && <Appearance />}
-        {id === 'providers' && <Providers />}
-        {id === 'data' && <Data />}
-        {id === 'advanced' && <Advanced />}
-        {id === 'about' && <About />}
-        {ARRIVES[id] && (
-          <p className="text-body text-fg-2">This section arrives with milestone {ARRIVES[id]}.</p>
-        )}
-      </div>
-    </div>
+    <>
+      {id === 'general' && <General />}
+      {id === 'appearance' && <Appearance />}
+      {id === 'providers' && <Providers />}
+      {id === 'data' && <Data />}
+      {id === 'advanced' && <Advanced />}
+      {id === 'about' && <About />}
+      {ARRIVES[id] && (
+        <p className="text-body text-fg-2">This section arrives with milestone {ARRIVES[id]}.</p>
+      )}
+    </>
   );
 }
 

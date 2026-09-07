@@ -2,6 +2,8 @@ import type { ReactNode } from 'react';
 
 import { Sidebar } from '@/app/layout/Sidebar';
 import { TitleStrip } from '@/app/layout/TitleStrip';
+import { CustomizeDialog } from '@/features/customize/CustomizeDialog';
+import { SettingsDialog } from '@/features/settings/SettingsDialog';
 import { useUiStore } from '@/lib/stores/uiStore';
 
 /** Sidebar + content, the content carrying its own title strip (docs/plan/15 §7). */
@@ -14,6 +16,8 @@ export function AppShell({ children }: { children: ReactNode }) {
         <TitleStrip className="absolute inset-x-0 top-0 z-30" />
         <main className="min-h-0 flex-1 overflow-hidden">{children}</main>
       </div>
+      <SettingsDialog />
+      <CustomizeDialog />
     </div>
   );
 }

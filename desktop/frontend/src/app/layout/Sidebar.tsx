@@ -4,6 +4,7 @@ import {
   GearIcon,
   MagnifyingGlassIcon,
   PlusIcon,
+  PuzzlePieceIcon,
   SparkleIcon,
   SidebarSimpleIcon,
 } from '@phosphor-icons/react';
@@ -31,6 +32,8 @@ export function Sidebar() {
   const width = useUiStore((s) => s.sidebarWidth);
   const setWidth = useUiStore((s) => s.setSidebarWidth);
   const toggleSidebar = useUiStore((s) => s.toggleSidebar);
+  const openSettings = useUiStore((s) => s.openSettings);
+  const openCustomize = useUiStore((s) => s.openCustomize);
   const dragging = useRef(false);
   const chatsQuery = useChats();
   const live = useRunStore((s) => s.byChat);
@@ -147,6 +150,11 @@ export function Sidebar() {
         />
         <SidebarItem to="/projects" icon={<FolderSimpleIcon size={16} />} label="Projects" />
         <SidebarItem to="/artifacts" icon={<SparkleIcon size={16} />} label="Artifacts" />
+        <SidebarItem
+          icon={<PuzzlePieceIcon size={16} />}
+          label="Customize"
+          onClick={() => openCustomize()}
+        />
 
         <div className="min-h-0 flex-1 overflow-y-auto">
           {pinned.length > 0 && (
@@ -167,11 +175,10 @@ export function Sidebar() {
 
         <div className="mt-auto pb-2">
           <SidebarItem
-            to="/settings/$section"
-            params={{ section: 'general' }}
             icon={<GearIcon size={16} />}
             label="Settings"
             shortcut="⌘,"
+            onClick={() => openSettings()}
           />
         </div>
       </nav>
@@ -194,14 +201,12 @@ export function Sidebar() {
 
 function SidebarItem({
   to,
-  params,
   icon,
   label,
   shortcut,
   onClick,
 }: {
-  to?: '/chat' | '/projects' | '/artifacts' | '/settings/$section';
-  params?: { section: string };
+  to?: '/chat' | '/projects' | '/artifacts';
   icon: ReactNode;
   label: string;
   shortcut?: string;
@@ -218,13 +223,6 @@ function SidebarItem({
     'flex h-(--row-sidebar) items-center gap-2 rounded-2 px-2 text-ui text-fg transition-colors duration-(--dur-1) hover:bg-hover data-[status=active]:bg-selected';
   const actionClassName =
     'flex h-(--row-sidebar) w-full items-center gap-2 rounded-2 px-2 text-ui text-fg transition-colors duration-(--dur-1) hover:bg-hover';
-  if (to === '/settings/$section' && params) {
-    return (
-      <Link to={to} params={params} className={className} activeOptions={{ includeSearch: false }}>
-        {inner}
-      </Link>
-    );
-  }
   if (to === '/chat') {
     // New chat is an action, not a location: no active state.
     return (

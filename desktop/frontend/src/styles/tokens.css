@@ -177,8 +177,11 @@
   --title-strip: 38px;
   --traffic-lights: 70px;
   --window-control: 46px;
-  --settings-list: 200px;
+  --settings-list: 224px;
   --palette-width: 560px;
+  /* The Settings and Customize dialogs (15 A18) */
+  --prefs-width: min(1000px, 92vw);
+  --prefs-height: min(760px, 86vh);
 
   /* Shape */
   --r-1: 4px;

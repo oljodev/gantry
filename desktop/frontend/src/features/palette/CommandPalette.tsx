@@ -99,7 +99,7 @@ export function CommandPalette() {
       key: 'browse connectors',
       label: 'Browse connectors',
       icon: <PlugIcon />,
-      run: () => void navigate({ to: '/connectors' }),
+      run: () => useUiStore.getState().openCustomize('connectors'),
     },
   ].filter((a) => matches(a.label));
   // With a query the backend's title search decides; without one, the recent chats show.
@@ -196,9 +196,7 @@ export function CommandPalette() {
                 <CommandItem
                   key={id}
                   value={`settings ${id}`}
-                  onSelect={run(
-                    () => void navigate({ to: '/settings/$section', params: { section: id } }),
-                  )}
+                  onSelect={run(() => useUiStore.getState().openSettings(id))}
                 >
                   <GearIcon />
                   {label}
@@ -212,7 +210,7 @@ export function CommandPalette() {
                 <CommandItem
                   key={c.id}
                   value={`connector ${c.id}`}
-                  onSelect={run(() => void navigate({ to: '/connectors' }))}
+                  onSelect={run(() => useUiStore.getState().openCustomize('connectors'))}
                 >
                   <PlugIcon />
                   {c.installed ? `Open ${c.name}` : `Install ${c.name}`}

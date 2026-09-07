@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
+import type { CustomizeSection, Section } from '@/features/settings/sections';
+
 export type ThemePref = 'system' | 'light' | 'dark';
 export type Density = 'comfortable' | 'compact';
 
@@ -10,6 +12,13 @@ interface UiState {
   sidebarWidth: number;
   sidebarCollapsed: boolean;
   paneWidth: number;
+  /** The open section of each dialog, or null when it is closed (15 A18). */
+  settings: Section | null;
+  customize: CustomizeSection | null;
+  openSettings: (section?: Section) => void;
+  closeSettings: () => void;
+  openCustomize: (section?: CustomizeSection) => void;
+  closeCustomize: () => void;
   setTheme: (theme: ThemePref) => void;
   setDensity: (density: Density) => void;
   setSidebarWidth: (width: number) => void;
@@ -48,6 +57,13 @@ export const useUiStore = create<UiState>()(
       sidebarWidth: SIDEBAR_DEFAULT,
       sidebarCollapsed: false,
       paneWidth: PANE_DEFAULT,
+      settings: null,
+      customize: null,
+      // Only one of the two is ever open: they are the same kind of surface.
+      openSettings: (section = 'general') => set({ settings: section, customize: null }),
+      closeSettings: () => set({ settings: null }),
+      openCustomize: (section = 'connectors') => set({ customize: section, settings: null }),
+      closeCustomize: () => set({ customize: null }),
       setTheme: (theme) => set({ theme }),
       setDensity: (density) => set({ density }),
       setSidebarWidth: (width) =>

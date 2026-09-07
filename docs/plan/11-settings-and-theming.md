@@ -8,15 +8,22 @@
 
 ## 2. Sections
 
+Settings is a **dialog**, not a page (15 A18, decided 2026-09-07), and it has a twin: **Customize**
+holds what you add to Gantry — connectors, skills and memory — while Settings holds what the app
+itself does. Either opens from the sidebar (`Cmd/Ctrl+,` for Settings) and from the palette, and
+each one's rail ends with a link to the other. Both close back to the screen you were on, which is
+the reason for the change: a key or a default is something you set in passing, in the middle of a
+chat, and a page loses your place.
+
 | Section | Contents | Notes |
 |---------|----------|-------|
 | **General** | Default permission mode and Guard for new chats; "Confirm before switching a chat to Unguarded Auto" (arrives with Auto mode, M8); "Suggest connectors" toggle (03 §9); "Open artifacts automatically" (13 §4, `chat.open_artifact_panel`); global **Custom instructions** editor (10 §2) with a character and token count | Project defaults override these for chats inside the project. Built in M2 |
 | **Appearance** | Theme: Light / Dark / System; density: Comfortable / Compact | Font size follows the OS; accent colour is fixed in v1 |
 | **Providers & models** | The five providers plus custom endpoints: key status, Add/Replace/Remove key, Test, base URL where applicable, default model, model list refresh, pricing from the models cache; default model for new chats | Builds on 06 §5; keys are write-only |
 | **Guard & guardrails** | Judge model per provider (overrides `judge_defaults.toml`), judge timeout, recent decisions with feedback, the guardrail lists (hard-deny, always-confirm, sensitive paths) | 04 §5–§6 |
-| **Connectors** | Installed instances: status, auth state, enabled toggle, Reconnect, Remove; link to each instance's detail page; link to Browse | Installed only; the catalog is at `/connectors` (03 §10) |
-| **Skills** | Installed skills, enabled toggles, New / Import / Export | The full page is `/skills` (12 §A6); Settings shows the list and links |
-| **Memory** | Global on/off, per-project on/off, "Auto-save assistant memories" opt-in, link to the Memory page | The Memory page itself is `/memory` (12 §B5) |
+| **Connectors** *(Customize)* | Installed instances: status, auth state, enabled toggle, Reconnect, Remove; link to each instance's detail page; link to Browse | Installed under **Your connectors**, the catalog under **Discover**, in the Customize dialog (03 §10) |
+| **Skills** *(Customize)* | Installed skills, enabled toggles, New / Import / Export | The full page is `/skills` (12 §A6); Settings shows the list and links |
+| **Memory** *(Customize)* | Global on/off, per-project on/off, "Auto-save assistant memories" opt-in, link to the Memory page | The Memory page itself is `/memory` (12 §B5) |
 | **Data & privacy** | Data directory path with Open; database size and chat count; export a chat (Markdown/JSON, also from a chat's menu); back up the database (`VACUUM INTO`, credentials excluded); check and compact the database; a plain statement of what Gantry sends where (only to the providers and servers you configured; no telemetry) | Built in M2. "Clear all data" is post-MVP; deleting chats one by one covers v1 |
 | **Advanced** | Maximum reply length (M2); tool rounds per reply (M3); tool result cap, iteration timeouts, log level (later); developer mode (adds "View system prompt" to a chat's menu: the frozen snapshot and the notes appended since; log raw provider requests from M3), secret store status (which OS store, fallback warning on Linux; M2), reset settings (M13) | 04, 06 §5 |
 | **About** | Version, update check (updater from M13), license notice, third-party notices | |
