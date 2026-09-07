@@ -345,6 +345,19 @@ Version handling: on connect, try `server/discover`; if the server does not know
 
 **Tool list caching.** Honour `ttlMs` on 2026-07-28 servers and list-changed notifications (`subscriptions/listen`, legacy `notifications/tools/list_changed`); cache in memory and mirror to `tools_cache_json`. Deterministic ordering keeps the model-facing tool array stable, which keeps prompt caches warm.
 
+**The credential on the wire.** rmcp's `auth_header` is the *token*, not the header value: it
+calls `bearer_auth`, which writes the scheme itself. Handing it `Bearer …` sends
+`Authorization: Bearer Bearer …`, and every authenticated server answers 401 — which cost two
+rounds of live testing, because the only connector needing no account kept working throughout.
+The session strips the scheme before handing the token over, a credential with any other scheme
+travels as an ordinary header instead, and `gantry-connectors/tests/http_auth.rs` records what a
+server actually receives so the contract cannot drift again.
+
+**Diagnosing a refusal.** When a connection fails, rmcp says "discover and legacy initialize both
+failed" and keeps the server's own answer to itself. The session then asks the server one plain
+`initialize` with the same credential and puts the status and the first lines of the reply in the
+error, so what reaches the user is what the server said.
+
 **Process management (stdio).** Spawn with a minimal environment (login-shell `PATH`, `HOME`, the manifest `env`, injected secrets), capture stderr to a per-instance log (viewable in the detail page), kill the process tree on stop. Idle stop after 10 minutes.
 
 **Runtime detection.** `runtimes` checks `node`/`npx`, `python3`/`uv`/`uvx` and `docker` on the resolved `PATH`, compares versions with `requires`, and the install dialog shows exactly what is missing with per-OS instructions. No runtime is bundled in the MVP. Post-MVP: an opt-in, on-demand download of a pinned Node build into the app data `runtimes/` directory (Claude Desktop's bundled Node for Desktop Extensions is the precedent), never Python.

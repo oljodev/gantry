@@ -50,12 +50,14 @@ pub struct TokenSet {
 }
 
 impl TokenSet {
-    /// When the access token stops working, in epoch milliseconds. A server that says nothing
-    /// gets an hour, which is what most of them mean.
+    /// When the access token stops working, in epoch milliseconds, or `None` when the server
+    /// named no lifetime — which for GitHub's OAuth tokens means it does not expire, and
+    /// inventing an hour there would send Gantry looking for a refresh that never existed.
     #[must_use]
-    pub fn expires_at(&self) -> i64 {
-        let seconds = self.expires_in.unwrap_or(3600).max(0);
-        gantry_core::now_ms() + seconds * 1000
+    pub fn expires_at(&self) -> Option<i64> {
+        self.expires_in
+            .filter(|s| *s > 0)
+            .map(|s| gantry_core::now_ms() + s * 1000)
     }
 
     /// The `Authorization` header value.

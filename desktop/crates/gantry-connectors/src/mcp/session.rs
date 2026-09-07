@@ -165,12 +165,21 @@ impl McpSession {
     }
 }
 
+/// How to open a connection, best first (03 §6). `Auto` probes for the newest revision and
+/// falls back inside rmcp; when even that fails, a plain handshake at one older version is
+/// tried, because a server that mishandles the probe is not a server Gantry should refuse.
+fn lifecycles() -> [ClientLifecycleMode; 2] {
+    [
+        ClientLifecycleMode::Auto {
+            preferred_versions: vec![ProtocolVersion::V_2026_07_28, ProtocolVersion::LATEST],
+            legacy_version: Some(ProtocolVersion::V_2025_06_18),
+        },
+        ClientLifecycleMode::Initialize,
+    ]
+}
+
 async fn serve(endpoint: &Endpoint) -> Result<RunningService<RoleClient, ClientInfo>, McpError> {
     let info = client_info();
-    let lifecycle = ClientLifecycleMode::Auto {
-        preferred_versions: vec![ProtocolVersion::V_2026_07_28, ProtocolVersion::LATEST],
-        legacy_version: Some(ProtocolVersion::V_2025_06_18),
-    };
     match endpoint {
         Endpoint::Stdio {
             command,
@@ -205,7 +214,9 @@ async fn serve(endpoint: &Endpoint) -> Result<RunningService<RoleClient, ClientI
                 command: command.clone(),
                 source,
             })?;
-            info.serve_with_lifecycle(transport, lifecycle)
+            // A process cannot be handed to a second attempt, so it gets the one lifecycle that
+            // already falls back internally.
+            info.serve_with_lifecycle(transport, lifecycles().into_iter().next().expect("auto"))
                 .await
                 .map_err(|e| McpError::Connect(e.to_string()))
         }
@@ -215,26 +226,102 @@ async fn serve(endpoint: &Endpoint) -> Result<RunningService<RoleClient, ClientI
             bearer,
         } => {
             let mut config = StreamableHttpClientTransportConfig::with_uri(url.clone());
-            config.auth_header = bearer.clone();
+            // rmcp's `auth_header` is the *token*: it calls `bearer_auth`, which writes the
+            // scheme itself. Handing it a full header value sends `Bearer Bearer …` and every
+            // authenticated server answers 401. A credential with another scheme cannot go
+            // through that field at all, so it travels as an ordinary header.
+            let mut headers = headers.clone();
+            if let Some(value) = bearer {
+                match bearer_token(value) {
+                    Some(token) => config.auth_header = Some(token.to_owned()),
+                    None => headers.push(("Authorization".to_owned(), value.clone())),
+                }
+            }
             let client = reqwest::Client::builder()
-                .default_headers(header_map(headers))
+                .default_headers(header_map(&headers))
                 .build()
                 .map_err(|e| McpError::Connect(e.to_string()))?;
-            let transport = StreamableHttpClientTransport::with_client(client, config);
-            info.serve_with_lifecycle(transport, lifecycle)
-                .await
-                .map_err(|e| classify_http(&e.to_string()))
+            let mut last = String::new();
+            for lifecycle in lifecycles() {
+                let transport =
+                    StreamableHttpClientTransport::with_client(client.clone(), config.clone());
+                match info
+                    .clone()
+                    .serve_with_lifecycle(transport, lifecycle)
+                    .await
+                {
+                    Ok(service) => return Ok(service),
+                    Err(err) => last = err.to_string(),
+                }
+            }
+            // rmcp reports "discover and legacy initialize both failed" and keeps the server's
+            // own answer to itself, which is the one thing worth reading. So ask the server one
+            // plain question and put its reply in the error.
+            Err(explain(&client, url, bearer.as_deref(), &last).await)
         }
     }
 }
 
-/// A 401 is not a connection failure, it is the start of the OAuth flow (03 §7).
-fn classify_http(message: &str) -> McpError {
-    if message.contains("401") || message.to_ascii_lowercase().contains("unauthorized") {
-        McpError::Unauthorized
-    } else {
-        McpError::Connect(message.to_owned())
+/// Asks the server to initialize, in the open, and turns its answer into something a person can
+/// act on. A 401 is not a connection failure but the start of the OAuth flow (03 §7).
+async fn explain(
+    client: &reqwest::Client,
+    url: &str,
+    bearer: Option<&str>,
+    original: &str,
+) -> McpError {
+    let body = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "protocolVersion": "2025-06-18",
+            "capabilities": {},
+            "clientInfo": { "name": "Gantry", "version": env!("CARGO_PKG_VERSION") },
+        },
+    });
+    // The credential rides on rmcp's transport, not on this client, so it goes on by hand —
+    // otherwise every diagnosis would read "401" and blame the token that is working fine.
+    let mut request = client.post(url).header(
+        reqwest::header::ACCEPT,
+        "application/json, text/event-stream",
+    );
+    if let Some(bearer) = bearer {
+        request = request.header(reqwest::header::AUTHORIZATION, bearer);
     }
+    let response = request.json(&body).send().await;
+    let Ok(response) = response else {
+        return McpError::Connect(original.to_owned());
+    };
+    let status = response.status();
+    if status == reqwest::StatusCode::UNAUTHORIZED {
+        return McpError::Unauthorized;
+    }
+    let text = response.text().await.unwrap_or_default();
+    let detail: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    let detail: String = detail.chars().take(300).collect();
+    if status.is_success() && detail.contains("\"error\"") {
+        // The transport is fine and the server is refusing on its own terms.
+        return McpError::Connect(format!("the server answered: {detail}"));
+    }
+    if status.is_success() {
+        return McpError::Connect(format!(
+            "{original} (a plain initialize did work: {detail})"
+        ));
+    }
+    McpError::Connect(format!("the server answered {status}: {detail}"))
+}
+
+/// The token out of an `Authorization` value, when the scheme is Bearer.
+fn bearer_token(value: &str) -> Option<&str> {
+    let rest = value.strip_prefix("Bearer ").or_else(|| {
+        value
+            .get(..7)
+            .filter(|p| p.eq_ignore_ascii_case("bearer "))
+            .map(|_| &value[7..])
+    })?;
+    let token = rest.trim();
+    (!token.is_empty()).then_some(token)
 }
 
 fn header_map(headers: &[(String, String)]) -> reqwest::header::HeaderMap {
@@ -290,3 +377,22 @@ fn convert(result: CallToolResult) -> (Vec<ResultPart>, Option<serde_json::Value
 /// A session that can be reopened. Kept as a field of the connector so a dropped connection is
 /// re-established on the next call instead of failing the turn (03 §6).
 pub type SharedSession = Arc<tokio::sync::Mutex<Option<McpSession>>>;
+
+#[cfg(test)]
+mod tests {
+    use super::bearer_token;
+
+    #[test]
+    fn a_bearer_value_gives_up_its_token() {
+        // rmcp writes the scheme, so what it receives must not carry one (03 §6).
+        assert_eq!(bearer_token("Bearer ghu_abc"), Some("ghu_abc"));
+        assert_eq!(bearer_token("bearer ghu_abc"), Some("ghu_abc"));
+    }
+
+    #[test]
+    fn another_scheme_is_left_alone() {
+        assert_eq!(bearer_token("token ghp_abc"), None);
+        assert_eq!(bearer_token("Bearer "), None);
+        assert_eq!(bearer_token(""), None);
+    }
+}

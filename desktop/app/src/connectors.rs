@@ -28,7 +28,9 @@ pub struct StoredToken {
     pub access_token: String,
     #[serde(default)]
     pub refresh_token: Option<String>,
-    pub expires_at: i64,
+    /// Absent when the server named no lifetime.
+    #[serde(default)]
+    pub expires_at: Option<i64>,
     #[serde(default)]
     pub scope: Option<String>,
     pub issuer: String,
@@ -40,9 +42,12 @@ pub struct StoredToken {
 
 impl StoredToken {
     /// Whether the access token is close enough to expiry to be refreshed first (03 §7 step 4).
+    /// A token with no stated lifetime is never stale; a server that wanted otherwise would
+    /// have said so.
     #[must_use]
     pub fn stale(&self) -> bool {
-        self.expires_at - gantry_core::now_ms() < 60_000
+        self.expires_at
+            .is_some_and(|at| at - gantry_core::now_ms() < 60_000)
     }
 }
 
