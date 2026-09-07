@@ -53,8 +53,8 @@ Types are indicative; the migrations are the source of truth.
 
 ### Transcript
 
-- **turns** — `id, chat_id, seq, status (running|completed|cancelled|failed), provider_id, model_id, started_at, ended_at, usage_json, error_json, tool_call_count`
-- **messages** — `id, chat_id, turn_id, seq, role (user|assistant|tool|system), parts_json` (the `ContentPart[]` of 02 §2; media parts reference blobs), `origin_provider NULL, stop_reason NULL, usage_json NULL, created_at`
+- **turns** — `id, chat_id, seq, status (running|completed|cancelled|failed|interrupted), provider_id, model_id, started_at, ended_at, usage_json, stop_reason_json, error_json, feedback (good|bad|NULL), tool_call_count`. `interrupted` is set at startup for every turn still `running`: the previous process died mid-stream (crash recovery, 09 M2).
+- **messages** — `id, chat_id, turn_id NULL, seq, role (user|assistant|tool|system), parts_json` (the `ContentPart[]` of 02 §2; media parts reference blobs), `text` (the concatenated text parts, for search), `origin_provider NULL, stop_reason NULL, usage_json NULL, created_at`. `turn_id` is `NULL` for the `SystemNote` messages appended between turns (10 §4).
 - **attachments** — `id, message_id, chat_id, name, mime, size, blob_hash, extracted_text NULL, created_at`
 
 The transcript is `messages` ordered by `seq`. It is append-only; edits to history are never made in place (02 §6). Compaction inserts a `system` message with the summary and a marker; older rows stay for the UI.
@@ -87,7 +87,7 @@ The transcript is `messages` ordered by `seq`. It is append-only; edits to histo
 ### Blobs and search
 
 - **blobs** — `hash PK, size, mime NULL, refcount, created_at`; files live under `blobs/`. Refcounts are maintained by the repositories that reference blobs; a weekly sweep deletes unreferenced files.
-- **messages_fts** (FTS5, external content over the text parts of `messages`) and **chats_fts** (titles), maintained by triggers. The `search` command unions both and returns snippets. **artifacts_fts** (title, summary, current content) and **memories_fts** (text, tags) serve the artifact search and the memory selector (12 §B4).
+- **messages_fts** (FTS5 over `messages.text`) and **chats_fts** (titles), maintained by triggers. Both hold their own copy of the text instead of pointing at the content tables by rowid: `VACUUM` (offered in Settings) may renumber the rowids of tables whose primary key is not an integer, which would silently corrupt an external-content index. The `search` command unions both and returns snippets. **artifacts_fts** (title, summary, current content) and **memories_fts** (text, tags) serve the artifact search and the memory selector (12 §B4).
 - The schema version is SQLite's `user_version` pragma, managed by `rusqlite_migration` (no `schema_migrations` table)
 
 ## 4. Where each kind of data lives

@@ -93,8 +93,8 @@ Names are illustrative; the generated bindings are the source of truth. All comm
 
 | Area | Commands |
 |------|----------|
-| Chats | `list_chats`, `get_chat`, `create_chat`, `update_chat` (title, pin, project, mode, guard, model, effort, web_search), `archive_chat`, `delete_chat`, `add_chat_root`, `remove_chat_root`, `attach_connector`, `detach_connector`, `list_grants`, `revoke_grant`, `search` |
-| Turns | `send_message` (opens a channel), `cancel_turn`, `subscribe_turn` (reattach with `since_seq`), `list_active_turns` |
+| Chats | `list_chats`, `get_chat`, `create_chat`, `update_chat` (title, pin, archive, project, mode, guard, model, effort, instructions, web_search), `delete_chat`, `rate_turn`, `search`, `get_system_prompt`, `export_chat`, `add_chat_root`, `remove_chat_root`, `attach_connector`, `detach_connector`, `list_grants`, `revoke_grant` |
+| Turns | `send_message` (text and attachments; opens a channel), `retry_turn`, `cancel_turn`, `subscribe_turn` (reattach with `since_seq`), `list_active_turns` |
 | Interactions | `list_pending_interactions`, `resolve_interaction` |
 | Activity | `list_events`, `get_tool_call`, `get_file_edit`, `revert_file_edit`, `get_command_run`, `get_blob_text` |
 | Projects | `list_projects`, `get_project`, `create_project`, `update_project`, `archive_project`, `add_project_file`, `remove_project_file` |
@@ -103,7 +103,7 @@ Names are illustrative; the generated bindings are the source of truth. All comm
 | Artifacts | `list_artifacts`, `get_artifact`, `get_artifact_version`, `save_artifact_version`, `restore_artifact_version`, `export_artifact`, `open_artifact_window` |
 | Skills | `list_skills`, `get_skill`, `save_skill`, `delete_skill`, `import_skill`, `export_skill`, `test_skill_match`, `pin_skill`, `unpin_skill` |
 | Memory | `list_memories`, `create_memory`, `update_memory`, `delete_memory`, `restore_memory`, `export_memories`, `import_memories` |
-| Settings | `get_settings`, `update_settings`, `get_secret_store_status`, `get_judge_config`, `update_judge_config` |
+| Settings | `get_settings`, `update_settings`, `get_secret_store_status`, `get_data_info`, `open_data_dir`, `backup_database`, `maintain_database`, `get_judge_config`, `update_judge_config` |
 | App | `pick_folder`, `pick_files`, `open_external`, `reveal_in_finder`, `app_info` |
 
 ### Streaming

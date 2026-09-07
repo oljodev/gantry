@@ -98,6 +98,39 @@ The key itself is entered in the app (Settings → Providers), stored encrypted,
     not a crash.
 11. Linux: Settings → Providers says whether the master key is in the keyring or in the file.
 
+### The M2 checklist (hands-on, under $0.25 on DeepSeek V4 Flash)
+
+Every title now costs one extra tiny request (a few hundred tokens) after a chat's first reply.
+
+1. Start the app after the update: it opens without complaint (the log says it backed up the
+   database before migrating to schema 2), and your key and theme are still set.
+2. Send "Say hello" in a new chat: within a few seconds after the reply the sidebar title
+   changes from your words to a generated one. Rename the chat by hand, send another message:
+   the title stays yours.
+3. Quit the app (close the window) while a long answer streams. Reopen: the chat is there, the
+   turn says "Interrupted", and a follow-up message works.
+4. Close and reopen the app: every chat, message, pin and archive state is still there.
+5. `+` → Add files or images: pick a `.md` or `.rs` file and ask "Summarise the attached
+   file". A chip shows on your message; the answer refers to the file's content. Drop a file on
+   the window: it lands in the tray. Paste a screenshot (Ctrl+V in the composer) and ask what
+   it shows with a vision model (for example `google/gemini-2.5-flash`); DeepSeek V4 Flash
+   answers with an error about images, shown as text.
+6. Try a `.zip` or a 1 MB text file: a clear "not supported" or "limited to" message, nothing
+   sent.
+7. Ctrl+K, type a word from an earlier answer: a Messages group lists the snippet with the chat
+   name; Enter opens the chat. Type part of a chat title: it shows under Chats.
+8. Settings → General: set the default mode to Plan and paste an instruction ("Always answer in
+   Norwegian."). Open an existing chat and send a message: the answer follows the instruction.
+   A new chat starts in Plan mode. Change the mode chip in a chat with history and send again:
+   the model behaves accordingly.
+9. Settings → Advanced: turn on developer mode. A chat's `⋯` menu gains "View system prompt";
+   it shows the frozen prompt and, below it, the instruction and mode notes you caused in 8.
+10. Settings → Data & privacy: Open shows the data directory; Export… writes a Markdown file
+    you can read; Back up… writes a `.db` file; Check and compact reports success. A chat's
+    `⋯` menu → Export… does the same for one chat.
+11. Pin, rename and archive a chat: the sidebar changes at once, nothing flickers.
+12. `grep -ci authorization` on the log file still prints 0.
+
 ## Where the app keeps its data
 
 Tauri's app data directory under the identifier `dev.oljo.gantry`:

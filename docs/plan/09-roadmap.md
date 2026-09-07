@@ -86,18 +86,36 @@ stay in memory until M2. Landed:
 Done when: streaming feels instant, cancel works mid-stream, and the key never appears in logs
 or the frontend. Olav's live checklist is in `docs/dev/setup.md`.
 
-## M2 — Persistence, sidebar, settings (1–2 weeks)
+## M2 — Persistence, sidebar, settings (1–2 weeks) — done 2026-09-07
 
-- `gantry-store`: migration 0002 with `chats` (including `instructions` and `system_snapshot`), `turns`, `messages`, `attachments`, `events`, `blobs`, FTS (the writer actor, the read pool and the first four tables landed in M1); crash recovery at startup; the `ChatBook` of M1 moves behind the store.
-- Chat CRUD commands; the sidebar with New chat, pinned, day groups, context menu, running indicator; `chats:changed` invalidation; optimistic pin/rename.
-- The frozen `system_snapshot` per chat and `SystemNote` deltas for instruction changes (10 §4).
-- Settings pages **General** (default mode and guard, global custom instructions), **Appearance**, **Data & privacy** (data dir, export a chat) and **Advanced** (developer mode: show the assembled system prompt).
-- Title generation with the same provider's cheapest model (first use of `judge_defaults.toml`).
-- Attachments: text files and images as message parts; drag-and-drop and paste.
-- The command palette (15 A15) gains real search over `messages_fts` + `chats_fts` alongside its actions.
-- `subscribe_turn` and `turn.snapshot` (landed in M1) replay persisted events after the snapshot.
+Built in session 6, straight after M1. Landed:
 
-Done when: you can close the app during a stream and reopen to a consistent chat marked "interrupted", with your instructions and theme intact.
+- `gantry-store`: migration 0002 with `chats`, `turns`, `messages`, `attachments`, `events`, `blobs`,
+  `messages_fts` and `chats_fts` (standalone FTS5 tables kept in step by triggers, see 06 §3);
+  the repositories; `BlobStore` (content-addressed files under `blobs/`); detached writes for
+  the persister; `VACUUM INTO` backups without credentials; integrity check and vacuum.
+- `gantry-agent`: the `ChatBook` on the store with the same DTOs; the persister sink (05 §3);
+  crash recovery (every turn still `running` at startup becomes `interrupted`); the title
+  generator after the first exchange, using the judge model of `judge_defaults.toml` (DeepSeek
+  V4 Flash on OpenRouter); attachment ingest (text files and images, size-capped, stored as
+  blobs, inlined for the provider at request time); `SystemNote`s for mode changes and for
+  global custom-instruction edits (10 §4); Markdown and JSON export.
+- App: `send_message` takes attachments; `search`, `get_system_prompt`, `export_chat`,
+  `get_data_info`, `open_data_dir`, `backup_database`, `maintain_database`; `chats:changed` is
+  also emitted when a turn ends or a title arrives.
+- Frontend: the attachment tray in the composer (file dialog, paste, drag-and-drop on the
+  window; chips on the user message); the palette searches titles and message text as you
+  type; Settings → General (defaults, custom instructions with a character and token count),
+  Data & privacy (data directory, export, backup, check and compact, the privacy statement),
+  Advanced (reply length cap, developer mode with a system-prompt viewer, secret store);
+  optimistic pin, rename and archive; "Export…" and "View system prompt" in the chat menu.
+
+Not in M2, on purpose: chat-level instructions have their column and command but no editor
+until the composer work of M11; "Clear all data" is post-MVP (11 §2).
+
+Done when: you can close the app during a stream and reopen to a consistent chat marked
+"interrupted", with your instructions and theme intact. Olav's checklist is in
+`docs/dev/setup.md`.
 
 ## M3 — Tool loop and Manual mode (1 week)
 

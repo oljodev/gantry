@@ -48,8 +48,10 @@ gantry/
 │   │       │   ├── stores/{runStore.ts, uiStore.ts}   # runStore: the turn channel, the rAF drain, one LiveTurn per chat
 │   │       │   ├── view/toTurns.ts           # backend chat + live turn → the Turn view model the components render
 │   │       │   ├── markdown/blocks.ts        # top-level block splitter for the memoised renderer
+│   │       │   ├── attachments.ts            # the composer's tray: paths from the dialog or a drop, bytes from paste
+│   │       │   ├── settingsDefaults.ts       # the Rust defaults mirrored for the settings pages
 │   │       │   ├── partial/{partialJson.ts}
-│   │       │   └── utils.ts  modes.ts
+│   │       │   └── utils.ts  modes.ts  clipboard.ts  relativeTime.ts
 │   │       ├── features/
 │   │       │   ├── chat/{ChatView.tsx, MessageList.tsx, TurnStatusBar.tsx}
 │   │       │   ├── activity/{ActivityFeed.tsx, detail/{DetailDrawer.tsx, JudgeDetail.tsx}}
@@ -68,9 +70,9 @@ gantry/
 │   │       │   ├── onboarding/{Onboarding.tsx, Welcome.tsx}
 │   │       │   └── gallery/{GalleryPage.tsx, types.tsx, entries/{primitives,composites}.tsx}   # development builds only (15 §11)
 │   │       ├── components/ui/            # shadcn/ui (Base UI) primitives, reshaped to the tokens (15 §8)
-│   │       ├── components/gantry/        # composites (15 §8): activity/{ActivityRow, HunkPreview, TurnSummary}, chat/{UserMessage, TurnView, TurnFooter, ThinkingBlock, InteractionCard},
-│   │       │                             #   composer/{Composer, ModeChip, ModelPicker}, pane/{RightPane, DiffView, CommandOutput, ToolCallDetail},
-│   │       │                             #   markdown/{Markdown, CodeBlock}, sidebar/ChatRow, connectors/ConnectorTile, ConnectorMark, TierLabel, EmptyState, Logo
+│   │       ├── components/gantry/        # composites (15 §8): activity/{ActivityRow, HunkPreview, TurnSummary}, chat/{UserMessage, TurnView, TurnActions, ThinkingBlock, InteractionCard, SystemPromptDialog},
+│   │       │                             #   composer/{Composer (with AttachmentTray), ModeChip, ModelPicker}, pane/{RightPane, DiffView, CommandOutput, ToolCallDetail},
+│   │       │                             #   markdown/{Markdown, CodeBlock}, sidebar/ChatRow, settings/SettingsRow, connectors/ConnectorTile, ConnectorMark, TierLabel, EmptyState, Logo
 │   │       ├── styles/{globals.css, tokens.css, fonts.css}   # tokens.css is the only place a colour, size or duration is written (15)
 │   │       └── assets/fonts/             # Inter Variable, JetBrains Mono Variable (woff2), copied by scripts/sync-fonts.mjs
 │   │
@@ -80,11 +82,10 @@ gantry/
 │   │   ├── gantry-store/
 │   │   │   ├── migrations/               # 0001_init.sql (settings, providers, models, credentials), 0002_….sql (forward-only)
 │   │   │   └── src/
-│   │   │       ├── lib.rs  db.rs         # writer actor + read pool, pragmas, backup before migration, newer-schema refusal
-│   │   │       ├── blobs.rs  fts.rs  migrate.rs
-│   │   │       └── repos/{chats.rs, messages.rs, events.rs, tool_calls.rs, file_edits.rs, command_runs.rs,
-│   │   │                  interactions.rs, projects.rs, connectors.rs, credentials.rs, providers.rs, settings.rs,
-│   │   │                  artifacts.rs, skills.rs, memories.rs, mod.rs}
+│   │   │       ├── lib.rs  db.rs         # writer actor + read pool, detached writes, pragmas, backup before migration, newer-schema refusal, VACUUM INTO backups
+│   │   │       ├── blob_store.rs         # content-addressed files under blobs/ab/<sha256>
+│   │   │       └── repos/{chats.rs, turns.rs, messages.rs, events.rs, blobs.rs, search.rs, credentials.rs, providers.rs, models.rs, settings.rs, mod.rs;
+│   │   │                  later tool_calls.rs, file_edits.rs, command_runs.rs, interactions.rs, projects.rs, connectors.rs, artifacts.rs, skills.rs, memories.rs}
 │   │   ├── gantry-secrets/
 │   │   │   └── src/{lib.rs, master_key.rs, envelope.rs, vault.rs, platform/{macos.rs, windows.rs, linux.rs, mod.rs}}
 │   │   ├── gantry-providers/
@@ -116,14 +117,15 @@ gantry/
 │   │   │   ├── build.rs                  # validates and embeds ../../skills/*/SKILL.md (M12)
 │   │   │   ├── tests/{turns.rs, prompts.rs, fixtures/prompts/<mode>.txt}   # the loop on a scripted provider; one pinned prompt per mode
 │   │   │   └── src/
-│   │   │       ├── lib.rs  chats.rs  events.rs  turn_manager.rs  runner.rs   # chats.rs: the in-memory ChatBook until M2; events.rs: EventSink, FanoutSink, Batcher
-│   │   │       ├── transcript.rs  projection.rs  context.rs  system_prompt.rs   # system_prompt assembles the layers of 10 §2
+│   │   │       ├── lib.rs  chats.rs  events.rs  turn_manager.rs  runner.rs   # chats.rs: the ChatBook on the store; events.rs: EventSink, FanoutSink, Batcher
+│   │   │       ├── persist.rs  title.rs  attachments.rs  export.rs   # the persister (05 §3), the title generator, attachment ingest, chat export
+│   │   │       ├── transcript.rs  projection.rs  context.rs  system_prompt.rs   # system_prompt assembles the layers of 10 §2 and the mode note
 │   │   │       ├── permissions/{mod.rs, engine.rs, tiers.rs, grants.rs, guardrails.rs, judge.rs}
 │   │   │       ├── runtime_tools/{mod.rs, access.rs, catalog.rs, artifacts.rs, skills.rs, memory.rs}
 │   │   │       ├── skills/{mod.rs, index.rs, matcher.rs, import.rs, export.rs}
 │   │   │       ├── memory/{mod.rs, selector.rs, proposals.rs}
 │   │   │       ├── artifacts/{mod.rs, versions.rs, registry.rs}   # type registry mirrored by the frontend
-│   │   │       ├── interactions.rs  events.rs  title.rs
+│   │   │       ├── interactions.rs
 │   │   └── xtask/
 │   │       └── src/{main.rs, validate_connectors.rs, validate_skills.rs, gen_bindings.rs, icons.rs}   # finds the root by walking up to Cargo.lock
 │   │

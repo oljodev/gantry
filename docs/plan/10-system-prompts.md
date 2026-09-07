@@ -63,7 +63,7 @@ The transcript is append-only (02 §6), so a change never rewrites `system_snaps
 
 | Change | Effect on new chats | Effect on existing chats |
 |--------|--------------------|--------------------------|
-| Global or project instructions edited | New snapshot | A `SystemNote` is appended before the next user message: "Updated project instructions: …" (full new text, since the model must know the whole layer) |
+| Global or project instructions edited | New snapshot (a chat that has no turns yet also gets its snapshot rebuilt) | A `SystemNote` is appended when the edit is saved: "Updated global instructions: …" (full new text, since the model must know the whole layer), or a note that the layer was removed |
 | Chat instructions edited | — | Same `SystemNote` mechanism, immediately |
 | Permission mode or guard changed | — | `SystemNote` with the mode block for the new mode (already in 04 §3) |
 | Connector attached or detached | New snapshot | `ToolSetChange` note including the connector's `system_addendum` |
