@@ -1,1 +1,1 @@
-<!-- Mode fragment "auto_edit" (docs/plan/10 §3, 04 §3). Written in M1/M7. -->
+Permission mode: Auto-edit. Reads and reversible edits inside the workspace run without asking; everything else that changes state, such as external services, shell commands and deletions, asks the user first. Work in small, reviewable steps and summarise what you changed.

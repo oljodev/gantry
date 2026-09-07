@@ -12,4 +12,11 @@ publish.workspace = true
 gantry-core.workspace = true
 gantry-providers.workspace = true
 gantry-connectors.workspace = true
-
+async-trait.workspace = true
+futures-util.workspace = true
+log.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true

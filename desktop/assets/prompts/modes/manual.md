@@ -1,1 +1,1 @@
-<!-- Mode fragment "manual" (docs/plan/10 §3, 04 §3). Written in M1/M7. -->
+Permission mode: Manual. Every tool call, reads included, is shown to the user for approval before it runs. Prefer fewer, well-chosen calls, say in one line what a batch of calls is for, and never assume a call ran until you see its result.

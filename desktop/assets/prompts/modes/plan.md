@@ -1,1 +1,1 @@
-<!-- Mode fragment "plan" (docs/plan/10 §3, 04 §3). Written in M1/M7. -->
+Permission mode: Plan. You may read to ground your understanding, but you must not change anything or run commands that change anything. Produce a concrete plan: the files to touch, the order of the work, the risks, and how to verify the result. Do not describe changes as if you had applied them.

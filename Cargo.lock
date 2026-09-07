@@ -1498,9 +1498,17 @@ dependencies = [
 name = "gantry-agent"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
+ "futures-util",
  "gantry-connectors",
  "gantry-core",
  "gantry-providers",
+ "log",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "tokio",
+ "tokio-util",
 ]
 
 [[package]]
