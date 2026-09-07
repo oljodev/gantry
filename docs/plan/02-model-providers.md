@@ -6,7 +6,9 @@ Goals: one internal request/response/stream model; five provider accounts (Anthr
 
 Non-goals: embeddings, batch, fine-tuning, audio.
 
-**Build order (decided 2026-09-07).** The `openai_chat` client with the `openrouter` profile shipped first, in M1, because the developer tests only through OpenRouter; Anthropic, OpenAI Responses and Gemini follow in M4. Nothing in the trait or the types depends on the order.
+**Build order (decided 2026-09-07).** The `openai_chat` client with the `openrouter` profile shipped first, in M1, because the developer tests only through OpenRouter; Anthropic, OpenAI Responses and Gemini followed in M4 (all four clients exist as of 2026-09-07). Nothing in the trait or the types depends on the order.
+
+**Status of the live verification.** Only OpenRouter has been exercised against a real key. The Anthropic, OpenAI and Gemini clients are pinned by fixtures written to the documented wire formats (`tests/fixtures/<provider>/`, `tests/replay.rs`, `tests/projection.rs`); the first run of `tests/live.rs` with each key is where a renamed field shows up, and the fixtures are replaced by real captures then.
 
 **Decision: write the layer, do not adopt a unification crate.** The Rust ecosystem has usable multi-provider crates (`genai` is the most complete, and its source is a good reference for provider quirks). None of them expose what Gantry's agent loop needs as first-class concepts: append-only transcript rules on Anthropic (mid-conversation `system` messages, `tool_addition`/`tool_removal`, `defer_loading`, cache breakpoints), partial tool-argument streaming for live previews, provider server tools as opaque replayable parts, or Gemini's Interactions API. Wrapping a crate and patching around it costs more than owning ~4 clients that each map one well-documented HTTP API onto our types. LiteLLM-style Python layers are excluded by the brief.
 
@@ -46,7 +48,7 @@ pub struct ChatRequest {
     pub tool_choice: ToolChoice,              // Auto | None | Required | Named(String)
     pub max_output_tokens: u32,
     pub reasoning: Reasoning,                 // Off | Adaptive { effort: Effort, show_summary: bool }
-    pub server_tools: Vec<ServerTool>,        // WebSearch { max_uses, allowed_domains, blocked_domains } | WebFetch
+    pub server_tools: Vec<ServerTool>,        // WebSearch { max_uses } for now; domains and WebFetch later
     pub cache: CacheHints,                    // breakpoint placement policy for Anthropic; no-op elsewhere
     pub metadata: RequestMetadata,            // chat_id, turn_id (for logging), app name/version
     pub provider_options: serde_json::Value,  // escape hatch merged into the wire request
@@ -63,9 +65,9 @@ pub enum ContentPart {
     Text { text: String },
     Image { source: MediaSource, mime: String },
     Document { source: MediaSource, mime: String, name: String },
-    ToolCall { id: CallId, name: String, args: serde_json::Value },
+    ToolCall { id: CallId, name: String, args: serde_json::Value, signature: Option<String> }, // signature: Gemini's thought signature, echoed on replay
     ToolResult { call_id: CallId, content: Vec<ResultPart>, is_error: bool },
-    Thinking { text: String, signature: Option<String>, provider: ProviderKind }, // opaque; replayed only to its provider
+    Thinking { text: String, signature: Option<String>, provider: ProviderKind, item_id: Option<String> }, // opaque; replayed only to its provider; item_id is OpenAI's rs_ id
     ProviderOpaque { provider: ProviderKind, kind: String, json: serde_json::Value }, // server tool use/result blocks, citations
     SystemNote { text: String },                              // role System: instruction change mid-chat
     ToolSetChange { added: Vec<String>, removed: Vec<String> }, // role System: attached/detached connectors
@@ -121,7 +123,7 @@ pub struct ModelCapabilities {
 }
 ```
 
-Capabilities come from the provider's model list where it carries them (Anthropic's `/v1/models` has `max_input_tokens` and `capabilities`; OpenRouter's list has context, pricing and `supported_parameters`) merged with a shipped `desktop/assets/models/overrides.toml` for what the APIs do not say. Unknown model → conservative defaults (tools on, everything else off).
+Capabilities come from the provider's model list where it carries them (Anthropic's `/v1/models` has `max_input_tokens` and `capabilities`; OpenRouter's list has context, pricing and `supported_parameters`; xAI's `/v1/language-models` has modalities and prices; Gemini's `/v1beta/models` has token limits) merged with a shipped `desktop/assets/models/overrides.toml` for what the APIs do not say. The merge happens in every client's `list_models` and again when the cached list is read, so an edit to the file applies without a refresh; entries name a provider id or client kind and an exact id or a `prefix*`, later entries refine earlier ones. Unknown model → conservative defaults (tools on, everything else off).
 
 ## 3. Tool-calling normalization
 
@@ -155,7 +157,8 @@ Shared rules enforced by the layer:
 - **Schemas.** `ToolSchemaSanitizer::for_provider(kind)` inlines `$ref`/`$defs`, removes keywords a provider rejects, guarantees `type: object` at the root, and never enables strict mode for MCP-sourced schemas.
 - **Results are complete.** A transcript is never sent with a `ToolCall` lacking a `ToolResult`; the agent synthesizes error results on cancel or crash.
 - **Parallel results travel together** (Anthropic) or as consecutive items (others); the projection layer decides, callers just append `Tool` messages.
-- **Every tool call id round-trips unchanged** to the same provider; to a different provider (model switch mid-chat) ids are sanitized but kept.
+- **Every tool call id round-trips unchanged** to the same provider; to a different provider (model switch mid-chat) ids are sanitized but kept (`wire_call_id`: the assistant message's `origin` decides, and a result takes the treatment of the call it answers).
+- **Thinking left behind is said.** When a chat's model changed since its previous turn and the last reply had thinking, the runner emits a `provider.notice` of kind `thinking_dropped` ("Thinking context reset") before the first request, since that reasoning is not sent to the new model.
 - **Argument deltas are best-effort.** Anthropic, OpenAI (both APIs) and Gemini 3+ stream partial tool arguments; Chat Completions upstreams behind OpenRouter vary, and xAI's current documentation states streaming works for all text models without the tool-calling restriction its older pages carried (verified in the M4 conformance run). Consumers of `ToolCallArgsDelta` (the code-editor live preview, the artifact panel) must work when zero deltas arrive and only `ToolCallEnd` does; 13 §2 describes the buffered fallback.
 
 ## 4. Per-provider notes
@@ -163,7 +166,8 @@ Shared rules enforced by the layer:
 ### Anthropic (Messages API)
 
 - Beta headers Gantry sends when the model supports them: `mid-conversation-tool-changes-2026-07-01` (tool set deltas), `thinking-binding-controls-2026-08-01` (only on requests that knowingly changed the prefix), `context-management-2025-06-27` or `compact-2026-01-12` (context, see §6).
-- Thinking is adaptive on 4.6+ models; `effort` comes from the chat's Thinking setting through `output_config.effort`. Chats that show reasoning set `display: "summarized"`.
+- Thinking is adaptive on 4.6+ models (`thinking: {type: "adaptive"}`, `effort` from the chat's Thinking setting through `output_config.effort`); earlier models get `{type: "enabled", budget_tokens}` sized from the effort and kept below `max_tokens`. The style is decided by the model's `reasoning` capability (`overrides.toml`), falling back to the version in the id. "Off" omits `thinking` entirely.
+- The mid-conversation `system` message for `SystemNote`s, `eager_input_streaming` on tools flagged `stream_args`, and `stop_details.category` on refusals are implemented to this document and await the first live conformance run.
 - **Append-only transcript.** Current Claude models bind thinking blocks to the exact prefix (`system`, `tools`, prior messages) that produced them; editing the prefix invalidates later blocks (a 400 on accounts created after 2026-08-31, enforced for everyone on later models). Consequences implemented in §6: the system prompt is frozen per chat; instruction changes are `SystemNote` → `{"role":"system"}` messages; tool-set changes go through `tool_addition`/`tool_removal` for tools declared up front with `defer_loading: true`; old tool results are never deleted client-side; compaction is server-side or "simple" (summary replaces everything).
 - `refusal` stop reasons are surfaced as a distinct assistant state (not an error), with `stop_details.category` when present. Forced `tool_choice` is never used on Claude Fable 5.1.
 - `eager_input_streaming: true` on the code-editor and filesystem write tools so a file's content streams into the activity feed while the model writes it.
@@ -174,6 +178,8 @@ Shared rules enforced by the layer:
 - Stateless by choice: `store: false`, no `previous_response_id`. Gantry's transcript is authoritative and privacy is simpler on a BYOK desktop app. Therefore `include: ["reasoning.encrypted_content"]` is requested and `reasoning` items are replayed between tool rounds; without them reasoning models lose their chain across tool calls.
 - Items: `message`, `function_call`, `function_call_output`, `reasoning`, `web_search_call`. Streaming events consumed: `response.output_item.added/done`, `response.output_text.delta`, `response.function_call_arguments.delta/done`, `response.completed`, `error`.
 - `strict: true` only for first-party tools flagged strict-compatible. `parallel_tool_calls: true`.
+- `reasoning.effort` is sent for low, medium and high (max maps to high); "Off" leaves the model's default in place, because the accepted lowest level differs per family (`minimal` on gpt-5, `none` on gpt-5.1 and later) and the wrong one is a 400. `summary: "auto"` gives the thinking block its text.
+- The model list carries ids only; ids that are plainly not chat models (embeddings, audio, images, realtime, moderation) are dropped before `overrides.toml` fills in the rest.
 - Native `apply_patch` and `shell` tool types are the post-MVP mapping target for the code-editor and shell connectors (T8).
 
 ### OpenAI-compatible (Chat Completions)
@@ -195,7 +201,7 @@ pub struct CompatProfile {
 }
 ```
 
-Shipped profiles: `xai` (`https://api.x.ai/v1`), `openrouter` (`https://openrouter.ai/api/v1`), `custom` (user-supplied base URL and optional key; this is also how Ollama or LM Studio get in later without a new client).
+Shipped profiles: `xai` (`https://api.x.ai/v1`; `reasoning_effort`, `stream_options.include_usage`, the model list from `/v1/language-models` whose prices divide by 10 000 to dollars per million tokens), `openrouter` (`https://openrouter.ai/api/v1`; web search through `plugins: [{ id: "web" }]`), `custom` (user-supplied base URL and optional key, `custom:<ulid>` rows added from Settings; this is how Ollama or LM Studio get in without a new client). The profile also carries `models_path`, `web_search` and `key_optional`.
 
 ### Google (Gemini Interactions API)
 
@@ -204,7 +210,9 @@ Shipped profiles: `xai` (`https://api.x.ai/v1`), `openrouter` (`https://openrout
 - Request: `model`, `system_instruction`, `input` (turns and `function_result` items), `tools` (function declarations and built-ins such as `google_search`), `generation_config` (`tool_choice`, `thinking_level`, `temperature`).
 - Output steps: `model_output` (text), `thought` (summaries), `function_call {id, name, arguments}`. Results go back as `function_result {call_id, name, result: [...]}`.
 - Streaming: `interaction.created`, `step.start`, `step.delta` (`text`, `thought_summary`, `arguments_delta`, `thought_signature`, `image`), `step.stop`, `interaction.completed` (usage), `error`, `done`. Unknown event types are ignored by design; Google documents that new types will appear.
-- Thought signatures are captured per step and echoed back on the corresponding replayed item. Missing signatures are a validation error on Gemini 3 models.
+- Thought signatures are captured per step and echoed back on the corresponding replayed item: a `function_call` item carries `thought_signature`, a thought is replayed as a `thought` content part with its signature. Missing signatures are a validation error on Gemini 3 models. The signed call is re-issued whole as a `ProviderBlock` at `step.stop`, so the runner's transcript keeps the signature on the `ToolCall` part.
+- `function_result` items name the function, so the projection looks the name up from the call with the same id. `SystemNote`s are appended to `system_instruction` (stateless, so allowed); `thinking_level` maps Off → `minimal` (Gemini cannot switch thinking off), Max → `high`.
+- Auth is `x-goog-api-key`; the model list is `GET /v1beta/models` filtered to `generateContent` models named `gemini*`.
 - Schema sanitizer: inline `$ref`, drop `additionalProperties`, `patternProperties`, `$schema`, `examples`; keep `enum`, `anyOf`, `format` where documented.
 
 ## 5. Reasoning, server tools and opaque parts

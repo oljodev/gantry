@@ -92,16 +92,17 @@ gantry/
 │   │   ├── gantry-providers/
 │   │   │   ├── src/
 │   │   │   │   ├── lib.rs  provider.rs  error.rs  registry.rs  catalog.rs   # trait + types, error classes, the configured set, the cached model lists
-│   │   │   │   ├── sse.rs  retry.rs          # SSE decoder with first-token/idle timeouts; retry before the first byte
-│   │   │   │   ├── sanitize.rs  judge_defaults.rs   # later
+│   │   │   │   ├── sse.rs  retry.rs  http.rs  pump.rs   # SSE decoder with first-token/idle timeouts; retry before the first byte; the shared GET/POST helper; the SSE→StreamEvent pump every parser plugs into
+│   │   │   │   ├── tools.rs  overrides.rs    # tool names, schema sanitizer, call-id rules; `overrides.toml` merged into model lists
 │   │   │   │   ├── openai_chat/{mod.rs, profiles.rs, request.rs, stream.rs, models.rs, key.rs}   # profiles: openrouter, xai, custom
-│   │   │   │   ├── anthropic/{mod.rs, request.rs, stream.rs, project.rs}          # M4
-│   │   │   │   ├── openai_responses/{mod.rs, request.rs, stream.rs, project.rs}   # M4
-│   │   │   │   └── gemini/{mod.rs, request.rs, stream.rs, project.rs}             # M4
+│   │   │   │   ├── anthropic/{mod.rs, request.rs, stream.rs}          # Messages API
+│   │   │   │   ├── openai_responses/{mod.rs, request.rs, stream.rs}   # Responses API
+│   │   │   │   └── gemini/{mod.rs, request.rs, stream.rs}             # Interactions API
 │   │   │   └── tests/
-│   │   │       ├── fixtures/openrouter/*.sse   # recorded and hand-written streams; later {anthropic,openai_responses,gemini}/
-│   │   │       ├── openrouter.rs             # every fixture through the real decoder and parser
-│   │   │       └── live.rs                   # opt-in (`--ignored`) smoke test on OPENROUTER_API_KEY
+│   │   │       ├── fixtures/{openrouter,anthropic,openai_responses,gemini}/*.sse   # recorded (openrouter) and hand-shaped streams, one README each
+│   │   │       ├── openrouter.rs  replay.rs  # every fixture through the real decoder and parser
+│   │   │       ├── projection.rs             # one transcript onto all four wire formats, a check per normalization row
+│   │   │       └── live.rs                   # opt-in (`--ignored`) conformance run per provider on an env key
 │   │   ├── gantry-connectors/
 │   │   │   ├── build.rs                  # validates and embeds ../../connectors/*/manifest.json
 │   │   │   └── src/

@@ -158,14 +158,53 @@ and the row expands to show both sides. Olav's checklist is in `docs/dev/setup.m
 
 Rationale for placing this before the other providers: the tool loop is the harness that validates each provider client; building three more clients first would validate them against nothing.
 
-## M4 — All providers (2 weeks)
+## M4 — All providers (2 weeks) — done 2026-09-07
 
-- The **Anthropic** client (moved here from M1: thinking blocks and the append-only rules, usage with cache reads and writes, refusal handling, server tools), `openai_responses` (stateless, encrypted reasoning replay, function calls, built-in web search), `openai_chat`'s `xai` and `custom` profiles exercised (the client and the `openrouter` profile landed in M1), `gemini` on the Interactions API (function calls with ids, thought signatures, streaming argument deltas).
-- Model catalog with live lists merged with `desktop/assets/models/overrides.toml`; capability-driven UI (thinking selector, web search toggle availability).
-- Fixture tests for every row of the normalization table; the 12-scenario live conformance checklist run once per provider by hand, **now including "streams partial tool arguments" as a recorded per-provider result** (13 §2 depends on it).
-- Provider error surfaces (rate limit, auth, context too long) with a Retry affordance.
+- `gantry-providers`: the **Anthropic** client (`anthropic/`: system and tool cache
+  breakpoints, adaptive thinking with `output_config.effort` from 4.6 on and a token budget
+  before, thinking blocks replayed with their signature, `redacted_thinking` and the web search
+  blocks as opaque parts, refusal and `pause_turn` as stop reasons, usage with cache reads and
+  writes); the **OpenAI Responses** client (`openai_responses/`: `store: false`,
+  `include: ["reasoning.encrypted_content"]`, reasoning items replayed with their `rs_` id and
+  encrypted content, function calls and outputs as items, `developer` messages for notes, the
+  built-in `web_search`); the **Gemini** client on the Interactions API (`gemini/`: stateless
+  `input`, function calls with ids and their `thought_signature`, `function_result` items that
+  name the function, `thinking_level`, `google_search`); the `xai` profile with the
+  `language-models` list and the `custom` profile for any OpenAI-compatible server (key
+  optional); OpenRouter's `plugins: [{ id: "web" }]`. One shared HTTP helper and one shared
+  SSE pump for all four; `sanitize_call_id`/`wire_call_id` so ids round-trip unchanged to the
+  provider that issued them and are made safe for another one.
+- Core: `Thinking.item_id` (OpenAI's reasoning item id) and `ToolCall.signature` (Gemini's
+  thought signature), both optional and absent on the wire when unset; `ChatRequest.server_tools`.
+- The model catalog merged with `desktop/assets/models/overrides.toml` on every read and every
+  refresh (context, max output, thinking style, web search, prices for the models the APIs
+  do not describe); capability-driven composer: the thinking toggle disables on models without
+  reasoning, the web search toggle appears only on models with a provider-side search and
+  writes `chats.web_search`.
+- The "Thinking context reset" notice (`provider.notice` of kind `thinking_dropped`) when a
+  chat's model changed since its last turn and the previous reply had thinking.
+- Tests: `tests/replay.rs` (hand-shaped SSE fixtures per provider through the real decoder and
+  parser: text, thinking with signatures, parallel calls with streamed arguments, refusal, max
+  tokens, mid-stream error, early close, server tool blocks, reasoning items, incomplete
+  responses, thought signatures); `tests/projection.rs` (one transcript onto all four wire
+  formats, one assertion per request-side row of 02 §3); `tests/live.rs` (the conformance
+  scenarios per provider behind `--ignored`, printing whether partial tool arguments streamed).
+  The runner also logs "streamed in fragments" or "arrived whole" per tool call.
+- App: the five accounts seeded as `providers` rows; `add_custom_provider` and
+  `remove_provider`; Settings → Providers with all rows, key hints per provider, "Add custom
+  endpoint", and Remove endpoint for custom rows; judge defaults for every provider.
 
-Done when: one chat with tool calls can switch providers mid-way and keep working (with the expected "thinking reset" notice), and the streaming-arguments column of 13 §2 is filled with observed results.
+Not observed yet, on purpose: the Gemini wire names follow Google's reference as read on
+2026-09-07 and the Anthropic mid-conversation `system` message, `eager_input_streaming` and
+`stop_details.category` follow the plan; each is pinned by fixtures written to that reading
+and confirmed by the first live conformance run on a real key (see `docs/dev/setup.md`).
+Only OpenRouter has been run live so far, so the streaming-arguments column of 13 §2 carries
+OpenRouter's observed value and the documented value for the others.
+
+Done when (met for OpenRouter and the custom profile; the other clients on fixtures): one
+chat with tool calls can switch providers mid-way and keep working (with the expected
+"thinking reset" notice), and the streaming-arguments column of 13 §2 is filled with observed
+results. Olav's checklist is in `docs/dev/setup.md`.
 
 ## M5 — Artifacts (2–3 weeks)
 

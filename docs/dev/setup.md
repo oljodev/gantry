@@ -58,13 +58,20 @@ After adding or changing a command: `cargo xtask gen-bindings`, then commit the 
 
 ## Testing against OpenRouter
 
-Everything that can run offline does: the provider layer replays recorded streams under
-`desktop/crates/gantry-providers/tests/fixtures/openrouter/`, the agent runs on a scripted
-provider. Two things need a real key, both opt-in:
+Everything that can run offline does: the provider layer replays recorded and hand-shaped
+streams under `desktop/crates/gantry-providers/tests/fixtures/<provider>/`, the agent runs on a
+scripted provider. Two things need a real key, both opt-in:
 
 ```sh
-# The live smoke test: key check, model list, one short stream. A fraction of a cent.
-OPENROUTER_API_KEY=sk-or-… cargo test -p gantry-providers --test live -- --ignored
+# The live conformance run (02 §8), one provider per invocation, a few cents each. It prints a
+# line per scenario and, at the end, whether the provider streamed partial tool arguments,
+# which is the value 13 §2 wants recorded.
+OPENROUTER_API_KEY=sk-or-… cargo test -p gantry-providers --test live openrouter -- --ignored --nocapture
+ANTHROPIC_API_KEY=sk-ant-… cargo test -p gantry-providers --test live anthropic -- --ignored --nocapture
+OPENAI_API_KEY=sk-…        cargo test -p gantry-providers --test live openai    -- --ignored --nocapture
+GEMINI_API_KEY=AIza…       cargo test -p gantry-providers --test live gemini    -- --ignored --nocapture
+XAI_API_KEY=xai-…          cargo test -p gantry-providers --test live xai       -- --ignored --nocapture
+# LIVE_MODEL=… picks another model; LIVE_WEB_SEARCH=1 adds the web search scenario.
 
 # Capture a real stream as a fixture (no key ends up in the file). Export the key in this shell
 # first (`set -x OPENROUTER_API_KEY sk-or-…` in fish); the app's stored key is not visible here.
@@ -166,6 +173,44 @@ computer's date and time; it is `read` tier on purpose so Manual mode has someth
 10. Export the chat as Markdown: the tool calls appear as "Called `gantry__clock` with `{}`"
     lines between the text.
 11. `grep -ci authorization` on the log file still prints 0.
+
+### The M4 checklist (hands-on, under $0.25 on DeepSeek V4 Flash)
+
+Only OpenRouter can be tested live here. The `custom` profile is exercised by pointing a
+custom endpoint at OpenRouter itself; the Anthropic, OpenAI and Gemini clients stay on their
+fixtures until someone with a key runs the conformance test above.
+
+1. Start the app after the update: Settings → Providers lists OpenRouter, Anthropic, OpenAI,
+   Google and xAI, the last four with "No key" and no "Arrives with M4" line anywhere. The
+   OpenRouter key is still set. The model picker shows only OpenRouter's models.
+2. Add custom endpoint: name "OpenRouter again", base URL `https://openrouter.ai/api/v1`. The
+   row appears with a "Custom" badge; Add key with the same key; Test says the key works
+   (no label or usage, that is expected: a plain endpoint has no `/key`); Refresh lists 400+
+   models under it. New chat, pick `deepseek/deepseek-v4-flash` under "OpenRouter again", ask
+   "What time is it?" in Auto-edit: the clock row and the answer arrive as before.
+3. In that chat, switch the model picker to `deepseek/deepseek-v4-flash` under OpenRouter and
+   ask "And in UTC?": the reply starts with a notice row "Thinking context reset: the
+   reasoning deepseek/deepseek-v4-flash did earlier is not sent to …", the clock is called
+   again, the answer is right. Switch back and ask once more: the notice appears again (the
+   model changed), then a fourth message without switching shows no notice.
+4. Pick a model without reasoning (any `…-instruct` model, or `google/gemma-3-27b-it`): the
+   brain button greys out and its tooltip says the model does not think; the + menu's
+   Thinking row is disabled with "Not on this model". Pick DeepSeek again: enabled.
+5. The + menu's Web search row is disabled with "Not on this model" (OpenRouter's list does not
+   flag search, so no OpenRouter model offers it; that column is filled by the other
+   providers). Nothing else changed in the composer.
+6. Look at the log after step 2 or 3: a line "tool arguments from OpenAiChat ·
+   deepseek/deepseek-v4-flash: streamed in fragments" or "… arrived whole". Note which, and
+   write it into the first row of the table in `docs/plan/13-artifacts.md` §2.
+7. Remove endpoint on "OpenRouter again": the row, its models and its key are gone; the chat
+   made on it still opens and shows its turns; sending there fails with a clear "provider
+   custom:… is not configured" error and Retry, and picking OpenRouter's model makes it work.
+8. Settings → Providers → Anthropic → Add key with a made-up key `sk-ant-nope`: the row says
+   set; Test says invalid key and the badge turns to "Invalid"; a chat on a Claude model (the
+   picker shows none until Refresh works, so use the custom endpoint trick: none here) is not
+   possible, which is right. Remove the key.
+9. `grep -ci authorization` on the log file still prints 0 (the custom endpoint sends the key
+   the same way).
 
 ## Where the app keeps its data
 

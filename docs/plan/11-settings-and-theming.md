@@ -48,10 +48,11 @@ Artifacts running in the sandbox receive the resolved theme through the bridge (
 
 ## 4. Providers and keys
 
-Exactly the credential design of 06 §5, surfaced. M1 ships the OpenRouter row; the other four show "Arrives with M4" until their clients exist. The page also states where the master key lives (the OS store's name, or the Linux file fallback with its path).
+Exactly the credential design of 06 §5, surfaced. The five accounts (OpenRouter, Anthropic, OpenAI, Google, xAI) are seeded as rows at startup and all have clients since M4; custom endpoints are added below them. A row whose kind has no client in this build shows a "No client" badge instead of an "Add key" button. The page also states where the master key lives (the OS store's name, or the Linux file fallback with its path).
 
 - A row per provider: name, key status (`none`, `set ····abcd`, `invalid` after a failed test), **Add key** / **Replace key** (a modal that never echoes the value), **Remove**, **Test** (calls `test_provider`, which lists models with the key and reports the error class on failure), default model picker, and for OpenRouter, xAI and custom endpoints an optional base URL.
-- **Custom endpoint** creates a `providers` row of kind `openai_chat` with the `custom` profile (02 §4): label, base URL, optional key.
+- **Add custom endpoint** creates a `providers` row `custom:<ulid>` of kind `openai_chat` with the `custom` profile (02 §4): name and base URL in the dialog, an optional key afterwards through the ordinary Add key; **Remove endpoint** deletes the row, its cached models and its key. The built-in accounts cannot be removed.
+- The key field hints at the provider's key shape (`sk-ant-…`, `AIza…`, `xai-…`) and validates nothing.
 - Model lists come from `list_models` with a Refresh action; the table shows context window and pricing where the API or `overrides.toml` know them.
 - The frontend only ever sees `{ present, hint }`; `set_provider_key` is write-only; the key goes straight into the vault.
 

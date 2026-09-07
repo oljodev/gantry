@@ -42,6 +42,7 @@ gantry__read_artifact   { artifact_id, version? } → { type, title, language, c
 
 | Provider | Partial argument deltas | Panel behavior |
 |----------|------------------------|----------------|
+| *Observed so far (M4, 2026-09-07)* | OpenRouter with DeepSeek V4 Flash: to be read off the runner's log line ("tool arguments … streamed in fragments" or "arrived whole") in Olav's M4 checklist; the other providers are not yet run live. `tests/live.rs` prints the same value per provider. | |
 | Anthropic Messages | Yes (`input_json_delta`; finer-grained with `eager_input_streaming`) | live |
 | OpenAI Responses | Yes (`response.function_call_arguments.delta`) | live |
 | Chat Completions: OpenAI models, xAI | Yes for OpenAI models (`tool_calls[i].function.arguments` fragments). xAI's current streaming documentation says streaming is supported by all text models and no longer carries the tool-calling restriction older versions of the page had; treated as "live, verify in M4's conformance run" | live, else buffered |
