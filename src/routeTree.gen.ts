@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as ConnectorsRouteImport } from './routes/connectors'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as ChatIndexRouteImport } from './routes/chat.index'
+import { Route as DevGalleryRouteImport } from './routes/dev.gallery'
 import { Route as SettingsIndexRouteImport } from './routes/settings.index'
 import { Route as SettingsSectionRouteImport } from './routes/settings.$section'
 
@@ -36,6 +37,11 @@ const ChatIndexRoute = ChatIndexRouteImport.update({
   path: '/chat/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DevGalleryRoute = DevGalleryRouteImport.update({
+  id: '/dev/gallery',
+  path: '/dev/gallery',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SettingsIndexRoute = SettingsIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -51,6 +57,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/connectors': typeof ConnectorsRoute
   '/settings': typeof SettingsRouteWithChildren
+  '/dev/gallery': typeof DevGalleryRoute
   '/settings/$section': typeof SettingsSectionRoute
   '/chat/': typeof ChatIndexRoute
   '/settings/': typeof SettingsIndexRoute
@@ -58,6 +65,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/connectors': typeof ConnectorsRoute
+  '/dev/gallery': typeof DevGalleryRoute
   '/settings/$section': typeof SettingsSectionRoute
   '/chat': typeof ChatIndexRoute
   '/settings': typeof SettingsIndexRoute
@@ -67,6 +75,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/connectors': typeof ConnectorsRoute
   '/settings': typeof SettingsRouteWithChildren
+  '/dev/gallery': typeof DevGalleryRoute
   '/settings/$section': typeof SettingsSectionRoute
   '/chat/': typeof ChatIndexRoute
   '/settings/': typeof SettingsIndexRoute
@@ -77,16 +86,24 @@ export interface FileRouteTypes {
     | '/'
     | '/connectors'
     | '/settings'
+    | '/dev/gallery'
     | '/settings/$section'
     | '/chat/'
     | '/settings/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/connectors' | '/settings/$section' | '/chat' | '/settings'
+  to:
+    | '/'
+    | '/connectors'
+    | '/dev/gallery'
+    | '/settings/$section'
+    | '/chat'
+    | '/settings'
   id:
     | '__root__'
     | '/'
     | '/connectors'
     | '/settings'
+    | '/dev/gallery'
     | '/settings/$section'
     | '/chat/'
     | '/settings/'
@@ -96,6 +113,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ConnectorsRoute: typeof ConnectorsRoute
   SettingsRoute: typeof SettingsRouteWithChildren
+  DevGalleryRoute: typeof DevGalleryRoute
   ChatIndexRoute: typeof ChatIndexRoute
 }
 
@@ -127,6 +145,13 @@ declare module '@tanstack/react-router' {
       path: '/chat'
       fullPath: '/chat/'
       preLoaderRoute: typeof ChatIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/dev/gallery': {
+      id: '/dev/gallery'
+      path: '/dev/gallery'
+      fullPath: '/dev/gallery'
+      preLoaderRoute: typeof DevGalleryRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/settings/': {
@@ -164,6 +189,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ConnectorsRoute: ConnectorsRoute,
   SettingsRoute: SettingsRouteWithChildren,
+  DevGalleryRoute: DevGalleryRoute,
   ChatIndexRoute: ChatIndexRoute,
 }
 export const routeTree = rootRouteImport

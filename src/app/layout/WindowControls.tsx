@@ -65,7 +65,7 @@ function ControlButton({
       title={label}
       onClick={onClick}
       className={cn(
-        'flex h-[var(--title-strip)] w-[46px] items-center justify-center text-fg-2 transition-colors duration-(--dur-1)',
+        'flex h-(--title-strip) w-(--window-control) items-center justify-center text-fg-2 transition-colors duration-(--dur-1)',
         danger ? 'hover:bg-bad hover:text-fg-on-accent' : 'hover:bg-hover hover:text-fg',
       )}
     >

@@ -4,7 +4,7 @@ import { isSection, SECTIONS, type Section } from '@/features/settings/sections'
 import { isTauri } from '@/lib/ipc/client';
 import { useAppInfo } from '@/lib/ipc/hooks/useAppInfo';
 import { type Density, type ThemePref, useUiStore } from '@/lib/stores/uiStore';
-import { cn } from '@/lib/utils';
+import { Segmented } from '@/components/ui/radio-group';
 
 const ARRIVES: Partial<Record<Section, string>> = {
   general: 'M2',
@@ -44,8 +44,9 @@ function Appearance() {
     <div className="divide-y divide-line-subtle">
       <SettingsRow label="Theme" hint="Follow the system, or pick one.">
         <Segmented<ThemePref>
+          aria-label="Theme"
           value={theme}
-          onChange={setTheme}
+          onValueChange={setTheme}
           options={[
             ['system', 'System'],
             ['light', 'Light'],
@@ -55,8 +56,9 @@ function Appearance() {
       </SettingsRow>
       <SettingsRow label="Density" hint="Row heights and gutters in lists and settings.">
         <Segmented<Density>
+          aria-label="Density"
           value={density}
-          onChange={setDensity}
+          onValueChange={setDensity}
           options={[
             ['comfortable', 'Comfortable'],
             ['compact', 'Compact'],
@@ -126,37 +128,6 @@ function Fact({ label, children }: { label: string; children: ReactNode }) {
     <div className="flex min-h-(--row) items-center justify-between gap-6 py-3">
       <dt className="text-ui font-medium text-fg">{label}</dt>
       <dd className="text-ui text-fg-2">{children}</dd>
-    </div>
-  );
-}
-
-/** A segmented control from plain buttons; the reshaped RadioGroup replaces it in M0b. */
-function Segmented<T extends string>({
-  value,
-  onChange,
-  options,
-}: {
-  value: T;
-  onChange: (v: T) => void;
-  options: readonly (readonly [T, string])[];
-}) {
-  return (
-    <div role="radiogroup" className="inline-flex rounded-2 border border-line bg-raised p-[2px]">
-      {options.map(([v, label]) => (
-        <button
-          key={v}
-          type="button"
-          role="radio"
-          aria-checked={value === v}
-          onClick={() => onChange(v)}
-          className={cn(
-            'h-(--control-sm) rounded-[4px] px-3 text-ui transition-colors duration-(--dur-1)',
-            value === v ? 'bg-selected text-fg' : 'text-fg-2 hover:text-fg',
-          )}
-        >
-          {label}
-        </button>
-      ))}
     </div>
   );
 }

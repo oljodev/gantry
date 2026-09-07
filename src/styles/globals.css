@@ -148,3 +148,70 @@
     font-variant-numeric: tabular-nums;
   }
 }
+
+/*
+ * Shared recipes for floating layers and their motion (docs/plan/15 §6, §10). Base UI stamps
+ * data-starting-style / data-ending-style around open and close, which CSS transitions follow.
+ */
+@layer components {
+  .float {
+    background: var(--bg-overlay);
+    border: 1px solid var(--line);
+    border-radius: var(--r-4);
+    box-shadow:
+      var(--shadow-float),
+      inset 0 1px 0 var(--highlight-top);
+  }
+  .pop-anim {
+    transform-origin: var(--transform-origin, center);
+    transition:
+      opacity var(--dur-2) var(--ease-out),
+      transform var(--dur-2) var(--ease-out);
+  }
+  .pop-anim[data-starting-style],
+  .pop-anim[data-ending-style] {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  .dialog-anim {
+    transition:
+      opacity var(--dur-3) var(--ease-out),
+      transform var(--dur-3) var(--ease-out);
+  }
+  .dialog-anim[data-starting-style],
+  .dialog-anim[data-ending-style] {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.98);
+  }
+  .backdrop-anim {
+    transition: opacity var(--dur-3) var(--ease-out);
+  }
+  .backdrop-anim[data-starting-style],
+  .backdrop-anim[data-ending-style] {
+    opacity: 0;
+  }
+  /* The skeleton shimmer: the one permitted continuous motion (15 §10) */
+  .shimmer {
+    background: linear-gradient(
+      90deg,
+      var(--bg-hover) 0%,
+      var(--bg-active) 50%,
+      var(--bg-hover) 100%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.6s linear infinite;
+  }
+  @keyframes shimmer {
+    from {
+      background-position: 200% 0;
+    }
+    to {
+      background-position: -200% 0;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .shimmer {
+      animation: none;
+    }
+  }
+}

@@ -28,7 +28,7 @@ export default defineConfig({
     strictPort: true,
     host: host ?? false,
     hmr: host ? { protocol: 'ws', host, port: 1421 } : undefined,
-    watch: { ignored: ['**/src-tauri/**', '**/target/**'] },
+    watch: { ignored: ['**/src-tauri/**', '**/target/**', '**/.agent-eyes/**'] },
   },
   envPrefix: ['VITE_', 'TAURI_ENV_*'],
   build: {

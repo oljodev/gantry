@@ -20,7 +20,8 @@
     "test": "vitest run",
     "fonts": "node scripts/sync-fonts.mjs",
     "tauri": "tauri",
-    "bindings:check": "cargo xtask check-bindings"
+    "bindings:check": "cargo xtask check-bindings",
+    "design:contrast": "node scripts/contrast.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",
@@ -37,9 +38,13 @@
     "@tauri-apps/plugin-window-state": "^2.4.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "cmdk": "^1.1.1",
     "cn": "^0.2.6",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
+    "shiki": "^4.4.3",
     "tailwind-merge": "^3.6.0",
     "zustand": "^5.0.15"
   },

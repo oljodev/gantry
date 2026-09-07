@@ -9,7 +9,7 @@ export function SettingsLayout() {
     <div className="flex h-full">
       <nav
         aria-label="Settings sections"
-        className="w-[200px] shrink-0 overflow-y-auto border-r border-line bg-base px-2 py-3"
+        className="w-(--settings-list) shrink-0 overflow-y-auto border-r border-line bg-base px-2 py-3"
       >
         <div className="px-2 pb-2 text-micro font-medium uppercase tracking-[0.04em] text-fg-3">
           Settings

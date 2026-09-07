@@ -21,7 +21,7 @@ export function TitleStrip({ className }: { className?: string }) {
       onDoubleClick={() => {
         if (isTauri()) void getCurrentWindow().toggleMaximize();
       }}
-      className={cn('flex h-[var(--title-strip)] shrink-0 items-center justify-between', className)}
+      className={cn('flex h-(--title-strip) shrink-0 items-center justify-between', className)}
     >
       <div className="flex items-center gap-1 pl-2" data-tauri-drag-region="false">
         {collapsed && (
@@ -32,7 +32,7 @@ export function TitleStrip({ className }: { className?: string }) {
             onClick={toggleSidebar}
             className={cn(
               'flex size-(--control-md) items-center justify-center rounded-2 text-fg-2 transition-colors duration-(--dur-1) hover:bg-hover hover:text-fg',
-              mac && 'ml-[70px]',
+              mac && 'ml-(--traffic-lights)',
             )}
           >
             <SidebarSimple size={16} />

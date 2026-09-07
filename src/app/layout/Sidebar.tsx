@@ -3,7 +3,6 @@ import { Gear, MagnifyingGlass, Plus, SidebarSimple } from '@phosphor-icons/reac
 import { type ReactNode, useCallback, useRef } from 'react';
 
 import { SIDEBAR_MAX, SIDEBAR_MIN, useUiStore } from '@/lib/stores/uiStore';
-import { cn } from '@/lib/utils';
 
 /**
  * The single labelled sidebar (docs/plan/15 §7): New chat, Search, Pinned, Projects, Recents,
@@ -45,7 +44,7 @@ export function Sidebar() {
       {/* The sidebar's share of the title strip: traffic lights live here on macOS. */}
       <div
         data-tauri-drag-region
-        className={cn('flex h-[var(--title-strip)] shrink-0 items-center justify-end pr-2')}
+        className="flex h-(--title-strip) shrink-0 items-center justify-end pr-2"
       >
         <button
           type="button"
@@ -90,7 +89,7 @@ export function Sidebar() {
         aria-label="Resize sidebar"
         onPointerDown={onPointerDown}
         onDoubleClick={() => setWidth(240)}
-        className="absolute inset-y-0 -right-[3px] w-[6px] cursor-col-resize hover:bg-line-strong active:bg-line-strong transition-colors duration-(--dur-1)"
+        className="absolute inset-y-0 -right-0.75 w-1.5 cursor-col-resize transition-colors duration-(--dur-1) hover:bg-line-strong active:bg-line-strong"
       />
       <div className="pointer-events-none absolute inset-y-0 right-0 w-px bg-line" />
     </aside>

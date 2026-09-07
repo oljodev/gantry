@@ -87,7 +87,7 @@ Neutrals are zinc with no hue bias. Alpha neutrals (hover, borders) are used ins
 |-------|------|-------|----------|
 | `fg` | `#ededef` | `#18181b` | Primary text, titles, message text |
 | `fg-2` | `#a8a8ad` | `#52525b` | Secondary text: explanations, meta, sidebar section labels, timestamps |
-| `fg-3` | `#77777d` | `#71717a` | Tertiary: placeholders, disabled-looking hints, tool argument summaries |
+| `fg-3` | `#8b8b92` | `#6b6b73` | Tertiary: placeholders, disabled-looking hints, tool argument summaries |
 | `fg-disabled` | `#55555b` | `#a1a1aa` | Disabled controls (never for information) |
 | `fg-on-accent` | `#1a0a00` | `#1a0a00` | Text and icons on the accent |
 
@@ -97,11 +97,11 @@ Neutrals are zinc with no hue bias. Alpha neutrals (hover, borders) are used ins
 
 | Token | Dark | Light | Used for |
 |-------|------|-------|----------|
-| `accent` | `#ff7a1f` | `#f26a0f` | Primary button, active mode chip fill, running indicator, selection caret, switch on-state |
-| `accent-hover` | `#ff8a3d` | `#e0620c` | Primary button hover |
-| `accent-text` | `#ff9a55` | `#c14d05` | Orange text where text must be orange (a link inside a permission card, the "needs decision" count); never body text |
-| `accent-subtle` | `rgb(255 122 31 / 0.12)` | `rgb(242 106 15 / 0.10)` | Tinted backgrounds: pending decision rows, the active mode chip at rest |
-| `focus` | `#ff7a1f` | `#f26a0f` | The focus ring, 2 px, 2 px offset, on every focusable element without exception |
+| `accent` | `#ff7a1f` | `#ea640b` | Primary button, active mode chip fill, running indicator, selection caret, switch on-state |
+| `accent-hover` | `#ff8a3d` | `#d85c0a` | Primary button hover |
+| `accent-text` | `#ff9a55` | `#b94a05` | Orange text where text must be orange (a link inside a permission card, the "needs decision" count); never body text |
+| `accent-subtle` | `rgb(255 122 31 / 0.12)` | `rgb(234 100 11 / 0.10)` | Tinted backgrounds: pending decision rows, the active mode chip at rest |
+| `focus` | `#ff7a1f` | `#ea640b` | The focus ring, 2 px, 2 px offset, on every focusable element without exception |
 
 Where orange is **not** used: sidebar selection (that is `bg-selected`), text links (`fg` with an underline on hover), icons (`fg-2`), headings, charts, badges. The accent appears a handful of times on any screen; if a screenshot shows more than four orange elements, something is misusing it.
 
@@ -111,14 +111,14 @@ Separate from the accent. Used only for status and diffs, never for decoration.
 
 | Token | Dark | Light | Used for |
 |-------|------|-------|----------|
-| `good` | `#3fb950` | `#1a7f37` | Connected, passed, allowed, added lines |
-| `warn` | `#d29922` | `#9a6700` | Needs attention, reconnect, always-confirm tier |
+| `good` | `#3fb950` | `#15752f` | Connected, passed, allowed, added lines |
+| `warn` | `#d29922` | `#8a5c00` | Needs attention, reconnect, always-confirm tier |
 | `bad` | `#f85149` | `#cf222e` | Errors, denied, blocked by guard, destructive buttons, removed lines |
 | `info` | `#58a6ff` | `#0969da` | Notices ("earlier conversation summarized"), rarely |
-| `diff-add-bg` | `rgb(63 185 80 / 0.15)` | `rgb(26 127 55 / 0.10)` | Added line background |
+| `diff-add-bg` | `rgb(63 185 80 / 0.15)` | `rgb(21 117 47 / 0.10)` | Added line background |
 | `diff-del-bg` | `rgb(248 81 73 / 0.15)` | `rgb(207 34 46 / 0.10)` | Removed line background |
 
-Each semantic colour also has a `-subtle` alpha tint at 0.12 (dark) / 0.10 (light) for badge and row backgrounds, following the accent pattern.
+Each semantic colour also has a `-subtle` alpha tint at 0.12 (dark) / 0.08 (light; `bad` and `info` at 0.10) for badge and row backgrounds, following the accent pattern. The light values of `fg-3`, the accent set, `good` and `warn` were darkened in M0b so every pair passes the contrast script; the dark `fg-3` was lightened for the same reason.
 
 ### Risk tiers
 

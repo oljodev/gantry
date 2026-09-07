@@ -31,8 +31,38 @@ export default defineConfig([
     },
   },
   {
+    // Design tokens are the only place a colour or pixel size is written (docs/plan/15 §11).
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: ['src/styles/**', 'src/fixtures/**', 'src/bindings.ts'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: 'Literal[value=/(^|[^\\w])#[0-9a-fA-F]{3,8}\\b|\\b(rgba?|hsla?|oklch)\\(/]',
+          message:
+            'Raw colours are not allowed in components; add a token to src/styles/tokens.css (docs/plan/15 §3).',
+        },
+        {
+          selector:
+            'TemplateElement[value.raw=/(^|[^\\w])#[0-9a-fA-F]{3,8}\\b|\\b(rgba?|hsla?|oklch)\\(/]',
+          message:
+            'Raw colours are not allowed in components; add a token to src/styles/tokens.css (docs/plan/15 §3).',
+        },
+        {
+          selector: "JSXAttribute[name.name='className'] Literal[value=/\\[\\d+(\\.\\d+)?px\\]/]",
+          message:
+            'Arbitrary pixel sizes are not allowed in className; use a size token (docs/plan/15 §5).',
+        },
+      ],
+    },
+  },
+  {
     // Route files export `Route`; shadcn primitives export their variant helpers.
-    files: ['src/routes/**/*.tsx', 'src/components/ui/**/*.tsx'],
+    files: [
+      'src/routes/**/*.tsx',
+      'src/components/ui/**/*.tsx',
+      'src/features/gallery/entries/**/*.tsx',
+    ],
     rules: { 'react-refresh/only-export-components': 'off' },
   },
 ]);

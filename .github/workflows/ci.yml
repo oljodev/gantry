@@ -51,6 +51,9 @@ jobs:
       - name: Lint (frontend)
         run: pnpm lint
 
+      - name: Design tokens contrast
+        run: pnpm design:contrast
+
       - name: Typecheck
         run: pnpm typecheck
 
