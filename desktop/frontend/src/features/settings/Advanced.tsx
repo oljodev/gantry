@@ -1,8 +1,6 @@
-import { useState } from 'react';
-
 import type { AdvancedSettings } from '@/bindings';
 import { SettingsGroup, SettingsRow } from '@/components/gantry/settings/SettingsRow';
-import { Input } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/number-input';
 import { Switch } from '@/components/ui/switch';
 import { isTauri } from '@/lib/ipc/client';
 import { useSecretStoreStatus, useSettings, useUpdateSettings } from '@/lib/ipc/hooks/settings';
@@ -36,8 +34,12 @@ export function Advanced() {
           label="Maximum reply length"
           hint="Tokens per assistant message; models with a lower limit use theirs."
         >
-          <TokenInput
+          <NumberInput
+            aria-label="Maximum reply length in tokens"
             value={advanced.max_output_tokens}
+            min={256}
+            max={200_000}
+            step={256}
             onCommit={(v) => patch({ max_output_tokens: v })}
           />
         </SettingsRow>
@@ -45,8 +47,12 @@ export function Advanced() {
           label="Tool rounds per reply"
           hint="How many times one reply may call tools and continue before Gantry stops it."
         >
-          <TokenInput
+          <NumberInput
+            aria-label="Tool rounds per reply"
             value={advanced.max_tool_rounds}
+            min={1}
+            max={500}
+            step={1}
             onCommit={(v) => patch({ max_tool_rounds: v })}
           />
         </SettingsRow>
@@ -78,39 +84,5 @@ export function Advanced() {
         </SettingsRow>
       </SettingsGroup>
     </div>
-  );
-}
-
-function TokenInput({ value, onCommit }: { value: number; onCommit: (v: number) => void }) {
-  const [draft, setDraft] = useState(String(value));
-  const [seen, setSeen] = useState(value);
-  if (seen !== value) {
-    setSeen(value);
-    setDraft(String(value));
-  }
-  const commit = () => {
-    const n = Math.round(Number(draft));
-    if (!Number.isFinite(n) || n < 256 || n > 200_000) {
-      setDraft(String(value));
-      return;
-    }
-    if (n !== value) onCommit(n);
-  };
-  return (
-    <Input
-      type="number"
-      inputMode="numeric"
-      min={256}
-      max={200000}
-      step={256}
-      value={draft}
-      onChange={(e) => setDraft(e.target.value)}
-      onBlur={commit}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-      }}
-      aria-label="Maximum reply length in tokens"
-      className="w-28 text-right tnum"
-    />
   );
 }

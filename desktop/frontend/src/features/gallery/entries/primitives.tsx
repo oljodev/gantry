@@ -42,6 +42,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/number-input';
 import { Kbd, KbdGroup } from '@/components/ui/kbd';
 import {
   Popover,
@@ -115,6 +116,17 @@ function Inputs() {
         <Input defaultValue="sk-ant-••••••••abcd" className="w-56" readOnly />
         <Input placeholder="Disabled" className="w-40" disabled />
         <Input defaultValue="not-a-url" aria-invalid className="w-40" />
+      </State>
+      <State label="Number input">
+        <NumberInput aria-label="Rounds" value={50} min={1} max={500} onCommit={() => undefined} />
+        <NumberInput
+          aria-label="Tokens"
+          value={8192}
+          min={256}
+          step={256}
+          onCommit={() => undefined}
+        />
+        <NumberInput aria-label="Disabled" value={3} disabled onCommit={() => undefined} />
       </State>
       <State label="Large">
         <Input size="lg" placeholder="Base URL" className="w-72" />

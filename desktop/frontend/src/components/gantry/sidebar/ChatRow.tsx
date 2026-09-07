@@ -3,6 +3,7 @@ import { Link } from '@tanstack/react-router';
 import { type ComponentType, type ReactNode, useState } from 'react';
 
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
 import {
   ContextMenu,
   ContextMenuContent,
@@ -130,7 +131,7 @@ export function ChatRow({ chat, ...actions }: { chat: ChatSummary } & ChatRowAct
 function RenameField({ title, onDone }: { title: string; onDone: (title: string) => void }) {
   const [value, setValue] = useState(title);
   return (
-    <input
+    <Input
       autoFocus
       value={value}
       aria-label="Chat title"
@@ -141,7 +142,7 @@ function RenameField({ title, onDone }: { title: string; onDone: (title: string)
         if (e.key === 'Enter') onDone(value.trim());
         if (e.key === 'Escape') onDone(title);
       }}
-      className="h-(--row-sidebar) w-full rounded-2 bg-inset px-2 text-ui text-fg outline-none ring-1 ring-accent"
+      className="my-px h-[calc(var(--row-sidebar)-2px)] border-line-strong px-2 focus-visible:outline-offset-0"
     />
   );
 }
