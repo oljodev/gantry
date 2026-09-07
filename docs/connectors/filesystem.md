@@ -8,9 +8,10 @@ undone by closing a window. This one cannot. So the design is organised around a
 boundary, stated once and enforced in one place, and around never doing anything surprising to a
 file the user did not mean to change.
 
-Status: planning, nothing built. Sections marked **pending** are waiting on research still in
-flight and will be filled before this is final. `docs/plan/03-connector-system.md` §5 holds the
-one-paragraph summary this replaces.
+Status: planning, nothing built. It is specified to the depth the security boundary needs and no
+further; the remaining choices are marked **at build time** and are the kind that are better made
+with a compiler in front of you. `docs/plan/03-connector-system.md` §5 holds the one-paragraph
+summary this replaces.
 
 ---
 
@@ -245,8 +246,8 @@ Behaviour that has to be right:
 - **Line endings are detected and reported**, for the same reason.
 - **Binary is refused honestly** (D10) with its type and size, so the model stops trying.
 - **Documents are extracted to text** where that is possible in pure Rust. Which formats those
-  are is **pending** research; PDF is the one that matters most and the one with the most
-  difficult library situation.
+  are is decided **at build time**; PDF matters most and has the most awkward library situation
+  in pure Rust, so it may not make the first version.
 - **Large files truncate visibly** (D9): what was returned, what remains, how to continue.
 
 ### `glob` and `grep`
@@ -274,17 +275,20 @@ Writes must preserve what reading detected: encoding, byte-order mark, line endi
 the file ended with a newline. A tool that quietly rewrites a CRLF file as LF produces a diff
 touching every line of the file, which is both useless to review and a real way to lose work.
 
-The exact write sequence, and what a temp-file-and-rename destroys that has to be restored, is
-**pending** research.
+The exact write sequence, and what writing through a temporary file and renaming destroys that
+has to be restored, is settled **at build time**. It is the same problem every editor has solved,
+so there is prior art to copy rather than research.
 
 ### `delete_path`
 
 `destructive` tier, `always_confirm`, so it prompts in every mode including unguarded Auto.
 
 Per D7 it moves to the system trash where the platform provides one, and the result says which
-happened, because "deleted" and "moved to the trash" are different promises. Whether a usable
-trash exists on every target, particularly Linux without a desktop session and on network
-volumes, is **pending**.
+happened, because "deleted" and "moved to the trash" are different promises.
+
+Whether a usable trash exists on every target, particularly Linux without a desktop session and
+on network volumes, is checked **at build time**; where it does not, the result says so plainly
+rather than quietly falling back.
 
 Recursive deletion of a directory requires the flag to be set explicitly and is summarised in the
 prompt by what it will remove, not just by the path.
@@ -423,9 +427,10 @@ comparison, though its refusal to simplify a dangerous path is itself a useful s
 dependency it brings has one component under a single permissive licence rather than the usual
 dual, which the notice file has to reflect.
 
-> **Pending.** The rest of the crate selection is still being researched: directory walking with
-> ignore rules, glob matching, content search, binary and encoding detection, atomic writes,
-> diffing, trash, and document text extraction.
+The rest of the crate selection is left to **build time**: directory walking with ignore rules,
+glob matching, content search, binary and encoding detection, atomic writes, diffing, trash and
+document text extraction. These are ordinary, reversible choices with obvious candidates, and
+picking them on paper ahead of a compiler buys nothing.
 
 Two constraints are fixed. Every dependency must be permissively licensed, because Gantry ships
 under a commercial licence; an audit during the web connector's planning caught a crate that
