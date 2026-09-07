@@ -14,6 +14,7 @@ use gantry_store::{
         blobs,
         chats::{self, ChatRecord},
         messages::{self, AttachmentRecord, MessageRecord},
+        tool_calls,
         turns::{self, TurnRecord},
     },
 };
@@ -47,14 +48,14 @@ pub struct ChatPatch {
     pub instructions: Option<String>,
 }
 
-/// How a finished turn is recorded.
+/// How a finished turn is recorded; its messages were appended as they completed.
 #[derive(Debug, Clone)]
 pub struct TurnOutcome {
     pub status: TurnStatus,
-    pub assistant: Option<Message>,
     pub usage: Option<Usage>,
     pub stop_reason: Option<StopReason>,
     pub error: Option<String>,
+    pub tool_call_count: u32,
 }
 
 /// An attachment already written to the blob store, to be recorded with a user message.
@@ -169,7 +170,8 @@ impl ChatBook {
                 };
                 let turns = turns::list_for_chat(conn, id)?;
                 let messages = messages::list_for_chat(conn, id)?;
-                Ok(Some(detail(&chat, &turns, &messages)))
+                let calls = tool_calls::list_for_chat(conn, id)?;
+                Ok(Some(detail(&chat, &turns, &messages, &calls)))
             })
             .map_err(store_err)
     }
@@ -272,6 +274,34 @@ impl ChatBook {
             })
     }
 
+    /// Appends an assistant or tool message of a running turn (one per model round and one
+    /// per batch of results), in order, so a crash loses at most the round in flight.
+    pub fn append_turn_message(
+        &self,
+        chat_id: ChatId,
+        turn_id: TurnId,
+        message: Message,
+        stop_reason: Option<StopReason>,
+        usage: Option<Usage>,
+    ) {
+        let result = self.store.write_blocking(move |conn| {
+            messages::insert(
+                conn,
+                &MessageRecord {
+                    message,
+                    chat_id,
+                    turn_id: Some(turn_id),
+                    seq: messages::next_seq(conn, chat_id)?,
+                    stop_reason,
+                    usage,
+                },
+            )
+        });
+        if let Err(err) = result {
+            log::error!("could not record a message of turn {turn_id}: {err}");
+        }
+    }
+
     pub fn finish_turn(&self, chat_id: ChatId, turn_id: TurnId, outcome: TurnOutcome) {
         let result = self.store.write_blocking(move |conn| {
             let Some(mut turn) = turns::get(conn, turn_id)? else {
@@ -283,20 +313,8 @@ impl ChatBook {
             turn.stop_reason = outcome.stop_reason.clone();
             turn.error = outcome.error;
             turn.ended_at = Some(now);
+            turn.tool_call_count = outcome.tool_call_count;
             turns::update(conn, &turn)?;
-            if let Some(assistant) = outcome.assistant {
-                messages::insert(
-                    conn,
-                    &MessageRecord {
-                        message: assistant,
-                        chat_id,
-                        turn_id: Some(turn_id),
-                        seq: messages::next_seq(conn, chat_id)?,
-                        stop_reason: outcome.stop_reason,
-                        usage: outcome.usage,
-                    },
-                )?;
-            }
             chats::set_last_message_at(conn, chat_id, now)?;
             Ok(())
         });
@@ -565,7 +583,12 @@ fn summary(chat: &ChatRecord, active: Option<TurnId>) -> ChatSummary {
     }
 }
 
-fn detail(chat: &ChatRecord, turns: &[TurnRecord], messages: &[MessageRecord]) -> ChatDetail {
+fn detail(
+    chat: &ChatRecord,
+    turns: &[TurnRecord],
+    messages: &[MessageRecord],
+    calls: &[gantry_core::ToolCallDto],
+) -> ChatDetail {
     let turn_dtos = turns
         .iter()
         .map(|t| {
@@ -574,16 +597,46 @@ fn detail(chat: &ChatRecord, turns: &[TurnRecord], messages: &[MessageRecord]) -
                 .find(|m| m.turn_id == Some(t.id) && m.message.role == Role::User)
                 .map(|m| m.message.clone())
                 .unwrap_or_else(|| Message::user_text(""));
-            let assistant = messages
+            let replies: Vec<Message> = messages
                 .iter()
-                .find(|m| m.turn_id == Some(t.id) && m.message.role == Role::Assistant)
-                .map(|m| m.message.clone());
+                .filter(|m| m.turn_id == Some(t.id) && m.message.role != Role::User)
+                .map(|m| m.message.clone())
+                .collect();
+            // Results live in the transcript's tool messages; the row keeps only a preview.
+            let results: std::collections::HashMap<
+                &gantry_core::CallId,
+                (&Vec<gantry_core::ResultPart>, bool),
+            > = replies
+                .iter()
+                .filter(|m| m.role == Role::Tool)
+                .flat_map(|m| m.parts.iter())
+                .filter_map(|p| match p {
+                    ContentPart::ToolResult {
+                        call_id,
+                        content,
+                        is_error,
+                    } => Some((call_id, (content, *is_error))),
+                    _ => None,
+                })
+                .collect();
+            let tool_calls = calls
+                .iter()
+                .filter(|c| c.turn_id == t.id)
+                .map(|c| {
+                    let mut c = c.clone();
+                    if let Some((content, _)) = results.get(&c.id) {
+                        c.result = Some((*content).clone());
+                    }
+                    c
+                })
+                .collect();
             TurnDto {
                 id: t.id,
                 status: t.status,
                 model: t.model.clone(),
                 user,
-                assistant,
+                messages: replies,
+                tool_calls,
                 usage: t.usage,
                 stop_reason: t.stop_reason.clone(),
                 error: t.error.clone(),
@@ -726,15 +779,22 @@ mod tests {
 
         let mut assistant = Message::user_text("Hi!");
         assistant.role = Role::Assistant;
+        book.append_turn_message(
+            id,
+            input.turn_id,
+            assistant,
+            Some(StopReason::EndTurn),
+            None,
+        );
         book.finish_turn(
             id,
             input.turn_id,
             TurnOutcome {
                 status: TurnStatus::Completed,
-                assistant: Some(assistant),
                 usage: None,
                 stop_reason: Some(StopReason::EndTurn),
                 error: None,
+                tool_call_count: 0,
             },
         );
         book.append_system_note(id, "Permission mode is now Plan.".into())
@@ -748,7 +808,7 @@ mod tests {
         let detail = book.get(id).unwrap().unwrap();
         assert_eq!(detail.turns.len(), 2);
         assert_eq!(detail.turns[0].status, TurnStatus::Completed);
-        assert_eq!(detail.turns[0].assistant.as_ref().unwrap().text(), "Hi!");
+        assert_eq!(detail.turns[0].assistant_text(), "Hi!");
         let (snapshot, notes) = book.system_prompt(id).unwrap().unwrap();
         assert_eq!(snapshot, "sys");
         assert_eq!(notes, vec!["Permission mode is now Plan.".to_owned()]);
@@ -766,10 +826,10 @@ mod tests {
             first.turn_id,
             TurnOutcome {
                 status: TurnStatus::Failed,
-                assistant: None,
                 usage: None,
                 stop_reason: None,
                 error: Some("x".into()),
+                tool_call_count: 0,
             },
         );
         book.rate_turn(id, first.turn_id, Some(Feedback::Bad))
@@ -841,10 +901,10 @@ mod tests {
             input.turn_id,
             TurnOutcome {
                 status: TurnStatus::Completed,
-                assistant: None,
                 usage: None,
                 stop_reason: Some(StopReason::EndTurn),
                 error: None,
+                tool_call_count: 0,
             },
         );
         let (_, attachments) = book.take_last_turn(id, input.turn_id).unwrap();

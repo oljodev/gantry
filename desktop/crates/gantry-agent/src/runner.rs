@@ -1,19 +1,45 @@
-//! One turn: build the request, stream, convert provider events to agent events, keep the
-//! assistant message, record the outcome (docs/plan/01 §3 steps 2, 3 and 7).
+//! One turn (docs/plan/01 §3 steps 2 to 7): build the request, stream, convert provider events
+//! to agent events, then, when the model stopped with tool calls, decide, execute, append the
+//! results and go round again until it stops without calls, the round cap hits, the user
+//! cancels, or an error occurs.
 
 use std::{collections::BTreeMap, sync::Arc, time::Instant};
 
 use futures_util::StreamExt;
+use gantry_connectors::{ChatScope, NoopToolEvents, ToolCallRequest, ToolOutcome};
 use gantry_core::{
-    AgentEventKind, ContentPart, Message, MessageId, ProviderErrorKind, ProviderKind, Role,
-    StopReason, TurnStatus, Usage, now_ms,
+    AgentEventKind, CallId, ContentPart, DecisionSource, Interaction, InteractionPayload,
+    InteractionResolution, Message, MessageId, PermissionDecision, PermissionRequest,
+    ProviderErrorKind, ProviderKind, ResultPart, RiskTier, Role, StopReason, ToolCallDto,
+    ToolCallStatus, TurnStatus, Usage, now_ms, result_preview,
 };
 use gantry_providers::{ChatRequest, Provider, ProviderError, StreamEvent};
+use serde_json::json;
 
 use crate::{
     chats::{ChatBook, TurnInput, TurnOutcome},
-    turn_manager::ActiveTurn,
+    interactions::Interactions,
+    permissions::{self, Decision},
+    tools::{ToolEntry, ToolSet, display_for},
+    turn_manager::{ActiveTurn, ChatNotifier, LiveMessage},
 };
+
+/// Result previews in rows and the projection stop here.
+pub const PREVIEW_CHARS: usize = 2_000;
+/// What the model receives of one result, at most (05 §8).
+pub const RESULT_MAX_BYTES: usize = 50 * 1024;
+
+pub struct RunContext {
+    pub input: TurnInput,
+    pub provider: Option<Arc<dyn Provider>>,
+    pub max_output_tokens: u32,
+    pub max_tool_rounds: u32,
+    pub active: Arc<ActiveTurn>,
+    pub chats: Arc<ChatBook>,
+    pub tools: ToolSet,
+    pub interactions: Arc<Interactions>,
+    pub notifier: Option<Arc<dyn ChatNotifier>>,
+}
 
 enum End {
     Completed(StopReason),
@@ -21,187 +47,306 @@ enum End {
     Failed(ProviderError),
 }
 
-pub async fn run_turn(
-    input: TurnInput,
-    provider: Option<Arc<dyn Provider>>,
-    max_output_tokens: u32,
-    active: Arc<ActiveTurn>,
-    chats: Arc<ChatBook>,
-) {
+struct Round {
+    message_id: MessageId,
+    parts: BTreeMap<u32, ContentPart>,
+    usage: Option<Usage>,
+    end: End,
+}
+
+struct Call {
+    id: CallId,
+    name: String,
+    args: serde_json::Value,
+}
+
+pub async fn run_turn(ctx: RunContext) {
     let started = Instant::now();
-    let batcher = active.batcher.clone();
+    let batcher = ctx.active.batcher.clone();
     batcher.push(AgentEventKind::TurnStarted {
-        chat_id: input.chat_id,
-        mode: input.mode,
-        guard: input.guard,
-        model: input.model.clone(),
+        chat_id: ctx.input.chat_id,
+        mode: ctx.input.mode,
+        guard: ctx.input.guard,
+        model: ctx.input.model.clone(),
     });
 
-    let message_id = MessageId::new();
-    {
-        let mut s = active.state.lock().unwrap_or_else(|e| e.into_inner());
-        s.message_id = Some(message_id);
-    }
-    batcher.push(AgentEventKind::MessageStarted {
-        message_id,
-        role: Role::Assistant,
-    });
+    let mut transcript = ctx.input.messages.clone();
+    let mut usage_total: Option<Usage> = None;
+    let mut rounds: u32 = 0;
+    let mut call_count: u32 = 0;
+    let (status, stop_reason, error) = loop {
+        let round = stream_round(&ctx, &transcript).await;
+        usage_total = match (usage_total, round.usage) {
+            (Some(a), Some(b)) => Some(a.plus(b)),
+            (a, b) => a.or(b),
+        };
+        for (block, part) in &round.parts {
+            batcher.push(AgentEventKind::BlockDone {
+                message_id: round.message_id,
+                block: *block,
+                part: part.clone(),
+            });
+        }
+        let assistant = Message {
+            id: round.message_id,
+            role: Role::Assistant,
+            parts: round.parts.values().cloned().collect(),
+            origin: ctx.provider.as_ref().map(|p| p.kind()),
+            created_at: now_ms(),
+        };
+        let calls: Vec<Call> = assistant
+            .parts
+            .iter()
+            .filter_map(|p| match p {
+                ContentPart::ToolCall { id, name, args } => Some(Call {
+                    id: id.clone(),
+                    name: name.clone(),
+                    args: args.clone(),
+                }),
+                _ => None,
+            })
+            .collect();
 
-    let mut parts: BTreeMap<u32, ContentPart> = BTreeMap::new();
-    let mut usage: Option<Usage> = None;
-    let provider_kind = provider.as_ref().map(|p| p.kind());
-
-    let end = match provider {
-        None => End::Failed(ProviderError::new(
-            ProviderErrorKind::NotFound,
-            format!("provider {} is not configured", input.model.provider),
-        )),
-        Some(provider) => {
-            let mut req = ChatRequest::new(
-                input.model.model.clone(),
-                input.system.clone(),
-                input.messages.clone(),
-            );
-            req.max_output_tokens = max_output_tokens;
-            req.reasoning = input.effort;
-            req.metadata.chat_id = Some(input.chat_id);
-            req.metadata.turn_id = Some(input.turn_id);
-            let cancel = active.cancel.clone();
-            let opened = tokio::select! {
-                _ = cancel.cancelled() => Err(None),
-                r = provider.stream(req) => r.map_err(Some),
-            };
-            match opened {
-                Err(None) => End::Cancelled,
-                Err(Some(err)) => End::Failed(err),
-                Ok(mut stream) => {
-                    let mut end = None;
-                    while end.is_none() {
-                        let next = tokio::select! {
-                            _ = cancel.cancelled() => { end = Some(End::Cancelled); break; }
-                            n = stream.next() => n,
-                        };
-                        match next {
-                            None => {
-                                end = Some(End::Failed(ProviderError::interrupted(
-                                    "the stream ended without a stop reason",
-                                )))
-                            }
-                            Some(Err(err)) => end = Some(End::Failed(err)),
-                            Some(Ok(ev)) => {
-                                apply(
-                                    ev,
-                                    &mut parts,
-                                    &mut usage,
-                                    &active,
-                                    message_id,
-                                    provider.kind(),
-                                    &batcher,
-                                    &mut end,
-                                );
-                            }
-                        }
-                    }
-                    end.unwrap_or(End::Cancelled)
+        match round.end {
+            End::Failed(err) => {
+                if !assistant.parts.is_empty() {
+                    ctx.chats.append_turn_message(
+                        ctx.input.chat_id,
+                        ctx.input.turn_id,
+                        assistant.clone(),
+                        None,
+                        round.usage,
+                    );
+                    close_unrun_calls(&ctx, &calls, ToolCallStatus::Failed, &err.message);
+                }
+                batcher.push(AgentEventKind::Error {
+                    code: format!("{:?}", err.kind).to_ascii_lowercase(),
+                    message: err.message.clone(),
+                    retryable: err.kind.is_retryable(),
+                });
+                break (TurnStatus::Failed, None, Some(err.message));
+            }
+            End::Cancelled => {
+                if !assistant.parts.is_empty() {
+                    ctx.chats.append_turn_message(
+                        ctx.input.chat_id,
+                        ctx.input.turn_id,
+                        assistant.clone(),
+                        Some(StopReason::Cancelled),
+                        round.usage,
+                    );
+                    close_unrun_calls(&ctx, &calls, ToolCallStatus::Cancelled, CANCELLED_RESULT);
+                }
+                batcher.push(AgentEventKind::MessageCompleted {
+                    message_id: round.message_id,
+                    stop_reason: StopReason::Cancelled,
+                    usage: round.usage,
+                });
+                break (TurnStatus::Cancelled, Some(StopReason::Cancelled), None);
+            }
+            End::Completed(reason) => {
+                batcher.push(AgentEventKind::MessageCompleted {
+                    message_id: round.message_id,
+                    stop_reason: reason.clone(),
+                    usage: round.usage,
+                });
+                if !assistant.parts.is_empty() {
+                    ctx.chats.append_turn_message(
+                        ctx.input.chat_id,
+                        ctx.input.turn_id,
+                        assistant.clone(),
+                        Some(reason.clone()),
+                        round.usage,
+                    );
+                }
+                if calls.is_empty() {
+                    break (TurnStatus::Completed, Some(reason), None);
+                }
+                rounds += 1;
+                call_count += u32::try_from(calls.len()).unwrap_or(u32::MAX);
+                transcript.push(assistant.clone());
+                let capped = rounds > ctx.max_tool_rounds;
+                let (results, cancelled) = if capped {
+                    let detail = format!(
+                        "Gantry stopped this reply after {} tool rounds (Settings → Advanced).",
+                        ctx.max_tool_rounds
+                    );
+                    close_unrun_calls(&ctx, &calls, ToolCallStatus::Cancelled, &detail);
+                    (synthetic_results(&calls, &detail), false)
+                } else {
+                    run_calls(&ctx, &assistant, &calls).await
+                };
+                let tool_message = Message {
+                    id: MessageId::new(),
+                    role: Role::Tool,
+                    parts: results,
+                    origin: None,
+                    created_at: now_ms(),
+                };
+                ctx.chats.append_turn_message(
+                    ctx.input.chat_id,
+                    ctx.input.turn_id,
+                    tool_message.clone(),
+                    None,
+                    None,
+                );
+                {
+                    let mut s = ctx.active.state.lock().unwrap_or_else(|e| e.into_inner());
+                    s.messages.push(LiveMessage::finished(&tool_message));
+                }
+                transcript.push(tool_message);
+                if cancelled {
+                    break (TurnStatus::Cancelled, Some(StopReason::Cancelled), None);
+                }
+                if capped {
+                    batcher.push(AgentEventKind::ProviderNotice {
+                        kind: "tool_round_cap".into(),
+                        detail: format!(
+                            "Stopped after {} tool rounds; raise the cap in Settings → Advanced if this reply needed more.",
+                            ctx.max_tool_rounds
+                        ),
+                    });
+                    break (
+                        TurnStatus::Completed,
+                        Some(StopReason::Other {
+                            reason: "max_tool_rounds".into(),
+                        }),
+                        None,
+                    );
                 }
             }
         }
     };
 
-    let assistant = if parts.is_empty() {
-        None
-    } else {
-        Some(Message {
-            id: message_id,
-            role: Role::Assistant,
-            parts: parts.values().cloned().collect(),
-            origin: provider_kind,
-            created_at: now_ms(),
-        })
-    };
-    let (status, stop_reason, error) = match &end {
-        End::Completed(reason) => (TurnStatus::Completed, Some(reason.clone()), None),
-        End::Cancelled => (TurnStatus::Cancelled, Some(StopReason::Cancelled), None),
-        End::Failed(err) => (TurnStatus::Failed, None, Some(err.message.clone())),
-    };
-
-    // Final parts are authoritative for every consumer.
-    for (block, part) in &parts {
-        batcher.push(AgentEventKind::BlockDone {
-            message_id,
-            block: *block,
-            part: part.clone(),
-        });
-    }
-    match &end {
-        End::Failed(err) => {
-            batcher.push(AgentEventKind::Error {
-                code: format!("{:?}", err.kind).to_ascii_lowercase(),
-                message: err.message.clone(),
-                retryable: err.kind.is_retryable(),
-            });
-        }
-        End::Completed(reason) => {
-            batcher.push(AgentEventKind::MessageCompleted {
-                message_id,
-                stop_reason: reason.clone(),
-                usage,
-            });
-        }
-        End::Cancelled => {
-            batcher.push(AgentEventKind::MessageCompleted {
-                message_id,
-                stop_reason: StopReason::Cancelled,
-                usage,
-            });
-        }
-    }
     {
-        let mut s = active.state.lock().unwrap_or_else(|e| e.into_inner());
+        let mut s = ctx.active.state.lock().unwrap_or_else(|e| e.into_inner());
         s.status = status;
-        s.usage = usage;
+        s.usage = usage_total;
     }
-    chats.finish_turn(
-        input.chat_id,
-        input.turn_id,
+    ctx.chats.finish_turn(
+        ctx.input.chat_id,
+        ctx.input.turn_id,
         TurnOutcome {
             status,
-            assistant,
-            usage,
+            usage: usage_total,
             stop_reason,
             error,
+            tool_call_count: call_count,
         },
     );
     batcher.push(AgentEventKind::TurnCompleted {
         status,
-        usage,
+        usage: usage_total,
         duration_ms: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+        tool_calls: call_count,
     });
     batcher.close();
 }
 
-#[allow(clippy::too_many_arguments)]
+/// One model request: streams until the message ends, cancel trips, or the provider fails.
+async fn stream_round(ctx: &RunContext, transcript: &[Message]) -> Round {
+    let batcher = ctx.active.batcher.clone();
+    let message_id = MessageId::new();
+    {
+        let mut s = ctx.active.state.lock().unwrap_or_else(|e| e.into_inner());
+        s.messages.push(LiveMessage {
+            id: message_id,
+            role: Role::Assistant,
+            parts: BTreeMap::new(),
+        });
+    }
+    batcher.push(AgentEventKind::MessageStarted {
+        message_id,
+        role: Role::Assistant,
+    });
+    let mut round = Round {
+        message_id,
+        parts: BTreeMap::new(),
+        usage: None,
+        end: End::Cancelled,
+    };
+    let Some(provider) = ctx.provider.clone() else {
+        round.end = End::Failed(ProviderError::new(
+            ProviderErrorKind::NotFound,
+            format!("provider {} is not configured", ctx.input.model.provider),
+        ));
+        return round;
+    };
+    let mut req = ChatRequest::new(
+        ctx.input.model.model.clone(),
+        ctx.input.system.clone(),
+        transcript.to_vec(),
+    );
+    req.max_output_tokens = ctx.max_output_tokens;
+    req.reasoning = ctx.input.effort;
+    req.tools = ctx.tools.specs();
+    req.metadata.chat_id = Some(ctx.input.chat_id);
+    req.metadata.turn_id = Some(ctx.input.turn_id);
+    let cancel = ctx.active.cancel.clone();
+    let opened = tokio::select! {
+        _ = cancel.cancelled() => Err(None),
+        r = provider.stream(req) => r.map_err(Some),
+    };
+    let mut stream = match opened {
+        Err(None) => return round,
+        Err(Some(err)) => {
+            round.end = End::Failed(err);
+            return round;
+        }
+        Ok(s) => s,
+    };
+    let mut raw_args: BTreeMap<u32, String> = BTreeMap::new();
+    let mut end: Option<End> = None;
+    while end.is_none() {
+        let next = tokio::select! {
+            _ = cancel.cancelled() => { end = Some(End::Cancelled); break; }
+            n = stream.next() => n,
+        };
+        match next {
+            None => {
+                end = Some(End::Failed(ProviderError::interrupted(
+                    "the stream ended without a stop reason",
+                )));
+            }
+            Some(Err(err)) => end = Some(End::Failed(err)),
+            Some(Ok(ev)) => apply(
+                ctx,
+                ev,
+                &mut round,
+                &mut raw_args,
+                provider.kind(),
+                &mut end,
+            ),
+        }
+    }
+    round.end = end.unwrap_or(End::Cancelled);
+    round
+}
+
 fn apply(
+    ctx: &RunContext,
     ev: StreamEvent,
-    parts: &mut BTreeMap<u32, ContentPart>,
-    usage: &mut Option<Usage>,
-    active: &ActiveTurn,
-    message_id: MessageId,
+    round: &mut Round,
+    raw_args: &mut BTreeMap<u32, String>,
     provider: ProviderKind,
-    batcher: &crate::events::Batcher,
     end: &mut Option<End>,
 ) {
+    let batcher = &ctx.active.batcher;
+    let message_id = round.message_id;
     match ev {
         StreamEvent::MessageStart { .. } => {}
         StreamEvent::TextDelta { index, text } => {
             if let ContentPart::Text { text: t } =
-                parts.entry(index).or_insert_with(|| ContentPart::Text {
-                    text: String::new(),
-                })
+                round
+                    .parts
+                    .entry(index)
+                    .or_insert_with(|| ContentPart::Text {
+                        text: String::new(),
+                    })
             {
                 t.push_str(&text);
             }
-            sync_state(active, parts);
+            sync_parts(ctx, round);
             batcher.push(AgentEventKind::TextDelta {
                 message_id,
                 block: index,
@@ -210,15 +355,18 @@ fn apply(
         }
         StreamEvent::ThinkingDelta { index, text } => {
             if let ContentPart::Thinking { text: t, .. } =
-                parts.entry(index).or_insert_with(|| ContentPart::Thinking {
-                    text: String::new(),
-                    signature: None,
-                    provider,
-                })
+                round
+                    .parts
+                    .entry(index)
+                    .or_insert_with(|| ContentPart::Thinking {
+                        text: String::new(),
+                        signature: None,
+                        provider,
+                    })
             {
                 t.push_str(&text);
             }
-            sync_state(active, parts);
+            sync_parts(ctx, round);
             batcher.push(AgentEventKind::ThinkingDelta {
                 message_id,
                 block: index,
@@ -226,29 +374,543 @@ fn apply(
             });
         }
         StreamEvent::ThinkingSignature { index, signature } => {
-            if let Some(ContentPart::Thinking { signature: s, .. }) = parts.get_mut(&index) {
+            if let Some(ContentPart::Thinking { signature: s, .. }) = round.parts.get_mut(&index) {
                 *s = Some(signature);
             }
         }
-        StreamEvent::ToolCallStart { .. }
-        | StreamEvent::ToolCallArgsDelta { .. }
-        | StreamEvent::ToolCallEnd { .. } => {
-            // Tools arrive with M3; until then a model that calls one gets a notice.
-            batcher.push(AgentEventKind::ProviderNotice {
-                kind: "tool_call_ignored".into(),
-                detail: "the model tried to call a tool; tools arrive in a later milestone".into(),
+        StreamEvent::ToolCallStart { index, id, name } => {
+            let id = if id.as_str().is_empty() {
+                CallId::new()
+            } else {
+                id
+            };
+            round.parts.insert(
+                index,
+                ContentPart::ToolCall {
+                    id: id.clone(),
+                    name: name.clone(),
+                    args: serde_json::Value::Null,
+                },
+            );
+            let entry = ctx.tools.resolve(&name);
+            let (connector, tool) = match entry {
+                Some(e) => (e.connector_id().to_owned(), e.def.name.clone()),
+                None => ToolSet::split_name(&name),
+            };
+            let connector_name = entry
+                .map(|e| e.connector_name().to_owned())
+                .unwrap_or_else(|| connector.clone());
+            let dto = ToolCallDto {
+                id: id.clone(),
+                chat_id: ctx.input.chat_id,
+                turn_id: ctx.input.turn_id,
+                message_id,
+                connector: connector.clone(),
+                connector_name: connector_name.clone(),
+                tool: tool.clone(),
+                model_tool_name: name.clone(),
+                args: serde_json::Value::Null,
+                tier: entry.map(|e| e.def.tier).unwrap_or(RiskTier::Read),
+                status: ToolCallStatus::Proposed,
+                decision_source: None,
+                display: display_for(entry.map(|e| &e.def), &serde_json::Value::Null),
+                result_preview: None,
+                result: None,
+                is_error: false,
+                started_at: None,
+                ended_at: None,
+                duration_ms: None,
+            };
+            {
+                let mut s = ctx.active.state.lock().unwrap_or_else(|e| e.into_inner());
+                s.tool_calls.push(dto);
+            }
+            sync_parts(ctx, round);
+            batcher.push(AgentEventKind::ToolCallStarted {
+                call_id: id,
+                message_id,
+                connector,
+                connector_name,
+                tool,
+                model_tool_name: name,
             });
         }
-        StreamEvent::ProviderBlock { index, part } => {
-            parts.insert(index, part);
-            sync_state(active, parts);
+        StreamEvent::ToolCallArgsDelta {
+            index,
+            json_fragment,
+        } => {
+            raw_args.entry(index).or_default().push_str(&json_fragment);
+            if let Some(ContentPart::ToolCall { id, .. }) = round.parts.get(&index) {
+                batcher.push(AgentEventKind::ToolCallArgsDelta {
+                    call_id: id.clone(),
+                    fragment: json_fragment,
+                });
+            }
         }
-        StreamEvent::Usage(u) => *usage = Some(u),
+        StreamEvent::ToolCallEnd { index, args } => {
+            let args = if args.is_object() { args } else { json!({}) };
+            if let Some(ContentPart::ToolCall {
+                id,
+                name,
+                args: slot,
+            }) = round.parts.get_mut(&index)
+            {
+                *slot = args.clone();
+                let entry = ctx.tools.resolve(name);
+                let tier = entry.map(|e| e.def.tier).unwrap_or(RiskTier::Read);
+                let display = display_for(entry.map(|e| &e.def), &args);
+                update_call(ctx, id, |c| {
+                    c.args = args.clone();
+                    c.tier = tier;
+                    c.display = display.clone();
+                });
+                batcher.push(AgentEventKind::ToolCallReady {
+                    call_id: id.clone(),
+                    args,
+                    tier,
+                    display,
+                });
+            }
+            sync_parts(ctx, round);
+        }
+        StreamEvent::ProviderBlock { index, part } => {
+            round.parts.insert(index, part);
+            sync_parts(ctx, round);
+        }
+        StreamEvent::Usage(u) => round.usage = Some(u),
         StreamEvent::MessageEnd { stop_reason } => *end = Some(End::Completed(stop_reason)),
     }
 }
 
-fn sync_state(active: &ActiveTurn, parts: &BTreeMap<u32, ContentPart>) {
-    let mut s = active.state.lock().unwrap_or_else(|e| e.into_inner());
-    s.parts = parts.clone();
+fn sync_parts(ctx: &RunContext, round: &Round) {
+    let mut s = ctx.active.state.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(m) = s.messages.iter_mut().find(|m| m.id == round.message_id) {
+        m.parts = round.parts.clone();
+    }
+}
+
+fn update_call(ctx: &RunContext, id: &CallId, f: impl FnOnce(&mut ToolCallDto)) {
+    let mut s = ctx.active.state.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(c) = s.tool_calls.iter_mut().find(|c| &c.id == id) {
+        f(c);
+    }
+}
+
+pub const CANCELLED_RESULT: &str = "Cancelled by the user before this tool call ran.";
+
+/// Error results for calls that will not run, so the transcript stays replayable (02 §3).
+fn synthetic_results(calls: &[Call], text: &str) -> Vec<ContentPart> {
+    calls
+        .iter()
+        .map(|c| ContentPart::ToolResult {
+            call_id: c.id.clone(),
+            content: vec![ResultPart::Text {
+                text: text.to_owned(),
+            }],
+            is_error: true,
+        })
+        .collect()
+}
+
+/// Marks calls that never ran as over, in the live state and on the channel.
+fn close_unrun_calls(ctx: &RunContext, calls: &[Call], status: ToolCallStatus, detail: &str) {
+    for c in calls {
+        complete_call(
+            ctx,
+            &c.id,
+            status,
+            true,
+            0,
+            vec![ResultPart::Text {
+                text: detail.to_owned(),
+            }],
+        );
+    }
+}
+
+fn complete_call(
+    ctx: &RunContext,
+    id: &CallId,
+    status: ToolCallStatus,
+    is_error: bool,
+    duration_ms: u64,
+    result: Vec<ResultPart>,
+) -> ContentPart {
+    let preview = result_preview(&result, PREVIEW_CHARS);
+    update_call(ctx, id, |c| {
+        c.status = status;
+        c.is_error = is_error;
+        c.result_preview = Some(preview.clone());
+        c.result = Some(result.clone());
+        c.ended_at = Some(now_ms());
+        c.duration_ms = Some(duration_ms);
+    });
+    ctx.active.batcher.push(AgentEventKind::ToolCallCompleted {
+        call_id: id.clone(),
+        status,
+        is_error,
+        duration_ms,
+        result_preview: preview,
+        result: result.clone(),
+    });
+    ContentPart::ToolResult {
+        call_id: id.clone(),
+        content: result,
+        is_error,
+    }
+}
+
+fn denied_result(message: Option<String>) -> Vec<ResultPart> {
+    vec![ResultPart::Json {
+        json: json!({
+            "error": "denied_by_user",
+            "message": message.unwrap_or_else(|| "The user did not allow this call.".to_owned()),
+            "hint": "Ask the user or choose a safer approach."
+        }),
+    }]
+}
+
+/// Steps 4 and 5 of 01 §3 for one batch of calls: decide each (asking the user where the mode
+/// says so, all prompts at once so they stack), execute the allowed ones, and return one
+/// result per call in the model's order plus whether the user cancelled meanwhile.
+async fn run_calls(
+    ctx: &RunContext,
+    assistant: &Message,
+    calls: &[Call],
+) -> (Vec<ContentPart>, bool) {
+    let batcher = ctx.active.batcher.clone();
+    let mut results: Vec<Option<ContentPart>> = (0..calls.len()).map(|_| None).collect();
+    let mut allowed: Vec<(usize, ToolEntry, DecisionSource)> = Vec::new();
+    let mut waiting: Vec<(
+        usize,
+        ToolEntry,
+        Interaction,
+        tokio::sync::oneshot::Receiver<InteractionResolution>,
+    )> = Vec::new();
+    let why = last_sentence(&assistant.text());
+
+    for (i, call) in calls.iter().enumerate() {
+        let Some(entry) = ctx.tools.resolve(&call.name).cloned() else {
+            results[i] = Some(complete_call(
+                ctx,
+                &call.id,
+                ToolCallStatus::Failed,
+                true,
+                0,
+                vec![ResultPart::Text {
+                    text: format!(
+                        "Unknown tool `{}`. Use one of the tools you were given.",
+                        call.name
+                    ),
+                }],
+            ));
+            continue;
+        };
+        match permissions::decide(ctx.input.mode, ctx.input.guard, &entry.def) {
+            Decision::Allow(source) => allowed.push((i, entry, source)),
+            Decision::Deny { source, reason } => {
+                update_call(ctx, &call.id, |c| c.decision_source = Some(source));
+                results[i] = Some(complete_call(
+                    ctx,
+                    &call.id,
+                    ToolCallStatus::Denied,
+                    true,
+                    0,
+                    vec![ResultPart::Json {
+                        json: json!({ "error": "denied_by_policy", "message": reason }),
+                    }],
+                ));
+            }
+            Decision::Ask => {
+                let interaction = Interaction::pending(
+                    ctx.input.chat_id,
+                    ctx.input.turn_id,
+                    InteractionPayload::Permission {
+                        request: PermissionRequest {
+                            call_id: call.id.clone(),
+                            connector: entry.connector_id().to_owned(),
+                            connector_name: entry.connector_name().to_owned(),
+                            tool: entry.def.name.clone(),
+                            model_tool_name: entry.model_name.clone(),
+                            tier: entry.def.tier,
+                            args: call.args.clone(),
+                            display: display_for(Some(&entry.def), &call.args),
+                            why: why.clone(),
+                            description: entry.def.description.clone(),
+                        },
+                    },
+                );
+                let rx = ctx.interactions.request(interaction.clone());
+                update_call(ctx, &call.id, |c| {
+                    c.status = ToolCallStatus::AwaitingDecision
+                });
+                {
+                    let mut s = ctx.active.state.lock().unwrap_or_else(|e| e.into_inner());
+                    s.pending.push(interaction.clone());
+                }
+                batcher.push(AgentEventKind::DecisionRequested {
+                    interaction: interaction.clone(),
+                });
+                waiting.push((i, entry, interaction, rx));
+            }
+        }
+    }
+
+    if !waiting.is_empty() {
+        notify_pending(ctx);
+    }
+    let mut cancelled = false;
+    for (i, entry, interaction, rx) in waiting {
+        let call = &calls[i];
+        let resolution = if cancelled {
+            InteractionResolution::Cancelled
+        } else {
+            tokio::select! {
+                _ = ctx.active.cancel.cancelled() => InteractionResolution::Cancelled,
+                r = rx => r.unwrap_or(InteractionResolution::Cancelled),
+            }
+        };
+        {
+            let mut s = ctx.active.state.lock().unwrap_or_else(|e| e.into_inner());
+            s.pending.retain(|p| p.id != interaction.id);
+        }
+        match resolution {
+            InteractionResolution::Permission {
+                decision: PermissionDecision::AllowOnce,
+                ..
+            } => {
+                batcher.push(AgentEventKind::DecisionResolved {
+                    interaction_id: interaction.id,
+                    resolution,
+                    source: DecisionSource::UserOnce,
+                });
+                allowed.push((i, entry, DecisionSource::UserOnce));
+            }
+            InteractionResolution::Permission {
+                decision: PermissionDecision::Deny,
+                message,
+            } => {
+                batcher.push(AgentEventKind::DecisionResolved {
+                    interaction_id: interaction.id,
+                    resolution: InteractionResolution::Permission {
+                        decision: PermissionDecision::Deny,
+                        message: message.clone(),
+                    },
+                    source: DecisionSource::UserOnce,
+                });
+                update_call(ctx, &call.id, |c| {
+                    c.decision_source = Some(DecisionSource::UserOnce)
+                });
+                results[i] = Some(complete_call(
+                    ctx,
+                    &call.id,
+                    ToolCallStatus::Denied,
+                    true,
+                    0,
+                    denied_result(message),
+                ));
+            }
+            InteractionResolution::Cancelled => {
+                cancelled = true;
+                ctx.interactions.cancel_turn(ctx.input.turn_id);
+                batcher.push(AgentEventKind::DecisionResolved {
+                    interaction_id: interaction.id,
+                    resolution: InteractionResolution::Cancelled,
+                    source: DecisionSource::UserOnce,
+                });
+                results[i] = Some(complete_call(
+                    ctx,
+                    &call.id,
+                    ToolCallStatus::Cancelled,
+                    true,
+                    0,
+                    vec![ResultPart::Text {
+                        text: CANCELLED_RESULT.to_owned(),
+                    }],
+                ));
+            }
+        }
+        notify_pending(ctx);
+    }
+
+    if cancelled {
+        for (i, _, _) in allowed {
+            results[i] = Some(complete_call(
+                ctx,
+                &calls[i].id,
+                ToolCallStatus::Cancelled,
+                true,
+                0,
+                vec![ResultPart::Text {
+                    text: CANCELLED_RESULT.to_owned(),
+                }],
+            ));
+        }
+    } else {
+        // Parallel when every call of the batch says it is safe; otherwise in the model's order.
+        let parallel = allowed.iter().all(|(_, e, _)| e.def.parallel_safe);
+        for (i, entry, source) in &allowed {
+            update_call(ctx, &calls[*i].id, |c| {
+                c.status = ToolCallStatus::Running;
+                c.decision_source = Some(*source);
+                c.started_at = Some(now_ms());
+            });
+            batcher.push(AgentEventKind::ToolCallExecuting {
+                call_id: calls[*i].id.clone(),
+                source: *source,
+            });
+            let _ = entry;
+        }
+        if parallel {
+            let futures = allowed
+                .iter()
+                .map(|(i, entry, _)| execute(ctx, &calls[*i], entry.clone()));
+            let outcomes = futures_util::future::join_all(futures).await;
+            for ((i, _, _), part) in allowed.iter().zip(outcomes) {
+                results[*i] = Some(part);
+            }
+        } else {
+            for (i, entry, _) in &allowed {
+                results[*i] = Some(execute(ctx, &calls[*i], entry.clone()).await);
+            }
+        }
+        cancelled = ctx.active.cancel.is_cancelled();
+    }
+
+    let results = results
+        .into_iter()
+        .zip(calls)
+        .map(|(r, c)| {
+            r.unwrap_or_else(|| ContentPart::ToolResult {
+                call_id: c.id.clone(),
+                content: vec![ResultPart::Text {
+                    text: CANCELLED_RESULT.to_owned(),
+                }],
+                is_error: true,
+            })
+        })
+        .collect();
+    (results, cancelled)
+}
+
+/// Runs one allowed call to its result part; cancellation yields an error result.
+async fn execute(ctx: &RunContext, call: &Call, entry: ToolEntry) -> ContentPart {
+    let started = Instant::now();
+    let req = ToolCallRequest {
+        call_id: call.id.clone(),
+        tool: entry.def.name.clone(),
+        args: call.args.clone(),
+        scope: ChatScope {
+            chat_id: ctx.input.chat_id,
+            mode: ctx.input.mode,
+        },
+    };
+    let cancel = ctx.active.cancel.child_token();
+    let outcome = tokio::select! {
+        _ = ctx.active.cancel.cancelled() => None,
+        r = entry.connector.call(req, Arc::new(NoopToolEvents), cancel) => Some(r),
+    };
+    let elapsed = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+    let (status, is_error, content) = match outcome {
+        None => (
+            ToolCallStatus::Cancelled,
+            true,
+            vec![ResultPart::Text {
+                text: CANCELLED_RESULT.to_owned(),
+            }],
+        ),
+        Some(Err(err)) => (
+            ToolCallStatus::Failed,
+            true,
+            vec![ResultPart::Text {
+                text: err.to_string(),
+            }],
+        ),
+        Some(Ok(ToolOutcome::Complete {
+            content, is_error, ..
+        })) => (ToolCallStatus::Completed, is_error, cap_result(content)),
+    };
+    complete_call(ctx, &call.id, status, is_error, elapsed, content)
+}
+
+/// Keeps a result under the transcript limit: head and tail with a marker between (05 §8).
+fn cap_result(content: Vec<ResultPart>) -> Vec<ResultPart> {
+    let size: usize = content
+        .iter()
+        .map(|p| match p {
+            ResultPart::Text { text } => text.len(),
+            ResultPart::Json { json } => json.to_string().len(),
+            ResultPart::Image { data, .. } => data.len(),
+            ResultPart::Resource { summary, .. } => summary.len(),
+        })
+        .sum();
+    if size <= RESULT_MAX_BYTES {
+        return content;
+    }
+    let text = result_preview(&content, usize::MAX);
+    let half = RESULT_MAX_BYTES / 2;
+    let head: String = text.chars().take(half).collect();
+    let tail: String = text
+        .chars()
+        .rev()
+        .take(half)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect();
+    vec![ResultPart::Text {
+        text: format!(
+            "{head}\n\n[… {} characters omitted …]\n\n{tail}",
+            text.chars().count().saturating_sub(2 * half)
+        ),
+    }]
+}
+
+fn notify_pending(ctx: &RunContext) {
+    if let Some(n) = &ctx.notifier {
+        n.interactions_changed(
+            ctx.input.chat_id,
+            ctx.interactions.pending_count(ctx.input.chat_id),
+        );
+    }
+}
+
+/// The assistant's last sentence before a call, as the card's "why" (04 §7).
+fn last_sentence(text: &str) -> Option<String> {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let last = trimmed
+        .rsplit_terminator(['.', '!', '?', '\n'])
+        .map(str::trim)
+        .find(|s| !s.is_empty())
+        .unwrap_or(trimmed);
+    let short: String = last.chars().take(200).collect();
+    Some(short)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_why_is_the_last_sentence() {
+        assert_eq!(
+            last_sentence("I will check the time. Let me look it up"),
+            Some("Let me look it up".into())
+        );
+        assert_eq!(last_sentence("   "), None);
+    }
+
+    #[test]
+    fn oversized_results_keep_head_and_tail() {
+        let big = "x".repeat(RESULT_MAX_BYTES + 100);
+        let capped = cap_result(vec![ResultPart::Text { text: big }]);
+        let ResultPart::Text { text } = &capped[0] else {
+            panic!()
+        };
+        assert!(text.contains("characters omitted"));
+        assert!(text.len() < RESULT_MAX_BYTES + 100);
+    }
 }

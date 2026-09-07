@@ -52,16 +52,25 @@ fn markdown(chat: &ChatDetail) -> String {
             }
         }
         out.push_str("## Assistant\n\n");
-        match &t.assistant {
-            Some(a) => {
-                for p in &a.parts {
-                    if let ContentPart::Text { text } = p {
+        let mut wrote = false;
+        for m in &t.messages {
+            for p in &m.parts {
+                match p {
+                    ContentPart::Text { text } if !text.trim().is_empty() => {
                         out.push_str(text);
                         out.push_str("\n\n");
+                        wrote = true;
                     }
+                    ContentPart::ToolCall { name, args, .. } => {
+                        out.push_str(&format!("*Called `{name}` with `{args}`*\n\n"));
+                        wrote = true;
+                    }
+                    _ => {}
                 }
             }
-            None => out.push_str("*(no reply)*\n\n"),
+        }
+        if !wrote {
+            out.push_str("*(no reply)*\n\n");
         }
         if let Some(err) = &t.error {
             out.push_str(&format!("> Error: {err}\n\n"));
@@ -98,11 +107,12 @@ mod tests {
                 status: TurnStatus::Completed,
                 model: ModelRef::default_model(),
                 user: Message::user_text("Q?"),
-                assistant: Some({
+                messages: vec![{
                     let mut m = Message::user_text("A.");
                     m.role = gantry_core::Role::Assistant;
                     m
-                }),
+                }],
+                tool_calls: Vec::new(),
                 usage: None,
                 stop_reason: None,
                 error: None,

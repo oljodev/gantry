@@ -1,9 +1,192 @@
-//! The Connector trait, registry, manifests, native and MCP runtimes, OAuth and the catalog.
-//!
-//! Stub: the crate exists so the workspace shape is fixed from M0. Its design is in
-//! `docs/plan/03-connector-system.md`; implementation arrives with the milestone that owns it (`docs/plan/09-roadmap.md`).
+//! The Connector trait and registry (docs/plan/03 §4). M3 ships the trait's M3 subset, the
+//! registry and the call types; manifests, the native connectors, MCP and OAuth arrive with
+//! M6 to M9. Runtime tools owned by `gantry-agent` implement the same trait so the turn loop
+//! has one call path.
 
 #![forbid(unsafe_code)]
 
+use std::{
+    collections::BTreeMap,
+    sync::{Arc, RwLock},
+};
+
+use async_trait::async_trait;
+use gantry_core::{CallId, ChatId, InstanceId, Mode, ResultPart, ToolDef};
+use tokio_util::sync::CancellationToken;
+
 /// The plan document that specifies this crate.
 pub const PLAN_DOCUMENT: &str = "docs/plan/03-connector-system.md";
+
+/// Who a connector is, for namespacing and the UI.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConnectorDescriptor {
+    /// The tool namespace prefix: the catalog id, or `gantry` for runtime tools.
+    pub id: String,
+    pub name: String,
+    /// `None` for runtime tools, which are not installed instances.
+    pub instance_id: Option<InstanceId>,
+    pub first_party: bool,
+}
+
+/// What a connector sees of the chat that calls it (read-only).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChatScope {
+    pub chat_id: ChatId,
+    pub mode: Mode,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ToolCallRequest {
+    pub call_id: CallId,
+    /// Un-namespaced.
+    pub tool: String,
+    pub args: serde_json::Value,
+    pub scope: ChatScope,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ToolOutcome {
+    Complete {
+        content: Vec<ResultPart>,
+        structured: Option<serde_json::Value>,
+        is_error: bool,
+    },
+}
+
+impl ToolOutcome {
+    #[must_use]
+    pub fn json(value: serde_json::Value) -> Self {
+        Self::Complete {
+            content: vec![ResultPart::Json {
+                json: value.clone(),
+            }],
+            structured: Some(value),
+            is_error: false,
+        }
+    }
+
+    #[must_use]
+    pub fn text(text: impl Into<String>) -> Self {
+        Self::Complete {
+            content: vec![ResultPart::Text { text: text.into() }],
+            structured: None,
+            is_error: false,
+        }
+    }
+
+    /// An error the model can read and recover from.
+    #[must_use]
+    pub fn error(message: impl Into<String>) -> Self {
+        Self::Complete {
+            content: vec![ResultPart::Text {
+                text: message.into(),
+            }],
+            structured: None,
+            is_error: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OutputStream {
+    Stdout,
+    Stderr,
+    Log,
+}
+
+/// Where a running call reports output and progress (05 §3). Every method has a no-op
+/// default so a connector implements only what it produces.
+pub trait ToolEventSink: Send + Sync {
+    fn output(&self, call_id: &CallId, stream: OutputStream, chunk: &[u8]) {
+        let _ = (call_id, stream, chunk);
+    }
+    fn progress(&self, call_id: &CallId, fraction: Option<f32>, message: Option<String>) {
+        let _ = (call_id, fraction, message);
+    }
+}
+
+/// A sink that drops everything.
+#[derive(Debug, Default)]
+pub struct NoopToolEvents;
+
+impl ToolEventSink for NoopToolEvents {}
+
+#[derive(Debug, thiserror::Error)]
+pub enum ConnectorError {
+    #[error("unknown tool {0}")]
+    UnknownTool(String),
+    #[error("invalid arguments: {0}")]
+    InvalidArgs(String),
+    #[error("{0}")]
+    Failed(String),
+}
+
+#[async_trait]
+pub trait Connector: Send + Sync {
+    fn descriptor(&self) -> &ConnectorDescriptor;
+    /// The tools with their tiers and flags.
+    async fn tools(&self) -> Result<Vec<ToolDef>, ConnectorError>;
+    async fn call(
+        &self,
+        req: ToolCallRequest,
+        sink: Arc<dyn ToolEventSink>,
+        cancel: CancellationToken,
+    ) -> Result<ToolOutcome, ConnectorError>;
+}
+
+/// Every connector that can be called, by namespace id. Attachment per chat (which of these a
+/// chat may use) arrives with M9; until then every registered connector is offered.
+#[derive(Default)]
+pub struct ConnectorRegistry {
+    by_id: RwLock<BTreeMap<String, Arc<dyn Connector>>>,
+}
+
+impl ConnectorRegistry {
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn register(&self, connector: Arc<dyn Connector>) {
+        let id = connector.descriptor().id.clone();
+        self.by_id
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(id, connector);
+    }
+
+    #[must_use]
+    pub fn get(&self, id: &str) -> Option<Arc<dyn Connector>> {
+        self.by_id
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(id)
+            .cloned()
+    }
+
+    /// In a stable order, so the model-facing tool array is stable across requests.
+    #[must_use]
+    pub fn list(&self) -> Vec<Arc<dyn Connector>> {
+        self.by_id
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .values()
+            .cloned()
+            .collect()
+    }
+}
+
+impl std::fmt::Debug for ConnectorRegistry {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let ids: Vec<String> = self
+            .by_id
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .keys()
+            .cloned()
+            .collect();
+        f.debug_struct("ConnectorRegistry")
+            .field("connectors", &ids)
+            .finish()
+    }
+}

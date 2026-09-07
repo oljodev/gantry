@@ -4,7 +4,10 @@ use gantry_core::{ContentPart, Message, ProviderKind, ReasoningEffort, Role};
 use serde_json::{Value, json};
 
 use super::profiles::{CompatProfile, ReasoningParam};
-use crate::provider::{ChatRequest, ModelInfo, ReasoningSupport, ToolChoice};
+use crate::{
+    provider::{ChatRequest, ModelInfo, ReasoningSupport, ToolChoice},
+    tools::ToolSchemaSanitizer,
+};
 
 /// `info` is what the model list said about the model, when it is known: the reasoning
 /// parameter is sent only to models that accept it, and `max_tokens` never exceeds the
@@ -54,16 +57,18 @@ pub fn build_body(profile: &CompatProfile, req: &ChatRequest, info: Option<&Mode
         }
     }
     if !req.tools.is_empty() {
+        let sanitizer = ToolSchemaSanitizer::for_provider(ProviderKind::OpenAiChat);
         let tools: Vec<Value> = req
             .tools
             .iter()
             .map(|t| {
+                let strict = profile.supports_strict && t.strict;
                 let mut f = json!({
                     "name": t.name,
                     "description": t.description,
-                    "parameters": t.input_schema,
+                    "parameters": sanitizer.sanitize(&t.input_schema, strict),
                 });
-                if profile.supports_strict && t.strict {
+                if strict {
                     f["strict"] = json!(true);
                 }
                 json!({ "type": "function", "function": f })
@@ -275,6 +280,67 @@ mod tests {
         assert_eq!(body["stream"], true);
         assert!(body.get("stream_options").is_none());
         assert!(body.get("tools").is_none());
+    }
+
+    #[test]
+    fn tools_are_declared_as_functions_with_clean_schemas_and_results_follow_calls() {
+        let call = gantry_core::CallId("call_1".into());
+        let assistant = Message {
+            id: MessageId::new(),
+            role: Role::Assistant,
+            parts: vec![ContentPart::ToolCall {
+                id: call.clone(),
+                name: "gantry__clock".into(),
+                args: serde_json::json!({}),
+            }],
+            origin: Some(ProviderKind::OpenAiChat),
+            created_at: 0,
+        };
+        let tool = Message {
+            id: MessageId::new(),
+            role: Role::Tool,
+            parts: vec![ContentPart::ToolResult {
+                call_id: call,
+                content: vec![gantry_core::ResultPart::Json {
+                    json: serde_json::json!({ "iso": "2026-09-07T10:00:00+02:00" }),
+                }],
+                is_error: false,
+            }],
+            origin: None,
+            created_at: 0,
+        };
+        let mut req = ChatRequest::new("m", "", vec![Message::user_text("time?"), assistant, tool]);
+        req.tools = vec![crate::provider::ToolSpec {
+            name: "gantry__clock".into(),
+            description: "now".into(),
+            input_schema: serde_json::json!({ "$schema": "x", "type": "object", "properties": {} }),
+            strict: false,
+            deferred: false,
+            stream_args: false,
+        }];
+        let body = build_body(&CompatProfile::openrouter(), &req, None);
+        assert_eq!(body["tools"][0]["type"], "function");
+        assert_eq!(body["tools"][0]["function"]["name"], "gantry__clock");
+        assert!(
+            body["tools"][0]["function"]["parameters"]
+                .get("$schema")
+                .is_none()
+        );
+        assert_eq!(body["tool_choice"], "auto");
+        assert_eq!(body["parallel_tool_calls"], true);
+        assert_eq!(body["messages"][1]["tool_calls"][0]["id"], "call_1");
+        assert_eq!(
+            body["messages"][1]["tool_calls"][0]["function"]["arguments"],
+            "{}"
+        );
+        assert_eq!(body["messages"][2]["role"], "tool");
+        assert_eq!(body["messages"][2]["tool_call_id"], "call_1");
+        assert!(
+            body["messages"][2]["content"]
+                .as_str()
+                .unwrap()
+                .contains("iso")
+        );
     }
 
     #[test]

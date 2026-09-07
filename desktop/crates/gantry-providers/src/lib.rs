@@ -11,6 +11,7 @@ pub mod provider;
 pub mod registry;
 pub mod retry;
 pub mod sse;
+pub mod tools;
 
 pub use error::ProviderError;
 pub use openai_chat::{CompatProfile, OpenAiChatProvider};
@@ -19,6 +20,7 @@ pub use provider::{
     Provider, ReasoningSupport, RequestMetadata, StreamEvent, ToolChoice, ToolSpec,
 };
 pub use registry::ProviderRegistry;
+pub use tools::{ToolNameMap, ToolSchemaSanitizer, model_tool_name};
 
 /// The plan document that specifies this crate.
 pub const PLAN_DOCUMENT: &str = "docs/plan/02-model-providers.md";

@@ -1500,6 +1500,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
+ "chrono",
  "futures-util",
  "gantry-connectors",
  "gantry-core",
@@ -1584,8 +1585,13 @@ dependencies = [
 name = "gantry-connectors"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "gantry-core",
  "gantry-workspace",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "tokio-util",
 ]
 
 [[package]]

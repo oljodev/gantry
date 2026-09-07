@@ -1,14 +1,17 @@
-//! Active turns: start, cancel, subscribe, list (docs/plan/01 §3, 05 §3). A turn is a detached
-//! task; the UI is just a subscriber. Chats live in the store through the [`ChatBook`].
+//! Active turns: start, cancel, subscribe, list, resolve decisions (docs/plan/01 §3, 04 §10,
+//! 05 §3). A turn is a detached task; the UI is just a subscriber. Chats live in the store
+//! through the [`ChatBook`].
 
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     sync::{Arc, Mutex, RwLock},
 };
 
+use gantry_connectors::ConnectorRegistry;
 use gantry_core::{
-    AgentEventKind, AttachmentInput, ChatId, ChatSummary, ContentPart, GantryError, Message,
-    ModelRef, ProviderId, Settings, TurnId, TurnSnapshot, TurnStatus, Usage, now_ms,
+    AgentEventKind, AttachmentInput, ChatId, ChatSummary, ContentPart, GantryError, Interaction,
+    InteractionId, InteractionResolution, Message, MessageId, ModelRef, ProviderId, Role, Settings,
+    ToolCallDto, TurnId, TurnSnapshot, TurnStatus, Usage, now_ms,
 };
 use gantry_providers::Provider;
 use tokio_util::sync::CancellationToken;
@@ -17,10 +20,12 @@ use crate::{
     attachments,
     chats::{ChatBook, ChatPatch, NewAttachment},
     events::{Batcher, EventSink, FanoutSink},
+    interactions::Interactions,
     persist::PersistSink,
-    runner,
+    runner::{self, RunContext},
     system_prompt::{CORE_VERSION, PromptContext, SystemPromptBuilder, mode_note},
     title,
+    tools::ToolSet,
 };
 
 /// Where providers come from; the registry in the app, a mock in tests.
@@ -34,10 +39,49 @@ impl ProviderSource for gantry_providers::ProviderRegistry {
     }
 }
 
-/// Told when chats changed outside a command (a turn ended, a title arrived), so the app can
-/// emit `chats:changed`.
+/// Told when chats changed outside a command (a turn ended, a title arrived) or when a chat's
+/// pending decisions changed, so the app can emit the global events.
 pub trait ChatNotifier: Send + Sync {
     fn chats_changed(&self, chat_ids: Vec<ChatId>);
+    fn interactions_changed(&self, chat_id: ChatId, pending: u32) {
+        let _ = (chat_id, pending);
+    }
+}
+
+/// One message of a running turn, parts by block index.
+#[derive(Debug, Clone)]
+pub struct LiveMessage {
+    pub id: MessageId,
+    pub role: Role,
+    pub parts: BTreeMap<u32, ContentPart>,
+}
+
+impl LiveMessage {
+    #[must_use]
+    pub fn finished(m: &Message) -> Self {
+        Self {
+            id: m.id,
+            role: m.role,
+            parts: m
+                .parts
+                .iter()
+                .cloned()
+                .enumerate()
+                .map(|(i, p)| (u32::try_from(i).unwrap_or(u32::MAX), p))
+                .collect(),
+        }
+    }
+
+    #[must_use]
+    pub fn to_message(&self) -> Message {
+        Message {
+            id: self.id,
+            role: self.role,
+            parts: self.parts.values().cloned().collect(),
+            origin: None,
+            created_at: 0,
+        }
+    }
 }
 
 /// The live state of a running turn, kept for snapshots.
@@ -45,9 +89,9 @@ pub trait ChatNotifier: Send + Sync {
 pub struct TurnState {
     pub chat_id: ChatId,
     pub status: TurnStatus,
-    pub message_id: Option<gantry_core::MessageId>,
-    /// Block index → part, in block order.
-    pub parts: std::collections::BTreeMap<u32, ContentPart>,
+    pub messages: Vec<LiveMessage>,
+    pub tool_calls: Vec<ToolCallDto>,
+    pub pending: Vec<Interaction>,
     pub usage: Option<Usage>,
     pub started_at: i64,
 }
@@ -64,6 +108,8 @@ pub struct ActiveTurn {
 pub struct TurnManager {
     chats: Arc<ChatBook>,
     providers: Arc<dyn ProviderSource>,
+    connectors: Arc<ConnectorRegistry>,
+    interactions: Arc<Interactions>,
     settings: Arc<RwLock<Settings>>,
     context: PromptContext,
     /// Turns run here whatever thread starts them; commands arrive on the UI thread.
@@ -77,6 +123,7 @@ impl TurnManager {
     pub fn new(
         chats: Arc<ChatBook>,
         providers: Arc<dyn ProviderSource>,
+        connectors: Arc<ConnectorRegistry>,
         settings: Arc<RwLock<Settings>>,
         context: PromptContext,
         runtime: tokio::runtime::Handle,
@@ -84,6 +131,8 @@ impl TurnManager {
         Arc::new(Self {
             chats,
             providers,
+            connectors,
+            interactions: Interactions::new(),
             settings,
             context,
             runtime,
@@ -96,13 +145,15 @@ impl TurnManager {
         *self.notifier.write().unwrap_or_else(|e| e.into_inner()) = Some(notifier);
     }
 
-    fn notify(&self, chat_id: ChatId) {
-        let n = self
-            .notifier
+    fn notifier(&self) -> Option<Arc<dyn ChatNotifier>> {
+        self.notifier
             .read()
             .unwrap_or_else(|e| e.into_inner())
-            .clone();
-        if let Some(n) = n {
+            .clone()
+    }
+
+    fn notify(&self, chat_id: ChatId) {
+        if let Some(n) = self.notifier() {
             n.chats_changed(vec![chat_id]);
         }
     }
@@ -110,6 +161,16 @@ impl TurnManager {
     #[must_use]
     pub fn chats(&self) -> &Arc<ChatBook> {
         &self.chats
+    }
+
+    #[must_use]
+    pub fn connectors(&self) -> &Arc<ConnectorRegistry> {
+        &self.connectors
+    }
+
+    #[must_use]
+    pub fn interactions(&self) -> &Arc<Interactions> {
+        &self.interactions
     }
 
     fn settings(&self) -> Settings {
@@ -239,7 +300,7 @@ impl TurnManager {
         let input = self.chats.begin_turn(chat_id, user, attachments)?;
         let turn_id = input.turn_id;
         let provider = self.providers.provider(&input.model.provider);
-        let max_output_tokens = self.settings().advanced.max_output_tokens;
+        let settings = self.settings();
 
         let fanout = Arc::new(FanoutSink::new());
         fanout.add(Arc::new(PersistSink::new(
@@ -254,8 +315,9 @@ impl TurnManager {
             state: Mutex::new(TurnState {
                 chat_id,
                 status: TurnStatus::Running,
-                message_id: None,
-                parts: Default::default(),
+                messages: Vec::new(),
+                tool_calls: Vec::new(),
+                pending: Vec::new(),
                 usage: None,
                 started_at: now_ms(),
             }),
@@ -270,17 +332,26 @@ impl TurnManager {
 
         let manager = Arc::clone(self);
         let chats = self.chats.clone();
+        let connectors = self.connectors.clone();
+        let interactions = self.interactions.clone();
+        let notifier = self.notifier();
         let first_turn = input.first_turn;
         let user_text = input.messages.last().map(Message::text).unwrap_or_default();
         let model = input.model.clone();
+        let mode = input.mode;
         self.runtime.spawn(async move {
-            runner::run_turn(
+            let tools = ToolSet::assemble(&connectors, mode).await;
+            runner::run_turn(RunContext {
                 input,
-                provider.clone(),
-                max_output_tokens,
-                active.clone(),
-                chats.clone(),
-            )
+                provider: provider.clone(),
+                max_output_tokens: settings.advanced.max_output_tokens,
+                max_tool_rounds: settings.advanced.max_tool_rounds,
+                active: active.clone(),
+                chats: chats.clone(),
+                tools,
+                interactions,
+                notifier,
+            })
             .await;
             manager
                 .active
@@ -312,8 +383,7 @@ impl TurnManager {
                 .iter()
                 .find(|t| t.id == turn_id)
                 .filter(|t| t.status == TurnStatus::Completed)
-                .and_then(|t| t.assistant.as_ref())
-                .map(Message::text),
+                .map(|t| t.assistant_text()),
             _ => None,
         };
         let Some(assistant_text) = assistant_text.filter(|t| !t.trim().is_empty()) else {
@@ -331,7 +401,8 @@ impl TurnManager {
         }
     }
 
-    /// Trips the turn's cancellation token. Returns whether the turn was running.
+    /// Trips the turn's cancellation token; pending prompts resolve as cancelled through it.
+    /// Returns whether the turn was running.
     pub fn cancel(&self, turn_id: TurnId) -> bool {
         let active = self
             .active
@@ -348,9 +419,18 @@ impl TurnManager {
         }
     }
 
+    /// Answers a pending decision; the waiting turn continues (04 §10).
+    pub fn resolve_interaction(
+        &self,
+        id: InteractionId,
+        resolution: InteractionResolution,
+    ) -> Result<Interaction, GantryError> {
+        self.interactions.resolve(id, resolution)
+    }
+
     /// Sends one snapshot to `sink`, then every later batch. Fails when the turn is not
-    /// running (a finished turn is read from the chat). Nothing persisted is transient in the
-    /// text-only event set, so the snapshot covers everything before `since_seq`.
+    /// running (a finished turn is read from the chat). The snapshot carries every message,
+    /// tool call and pending decision, so `since_seq` only marks where live events resume.
     pub fn subscribe(
         &self,
         turn_id: TurnId,
@@ -370,8 +450,9 @@ impl TurnManager {
         let snapshot = TurnSnapshot {
             chat_id: state.chat_id,
             status: state.status,
-            message_id: state.message_id,
-            parts: state.parts.values().cloned().collect(),
+            messages: state.messages.iter().map(LiveMessage::to_message).collect(),
+            tool_calls: state.tool_calls.clone(),
+            pending: state.pending.clone(),
             usage: state.usage,
             started_at: state.started_at,
             seq,
