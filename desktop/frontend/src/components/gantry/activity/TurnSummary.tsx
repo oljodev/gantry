@@ -23,7 +23,7 @@ export function TurnSummary({
   const plain = items.filter((i) => i.kind === 'context' || i.kind === 'notice');
   const folded = items.filter((i) => i.kind !== 'context' && i.kind !== 'notice');
   const calls = folded.filter((i) =>
-    ['read', 'search', 'edit', 'command', 'connector'].includes(i.kind),
+    ['read', 'search', 'edit', 'command', 'connector', 'artifact'].includes(i.kind),
   ).length;
   const files = new Set(
     folded.filter((i) => i.kind === 'edit').map((i) => (i as { path: string }).path),

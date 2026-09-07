@@ -27,12 +27,15 @@ export function RightPane({
   onActivate,
   onClose,
   onCloseTab,
+  allClosable,
 }: {
   tabs: PaneTab[];
   activeId: string;
   onActivate: (id: string) => void;
   onClose: () => void;
   onCloseTab: (id: string) => void;
+  /** Every tab shows a close button, not only the temporary ones (artifact tabs, 13 §4). */
+  allClosable?: boolean;
 }) {
   const width = useUiStore((s) => s.paneWidth);
   const setWidth = useUiStore((s) => s.setPaneWidth);
@@ -113,13 +116,13 @@ export function RightPane({
                 t.id === active?.id
                   ? 'border-fg text-fg'
                   : 'border-transparent text-fg-2 hover:text-fg',
-                t.temporary && 'pr-7',
+                (t.temporary || allClosable) && 'pr-7',
               )}
             >
               {t.icon}
               <span className="truncate">{t.title}</span>
             </button>
-            {t.temporary && (
+            {(t.temporary || allClosable) && (
               <button
                 type="button"
                 aria-label={`Close ${t.title}`}

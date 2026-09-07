@@ -71,6 +71,16 @@ export function General() {
           />
         </SettingsRow>
         <SettingsRow
+          label="Open artifacts automatically"
+          hint="Open the side panel the first time a reply creates an artifact."
+        >
+          <Switch
+            aria-label="Open artifacts automatically"
+            checked={chat.open_artifact_panel}
+            onCheckedChange={(v) => patch({ open_artifact_panel: v })}
+          />
+        </SettingsRow>
+        <SettingsRow
           label="Suggest connectors"
           hint="Let the assistant propose a connector when one would help (from M10)."
         >

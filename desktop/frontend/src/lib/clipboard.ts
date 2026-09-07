@@ -9,3 +9,18 @@ export async function copyText(text: string): Promise<void> {
   }
   await navigator.clipboard?.writeText(text);
 }
+
+/**
+ * Opens an `https:` link in the system browser after the user confirms the full URL (13 §5:
+ * links inside artifacts never navigate anything themselves).
+ */
+export async function openExternal(url: string): Promise<void> {
+  if (!/^https:\/\//i.test(url)) return;
+  if (!window.confirm(`Open this link in your browser?\n\n${url}`)) return;
+  if (isTauri()) {
+    const { openUrl } = await import('@tauri-apps/plugin-opener');
+    await openUrl(url);
+    return;
+  }
+  window.open(url, '_blank', 'noopener');
+}

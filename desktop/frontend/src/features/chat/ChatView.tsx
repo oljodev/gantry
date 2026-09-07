@@ -1,5 +1,11 @@
-import { ArrowDownIcon, FileTextIcon, GitDiffIcon, TerminalIcon } from '@phosphor-icons/react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  ArrowDownIcon,
+  FileTextIcon,
+  GitDiffIcon,
+  SparkleIcon,
+  TerminalIcon,
+} from '@phosphor-icons/react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import type { PermissionAnswer } from '@/components/gantry/chat/InteractionCard';
 import { TurnView } from '@/components/gantry/chat/TurnView';
@@ -9,11 +15,15 @@ import { DiffView } from '@/components/gantry/pane/DiffView';
 import { type PaneTab, RightPane } from '@/components/gantry/pane/RightPane';
 import { toast } from '@/components/ui/toast';
 import { ToolCallDetail } from '@/components/gantry/pane/ToolCallDetail';
+import { ArtifactPanel } from '@/features/artifacts/ArtifactPanel';
+import { useArtifactStore } from '@/features/artifacts/store';
 import type { ActivityItem, ModelRef } from '@/fixtures/types';
-import { copyText } from '@/lib/clipboard';
+import { copyText, openExternal } from '@/lib/clipboard';
+import { useArtifacts } from '@/lib/ipc/hooks/artifacts';
 import { useChat, useChatMutations } from '@/lib/ipc/hooks/chats';
 import { modelCapabilities, modelLabel, useModelCatalog } from '@/lib/ipc/hooks/providers';
 import { useSettings } from '@/lib/ipc/hooks/settings';
+import { chatDefaults } from '@/lib/settingsDefaults';
 import { useRunStore } from '@/lib/stores/runStore';
 import { toTurns } from '@/lib/view/toTurns';
 
@@ -34,9 +44,21 @@ export function ChatView({ chatId }: { chatId: string }) {
   const { update, rate } = useChatMutations();
   const { providers } = useModelCatalog();
   const settings = useSettings();
-  const [tabs, setTabs] = useState<PaneTab[]>([]);
+  const [detailTabs, setDetailTabs] = useState<PaneTab[]>([]);
   const [activeTab, setActiveTab] = useState<string>('');
   const [paneOpen, setPaneOpen] = useState(false);
+  const artifactList = useArtifacts(chatId);
+  const openArtifacts = useArtifactStore((s) => s.openByChat[chatId]);
+  const openArtifact = useArtifactStore((s) => s.open);
+  const closeArtifact = useArtifactStore((s) => s.close);
+  const titles = useMemo(
+    () => Object.fromEntries((artifactList.data ?? []).map((a) => [a.id, a.title])),
+    [artifactList.data],
+  );
+  const typesById = useMemo(
+    () => Object.fromEntries((artifactList.data ?? []).map((a) => [a.id, a.type])),
+    [artifactList.data],
+  );
   const [released, setReleased] = useState(false);
   const scroller = useRef<HTMLDivElement>(null);
 
@@ -56,21 +78,93 @@ export function ChatView({ chatId }: { chatId: string }) {
     if (liveDone && queryHasTurn) clear(chatId);
   }, [liveDone, queryHasTurn, chatId, clear]);
 
-  const openItem = useCallback((item: ActivityItem) => {
-    const tab = detailTab(item);
-    if (!tab) return;
-    setTabs((ts) => (ts.some((t) => t.id === tab.id) ? ts : [...ts, tab]));
-    setActiveTab(tab.id);
-    setPaneOpen(true);
+  const showArtifact = useCallback(
+    (artifactId: string) => {
+      openArtifact(chatId, artifactId);
+      setActiveTab(`artifact-${artifactId}`);
+      setPaneOpen(true);
+    },
+    [chatId, openArtifact],
+  );
+  const openItem = useCallback(
+    (item: ActivityItem) => {
+      if (item.kind === 'artifact') {
+        if (item.artifactId) showArtifact(item.artifactId);
+        return;
+      }
+      const tab = detailTab(item);
+      if (!tab) return;
+      setDetailTabs((ts) => (ts.some((t) => t.id === tab.id) ? ts : [...ts, tab]));
+      setActiveTab(tab.id);
+      setPaneOpen(true);
+    },
+    [showArtifact],
+  );
+  const closeTab = useCallback(
+    (id: string) => {
+      if (id.startsWith('artifact-')) {
+        closeArtifact(chatId, id.slice('artifact-'.length));
+        setActiveTab((a) => (a === id ? '' : a));
+        return;
+      }
+      setDetailTabs((ts) => {
+        const next = ts.filter((t) => t.id !== id);
+        setActiveTab((a) => (a === id ? (next[0]?.id ?? '') : a));
+        return next;
+      });
+    },
+    [chatId, closeArtifact],
+  );
+
+  // The panel opens on the first artifact a turn creates (setting); later ones join as tabs.
+  const liveArtifacts = live?.artifacts;
+  const autoOpen = chatDefaults(settings.data).open_artifact_panel;
+  const seenArtifacts = useRef(0);
+  useEffect(() => {
+    if (!liveArtifacts) {
+      seenArtifacts.current = 0;
+      return;
+    }
+    for (const a of liveArtifacts.slice(seenArtifacts.current)) {
+      openArtifact(chatId, a.artifactId, a.action === 'created');
+      if (a.action === 'created') {
+        setActiveTab(`artifact-${a.artifactId}`);
+        if (autoOpen) setPaneOpen(true);
+      }
+    }
+    seenArtifacts.current = liveArtifacts.length;
+  }, [liveArtifacts, chatId, openArtifact, autoOpen]);
+
+  // Ctrl/Cmd+Shift+A toggles the pane (13 §4).
+  useEffect(() => {
+    const toggle = () => setPaneOpen((o) => !o);
+    window.addEventListener('gantry:toggle-pane', toggle);
+    return () => window.removeEventListener('gantry:toggle-pane', toggle);
   }, []);
-  const closeTab = useCallback((id: string) => {
-    setTabs((ts) => {
-      const next = ts.filter((t) => t.id !== id);
-      setActiveTab((a) => (a === id ? (next[0]?.id ?? '') : a));
-      if (next.length === 0) setPaneOpen(false);
-      return next;
-    });
-  }, []);
+
+  const fixThis = useCallback(
+    (text: string) => {
+      void send(chatId, text).catch((err) =>
+        toast.add({ title: 'Could not send', description: describe(err), type: 'error' }),
+      );
+    },
+    [chatId, send],
+  );
+  const artifactTabs: PaneTab[] = (openArtifacts ?? []).map((id) => ({
+    id: `artifact-${id}`,
+    title: titles[id] ?? 'Artifact',
+    icon: <SparkleIcon />,
+    temporary: false,
+    content: (
+      <ArtifactPanel
+        artifactId={id}
+        onFixThis={fixThis}
+        onOpenUrl={(url) => void openExternal(url)}
+      />
+    ),
+  }));
+  const tabs = [...artifactTabs, ...detailTabs];
+  void typesById;
 
   useEffect(() => {
     const el = scroller.current;
@@ -104,7 +198,7 @@ export function ChatView({ chatId }: { chatId: string }) {
   }
   const detail = chat.data;
   const running = live?.status === 'running' || detail.active_turn !== null;
-  const turns = toTurns(detail, live, (ref) => modelLabel(providers, ref));
+  const turns = toTurns(detail, live, (ref) => modelLabel(providers, ref), titles);
   const defaultEffort = settings.data?.chat?.default_effort ?? 'medium';
   const thinking = detail.effort !== 'off';
   // Capability-driven controls (02 §2): the catalog says what the model can do; an unlisted
@@ -207,6 +301,7 @@ export function ChatView({ chatId }: { chatId: string }) {
           onActivate={setActiveTab}
           onClose={() => setPaneOpen(false)}
           onCloseTab={closeTab}
+          allClosable
         />
       )}
     </div>

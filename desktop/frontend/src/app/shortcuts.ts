@@ -22,6 +22,13 @@ export function installShortcuts(router: AnyRouter) {
         e.preventDefault();
         void router.navigate({ to: '/chat' });
         break;
+      case 'a':
+      case 'A':
+        if (e.shiftKey) {
+          e.preventDefault();
+          window.dispatchEvent(new CustomEvent('gantry:toggle-pane'));
+        }
+        break;
     }
   };
   window.addEventListener('keydown', onKey);

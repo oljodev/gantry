@@ -12,4 +12,7 @@ export const keys = {
   systemPrompt: (chatId: string) => ['system_prompt', chatId] as const,
   pendingInteractions: ['pending_interactions'] as const,
   toolCall: (callId: string) => ['tool_call', callId] as const,
+  artifacts: (chatId: string) => ['artifacts', chatId] as const,
+  artifact: (artifactId: string, version: number | undefined) =>
+    ['artifact', artifactId, version ?? 'current'] as const,
 };

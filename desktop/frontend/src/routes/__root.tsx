@@ -27,7 +27,11 @@ function RootError({ error }: ErrorComponentProps) {
 
 /** Onboarding fills the window on its own (15 A20); everything else lives in the shell. */
 function Root() {
-  const bare = useRouterState({ select: (s) => s.location.pathname.startsWith('/onboarding') });
+  const bare = useRouterState({
+    select: (s) =>
+      s.location.pathname.startsWith('/onboarding') ||
+      s.location.pathname.startsWith('/artifact-window'),
+  });
   return (
     <Providers>
       <TooltipProvider>

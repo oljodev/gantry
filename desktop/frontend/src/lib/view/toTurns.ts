@@ -7,6 +7,7 @@ import type {
   TurnDto,
 } from '@/bindings';
 import type { ActivityItem, Block, Permission, Turn } from '@/fixtures/types';
+import { isArtifactTool } from '@/features/artifacts/registry';
 import type { LiveMessage, LiveTurn } from '@/lib/stores/runStore';
 
 type Label = (ref: { provider: string; model: string }) => string;
@@ -17,16 +18,24 @@ type Label = (ref: { provider: string; model: string }) => string;
  * Activity is inline in the order it happened (05 §1): consecutive tool calls fold into one
  * activity block, and a pending decision becomes a permission card after them.
  */
-export function toTurns(chat: ChatDetail, live: LiveTurn | undefined, modelLabel: Label): Turn[] {
+/** Artifact titles by id, so update rows can name what they changed. */
+export type ArtifactTitles = Record<string, string>;
+
+export function toTurns(
+  chat: ChatDetail,
+  live: LiveTurn | undefined,
+  modelLabel: Label,
+  titles: ArtifactTitles = {},
+): Turn[] {
   return chat.turns.map((t) => {
     if (live && live.turnId === t.id && (t.status === 'running' || live.status === 'running')) {
-      return liveTurn(t, live, modelLabel);
+      return liveTurn(t, live, modelLabel, titles);
     }
-    return finishedTurn(t, modelLabel);
+    return finishedTurn(t, modelLabel, titles);
   });
 }
 
-function finishedTurn(t: TurnDto, modelLabel: Label): Turn {
+function finishedTurn(t: TurnDto, modelLabel: Label, titles: ArtifactTitles): Turn {
   const calls = Object.fromEntries(t.tool_calls.map((c) => [c.id, c]));
   const blocks = messagesToBlocks(
     t.messages.map((m) => ({ id: m.id, role: m.role, parts: [...m.parts] })),
@@ -34,6 +43,7 @@ function finishedTurn(t: TurnDto, modelLabel: Label): Turn {
     [],
     false,
     undefined,
+    titles,
   );
   pushNotices(blocks, t.notices);
   if (t.status === 'failed' && t.error) {
@@ -59,7 +69,7 @@ function finishedTurn(t: TurnDto, modelLabel: Label): Turn {
   };
 }
 
-function liveTurn(t: TurnDto, live: LiveTurn, modelLabel: Label): Turn {
+function liveTurn(t: TurnDto, live: LiveTurn, modelLabel: Label, titles: ArtifactTitles): Turn {
   const thinkingMs =
     live.thinkingStartedAt !== undefined
       ? (live.thinkingEndedAt ?? Date.now()) - live.thinkingStartedAt
@@ -70,6 +80,7 @@ function liveTurn(t: TurnDto, live: LiveTurn, modelLabel: Label): Turn {
     live.pending,
     live.status === 'running',
     thinkingMs,
+    titles,
   );
   pushNotices(blocks, live.notices);
   if (live.error)
@@ -135,6 +146,7 @@ function messagesToBlocks(
   pending: Interaction[],
   running: boolean,
   thinkingMs: number | undefined,
+  titles: ArtifactTitles,
 ): Block[] {
   const blocks: Block[] = [];
   const pushItem = (item: ActivityItem) => {
@@ -164,7 +176,7 @@ function messagesToBlocks(
           durationMs: thinkingMs,
         });
       } else if (part.kind === 'tool_call') {
-        pushItem(callItem(part, calls[part.id]));
+        pushItem(callItem(part, calls[part.id], titles));
       }
     }
   }
@@ -173,7 +185,8 @@ function messagesToBlocks(
     blocks.flatMap((b) => (b.kind === 'activity' ? b.items.map((i) => i.id) : [])),
   );
   for (const c of Object.values(calls)) {
-    if (!shown.has(c.id) && c.message_id === lastMessage?.id) pushItem(callItem(undefined, c));
+    if (!shown.has(c.id) && c.message_id === lastMessage?.id)
+      pushItem(callItem(undefined, c, titles));
   }
   for (const p of pending) {
     if (p.payload.kind === 'permission')
@@ -185,9 +198,12 @@ function messagesToBlocks(
 function callItem(
   part: Extract<ContentPart, { kind: 'tool_call' }> | undefined,
   call: ToolCallDto | undefined,
+  titles: ArtifactTitles,
 ): ActivityItem {
   const id = call?.id ?? part?.id ?? '';
   const [connector, tool] = call ? [call.connector, call.tool] : splitName(part?.name ?? '');
+  const modelName = call?.model_tool_name ?? part?.name ?? '';
+  if (isArtifactTool(modelName)) return artifactItem(id, tool, call, part, titles);
   return {
     kind: 'connector',
     id,
@@ -202,6 +218,47 @@ function callItem(
     isError: call?.is_error,
     durationMs: call?.duration_ms ?? undefined,
   };
+}
+
+/** "Created artifact · Title (React)" / "Updated artifact · Title (v3)" rows (13 §10). */
+function artifactItem(
+  id: string,
+  tool: string,
+  call: ToolCallDto | undefined,
+  part: Extract<ContentPart, { kind: 'tool_call' }> | undefined,
+  titles: ArtifactTitles,
+): ActivityItem {
+  const args = (call?.args ?? part?.args ?? {}) as Record<string, unknown>;
+  const str = (k: string) => (typeof args[k] === 'string' ? (args[k] as string) : undefined);
+  const result = resultJson(call);
+  const artifactId =
+    typeof result?.artifact_id === 'string' ? result.artifact_id : str('artifact_id');
+  const version = typeof result?.version === 'number' ? result.version : 0;
+  const status = rowStatus(call);
+  return {
+    kind: 'artifact',
+    id,
+    artifactId,
+    title: str('title') ?? (artifactId ? (titles[artifactId] ?? 'artifact') : 'artifact'),
+    type: str('type') ?? 'artifact',
+    version,
+    action: tool === 'create_artifact' ? 'created' : 'updated',
+    status:
+      status === 'done'
+        ? 'done'
+        : status === 'failed' || status === 'denied'
+          ? 'failed'
+          : 'running',
+  };
+}
+
+/** The structured JSON of a finished call's result, if it has one. */
+function resultJson(call: ToolCallDto | undefined): Record<string, unknown> | undefined {
+  const first = call?.result?.[0];
+  if (first?.kind === 'json' && first.json && typeof first.json === 'object') {
+    return first.json as Record<string, unknown>;
+  }
+  return undefined;
 }
 
 function rowStatus(

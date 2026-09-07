@@ -172,10 +172,18 @@ export function ActivityRow({ item, onOpen }: ActivityRowProps) {
       return (
         <Row
           icon={<SparkleIcon />}
-          title={`Created artifact · ${item.title}`}
-          summary={`${item.type} · v${item.version}`}
-          status={<ArrowSquareOutIcon className="size-3.5 text-fg-3" />}
-          onOpen={open}
+          title={`${item.action === 'updated' ? 'Updated' : 'Created'} artifact · ${item.title}`}
+          summary={`${item.type}${item.version > 0 ? ` · v${item.version}` : ''}`}
+          status={
+            item.status === 'running' ? (
+              <Spinner />
+            ) : item.status === 'failed' ? (
+              <Failed />
+            ) : (
+              <ArrowSquareOutIcon className="size-3.5 text-fg-3" />
+            )
+          }
+          onOpen={item.artifactId ? open : undefined}
         />
       );
     case 'context':

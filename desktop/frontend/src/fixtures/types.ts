@@ -83,7 +83,17 @@ export type ActivityItem =
     }
   | { kind: 'guard'; id: string; ok: boolean; reason?: string }
   | { kind: 'notice'; id: string; text: string }
-  | { kind: 'artifact'; id: string; title: string; type: string; version: number }
+  | {
+      kind: 'artifact';
+      id: string;
+      /** Set once the artifact exists; a create call streams without one. */
+      artifactId?: string;
+      title: string;
+      type: string;
+      version: number;
+      action?: 'created' | 'updated';
+      status?: 'running' | 'done' | 'failed';
+    }
   | { kind: 'context'; id: string; skills: string[]; memories: number };
 
 export interface Permission {

@@ -18,15 +18,26 @@ import type {
   TurnStatus,
   Usage,
 } from '@/bindings';
+import { isArtifactTool } from '@/features/artifacts/registry';
+import { useArtifactStore } from '@/features/artifacts/store';
 import { commands, unwrap } from '@/lib/ipc/client';
 import { invalidateChat } from '@/lib/ipc/hooks/chats';
 import { keys } from '@/lib/ipc/keys';
+import { partialStrings } from '@/lib/partialJson';
 
 /** One message of the running turn; `parts` is sparse by block index while it streams. */
 export interface LiveMessage {
   id: string;
   role: Role;
   parts: (ContentPart | undefined)[];
+}
+
+export interface LiveArtifact {
+  artifactId: string;
+  version: number;
+  title: string;
+  type?: string;
+  action: 'created' | 'updated';
 }
 
 /** The streaming state of one chat's current turn (docs/plan/05 §4). */
@@ -45,6 +56,10 @@ export interface LiveTurn {
   stopReason?: StopReason;
   error?: { message: string; retryable: boolean };
   notices: string[];
+  /** Raw argument text of artifact calls while it streams (13 §2); other calls are not kept. */
+  argsText: Record<string, string>;
+  /** Artifacts this turn created or changed, in order. */
+  artifacts: LiveArtifact[];
   startedAt: number;
   endedAt?: number;
   thinkingStartedAt?: number;
@@ -100,12 +115,19 @@ function drain() {
       // The first batch can beat the command's reply; the turn id in the batch is authoritative.
       let live = byChat[chatId] ?? (batches[0] ? fresh(batches[0].turn_id) : undefined);
       if (!live) continue;
+      const before = live.artifacts.length;
       for (const batch of batches) {
         if (batch.turn_id !== live.turnId) continue;
-        live = applyBatch(live, batch);
+        live = applyBatch(live, batch, chatId);
       }
       byChat[chatId] = live;
       if (live.status !== 'running') finished.push(chatId);
+      if (queryClient) {
+        for (const a of live.artifacts.slice(before)) {
+          void queryClient.invalidateQueries({ queryKey: ['artifact', a.artifactId] });
+          void queryClient.invalidateQueries({ queryKey: keys.artifacts(chatId) });
+        }
+      }
     }
     return { byChat };
   });
@@ -124,7 +146,7 @@ function fromMessage(m: Message): LiveMessage {
   return { id: m.id, role: m.role, parts: [...m.parts] };
 }
 
-export function applyBatch(live: LiveTurn, batch: AgentEventBatch): LiveTurn {
+export function applyBatch(live: LiveTurn, batch: AgentEventBatch, chatId?: ChatId): LiveTurn {
   const next: LiveTurn = {
     ...live,
     messages: live.messages.map((m) => ({ ...m, parts: [...m.parts] })),
@@ -132,7 +154,10 @@ export function applyBatch(live: LiveTurn, batch: AgentEventBatch): LiveTurn {
     callOrder: [...live.callOrder],
     pending: [...live.pending],
     notices: [...live.notices],
+    argsText: { ...live.argsText },
+    artifacts: [...live.artifacts],
   };
+  const artifacts = chatId ? useArtifactStore.getState() : undefined;
   for (const e of batch.events) {
     const ev = e.event;
     if (ev.type === 'turn.snapshot') {
@@ -212,13 +237,74 @@ export function applyBatch(live: LiveTurn, batch: AgentEventBatch): LiveTurn {
         if (next.thinkingStartedAt && !next.thinkingEndedAt) next.thinkingEndedAt = e.ts;
         break;
       }
-      case 'tool_call.args_delta':
+      case 'tool_call.args_delta': {
+        const c = next.calls[ev.call_id];
+        if (c && isArtifactTool(c.model_tool_name)) {
+          const text = (next.argsText[ev.call_id] ?? '') + ev.fragment;
+          next.argsText[ev.call_id] = text;
+          if (artifacts && chatId) {
+            const p = partialStrings(text);
+            artifacts.setStreaming({
+              callId: ev.call_id,
+              chatId,
+              tool: c.model_tool_name,
+              artifactId: p.artifact_id,
+              type: p.type,
+              title: p.title,
+              language: p.language,
+              content: p.content ?? '',
+              done: false,
+            });
+          }
+        }
         break;
+      }
       case 'tool_call.ready': {
         const c = next.calls[ev.call_id];
         if (c) next.calls[ev.call_id] = { ...c, args: ev.args, tier: ev.tier, display: ev.display };
+        if (c && artifacts && chatId && isArtifactTool(c.model_tool_name)) {
+          const a = (ev.args ?? {}) as Record<string, unknown>;
+          const str = (k: string) => (typeof a[k] === 'string' ? (a[k] as string) : undefined);
+          artifacts.setStreaming({
+            callId: ev.call_id,
+            chatId,
+            tool: c.model_tool_name,
+            artifactId: str('artifact_id'),
+            type: str('type'),
+            title: str('title'),
+            language: str('language'),
+            content: str('content') ?? '',
+            done: true,
+          });
+          delete next.argsText[ev.call_id];
+        }
         break;
       }
+      case 'artifact.created': {
+        next.artifacts.push({
+          artifactId: ev.artifact_id,
+          version: ev.version,
+          title: ev.title,
+          type: ev.artifact_type,
+          action: 'created',
+        });
+        if (artifacts) {
+          // The create call whose result this is: the newest create still without an id.
+          const call = Object.values(artifacts.streaming)
+            .filter((s) => s.tool === 'gantry__create_artifact' && !artifacts.createdBy[s.callId])
+            .at(-1);
+          if (call) artifacts.noteCreated(call.callId, ev.artifact_id);
+        }
+        break;
+      }
+      case 'artifact.updated':
+        next.artifacts.push({
+          artifactId: ev.artifact_id,
+          version: ev.version,
+          title: ev.title,
+          action: 'updated',
+        });
+        break;
       case 'decision.requested': {
         if (!next.pending.some((p) => p.id === ev.interaction.id)) {
           next.pending.push(ev.interaction);
@@ -256,6 +342,8 @@ export function applyBatch(live: LiveTurn, batch: AgentEventBatch): LiveTurn {
             ended_at: e.ts,
             duration_ms: ev.duration_ms,
           };
+          if (artifacts && isArtifactTool(c.model_tool_name)) artifacts.dropStreaming(ev.call_id);
+          delete next.argsText[ev.call_id];
         }
         break;
       }
@@ -312,6 +400,8 @@ export function fresh(turnId: TurnId): LiveTurn {
     callOrder: [],
     pending: [],
     notices: [],
+    argsText: {},
+    artifacts: [],
     startedAt: Date.now(),
     seq: 0,
   };
