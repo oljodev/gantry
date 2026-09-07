@@ -19,7 +19,7 @@ type Label = (ref: { provider: string; model: string }) => string;
  * activity block, and a pending decision becomes a permission card after them.
  */
 /** The chat's artifacts by id (title and type), so rows and cards can name what changed. */
-export type ArtifactIndex = Record<string, { title: string; type: string }>;
+export type ArtifactIndex = Record<string, { title: string; type: string; version: number }>;
 
 export function toTurns(
   chat: ChatDetail,
@@ -212,7 +212,7 @@ function artifactCards(blocks: Block[], titles: ArtifactIndex): Block[] {
         artifactId: item.artifactId,
         title: titles[item.artifactId]?.title ?? item.title,
         type: titles[item.artifactId]?.type ?? item.type,
-        version: Math.max(item.version, prev?.version ?? 0),
+        version: titles[item.artifactId]?.version ?? Math.max(item.version, prev?.version ?? 0),
         action: prev?.action ?? item.action ?? 'created',
       });
     }

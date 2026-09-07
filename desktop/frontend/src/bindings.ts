@@ -80,7 +80,10 @@ export const commands = {
 	resolveInteraction: (interactionId: InteractionId, resolution: InteractionResolution) => typedError<Interaction, ErrorDto>(__TAURI_INVOKE("resolve_interaction", { interactionId, resolution })),
 	/**  One tool call with its full result, for the detail pane of a finished turn. */
 	getToolCall: (callId: CallId) => typedError<ToolCallDto, ErrorDto>(__TAURI_INVOKE("get_tool_call", { callId })),
-	/**  Artifacts of one chat, or of one project (every chat in it), oldest first. */
+	/**
+	 *  Artifacts of one chat (oldest first), of one project, or of every chat (the library,
+	 *  newest change first).
+	 */
 	listArtifacts: (chatId: string | null, projectId: string | null) => typedError<ArtifactDto[], ErrorDto>(__TAURI_INVOKE("list_artifacts", { chatId, projectId })),
 	/**  The current version with its history. */
 	getArtifact: (artifactId: ArtifactId) => typedError<ArtifactContent, ErrorDto>(__TAURI_INVOKE("get_artifact", { artifactId })),

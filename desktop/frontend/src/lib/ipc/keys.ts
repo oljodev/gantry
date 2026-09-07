@@ -13,6 +13,8 @@ export const keys = {
   pendingInteractions: ['pending_interactions'] as const,
   toolCall: (callId: string) => ['tool_call', callId] as const,
   artifacts: (chatId: string) => ['artifacts', chatId] as const,
+  /** The library across every chat; `['artifacts']` as a prefix invalidates every list. */
+  allArtifacts: ['artifacts', 'all'] as const,
   artifact: (artifactId: string, version: number | undefined) =>
     ['artifact', artifactId, version ?? 'current'] as const,
 };

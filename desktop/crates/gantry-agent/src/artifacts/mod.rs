@@ -413,6 +413,11 @@ impl Artifacts {
             .read(move |conn| artifacts::list_for_project(conn, &project_id))?)
     }
 
+    /// Every artifact across every chat, newest change first (the library, 13 §9).
+    pub fn list_all(&self) -> Result<Vec<ArtifactDto>, ArtifactError> {
+        Ok(self.store.read(artifacts::list_all)?)
+    }
+
     /// The panel's report for one version; `true` when a tool was waiting for it.
     pub fn report_render(&self, id: ArtifactId, version: u32, report: RenderReport) -> bool {
         let waiter = self

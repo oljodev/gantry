@@ -12,7 +12,8 @@ use tauri_specta::Event;
 
 use crate::{AppState, events::ArtifactsChanged};
 
-/// Artifacts of one chat, or of one project (every chat in it), oldest first.
+/// Artifacts of one chat (oldest first), of one project, or of every chat (the library,
+/// newest change first).
 #[tauri::command]
 #[specta::specta]
 pub fn list_artifacts(
@@ -23,7 +24,7 @@ pub fn list_artifacts(
     let list = match (chat_id, project_id) {
         (Some(c), _) => state.artifacts.list_for_chat(c),
         (None, Some(p)) => state.artifacts.list_for_project(&p),
-        (None, None) => return Err(GantryError::invalid("give a chat or a project").into()),
+        (None, None) => state.artifacts.list_all(),
     };
     Ok(list.map_err(GantryError::from)?)
 }

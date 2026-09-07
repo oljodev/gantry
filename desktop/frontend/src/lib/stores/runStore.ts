@@ -125,7 +125,7 @@ function drain() {
       if (queryClient) {
         for (const a of live.artifacts.slice(before)) {
           void queryClient.invalidateQueries({ queryKey: ['artifact', a.artifactId] });
-          void queryClient.invalidateQueries({ queryKey: keys.artifacts(chatId) });
+          void queryClient.invalidateQueries({ queryKey: ['artifacts'] });
         }
       }
     }

@@ -12,6 +12,15 @@ export function useArtifacts(chatId: ChatId | null) {
   });
 }
 
+/** Every artifact across every chat, newest change first (the library, 13 §9). */
+export function useAllArtifacts() {
+  return useQuery({
+    queryKey: keys.allArtifacts,
+    queryFn: () => unwrap(commands.listArtifacts(null, null)),
+    enabled: isTauri(),
+  });
+}
+
 /** The current version with its history, or one version when `version` is given. */
 export function useArtifact(artifactId: ArtifactId | null, version?: number) {
   return useQuery({
@@ -31,7 +40,8 @@ export function invalidateArtifact(
   artifactId: ArtifactId,
 ) {
   void qc.invalidateQueries({ queryKey: ['artifact', artifactId] });
-  if (chatId) void qc.invalidateQueries({ queryKey: keys.artifacts(chatId) });
+  void qc.invalidateQueries({ queryKey: ['artifacts'] });
+  void chatId;
 }
 
 export function useArtifactMutations() {

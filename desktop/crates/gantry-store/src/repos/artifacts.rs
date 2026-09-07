@@ -193,6 +193,15 @@ pub fn list_for_project(conn: &Connection, project_id: &str) -> Result<Vec<Artif
     Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
 }
 
+/// Every artifact across every chat, newest change first (the library, 13 §9).
+pub fn list_all(conn: &Connection) -> Result<Vec<ArtifactDto>> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {ARTIFACT_COLUMNS} FROM artifacts WHERE archived_at IS NULL ORDER BY updated_at DESC"
+    ))?;
+    let rows = stmt.query_map([], artifact_from_row)?;
+    Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
+}
+
 pub fn versions(conn: &Connection, id: ArtifactId) -> Result<Vec<ArtifactVersionDto>> {
     let mut stmt = conn.prepare(&format!(
         "SELECT {VERSION_COLUMNS} FROM artifact_versions WHERE artifact_id = ?1 ORDER BY version"

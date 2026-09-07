@@ -27,7 +27,14 @@ import { toTurns } from '@/lib/view/toTurns';
  * and the right pane for detail tabs. Finished turns come from the chat query, the running one
  * from the run store; the composer's mode, guard, model and thinking write straight to the chat.
  */
-export function ChatView({ chatId }: { chatId: string }) {
+export function ChatView({
+  chatId,
+  openArtifactId,
+}: {
+  chatId: string;
+  /** An artifact to show in the pane on arrival (from the library or a deep link). */
+  openArtifactId?: string;
+}) {
   const chat = useChat(chatId);
   const live = useRunStore((s) => s.byChat[chatId]);
   const send = useRunStore((s) => s.send);
@@ -40,8 +47,11 @@ export function ChatView({ chatId }: { chatId: string }) {
   const { providers } = useModelCatalog();
   const settings = useSettings();
   const [detailTabs, setDetailTabs] = useState<PaneTab[]>([]);
-  const [activeTab, setActiveTab] = useState<string>('');
-  const [paneOpen, setPaneOpen] = useState(false);
+  // A deep link (`?artifact=`) starts with that artifact's tab open (13 §9).
+  const [activeTab, setActiveTab] = useState<string>(() =>
+    openArtifactId ? `artifact-${openArtifactId}` : '',
+  );
+  const [paneOpen, setPaneOpen] = useState(() => openArtifactId !== undefined);
   const artifactList = useArtifacts(chatId);
   const openArtifacts = useArtifactStore((s) => s.openByChat[chatId]);
   const openArtifact = useArtifactStore((s) => s.open);
@@ -49,7 +59,10 @@ export function ChatView({ chatId }: { chatId: string }) {
   const artifacts = useMemo(
     () =>
       Object.fromEntries(
-        (artifactList.data ?? []).map((a) => [a.id, { title: a.title, type: a.type }]),
+        (artifactList.data ?? []).map((a) => [
+          a.id,
+          { title: a.title, type: a.type, version: a.current_version },
+        ]),
       ),
     [artifactList.data],
   );
@@ -80,6 +93,9 @@ export function ChatView({ chatId }: { chatId: string }) {
     },
     [chatId, openArtifact],
   );
+  useEffect(() => {
+    if (openArtifactId) openArtifact(chatId, openArtifactId);
+  }, [openArtifactId, chatId, openArtifact]);
   const openItem = useCallback(
     (item: ActivityItem) => {
       if (item.kind === 'artifact') {

@@ -195,7 +195,7 @@ Not in v1. Nothing in the MVP scope needs artifacts that remember state between 
 - `artifacts.chat_id` is the owner; `artifacts.project_id` is denormalized from the chat at creation and updated if the chat moves projects.
 - The project page gets an **Artifacts** tab listing every artifact of the project's chats; opening one from there is read-only unless the owning chat is open.
 - `gantry__read_artifact` accepts any artifact in the same project, so a new chat can build on an earlier one; **Continue in new chat** on an artifact creates a chat in the project with a `SystemNote` naming the artifact and telling the model to read it before working.
-- Chats outside a project keep their artifacts to themselves. A global "all artifacts" library is deferred; the FTS index makes it a small addition later.
+- Chats outside a project keep their artifacts to themselves as far as the model is concerned. The **Artifacts** page in the sidebar is the user's library: every artifact across every chat, newest change first, each row opening its chat with the artifact in the pane (`/chat/<id>?artifact=<id>`). Search over the FTS index is a later addition.
 
 Why not project-scoped ownership: the transcript that explains an artifact belongs to one chat, and versions are tied to that chat's turns; making the project the owner would put artifact versions and chat history on different clocks. Why not chat-only visibility: the project is where the user's related work lives, and reuse across chats is the whole reason projects exist.
 

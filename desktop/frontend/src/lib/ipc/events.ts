@@ -29,7 +29,7 @@ export function useBackendEvents() {
       }),
       events.artifactsChanged.listen((e) => {
         void qc.invalidateQueries({ queryKey: ['artifact', e.payload.artifact_id] });
-        void qc.invalidateQueries({ queryKey: keys.artifacts(e.payload.chat_id) });
+        void qc.invalidateQueries({ queryKey: ['artifacts'] });
         void qc.invalidateQueries({ queryKey: keys.chat(e.payload.chat_id) });
       }),
     ];
