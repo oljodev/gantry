@@ -61,4 +61,29 @@ describe('summarize', () => {
     ];
     expect(summarize(items)).toBe('Used GitHub 2 times, searched');
   });
+
+  it('leaves out work the user stopped or refused', () => {
+    const items: ActivityItem[] = [
+      read('r1', 'src/a.ts'),
+      {
+        kind: 'artifact',
+        id: 'a',
+        title: 'artifact',
+        type: 'artifact',
+        version: 0,
+        action: 'created',
+        status: 'cancelled',
+      },
+      {
+        kind: 'connector',
+        id: '1',
+        connector: 'github',
+        tool: 'create_issue',
+        summary: '',
+        status: 'denied',
+      },
+    ];
+    expect(summarize(items)).toBe('Read a file');
+    expect(summarize(items.slice(1))).toBe('');
+  });
 });

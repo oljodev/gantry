@@ -72,6 +72,19 @@ const extra: ActivityItem[] = [
   { kind: 'context', id: 'x7', skills: ['rust-idioms'], memories: 2 },
 ];
 
+/** What Stop leaves behind: a call that never finished, on a turn that is no longer running. */
+const stopped: ActivityItem[] = [
+  {
+    kind: 'artifact',
+    id: 'x8',
+    title: 'artifact',
+    type: 'artifact',
+    version: 0,
+    action: 'created',
+    status: 'cancelled',
+  },
+];
+
 function Activity() {
   return (
     <>
@@ -82,7 +95,7 @@ function Activity() {
           ))}
         </div>
       </State>
-      <State label="Turn steps · done, running, expanded">
+      <State label="Turn steps · done, running, expanded, stopped">
         <div className="flex w-full max-w-(--measure) flex-col">
           <TurnSteps
             steps={[
@@ -98,6 +111,7 @@ function Activity() {
             ]}
             defaultOpen
           />
+          <TurnSteps steps={[{ kind: 'activity', items: stopped }]} running={false} />
         </div>
       </State>
       <State label="Artifact card">

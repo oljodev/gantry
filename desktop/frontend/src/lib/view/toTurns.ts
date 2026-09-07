@@ -280,7 +280,9 @@ function artifactItem(
         ? 'done'
         : status === 'failed' || status === 'denied'
           ? 'failed'
-          : 'running',
+          : status === 'cancelled'
+            ? 'cancelled'
+            : 'running',
   };
 }
 

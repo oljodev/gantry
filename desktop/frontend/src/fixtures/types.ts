@@ -92,7 +92,7 @@ export type ActivityItem =
       type: string;
       version: number;
       action?: 'created' | 'updated';
-      status?: 'running' | 'done' | 'failed';
+      status?: 'running' | 'done' | 'failed' | 'cancelled';
     }
   | { kind: 'context'; id: string; skills: string[]; memories: number };
 

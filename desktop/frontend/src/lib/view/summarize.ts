@@ -1,7 +1,11 @@
 import { connectorName } from '@/fixtures/connectors';
 import type { ActivityItem } from '@/fixtures/types';
 
-/** "Created an artifact, read 3 files, ran a command": one fragment per kind of work. */
+/**
+ * "Created an artifact, read 3 files, ran a command": one fragment per kind of work. Work the
+ * user stopped or refused is left out — it never happened — so a stopped turn can summarise to
+ * nothing, and the caller says so instead.
+ */
 export function summarize(items: ActivityItem[]): string {
   const fragments: string[] = [];
   const reads = new Set<string>();
@@ -17,6 +21,7 @@ export function summarize(items: ActivityItem[]): string {
     if (!order.includes(key)) order.push(key);
   };
   for (const item of items) {
+    if ('status' in item && (item.status === 'cancelled' || item.status === 'denied')) continue;
     switch (item.kind) {
       case 'read':
         reads.add(item.path);

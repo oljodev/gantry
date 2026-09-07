@@ -16,13 +16,18 @@ export type StepBlock = Extract<Block, { kind: 'thinking' | 'activity' }>;
  * artifact, ran 2 commands" once done, the current step ("Creating Dashboard…") while it runs.
  * Collapsed by default; click or → expands to the thinking blocks and activity rows in order.
  * A fold with reasoning alone is the thinking line itself.
+ *
+ * `running` is the turn's own state, not the rows': a stopped turn never spins, even if a call
+ * it left behind still says it was running, so a stop always settles the line.
  */
 export function TurnSteps({
   steps,
+  running: turnRunning = true,
   defaultOpen = false,
   onOpen,
 }: {
   steps: StepBlock[];
+  running?: boolean;
   defaultOpen?: boolean;
   onOpen?: (item: ActivityItem) => void;
 }) {
@@ -37,7 +42,12 @@ export function TurnSteps({
       <div className="my-1">
         {steps.map((s, i) =>
           s.kind === 'thinking' ? (
-            <ThinkingBlock key={i} text={s.text} running={s.running} durationMs={s.durationMs} />
+            <ThinkingBlock
+              key={i}
+              text={s.text}
+              running={turnRunning && s.running}
+              durationMs={s.durationMs}
+            />
           ) : null,
         )}
         {plain.map((item) => (
@@ -47,8 +57,8 @@ export function TurnSteps({
     );
   }
 
-  const running = stepInProgress(steps);
-  const label = running ?? summarize(folded);
+  const running = turnRunning ? stepInProgress(steps) : undefined;
+  const label = running ?? (summarize(folded) || 'Stopped before any work ran');
   const failed = folded.filter(isFailed).length;
 
   return (
@@ -82,7 +92,12 @@ export function TurnSteps({
         <div className="mt-1 ml-2.5 flex flex-col gap-0.5 border-l border-line-subtle pl-3">
           {steps.map((s, i) =>
             s.kind === 'thinking' ? (
-              <ThinkingBlock key={i} text={s.text} running={s.running} durationMs={s.durationMs} />
+              <ThinkingBlock
+                key={i}
+                text={s.text}
+                running={turnRunning && s.running}
+                durationMs={s.durationMs}
+              />
             ) : (
               s.items
                 .filter((item) => item.kind !== 'context' && item.kind !== 'notice')

@@ -57,7 +57,14 @@ export function TurnView({
             case 'text':
               return <Markdown key={i}>{block.markdown}</Markdown>;
             case 'steps':
-              return <TurnSteps key={i} steps={block.steps} onOpen={onOpenItem} />;
+              return (
+                <TurnSteps
+                  key={i}
+                  steps={block.steps}
+                  running={turn.status === 'running' || turn.status === 'waiting'}
+                  onOpen={onOpenItem}
+                />
+              );
             case 'artifact':
               return (
                 <div key={i} className="my-3">

@@ -179,6 +179,8 @@ export function ActivityRow({ item, onOpen }: ActivityRowProps) {
               <Spinner />
             ) : item.status === 'failed' ? (
               <Failed />
+            ) : item.status === 'cancelled' ? (
+              <span className="text-meta text-fg-3">cancelled</span>
             ) : (
               <ArrowSquareOutIcon className="size-3.5 text-fg-3" />
             )
