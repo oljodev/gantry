@@ -35,6 +35,7 @@ function finishedTurn(t: TurnDto, modelLabel: Label): Turn {
     false,
     undefined,
   );
+  pushNotices(blocks, t.notices);
   if (t.status === 'failed' && t.error) {
     blocks.push({ kind: 'error', message: t.error, retryable: false });
   }
@@ -70,6 +71,7 @@ function liveTurn(t: TurnDto, live: LiveTurn, modelLabel: Label): Turn {
     live.status === 'running',
     thinkingMs,
   );
+  pushNotices(blocks, live.notices);
   if (live.error)
     blocks.push({ kind: 'error', message: live.error.message, retryable: live.error.retryable });
   const done = live.status !== 'running';
@@ -89,6 +91,19 @@ function liveTurn(t: TurnDto, live: LiveTurn, modelLabel: Label): Turn {
     status:
       live.status === 'running' && live.pending.length > 0 ? 'waiting' : statusOf(live.status),
   };
+}
+
+/** Notices sit after the text and calls they explain, as plain rows (05 §1). */
+function pushNotices(blocks: Block[], notices: string[]) {
+  if (notices.length === 0) return;
+  const items: ActivityItem[] = notices.map((text, i) => ({
+    kind: 'notice',
+    id: `notice-${i}`,
+    text,
+  }));
+  const last = blocks[blocks.length - 1];
+  if (last?.kind === 'activity') last.items.push(...items);
+  else blocks.push({ kind: 'activity', items });
 }
 
 function statusOf(s: TurnDto['status']): Turn['status'] {

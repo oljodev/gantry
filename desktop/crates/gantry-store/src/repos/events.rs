@@ -70,6 +70,23 @@ pub fn list_for_turn(conn: &Connection, turn_id: TurnId) -> Result<Vec<AgentEven
     Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
 }
 
+/// `(turn, detail)` of every `provider.notice` in the chat, in order, for the turn DTOs.
+pub fn list_notices_for_chat(conn: &Connection, chat_id: ChatId) -> Result<Vec<(TurnId, String)>> {
+    let mut stmt = conn.prepare(
+        "SELECT turn_id, payload_json FROM events
+         WHERE chat_id = ?1 AND kind = 'provider.notice' ORDER BY turn_id, seq",
+    )?;
+    let rows = stmt.query_map(params![chat_id.to_string()], |r| {
+        let payload: String = r.get(1)?;
+        let detail = serde_json::from_str::<serde_json::Value>(&payload)
+            .ok()
+            .and_then(|v| v.get("detail").and_then(|d| d.as_str()).map(str::to_owned))
+            .unwrap_or_default();
+        Ok((id_from_str::<TurnId>(r, 0)?, detail))
+    })?;
+    Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
+}
+
 pub fn count_for_turn(conn: &Connection, turn_id: TurnId) -> Result<u32> {
     Ok(conn.query_row(
         "SELECT count(*) FROM events WHERE turn_id = ?1",

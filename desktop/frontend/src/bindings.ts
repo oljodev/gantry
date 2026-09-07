@@ -600,6 +600,8 @@ export type TurnDto = {
 	messages: Message[],
 	/**  Every tool call of the turn, in the order the model made them. */
 	tool_calls: ToolCallDto[],
+	/**  Provider and loop notices shown inline (05 §1): a round cap, a dropped block, a retry. */
+	notices: string[],
 	usage: Usage | null,
 	stop_reason: StopReason | null,
 	error: string | null,

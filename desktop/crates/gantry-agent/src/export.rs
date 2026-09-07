@@ -113,6 +113,7 @@ mod tests {
                     m
                 }],
                 tool_calls: Vec::new(),
+                notices: Vec::new(),
                 usage: None,
                 stop_reason: None,
                 error: None,

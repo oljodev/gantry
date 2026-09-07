@@ -69,6 +69,7 @@ const chat = (turn: Partial<TurnDto>): ChatDetail => ({
       },
       messages: [],
       tool_calls: [],
+      notices: [],
       usage: null,
       stop_reason: null,
       error: null,

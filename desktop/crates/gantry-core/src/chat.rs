@@ -65,6 +65,8 @@ pub struct TurnDto {
     pub messages: Vec<Message>,
     /// Every tool call of the turn, in the order the model made them.
     pub tool_calls: Vec<ToolCallDto>,
+    /// Provider and loop notices shown inline (05 §1): a round cap, a dropped block, a retry.
+    pub notices: Vec<String>,
     pub usage: Option<Usage>,
     pub stop_reason: Option<StopReason>,
     pub error: Option<String>,

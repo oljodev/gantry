@@ -3,7 +3,6 @@ import { Link } from '@tanstack/react-router';
 import { type ComponentType, type ReactNode, useState } from 'react';
 
 import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
 import {
   ContextMenu,
   ContextMenuContent,
@@ -131,18 +130,23 @@ export function ChatRow({ chat, ...actions }: { chat: ChatSummary } & ChatRowAct
 function RenameField({ title, onDone }: { title: string; onDone: (title: string) => void }) {
   const [value, setValue] = useState(title);
   return (
-    <Input
-      autoFocus
-      value={value}
-      aria-label="Chat title"
-      onChange={(e) => setValue(e.target.value)}
-      onFocus={(e) => e.target.select()}
-      onBlur={() => onDone(value.trim())}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') onDone(value.trim());
-        if (e.key === 'Escape') onDone(title);
-      }}
-      className="my-px h-[calc(var(--row-sidebar)-2px)] border-line-strong px-2 focus-visible:outline-offset-0"
-    />
+    // The row edits in place: same dot, same padding, the title becomes a field; a hairline
+    // in `line-strong` says it is editable without the accent (15 §3).
+    <div className="flex h-(--row-sidebar) items-center gap-2.5 rounded-2 border border-line-strong bg-raised px-2 text-ui">
+      <span className="size-1.5 shrink-0 rounded-full border border-fg-3" aria-hidden />
+      <input
+        autoFocus
+        value={value}
+        aria-label="Chat title"
+        onChange={(e) => setValue(e.target.value)}
+        onFocus={(e) => e.target.select()}
+        onBlur={() => onDone(value.trim())}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') onDone(value.trim());
+          if (e.key === 'Escape') onDone(title);
+        }}
+        className="min-w-0 flex-1 bg-transparent text-fg outline-none focus-visible:outline-none"
+      />
+    </div>
   );
 }

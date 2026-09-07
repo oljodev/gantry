@@ -171,7 +171,8 @@ impl ChatBook {
                 let turns = turns::list_for_chat(conn, id)?;
                 let messages = messages::list_for_chat(conn, id)?;
                 let calls = tool_calls::list_for_chat(conn, id)?;
-                Ok(Some(detail(&chat, &turns, &messages, &calls)))
+                let notices = gantry_store::repos::events::list_notices_for_chat(conn, id)?;
+                Ok(Some(detail(&chat, &turns, &messages, &calls, &notices)))
             })
             .map_err(store_err)
     }
@@ -588,6 +589,7 @@ fn detail(
     turns: &[TurnRecord],
     messages: &[MessageRecord],
     calls: &[gantry_core::ToolCallDto],
+    notices: &[(TurnId, String)],
 ) -> ChatDetail {
     let turn_dtos = turns
         .iter()
@@ -637,6 +639,11 @@ fn detail(
                 user,
                 messages: replies,
                 tool_calls,
+                notices: notices
+                    .iter()
+                    .filter(|(turn, _)| *turn == t.id)
+                    .map(|(_, n)| n.clone())
+                    .collect(),
                 usage: t.usage,
                 stop_reason: t.stop_reason.clone(),
                 error: t.error.clone(),
