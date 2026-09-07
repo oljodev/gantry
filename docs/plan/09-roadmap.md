@@ -150,6 +150,7 @@ Done when: a multi-step task completes hands-off in Guarded Auto, with at least 
 - **The full install flow of 03 §11**: `InstallDialog` with the runtime check step (`RuntimeCheck`, per-OS guidance, Check again), configuration, command preview, first start with discovered tools; remote installs going straight to OAuth; uninstall.
 - UI: Browse, ConnectorDetail (README, tools with tiers, settings form from `user_config`, custom panels via glob import, auth, health, logs), AddCustomServer with JSON import, AuthStatus, and **Settings → Connectors** (installed list).
 - Bundled manifests: `github`, `google-drive` (with its helper panel), `playwright`.
+- **The `add-connector` Claude skill** (`.claude/skills/add-connector/SKILL.md`, decided 2026-09-07): the repeatable recipe for a new catalog entry, so the catalog can grow from the first 10–30 bundled connectors to well past 100 without hand-holding. It researches the server (transport, auth, tools, runtime), writes `desktop/connectors/<id>/{manifest.json, icon.svg, README.md}` with tiers per tool, adds the website entry in `web/site/src/data/connectors.ts`, runs `cargo xtask validate-connectors` and the schema test, and ends with a checklist for Olav to try the install. Batches of connectors land as one commit each.
 
 Done when: GitHub connects through OAuth and creates an issue after a permission prompt; Playwright is refused until Node 20 is present, then installs and drives a page; a custom stdio server pasted from a Claude Desktop config works; removing a connector leaves its history readable.
 
