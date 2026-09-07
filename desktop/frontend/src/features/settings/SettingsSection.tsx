@@ -1,5 +1,9 @@
 import type { ReactNode } from 'react';
 
+import { SettingsRow } from '@/components/gantry/settings/SettingsRow';
+import { Advanced } from '@/features/settings/Advanced';
+import { Data } from '@/features/settings/Data';
+import { General } from '@/features/settings/General';
 import { Providers } from '@/features/settings/Providers';
 import { isSection, SECTIONS, type Section } from '@/features/settings/sections';
 import { isTauri } from '@/lib/ipc/client';
@@ -9,13 +13,10 @@ import { type Density, type ThemePref, useUiStore } from '@/lib/stores/uiStore';
 import { Segmented } from '@/components/ui/radio-group';
 
 const ARRIVES: Partial<Record<Section, string>> = {
-  general: 'M2',
   guard: 'M7',
   connectors: 'M9',
   skills: 'M12',
   memory: 'M12',
-  data: 'M2',
-  advanced: 'M2',
 };
 
 export function SettingsSection({ section }: { section: string }) {
@@ -26,8 +27,11 @@ export function SettingsSection({ section }: { section: string }) {
     <div className="mx-auto w-full max-w-(--measure) px-6 py-8">
       <h1 className="text-page font-semibold text-fg">{label}</h1>
       <div className="mt-6">
+        {id === 'general' && <General />}
         {id === 'appearance' && <Appearance />}
         {id === 'providers' && <Providers />}
+        {id === 'data' && <Data />}
+        {id === 'advanced' && <Advanced />}
         {id === 'about' && <About />}
         {ARRIVES[id] && (
           <p className="text-body text-fg-2">This section arrives with milestone {ARRIVES[id]}.</p>
@@ -117,26 +121,6 @@ function About() {
       </Fact>
       <Fact label="Licence">Functional Source License, FSL-1.1-ALv2</Fact>
     </dl>
-  );
-}
-
-function SettingsRow({
-  label,
-  hint,
-  children,
-}: {
-  label: string;
-  hint?: string;
-  children: ReactNode;
-}) {
-  return (
-    <div className="flex min-h-(--row) items-center justify-between gap-6 py-3">
-      <div className="min-w-0">
-        <div className="text-ui font-medium text-fg">{label}</div>
-        {hint && <div className="text-meta text-fg-2">{hint}</div>}
-      </div>
-      <div className="shrink-0">{children}</div>
-    </div>
   );
 }
 

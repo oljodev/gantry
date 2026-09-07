@@ -101,7 +101,7 @@ export interface Turn {
   user: { text: string; attachments?: { name: string; kind: 'file' | 'image' }[] };
   blocks: Block[];
   footer?: { model: string; durationMs: number; tokensIn: number; tokensOut: number };
-  status: 'done' | 'running' | 'waiting' | 'failed' | 'cancelled';
+  status: 'done' | 'running' | 'waiting' | 'failed' | 'cancelled' | 'interrupted';
   /** When the turn ended, for "2 min ago"; absent while running. */
   endedAt?: number;
   feedback?: 'good' | 'bad';

@@ -1,8 +1,9 @@
-use gantry_agent::ChatPatch;
+use gantry_agent::{ChatPatch, ExportFormat};
 use gantry_core::{
     ChatDetail, ChatId, ChatSummary, ErrorDto, Feedback, GantryError, Mode, ModelRef,
-    ReasoningEffort, TurnId,
+    ReasoningEffort, SearchHit, TurnId,
 };
+use gantry_store::repos;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, State};
 use tauri_specta::Event;
@@ -19,6 +20,15 @@ pub struct ChatUpdate {
     pub title: Option<String>,
     pub pinned: Option<bool>,
     pub archived: Option<bool>,
+    /// Chat-level custom instructions (10 §2, layer 6).
+    pub instructions: Option<String>,
+}
+
+/// What developer mode shows: the frozen prompt and the notes appended since (10 §4).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+pub struct SystemPromptView {
+    pub snapshot: String,
+    pub notes: Vec<String>,
 }
 
 #[tauri::command]
@@ -28,7 +38,7 @@ pub fn create_chat(
     state: State<'_, AppState>,
     model: Option<ModelRef>,
 ) -> Result<ChatSummary, ErrorDto> {
-    let chat = state.turns.create_chat(model);
+    let chat = state.turns.create_chat(model)?;
     let _ = ChatsChanged {
         chat_ids: vec![chat.id],
     }
@@ -39,7 +49,7 @@ pub fn create_chat(
 #[tauri::command]
 #[specta::specta]
 pub fn list_chats(state: State<'_, AppState>) -> Result<Vec<ChatSummary>, ErrorDto> {
-    Ok(state.turns.chats().list())
+    Ok(state.turns.chats().list()?)
 }
 
 #[tauri::command]
@@ -48,7 +58,7 @@ pub fn get_chat(state: State<'_, AppState>, chat_id: ChatId) -> Result<ChatDetai
     state
         .turns
         .chats()
-        .get(chat_id)
+        .get(chat_id)?
         .ok_or_else(|| GantryError::not_found(format!("chat {chat_id}")).into())
 }
 
@@ -60,7 +70,7 @@ pub fn update_chat(
     chat_id: ChatId,
     update: ChatUpdate,
 ) -> Result<ChatSummary, ErrorDto> {
-    let summary = state.turns.chats().update(
+    let summary = state.turns.update_chat(
         chat_id,
         ChatPatch {
             model: update.model,
@@ -73,6 +83,7 @@ pub fn update_chat(
                 .filter(|t| !t.is_empty()),
             pinned: update.pinned,
             archived: update.archived,
+            instructions: update.instructions.map(|i| i.trim().to_owned()),
         },
     )?;
     let _ = ChatsChanged {
@@ -92,7 +103,7 @@ pub fn delete_chat(
     if let Some(turn) = state.turns.active_turn_for(chat_id) {
         state.turns.cancel(turn);
     }
-    if !state.turns.chats().delete(chat_id) {
+    if !state.turns.chats().delete(chat_id)? {
         return Err(GantryError::not_found(format!("chat {chat_id}")).into());
     }
     let _ = ChatsChanged {
@@ -117,5 +128,54 @@ pub fn rate_turn(
         chat_ids: vec![chat_id],
     }
     .emit(&app);
+    Ok(())
+}
+
+/// Chats by title and messages by text (15 A15).
+#[tauri::command]
+#[specta::specta]
+pub fn search(
+    state: State<'_, AppState>,
+    query: String,
+    limit: u32,
+) -> Result<Vec<SearchHit>, ErrorDto> {
+    let limit = limit.clamp(1, 50);
+    Ok(state
+        .store
+        .read(|c| repos::search::search(c, &query, limit))
+        .map_err(GantryError::from)?)
+}
+
+/// The assembled system prompt of a chat, read-only (11 §2, Advanced → developer mode).
+#[tauri::command]
+#[specta::specta]
+pub fn get_system_prompt(
+    state: State<'_, AppState>,
+    chat_id: ChatId,
+) -> Result<SystemPromptView, ErrorDto> {
+    let (snapshot, notes) = state
+        .turns
+        .chats()
+        .system_prompt(chat_id)?
+        .ok_or_else(|| GantryError::not_found(format!("chat {chat_id}")))?;
+    Ok(SystemPromptView { snapshot, notes })
+}
+
+/// Writes the chat to `path` as Markdown or JSON (11 §2, Data & privacy).
+#[tauri::command]
+#[specta::specta]
+pub fn export_chat(
+    state: State<'_, AppState>,
+    chat_id: ChatId,
+    format: ExportFormat,
+    path: String,
+) -> Result<(), ErrorDto> {
+    let chat = state
+        .turns
+        .chats()
+        .get(chat_id)?
+        .ok_or_else(|| GantryError::not_found(format!("chat {chat_id}")))?;
+    let body = gantry_agent::export::render(&chat, format);
+    std::fs::write(&path, body).map_err(GantryError::Io)?;
     Ok(())
 }

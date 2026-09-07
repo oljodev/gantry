@@ -77,6 +77,11 @@ export function TurnView({
           />
         )}
         {turn.status === 'cancelled' && <div className="mt-1 text-meta text-fg-3">Stopped</div>}
+        {turn.status === 'interrupted' && (
+          <div className="mt-1 text-meta text-fg-3">
+            Interrupted: Gantry was closed while this reply streamed
+          </div>
+        )}
         {turn.status !== 'running' && turn.status !== 'waiting' && (
           <TurnActions
             turn={turn}

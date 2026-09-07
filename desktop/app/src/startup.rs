@@ -8,15 +8,25 @@ use std::{
     time::Instant,
 };
 
-use gantry_agent::{ChatBook, PromptContext, TurnManager};
-use gantry_core::{ProviderId, Settings};
+use gantry_agent::{ChatBook, ChatNotifier, PromptContext, TurnManager};
+use gantry_core::{ChatId, ProviderId, Settings};
 use gantry_providers::{ProviderRegistry, openai_chat::http_client};
 use gantry_secrets::SecretVault;
-use gantry_store::{Store, repos};
-use tauri::{App, Manager, plugin::TauriPlugin};
+use gantry_store::{BlobStore, Store, repos};
+use tauri::{App, AppHandle, Manager, plugin::TauriPlugin};
 use tauri_plugin_log::{Target, TargetKind};
+use tauri_specta::Event;
 
-use crate::AppState;
+use crate::{AppState, events::ChatsChanged};
+
+/// Turns that end and titles that arrive reach the frontend as `chats:changed`.
+struct Notifier(AppHandle);
+
+impl ChatNotifier for Notifier {
+    fn chats_changed(&self, chat_ids: Vec<ChatId>) {
+        let _ = ChatsChanged { chat_ids }.emit(&self.0);
+    }
+}
 
 /// Logging to stdout, to `<app log dir>/gantry.log`, and to the webview console. Third-party
 /// crates stay at `info`, so no HTTP library ever logs a request header.
@@ -73,6 +83,13 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn Error>> {
     }
 
     let store = Arc::new(Store::open(data_dir.join("gantry.db"))?);
+    let blobs = Arc::new(BlobStore::open(data_dir.join("blobs"))?);
+    // Crash recovery (09 M2): a turn left `running` by the previous process is over.
+    let interrupted = store
+        .write_blocking(|conn| repos::turns::interrupt_running(conn, gantry_core::now_ms()))?;
+    if interrupted > 0 {
+        log::warn!("{interrupted} turn(s) were interrupted by the previous shutdown");
+    }
 
     // The OS credential store is touched from a plain thread: its clients bring their own
     // event loops and must not be driven from inside an async runtime.
@@ -105,7 +122,7 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn Error>> {
     providers.rebuild()?;
 
     let turns = TurnManager::new(
-        Arc::new(ChatBook::new()),
+        Arc::new(ChatBook::new(store.clone(), blobs)),
         providers.clone(),
         settings.clone(),
         PromptContext {
@@ -116,6 +133,7 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn Error>> {
         },
         tauri::async_runtime::handle().inner().clone(),
     );
+    turns.set_notifier(Arc::new(Notifier(app.handle().clone())));
 
     app.manage(AppState {
         data_dir,

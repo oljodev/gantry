@@ -4,6 +4,7 @@ import { create } from 'zustand';
 
 import type {
   AgentEventBatch,
+  AttachmentInput,
   ChatId,
   ContentPart,
   ModelRef,
@@ -38,7 +39,7 @@ export interface LiveTurn {
 interface RunState {
   byChat: Record<ChatId, LiveTurn>;
   /** Starts a turn; the caller has already created the chat. */
-  send: (chatId: ChatId, text: string) => Promise<TurnId>;
+  send: (chatId: ChatId, text: string, attachments?: AttachmentInput[]) => Promise<TurnId>;
   stop: (chatId: ChatId) => Promise<void>;
   /** Reattaches to a running turn after a reload or a chat switch. */
   attach: (chatId: ChatId, turnId: TurnId) => Promise<void>;
@@ -189,9 +190,9 @@ function fresh(turnId: TurnId): LiveTurn {
 
 export const useRunStore = create<RunState>()((set, get) => ({
   byChat: {},
-  send: async (chatId, text) => {
+  send: async (chatId, text, attachments = []) => {
     const channel = channelFor(chatId);
-    const turnId = await unwrap(commands.sendMessage(chatId, text, channel));
+    const turnId = await unwrap(commands.sendMessage(chatId, text, attachments, channel));
     adopt(set, chatId, turnId);
     return turnId;
   },

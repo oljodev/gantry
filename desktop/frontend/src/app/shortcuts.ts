@@ -15,7 +15,7 @@ export function installShortcuts(router: AnyRouter) {
         break;
       case ',':
         e.preventDefault();
-        void router.navigate({ to: '/settings/$section', params: { section: 'appearance' } });
+        void router.navigate({ to: '/settings/$section', params: { section: 'general' } });
         break;
       case 'n':
       case 'N':

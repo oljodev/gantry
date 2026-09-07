@@ -29,3 +29,24 @@ export function useSecretStoreStatus() {
     staleTime: Infinity,
   });
 }
+
+export function useDataInfo() {
+  return useQuery({
+    queryKey: keys.dataInfo,
+    queryFn: () => unwrap(commands.getDataInfo()),
+    enabled: isTauri(),
+  });
+}
+
+export function useDataMutations() {
+  const qc = useQueryClient();
+  const openDataDir = useMutation({ mutationFn: () => unwrap(commands.openDataDir()) });
+  const backup = useMutation({
+    mutationFn: (path: string) => unwrap(commands.backupDatabase(path)),
+  });
+  const maintain = useMutation({
+    mutationFn: () => unwrap(commands.maintainDatabase()),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.dataInfo }),
+  });
+  return { openDataDir, backup, maintain };
+}

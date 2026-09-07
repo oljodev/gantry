@@ -11,9 +11,19 @@ export const commands = {
 	/**  Facts about the running app: version, OS, directories. The M0 round-trip command. */
 	appInfo: () => typedError<AppInfo, ErrorDto>(__TAURI_INVOKE("app_info")),
 	getSettings: () => typedError<Settings, ErrorDto>(__TAURI_INVOKE("get_settings")),
-	/**  Replaces the given sections, persists them and returns the whole document. */
+	/**
+	 *  Replaces the given sections, persists them and returns the whole document. A change to the
+	 *  global custom instructions reaches every open chat as a `SystemNote` (10 §4).
+	 */
 	updateSettings: (patch: SettingsPatch) => typedError<Settings, ErrorDto>(__TAURI_INVOKE("update_settings", { patch })),
 	getSecretStoreStatus: () => typedError<SecretStoreStatus, ErrorDto>(__TAURI_INVOKE("get_secret_store_status")),
+	getDataInfo: () => typedError<DataInfo, ErrorDto>(__TAURI_INVOKE("get_data_info")),
+	/**  Opens the data directory in the system file manager. */
+	openDataDir: () => typedError<null, ErrorDto>(__TAURI_INVOKE("open_data_dir")),
+	/**  A consistent copy of the database without credentials (06 §5, 11 §2). */
+	backupDatabase: (path: string) => typedError<null, ErrorDto>(__TAURI_INVOKE("backup_database", { path })),
+	/**  `PRAGMA integrity_check` then `VACUUM`; never automatic (06 §6). */
+	maintainDatabase: () => typedError<null, ErrorDto>(__TAURI_INVOKE("maintain_database")),
 	listProviders: () => typedError<ProviderRow[], ErrorDto>(__TAURI_INVOKE("list_providers")),
 	/**  Stores the key encrypted and forgets the plaintext. Write-only: nothing returns it. */
 	setProviderKey: (providerId: ProviderId, key: string) => typedError<KeyStatus, ErrorDto>(__TAURI_INVOKE("set_provider_key", { providerId, key })),
@@ -36,8 +46,17 @@ export const commands = {
 	deleteChat: (chatId: ChatId) => typedError<null, ErrorDto>(__TAURI_INVOKE("delete_chat", { chatId })),
 	/**  The user's verdict on a reply; `None` clears it. */
 	rateTurn: (chatId: ChatId, turnId: TurnId, feedback: "good" | "bad" | null) => typedError<null, ErrorDto>(__TAURI_INVOKE("rate_turn", { chatId, turnId, feedback })),
-	/**  Starts a turn and returns at once; the channel carries the turn's events until it ends. */
-	sendMessage: (chatId: ChatId, text: string, onEvent: Channel<AgentEventBatch>) => typedError<TurnId, ErrorDto>(__TAURI_INVOKE("send_message", { chatId, text, onEvent })),
+	/**  Chats by title and messages by text (15 A15). */
+	search: (query: string, limit: number) => typedError<SearchHit[], ErrorDto>(__TAURI_INVOKE("search", { query, limit })),
+	/**  The assembled system prompt of a chat, read-only (11 §2, Advanced → developer mode). */
+	getSystemPrompt: (chatId: ChatId) => typedError<SystemPromptView, ErrorDto>(__TAURI_INVOKE("get_system_prompt", { chatId })),
+	/**  Writes the chat to `path` as Markdown or JSON (11 §2, Data & privacy). */
+	exportChat: (chatId: ChatId, format: ExportFormat, path: string) => typedError<null, ErrorDto>(__TAURI_INVOKE("export_chat", { chatId, format, path })),
+	/**
+	 *  Starts a turn and returns at once; the channel carries the turn's events until it ends.
+	 *  Attachments are read and stored before anything is sent; a bad one fails the whole call.
+	 */
+	sendMessage: (chatId: ChatId, text: string, attachments: AttachmentInput[], onEvent: Channel<AgentEventBatch>) => typedError<TurnId, ErrorDto>(__TAURI_INVOKE("send_message", { chatId, text, attachments, onEvent })),
 	/**  Drops the chat's last turn and sends its user message again over a fresh channel. */
 	retryTurn: (chatId: ChatId, turnId: TurnId, onEvent: Channel<AgentEventBatch>) => typedError<TurnId, ErrorDto>(__TAURI_INVOKE("retry_turn", { chatId, turnId, onEvent })),
 	/**  Whether the turn was running. */
@@ -113,6 +132,12 @@ export type AppearanceSettings = {
 	density?: Density,
 };
 
+export type AttachmentInput = 
+/**  A file on disk, chosen in the file dialog or dropped on the window. */
+{ kind: "path"; path: string } | 
+/**  Bytes the webview already holds (a pasted image or file). */
+{ kind: "bytes"; name: string; mime: string; data_base64: string };
+
 export type CacheSupport = "none" | "automatic" | "explicit";
 
 /**
@@ -176,6 +201,8 @@ export type ChatUpdate = {
 	title: string | null,
 	pinned: boolean | null,
 	archived: boolean | null,
+	/**  Chat-level custom instructions (10 §2, layer 6). */
+	instructions: string | null,
 };
 
 export type ChatsChanged = {
@@ -193,6 +220,15 @@ export type ContentPart = { kind: "text"; text: string } | { kind: "image"; sour
 /**  Connectors attached or detached mid-chat (role `System`). */
 { kind: "tool_set_change"; added: string[]; removed: string[] };
 
+/**  What Settings → Data & privacy shows and what its buttons do. */
+export type DataInfo = {
+	data_dir: string,
+	database_path: string,
+	/**  Size of the database file and its WAL, in bytes. */
+	database_bytes: number,
+	chat_count: number,
+};
+
 export type Density = "comfortable" | "compact";
 
 /**
@@ -200,6 +236,8 @@ export type Density = "comfortable" | "compact";
  *  user did not choose. Rendered by the UI as an inline error row.
  */
 export type ErrorDto = { kind: "internal"; message: string } | { kind: "invalid_input"; message: string } | { kind: "not_found"; message: string } | { kind: "io"; message: string } | { kind: "provider"; provider_kind: ProviderErrorKind; message: string } | { kind: "secrets"; message: string } | { kind: "store"; message: string };
+
+export type ExportFormat = "markdown" | "json";
 
 /**  The user's verdict on an assistant reply. */
 export type Feedback = "good" | "bad";
@@ -348,6 +386,20 @@ export type ResultPart = { kind: "text"; text: string } | { kind: "json"; json: 
 /**  Who wrote a message. */
 export type Role = "user" | "assistant" | "tool" | "system";
 
+/**  One row of the palette's search (docs/plan/06 §3): a chat by title or a message by text. */
+export type SearchHit = {
+	kind: SearchHitKind,
+	chat_id: ChatId,
+	chat_title: string,
+	message_id: MessageId | null,
+	turn_id: TurnId | null,
+	/**  The matched title, or the matching stretch of the message with `…` around it. */
+	snippet: string,
+	ts: number,
+};
+
+export type SearchHitKind = "chat" | "message";
+
 /**  Where the master key lives; shown in Settings → Providers. */
 export type SecretStoreStatus = 
 /**  The operating system's credential store. */
@@ -373,6 +425,12 @@ export type SettingsPatch = {
 
 /**  Why the model stopped. */
 export type StopReason = { kind: "end_turn" } | { kind: "tool_use" } | { kind: "max_tokens" } | { kind: "refusal"; category: string | null } | { kind: "content_filter" } | { kind: "pause_turn" } | { kind: "cancelled" } | { kind: "other"; reason: string };
+
+/**  What developer mode shows: the frozen prompt and the notes appended since (10 §4). */
+export type SystemPromptView = {
+	snapshot: string,
+	notes: string[],
+};
 
 export type Theme = "system" | "light" | "dark";
 
@@ -408,7 +466,9 @@ export type TurnSnapshot = {
 	seq: number,
 };
 
-export type TurnStatus = "running" | "completed" | "cancelled" | "failed";
+export type TurnStatus = "running" | "completed" | "cancelled" | "failed" | 
+/**  The app was closed while the turn ran (found at the next start). */
+"interrupted";
 
 /**  Token accounting for one request, in the provider's own count. */
 export type Usage = {

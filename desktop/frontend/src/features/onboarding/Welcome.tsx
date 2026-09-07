@@ -6,6 +6,7 @@ import { Composer } from '@/components/gantry/composer/Composer';
 import { Kbd } from '@/components/ui/kbd';
 import { toast } from '@/components/ui/toast';
 import type { Mode, ModelRef } from '@/fixtures/types';
+import type { PendingAttachment } from '@/lib/attachments';
 import { isTauri } from '@/lib/ipc/client';
 import { useChatMutations } from '@/lib/ipc/hooks/chats';
 import { useSettings } from '@/lib/ipc/hooks/settings';
@@ -57,7 +58,7 @@ export function Welcome() {
   const defaultEffort = chatDefaults?.default_effort ?? 'medium';
   const effectiveThinking = thinking ?? defaultEffort !== 'off';
 
-  const onSend = async (text: string) => {
+  const onSend = async (text: string, attachments: PendingAttachment[]) => {
     if (!isTauri()) {
       toast.add({ title: 'No backend', description: 'Run the app to chat.', type: 'error' });
       return;
@@ -74,7 +75,11 @@ export function Welcome() {
             }
           : null;
       if (changed) await update.mutateAsync({ chatId: chat.id, update: changed });
-      await send(chat.id, text);
+      await send(
+        chat.id,
+        text,
+        attachments.map((a) => a.input),
+      );
       await navigate({ to: '/chat/$chatId', params: { chatId: chat.id } });
     } catch (err) {
       toast.add({ title: 'Could not start the chat', description: describe(err), type: 'error' });
@@ -118,7 +123,7 @@ export function Welcome() {
         onModeChange={setMode}
         onGuardChange={setGuard}
         onModelChange={setModel}
-        onSend={(text) => void onSend(text)}
+        onSend={(text, attachments) => void onSend(text, attachments)}
       />
       <div className="flex h-8 items-center justify-center gap-1.5 text-meta text-fg-3">
         Add files, folders and connectors with <Kbd>+</Kbd> · search anything with <Kbd>⌘</Kbd>

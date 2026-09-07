@@ -157,7 +157,15 @@ export function ChatView({ chatId }: { chatId: string }) {
           onModeChange={(mode) => patch({ mode })}
           onGuardChange={(guard) => patch({ guard })}
           onModelChange={(model: ModelRef) => patch({ model })}
-          onSend={(text) => void send(chatId, text)}
+          onSend={(text, attachments) =>
+            void send(
+              chatId,
+              text,
+              attachments.map((a) => a.input),
+            ).catch((err) =>
+              toast.add({ title: 'Could not send', description: describe(err), type: 'error' }),
+            )
+          }
           onStop={() => void stop(chatId)}
         />
       </div>
@@ -172,6 +180,12 @@ export function ChatView({ chatId }: { chatId: string }) {
       )}
     </div>
   );
+}
+
+function describe(err: unknown): string {
+  if (err && typeof err === 'object' && 'message' in err)
+    return String((err as { message: unknown }).message);
+  return String(err);
 }
 
 function detailTab(item: ActivityItem): PaneTab | null {

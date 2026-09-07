@@ -1,16 +1,18 @@
 import {
   ArrowUpIcon,
   BrainIcon,
+  FileIcon,
   FolderPlusIcon,
   FolderSimpleIcon,
   GlobeIcon,
+  ImageIcon,
   PaperclipIcon,
   PlugIcon,
   PlusIcon,
   SquareIcon,
   XIcon,
 } from '@phosphor-icons/react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { ModeChip } from '@/components/gantry/composer/ModeChip';
 import { ModelPicker } from '@/components/gantry/composer/ModelPicker';
@@ -26,6 +28,13 @@ import {
 import { Kbd } from '@/components/ui/kbd';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { Mode, ModelRef } from '@/fixtures/types';
+import {
+  fromFiles,
+  fromPaths,
+  onDroppedPaths,
+  type PendingAttachment,
+  pickFiles,
+} from '@/lib/attachments';
 import { cn } from '@/lib/utils';
 
 export interface ComposerProps {
@@ -40,16 +49,19 @@ export interface ComposerProps {
   onThinkingChange?: (on: boolean) => void;
   /** Text to place in the field; a new `nonce` re-applies the same text. */
   prefill?: { text: string; nonce: number };
+  /** Attachments to show at first (the gallery). */
+  initialAttachments?: PendingAttachment[];
   onModeChange: (m: Mode) => void;
   onGuardChange: (g: boolean) => void;
   onModelChange: (m: ModelRef) => void;
-  onSend?: (text: string) => void;
+  onSend?: (text: string, attachments: PendingAttachment[]) => void;
   onStop?: () => void;
 }
 
 /**
- * The floating composer (15 A13, §7): text on top, one toolbar row below with the + menu, mode
- * chip, model picker and root chips on the left; thinking and Send/Stop on the right.
+ * The floating composer (15 A13, §7): the attachment tray, text, then one toolbar row with the
+ * + menu, mode chip, model picker and root chips on the left; thinking and Send/Stop on the
+ * right. Files arrive from the + menu, from paste, or dropped on the window.
  */
 export function Composer({
   mode,
@@ -61,6 +73,7 @@ export function Composer({
   thinking: thinkingProp,
   onThinkingChange,
   prefill,
+  initialAttachments,
   onModeChange,
   onGuardChange,
   onModelChange,
@@ -68,6 +81,7 @@ export function Composer({
   onStop,
 }: ComposerProps) {
   const [text, setText] = useState('');
+  const [attachments, setAttachments] = useState<PendingAttachment[]>(initialAttachments ?? []);
   const [thinkingLocal, setThinkingLocal] = useState(true);
   const thinking = thinkingProp ?? thinkingLocal;
   const setThinking = (on: boolean) => {
@@ -80,17 +94,41 @@ export function Composer({
     setAppliedNonce(prefill.nonce);
     setText(prefill.text);
   }
-  const canSend = text.trim().length > 0 && !running;
+  const canSend = (text.trim().length > 0 || attachments.length > 0) && !running;
+
+  const add = (more: PendingAttachment[]) => {
+    if (more.length > 0) setAttachments((a) => [...a, ...more]);
+  };
+
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    let cancelled = false;
+    void onDroppedPaths((paths) => add(fromPaths(paths))).then((f) => {
+      if (cancelled) f();
+      else unlisten = f;
+    });
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, []);
 
   const send = () => {
     if (!canSend) return;
-    onSend?.(text);
+    onSend?.(text, attachments);
     setText('');
+    setAttachments([]);
   };
 
   return (
     <div className="mx-auto w-full max-w-(--measure) px-6 pb-4">
       <div className="flex flex-col rounded-4 border border-line-subtle bg-raised p-3 shadow-none">
+        {attachments.length > 0 && (
+          <AttachmentTray
+            items={attachments}
+            onRemove={(id) => setAttachments((a) => a.filter((x) => x.id !== id))}
+          />
+        )}
         <textarea
           value={text}
           onChange={(e) => setText(e.target.value)}
@@ -99,6 +137,12 @@ export function Composer({
               e.preventDefault();
               send();
             }
+          }}
+          onPaste={(e) => {
+            const files = Array.from(e.clipboardData.files);
+            if (files.length === 0) return;
+            e.preventDefault();
+            void fromFiles(files).then(add);
           }}
           placeholder={placeholder ?? 'Message Gantry…'}
           aria-label="Message"
@@ -113,20 +157,20 @@ export function Composer({
               <PlusIcon />
             </DropdownMenuTrigger>
             <DropdownMenuContent className="w-64">
-              <DropdownMenuItem>
+              <DropdownMenuItem onClick={() => void pickFiles().then(add)}>
                 <PaperclipIcon />
                 Add files or images
               </DropdownMenuItem>
-              <DropdownMenuItem>
+              <DropdownMenuItem disabled>
                 <FolderPlusIcon />
                 Add folder to workspace
               </DropdownMenuItem>
-              <DropdownMenuItem>
+              <DropdownMenuItem disabled>
                 <PlugIcon />
                 Connectors…
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuCheckboxItem checked={false}>
+              <DropdownMenuCheckboxItem checked={false} disabled>
                 <GlobeIcon />
                 Web search
               </DropdownMenuCheckboxItem>
@@ -197,6 +241,43 @@ export function Composer({
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+/** Chips for the files waiting to go with the next message (15 §8, `AttachmentTray`). */
+export function AttachmentTray({
+  items,
+  onRemove,
+}: {
+  items: PendingAttachment[];
+  onRemove: (id: string) => void;
+}) {
+  return (
+    <div className="mb-2 flex flex-wrap gap-1.5" aria-label="Attachments">
+      {items.map((a) => (
+        <span
+          key={a.id}
+          className="inline-flex h-6 max-w-64 items-center gap-1 rounded-2 border border-line bg-surface pr-1 pl-1.5 text-meta text-fg-2"
+        >
+          {a.kind === 'image' ? (
+            <ImageIcon className="size-3.5 shrink-0" />
+          ) : (
+            <FileIcon className="size-3.5 shrink-0" />
+          )}
+          <span className="truncate" title={a.name}>
+            {a.name}
+          </span>
+          <button
+            type="button"
+            aria-label={`Remove ${a.name}`}
+            onClick={() => onRemove(a.id)}
+            className="ml-0.5 flex size-4 items-center justify-center rounded-1 text-fg-3 hover:bg-hover hover:text-fg"
+          >
+            <XIcon className="size-3" />
+          </button>
+        </span>
+      ))}
     </div>
   );
 }

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use gantry_agent::EventSink;
-use gantry_core::{AgentEventBatch, ChatId, ErrorDto, TurnId};
+use gantry_core::{AgentEventBatch, AttachmentInput, ChatId, ErrorDto, TurnId};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, State, ipc::Channel};
 use tauri_specta::Event;
@@ -26,6 +26,7 @@ pub struct ActiveTurn {
 }
 
 /// Starts a turn and returns at once; the channel carries the turn's events until it ends.
+/// Attachments are read and stored before anything is sent; a bad one fails the whole call.
 #[tauri::command]
 #[specta::specta]
 pub fn send_message(
@@ -33,11 +34,12 @@ pub fn send_message(
     state: State<'_, AppState>,
     chat_id: ChatId,
     text: String,
+    attachments: Vec<AttachmentInput>,
     on_event: Channel<AgentEventBatch>,
 ) -> Result<TurnId, ErrorDto> {
     let turn = state
         .turns
-        .start(chat_id, text, Arc::new(ChannelSink(on_event)))?;
+        .start(chat_id, text, attachments, Arc::new(ChannelSink(on_event)))?;
     let _ = ChatsChanged {
         chat_ids: vec![chat_id],
     }

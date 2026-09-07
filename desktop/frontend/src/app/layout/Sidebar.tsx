@@ -7,12 +7,15 @@ import {
   SparkleIcon,
   SidebarSimpleIcon,
 } from '@phosphor-icons/react';
-import { type ReactNode, useCallback, useRef } from 'react';
+import { type ReactNode, useCallback, useRef, useState } from 'react';
 
 import { Logo } from '@/components/gantry/Logo';
+import { SystemPromptDialog } from '@/components/gantry/chat/SystemPromptDialog';
 import { ChatRow } from '@/components/gantry/sidebar/ChatRow';
+import { toast } from '@/components/ui/toast';
 import type { ChatSummary } from '@/fixtures/types';
 import { useChatMutations, useChats } from '@/lib/ipc/hooks/chats';
+import { useSettings } from '@/lib/ipc/hooks/settings';
 import { useRunStore } from '@/lib/stores/runStore';
 import { SIDEBAR_MAX, SIDEBAR_MIN, useUiStore } from '@/lib/stores/uiStore';
 import { cn, isMac } from '@/lib/utils';
@@ -29,7 +32,31 @@ export function Sidebar() {
   const dragging = useRef(false);
   const chatsQuery = useChats();
   const live = useRunStore((s) => s.byChat);
-  const { update, remove } = useChatMutations();
+  const { update, remove, exportChat } = useChatMutations();
+  const developer = useSettings().data?.advanced?.developer_mode === true;
+  const [promptFor, setPromptFor] = useState<string | null>(null);
+  const exportOne = async (c: ChatSummary) => {
+    const { save } = await import('@tauri-apps/plugin-dialog');
+    const path = await save({
+      title: 'Export chat',
+      defaultPath: `${
+        c.title
+          .replace(/[^\p{L}\p{N} _-]+/gu, '')
+          .trim()
+          .slice(0, 60) || 'chat'
+      }.md`,
+      filters: [{ name: 'Markdown', extensions: ['md'] }],
+    });
+    if (!path) return;
+    exportChat.mutate(
+      { chatId: c.id, format: 'markdown', path },
+      {
+        onSuccess: () => toast.add({ title: 'Chat exported', description: path, type: 'success' }),
+        onError: (err) =>
+          toast.add({ title: 'Export failed', description: String(err), type: 'error' }),
+      },
+    );
+  };
   const rows: ChatSummary[] = (chatsQuery.data ?? []).map((c) => ({
     id: c.id,
     title: c.title,
@@ -51,6 +78,8 @@ export function Sidebar() {
       onRename={(title) => update.mutate({ chatId: c.id, update: { title } })}
       onArchive={(a) => update.mutate({ chatId: c.id, update: { archived: a } })}
       onDelete={() => remove.mutate(c.id)}
+      onExport={() => void exportOne(c)}
+      onViewPrompt={developer ? () => setPromptFor(c.id) : undefined}
     />
   );
 
@@ -133,7 +162,7 @@ export function Sidebar() {
         <div className="mt-auto pb-2">
           <SidebarItem
             to="/settings/$section"
-            params={{ section: 'appearance' }}
+            params={{ section: 'general' }}
             icon={<GearIcon size={16} />}
             label="Settings"
             shortcut="⌘,"
@@ -151,6 +180,7 @@ export function Sidebar() {
         className="absolute inset-y-0 -right-0.75 w-1.5 cursor-col-resize transition-colors duration-(--dur-1) hover:bg-line-strong active:bg-line-strong"
       />
       <div className="pointer-events-none absolute inset-y-0 right-0 w-px bg-line" />
+      <SystemPromptDialog chatId={promptFor} onClose={() => setPromptFor(null)} />
     </aside>
   );
 }

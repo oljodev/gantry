@@ -30,7 +30,7 @@ function finishedTurn(
   const durationMs = t.ended_at ? t.ended_at - t.started_at : 0;
   return {
     id: t.id,
-    user: { text: textOf(t.user.parts) },
+    user: userOf(t),
     blocks,
     footer: t.usage
       ? {
@@ -40,7 +40,7 @@ function finishedTurn(
           tokensOut: t.usage.output,
         }
       : undefined,
-    status: t.status === 'running' ? 'running' : t.status === 'completed' ? 'done' : t.status,
+    status: statusOf(t.status),
     endedAt: t.ended_at ?? undefined,
     feedback: t.feedback ?? undefined,
     text: t.assistant ? textOf(t.assistant.parts) : undefined,
@@ -63,7 +63,7 @@ function liveTurn(
   const done = live.status !== 'running';
   return {
     id: t.id,
-    user: { text: textOf(t.user.parts) },
+    user: userOf(t),
     blocks,
     footer:
       done && live.usage
@@ -74,8 +74,25 @@ function liveTurn(
             tokensOut: live.usage.output,
           }
         : undefined,
-    status:
-      live.status === 'running' ? 'running' : live.status === 'completed' ? 'done' : live.status,
+    status: statusOf(live.status),
+  };
+}
+
+function statusOf(s: TurnDto['status']): Turn['status'] {
+  return s === 'completed' ? 'done' : s;
+}
+
+/** The user's text plus a chip per attached file or image (15 §8, `UserMessage`). */
+function userOf(t: TurnDto): Turn['user'] {
+  const attachments: NonNullable<Turn['user']['attachments']> = [];
+  for (const p of t.user.parts) {
+    if (p.kind === 'document') attachments.push({ name: p.name, kind: 'file' });
+    else if (p.kind === 'image')
+      attachments.push({ name: p.mime.replace('image/', '') + ' image', kind: 'image' });
+  }
+  return {
+    text: textOf(t.user.parts),
+    attachments: attachments.length > 0 ? attachments : undefined,
   };
 }
 

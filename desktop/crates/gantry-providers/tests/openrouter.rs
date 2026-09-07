@@ -172,13 +172,24 @@ async fn the_live_capture_parses_when_present() {
         eprintln!("no live capture yet; skipping");
         return;
     }
+    // The capture on disk was cut off by the shell mid-stream, which makes it a real example of
+    // an early close: everything before the cut parses, and the decoder reports the cut.
     let events = replay("live-capture.sse").await;
-    assert!(events.iter().all(Result::is_ok), "{events:?}");
-    assert!(!text_of(&events).is_empty());
+    let (last, body) = events.split_last().expect("some events");
+    assert!(body.iter().all(Result::is_ok), "{events:?}");
     assert!(matches!(
-        events.last(),
-        Some(Ok(StreamEvent::MessageEnd { .. }))
+        events.first(),
+        Some(Ok(StreamEvent::MessageStart { .. }))
     ));
+    assert!(events.iter().any(|e| matches!(
+        e,
+        Ok(StreamEvent::ThinkingDelta { .. } | StreamEvent::TextDelta { .. })
+    )));
+    assert!(
+        matches!(last, Ok(StreamEvent::MessageEnd { .. }))
+            || matches!(last, Err(e) if e.kind == gantry_core::ProviderErrorKind::StreamInterrupted),
+        "{last:?}"
+    );
 }
 
 #[test]

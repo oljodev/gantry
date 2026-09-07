@@ -25,6 +25,9 @@ export interface ChatRowActions {
   onRename?: (title: string) => void;
   onArchive?: (archived: boolean) => void;
   onDelete?: () => void;
+  onExport?: () => void;
+  /** Present only in developer mode (Settings → Advanced). */
+  onViewPrompt?: () => void;
 }
 
 type ItemProps = {
@@ -49,6 +52,10 @@ export function ChatRow({ chat, ...actions }: { chat: ChatSummary } & ChatRowAct
         Rename
       </Item>
       <Item disabled>Move to project (M11)</Item>
+      <Item onClick={() => actions.onExport?.()} disabled={!actions.onExport}>
+        Export…
+      </Item>
+      {actions.onViewPrompt && <Item onClick={actions.onViewPrompt}>View system prompt</Item>}
       <Separator />
       <Item onClick={() => actions.onArchive?.(!chat.archived)}>
         {chat.archived ? 'Unarchive' : 'Archive'}
