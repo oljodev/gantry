@@ -36,12 +36,19 @@ export const commands = {
 	 */
 	listModels: (providerId: ProviderId, refresh: boolean) => typedError<ModelInfo[], ErrorDto>(__TAURI_INVOKE("list_models", { providerId, refresh })),
 	updateProvider: (providerId: ProviderId, update: ProviderUpdate) => typedError<null, ErrorDto>(__TAURI_INVOKE("update_provider", { providerId, update })),
+	/**
+	 *  Adds an OpenAI-compatible endpoint (11 §4): a `providers` row of kind `openai_chat` with the
+	 *  `custom` profile. The key, if any, is added afterwards like any other.
+	 */
+	addCustomProvider: (endpoint: CustomEndpoint) => typedError<ProviderId, ErrorDto>(__TAURI_INVOKE("add_custom_provider", { endpoint })),
+	/**  Removes a custom endpoint and its key; the built-in accounts stay. */
+	removeProvider: (providerId: ProviderId) => typedError<null, ErrorDto>(__TAURI_INVOKE("remove_provider", { providerId })),
 	createChat: (model: {
 	provider: ProviderId,
 	model: string,
 } | null) => typedError<ChatSummary, ErrorDto>(__TAURI_INVOKE("create_chat", { model })),
 	listChats: () => typedError<ChatSummary[], ErrorDto>(__TAURI_INVOKE("list_chats")),
-	getChat: (chatId: ChatId) => typedError<ChatDetail, ErrorDto>(__TAURI_INVOKE("get_chat", { chatId })),
+	getChat: (chatId: ChatId) => typedError<ChatDetail_Serialize, ErrorDto>(__TAURI_INVOKE("get_chat", { chatId })),
 	updateChat: (chatId: ChatId, update: ChatUpdate) => typedError<ChatSummary, ErrorDto>(__TAURI_INVOKE("update_chat", { chatId, update })),
 	deleteChat: (chatId: ChatId) => typedError<null, ErrorDto>(__TAURI_INVOKE("delete_chat", { chatId })),
 	/**  The user's verdict on a reply; `None` clears it. */
@@ -56,13 +63,13 @@ export const commands = {
 	 *  Starts a turn and returns at once; the channel carries the turn's events until it ends.
 	 *  Attachments are read and stored before anything is sent; a bad one fails the whole call.
 	 */
-	sendMessage: (chatId: ChatId, text: string, attachments: AttachmentInput[], onEvent: Channel<AgentEventBatch>) => typedError<TurnId, ErrorDto>(__TAURI_INVOKE("send_message", { chatId, text, attachments, onEvent })),
+	sendMessage: (chatId: ChatId, text: string, attachments: AttachmentInput[], onEvent: Channel<AgentEventBatch_Deserialize>) => typedError<TurnId, ErrorDto>(__TAURI_INVOKE("send_message", { chatId, text, attachments, onEvent })),
 	/**  Drops the chat's last turn and sends its user message again over a fresh channel. */
-	retryTurn: (chatId: ChatId, turnId: TurnId, onEvent: Channel<AgentEventBatch>) => typedError<TurnId, ErrorDto>(__TAURI_INVOKE("retry_turn", { chatId, turnId, onEvent })),
+	retryTurn: (chatId: ChatId, turnId: TurnId, onEvent: Channel<AgentEventBatch_Deserialize>) => typedError<TurnId, ErrorDto>(__TAURI_INVOKE("retry_turn", { chatId, turnId, onEvent })),
 	/**  Whether the turn was running. */
 	cancelTurn: (turnId: TurnId) => typedError<boolean, ErrorDto>(__TAURI_INVOKE("cancel_turn", { turnId })),
 	/**  Reattaches to a running turn: one snapshot, then live batches (05 §3). */
-	subscribeTurn: (turnId: TurnId, sinceSeq: number, onEvent: Channel<AgentEventBatch>) => typedError<null, ErrorDto>(__TAURI_INVOKE("subscribe_turn", { turnId, sinceSeq, onEvent })),
+	subscribeTurn: (turnId: TurnId, sinceSeq: number, onEvent: Channel<AgentEventBatch_Deserialize>) => typedError<null, ErrorDto>(__TAURI_INVOKE("subscribe_turn", { turnId, sinceSeq, onEvent })),
 	listActiveTurns: () => typedError<ActiveTurn[], ErrorDto>(__TAURI_INVOKE("list_active_turns")),
 	/**
 	 *  Interactions waiting for the user, oldest first, for one chat or every chat. Cards render
@@ -98,43 +105,88 @@ export type AdvancedSettings = {
 	max_tool_rounds?: number,
 };
 
-export type AgentEvent = {
+export type AgentEvent = AgentEvent_Serialize | AgentEvent_Deserialize;
+
+/**  The wire unit on the channel. */
+export type AgentEventBatch = AgentEventBatch_Serialize | AgentEventBatch_Deserialize;
+
+/**  The wire unit on the channel. */
+export type AgentEventBatch_Deserialize = {
+	turn_id: TurnId,
+	events: AgentEvent_Deserialize[],
+};
+
+/**  The wire unit on the channel. */
+export type AgentEventBatch_Serialize = {
+	turn_id: TurnId,
+	events: AgentEvent_Serialize[],
+};
+
+export type AgentEventKind = AgentEventKind_Serialize | AgentEventKind_Deserialize;
+
+export type AgentEventKind_Deserialize = ({ type: "turn.started"; chat_id: ChatId; mode: Mode; guard: boolean; model: ModelRef }) & { args?: never; block?: never; call_id?: never; code?: never; connector?: never; connector_name?: never; detail?: never; display?: never; duration_ms?: never; fragment?: never; interaction?: never; interaction_id?: never; is_error?: never; kind?: never; message?: never; message_id?: never; model_tool_name?: never; part?: never; resolution?: never; result?: never; result_preview?: never; retryable?: never; role?: never; snapshot?: never; source?: never; status?: never; stop_reason?: never; text?: never; tier?: never; tool?: never; tool_calls?: never; usage?: never } | 
+/**  One per model round: the first assistant message and every one after a tool round. */
+({ type: "message.started"; message_id: MessageId; role: Role }) & { args?: never; block?: never; call_id?: never; chat_id?: never; code?: never; connector?: never; connector_name?: never; detail?: never; display?: never; duration_ms?: never; fragment?: never; guard?: never; interaction?: never; interaction_id?: never; is_error?: never; kind?: never; message?: never; mode?: never; model?: never; model_tool_name?: never; part?: never; resolution?: never; result?: never; result_preview?: never; retryable?: never; snapshot?: never; source?: never; status?: never; stop_reason?: never; text?: never; tier?: never; tool?: never; tool_calls?: never; usage?: never } | ({ type: "text.delta"; message_id: MessageId; block: number; text: string }) & { args?: never; call_id?: never; chat_id?: never; code?: never; connector?: never; connector_name?: never; detail?: never; display?: never; duration_ms?: never; fragment?: never; guard?: never; interaction?: never; interaction_id?: never; is_error?: never; kind?: never; message?: never; mode?: never; model?: never; model_tool_name?: never; part?: never; resolution?: never; result?: never; result_preview?: never; retryable?: never; role?: never; snapshot?: never; source?: never; status?: never; stop_reason?: never; tier?: never; tool?: never; tool_calls?: never; usage?: never } | ({ type: "thinking.delta"; message_id: MessageId; block: number; text: string }) & { args?: never; call_id?: never; chat_id?: never; code?: never; connector?: never; connector_name?: never; detail?: never; display?: never; duration_ms?: never; fragment?: never; guard?: never; interaction?: never; interaction_id?: never; is_error?: never; kind?: never; message?: never; mode?: never; model?: never; model_tool_name?: never; part?: never; resolution?: never; result?: never; result_preview?: never; retryable?: never; role?: never; snapshot?: never; source?: never; status?: never; stop_reason?: never; tier?: never; tool?: never; tool_calls?: never; usage?: never } | 
+/**  A block is complete; its final part is authoritative. */
+({ type: "block.done"; message_id: MessageId; block: number; part: ContentPart_Deserialize }) & { args?: never; call_id?: never; chat_id?: never; code?: never; connector?: never; connector_name?: never; detail?: never; display?: never; duration_ms?: never; fragment?: never; guard?: never; interaction?: never; interaction_id?: never; is_error?: never; kind?: never; message?: never; mode?: never; model?: never; model_tool_name?: never; resolution?: never; result?: never; result_preview?: never; retryable?: never; role?: never; snapshot?: never; source?: never; status?: never; stop_reason?: never; text?: never; tier?: never; tool?: never; tool_calls?: never; usage?: never } | 
+/**  The model started a tool call; arguments may follow as deltas. */
+({ type: "tool_call.started"; call_id: CallId; message_id: MessageId; 
+/**  Namespace prefix: a connector id, or `gantry` for runtime tools. */
+connector: string; connector_name: string; tool: string; model_tool_name: string }) & { args?: never; block?: never; chat_id?: never; code?: never; detail?: never; display?: never; duration_ms?: never; fragment?: never; guard?: never; interaction?: never; interaction_id?: never; is_error?: never; kind?: never; message?: never; mode?: never; model?: never; part?: never; resolution?: never; result?: never; result_preview?: never; retryable?: never; role?: never; snapshot?: never; source?: never; status?: never; stop_reason?: never; text?: never; tier?: never; tool_calls?: never; usage?: never } | ({ type: "tool_call.args_delta"; call_id: CallId; fragment: string }) & { args?: never; block?: never; chat_id?: never; code?: never; connector?: never; connector_name?: never; detail?: never; display?: never; duration_ms?: never; guard?: never; interaction?: never; interaction_id?: never; is_error?: never; kind?: never; message?: never; message_id?: never; mode?: never; model?: never; model_tool_name?: never; part?: never; resolution?: never; result?: never; result_preview?: never; retryable?: never; role?: never; snapshot?: never; source?: never; status?: never; stop_reason?: never; text?: never; tier?: never; tool?: never; tool_calls?: never; usage?: never } | 
+/**  Arguments are complete and the call is classified. */
+({ type: "tool_call.ready"; call_id: CallId; args: unknown; tier: RiskTier; display: ToolDisplay }) & { block?: never; chat_id?: never; code?: never; connector?: never; connector_name?: never; detail?: never; duration_ms?: never; fragment?: never; guard?: never; interaction?: never; interaction_id?: never; is_error?: never; kind?: never; message?: never; message_id?: never; mode?: never; model?: never; model_tool_name?: never; part?: never; resolution?: never; result?: never; result_preview?: never; retryable?: never; role?: never; snapshot?: never; source?: never; status?: never; stop_reason?: never; text?: never; tool?: never; tool_calls?: never; usage?: never } | 
+/**  The turn waits for the user (04 §10). */
+({ type: "decision.requested"; interaction: Interaction }) & { args?: never; block?: never; call_id?: never; chat_id?: never; code?: never; connector?: never; connector_name?: never; detail?: never; display?: never; duration_ms?: never; fragment?: never; guard?: never; interaction_id?: never; is_error?: never; kind?: never; message?: never; message_id?: never; mode?: never; model?: never; model_tool_name?: never; part?: never; resolution?: never; result?: never; result_preview?: never; retryable?: never; role?: never; snapshot?: never; source?: never; status?: never; stop_reason?: never; text?: never; tier?: never; tool?: never; tool_calls?: never; usage?: never } | ({ type: "decision.resolved"; interaction_id: InteractionId; resolution: InteractionResolution; source: DecisionSource }) & { args?: never; block?: never; call_id?: never; chat_id?: never; code?: never; connector?: never; connector_name?: never; detail?: never; display?: never; duration_ms?: never; fragment?: never; guard?: never; interaction?: never; is_error?: never; kind?: never; message?: never; message_id?: never; mode?: never; model?: never; model_tool_name?: never; part?: never; result?: never; result_preview?: never; retryable?: never; role?: never; snapshot?: never; status?: never; stop_reason?: never; text?: never; tier?: never; tool?: never; tool_calls?: never; usage?: never } | 
+/**  The call was allowed and is running; `source` says who allowed it. */
+({ type: "tool_call.executing"; call_id: CallId; source: DecisionSource }) & { args?: never; block?: never; chat_id?: never; code?: never; connector?: never; connector_name?: never; detail?: never; display?: never; duration_ms?: never; fragment?: never; guard?: never; interaction?: never; interaction_id?: never; is_error?: never; kind?: never; message?: never; message_id?: never; mode?: never; model?: never; model_tool_name?: never; part?: never; resolution?: never; result?: never; result_preview?: never; retryable?: never; role?: never; snapshot?: never; status?: never; stop_reason?: never; text?: never; tier?: never; tool?: never; tool_calls?: never; usage?: never } | 
+/**
+ *  The call ended: with a result, an error result, a denial or a cancellation. The result
+ *  content is what the model receives (capped at the transcript limit).
+ */
+({ type: "tool_call.completed"; call_id: CallId; status: ToolCallStatus; is_error: boolean; duration_ms: number; result_preview: string; result: ResultPart[] }) & { args?: never; block?: never; chat_id?: never; code?: never; connector?: never; connector_name?: never; detail?: never; display?: never; fragment?: never; guard?: never; interaction?: never; interaction_id?: never; kind?: never; message?: never; message_id?: never; mode?: never; model?: never; model_tool_name?: never; part?: never; resolution?: never; retryable?: never; role?: never; snapshot?: never; source?: never; stop_reason?: never; text?: never; tier?: never; tool?: never; tool_calls?: never; usage?: never } | ({ type: "provider.notice"; kind: string; detail: string }) & { args?: never; block?: never; call_id?: never; chat_id?: never; code?: never; connector?: never; connector_name?: never; display?: never; duration_ms?: never; fragment?: never; guard?: never; interaction?: never; interaction_id?: never; is_error?: never; message?: never; message_id?: never; mode?: never; model?: never; model_tool_name?: never; part?: never; resolution?: never; result?: never; result_preview?: never; retryable?: never; role?: never; snapshot?: never; source?: never; status?: never; stop_reason?: never; text?: never; tier?: never; tool?: never; tool_calls?: never; usage?: never } | ({ type: "message.completed"; message_id: MessageId; stop_reason: StopReason; usage: Usage | null }) & { args?: never; block?: never; call_id?: never; chat_id?: never; code?: never; connector?: never; connector_name?: never; detail?: never; display?: never; duration_ms?: never; fragment?: never; guard?: never; interaction?: never; interaction_id?: never; is_error?: never; kind?: never; message?: never; mode?: never; model?: never; model_tool_name?: never; part?: never; resolution?: never; result?: never; result_preview?: never; retryable?: never; role?: never; snapshot?: never; source?: never; status?: never; text?: never; tier?: never; tool?: never; tool_calls?: never } | ({ type: "turn.completed"; status: TurnStatus; usage: Usage | null; duration_ms: number; tool_calls: number }) & { args?: never; block?: never; call_id?: never; chat_id?: never; code?: never; connector?: never; connector_name?: never; detail?: never; display?: never; fragment?: never; guard?: never; interaction?: never; interaction_id?: never; is_error?: never; kind?: never; message?: never; message_id?: never; mode?: never; model?: never; model_tool_name?: never; part?: never; resolution?: never; result?: never; result_preview?: never; retryable?: never; role?: never; snapshot?: never; source?: never; stop_reason?: never; text?: never; tier?: never; tool?: never } | ({ type: "error"; code: string; message: string; retryable: boolean }) & { args?: never; block?: never; call_id?: never; chat_id?: never; connector?: never; connector_name?: never; detail?: never; display?: never; duration_ms?: never; fragment?: never; guard?: never; interaction?: never; interaction_id?: never; is_error?: never; kind?: never; message_id?: never; mode?: never; model?: never; model_tool_name?: never; part?: never; resolution?: never; result?: never; result_preview?: never; role?: never; snapshot?: never; source?: never; status?: never; stop_reason?: never; text?: never; tier?: never; tool?: never; tool_calls?: never; usage?: never } | 
+/**  The whole current state of an active turn; first on `subscribe_turn`. */
+({ type: "turn.snapshot"; snapshot: TurnSnapshot_Deserialize }) & { args?: never; block?: never; call_id?: never; chat_id?: never; code?: never; connector?: never; connector_name?: never; detail?: never; display?: never; duration_ms?: never; fragment?: never; guard?: never; interaction?: never; interaction_id?: never; is_error?: never; kind?: never; message?: never; message_id?: never; mode?: never; model?: never; model_tool_name?: never; part?: never; resolution?: never; result?: never; result_preview?: never; retryable?: never; role?: never; source?: never; status?: never; stop_reason?: never; text?: never; tier?: never; tool?: never; tool_calls?: never; usage?: never };
+
+export type AgentEventKind_Serialize = ({ type: "turn.started"; chat_id: ChatId; mode: Mode; guard: boolean; model: ModelRef }) & { args?: never; block?: never; call_id?: never; code?: never; connector?: never; connector_name?: never; detail?: never; display?: never; duration_ms?: never; fragment?: never; interaction?: never; interaction_id?: never; is_error?: never; kind?: never; message?: never; message_id?: never; model_tool_name?: never; part?: never; resolution?: never; result?: never; result_preview?: never; retryable?: never; role?: never; snapshot?: never; source?: never; status?: never; stop_reason?: never; text?: never; tier?: never; tool?: never; tool_calls?: never; usage?: never } | 
+/**  One per model round: the first assistant message and every one after a tool round. */
+({ type: "message.started"; message_id: MessageId; role: Role }) & { args?: never; block?: never; call_id?: never; chat_id?: never; code?: never; connector?: never; connector_name?: never; detail?: never; display?: never; duration_ms?: never; fragment?: never; guard?: never; interaction?: never; interaction_id?: never; is_error?: never; kind?: never; message?: never; mode?: never; model?: never; model_tool_name?: never; part?: never; resolution?: never; result?: never; result_preview?: never; retryable?: never; snapshot?: never; source?: never; status?: never; stop_reason?: never; text?: never; tier?: never; tool?: never; tool_calls?: never; usage?: never } | ({ type: "text.delta"; message_id: MessageId; block: number; text: string }) & { args?: never; call_id?: never; chat_id?: never; code?: never; connector?: never; connector_name?: never; detail?: never; display?: never; duration_ms?: never; fragment?: never; guard?: never; interaction?: never; interaction_id?: never; is_error?: never; kind?: never; message?: never; mode?: never; model?: never; model_tool_name?: never; part?: never; resolution?: never; result?: never; result_preview?: never; retryable?: never; role?: never; snapshot?: never; source?: never; status?: never; stop_reason?: never; tier?: never; tool?: never; tool_calls?: never; usage?: never } | ({ type: "thinking.delta"; message_id: MessageId; block: number; text: string }) & { args?: never; call_id?: never; chat_id?: never; code?: never; connector?: never; connector_name?: never; detail?: never; display?: never; duration_ms?: never; fragment?: never; guard?: never; interaction?: never; interaction_id?: never; is_error?: never; kind?: never; message?: never; mode?: never; model?: never; model_tool_name?: never; part?: never; resolution?: never; result?: never; result_preview?: never; retryable?: never; role?: never; snapshot?: never; source?: never; status?: never; stop_reason?: never; tier?: never; tool?: never; tool_calls?: never; usage?: never } | 
+/**  A block is complete; its final part is authoritative. */
+({ type: "block.done"; message_id: MessageId; block: number; part: ContentPart_Serialize }) & { args?: never; call_id?: never; chat_id?: never; code?: never; connector?: never; connector_name?: never; detail?: never; display?: never; duration_ms?: never; fragment?: never; guard?: never; interaction?: never; interaction_id?: never; is_error?: never; kind?: never; message?: never; mode?: never; model?: never; model_tool_name?: never; resolution?: never; result?: never; result_preview?: never; retryable?: never; role?: never; snapshot?: never; source?: never; status?: never; stop_reason?: never; text?: never; tier?: never; tool?: never; tool_calls?: never; usage?: never } | 
+/**  The model started a tool call; arguments may follow as deltas. */
+({ type: "tool_call.started"; call_id: CallId; message_id: MessageId; 
+/**  Namespace prefix: a connector id, or `gantry` for runtime tools. */
+connector: string; connector_name: string; tool: string; model_tool_name: string }) & { args?: never; block?: never; chat_id?: never; code?: never; detail?: never; display?: never; duration_ms?: never; fragment?: never; guard?: never; interaction?: never; interaction_id?: never; is_error?: never; kind?: never; message?: never; mode?: never; model?: never; part?: never; resolution?: never; result?: never; result_preview?: never; retryable?: never; role?: never; snapshot?: never; source?: never; status?: never; stop_reason?: never; text?: never; tier?: never; tool_calls?: never; usage?: never } | ({ type: "tool_call.args_delta"; call_id: CallId; fragment: string }) & { args?: never; block?: never; chat_id?: never; code?: never; connector?: never; connector_name?: never; detail?: never; display?: never; duration_ms?: never; guard?: never; interaction?: never; interaction_id?: never; is_error?: never; kind?: never; message?: never; message_id?: never; mode?: never; model?: never; model_tool_name?: never; part?: never; resolution?: never; result?: never; result_preview?: never; retryable?: never; role?: never; snapshot?: never; source?: never; status?: never; stop_reason?: never; text?: never; tier?: never; tool?: never; tool_calls?: never; usage?: never } | 
+/**  Arguments are complete and the call is classified. */
+({ type: "tool_call.ready"; call_id: CallId; args: unknown; tier: RiskTier; display: ToolDisplay }) & { block?: never; chat_id?: never; code?: never; connector?: never; connector_name?: never; detail?: never; duration_ms?: never; fragment?: never; guard?: never; interaction?: never; interaction_id?: never; is_error?: never; kind?: never; message?: never; message_id?: never; mode?: never; model?: never; model_tool_name?: never; part?: never; resolution?: never; result?: never; result_preview?: never; retryable?: never; role?: never; snapshot?: never; source?: never; status?: never; stop_reason?: never; text?: never; tool?: never; tool_calls?: never; usage?: never } | 
+/**  The turn waits for the user (04 §10). */
+({ type: "decision.requested"; interaction: Interaction }) & { args?: never; block?: never; call_id?: never; chat_id?: never; code?: never; connector?: never; connector_name?: never; detail?: never; display?: never; duration_ms?: never; fragment?: never; guard?: never; interaction_id?: never; is_error?: never; kind?: never; message?: never; message_id?: never; mode?: never; model?: never; model_tool_name?: never; part?: never; resolution?: never; result?: never; result_preview?: never; retryable?: never; role?: never; snapshot?: never; source?: never; status?: never; stop_reason?: never; text?: never; tier?: never; tool?: never; tool_calls?: never; usage?: never } | ({ type: "decision.resolved"; interaction_id: InteractionId; resolution: InteractionResolution; source: DecisionSource }) & { args?: never; block?: never; call_id?: never; chat_id?: never; code?: never; connector?: never; connector_name?: never; detail?: never; display?: never; duration_ms?: never; fragment?: never; guard?: never; interaction?: never; is_error?: never; kind?: never; message?: never; message_id?: never; mode?: never; model?: never; model_tool_name?: never; part?: never; result?: never; result_preview?: never; retryable?: never; role?: never; snapshot?: never; status?: never; stop_reason?: never; text?: never; tier?: never; tool?: never; tool_calls?: never; usage?: never } | 
+/**  The call was allowed and is running; `source` says who allowed it. */
+({ type: "tool_call.executing"; call_id: CallId; source: DecisionSource }) & { args?: never; block?: never; chat_id?: never; code?: never; connector?: never; connector_name?: never; detail?: never; display?: never; duration_ms?: never; fragment?: never; guard?: never; interaction?: never; interaction_id?: never; is_error?: never; kind?: never; message?: never; message_id?: never; mode?: never; model?: never; model_tool_name?: never; part?: never; resolution?: never; result?: never; result_preview?: never; retryable?: never; role?: never; snapshot?: never; status?: never; stop_reason?: never; text?: never; tier?: never; tool?: never; tool_calls?: never; usage?: never } | 
+/**
+ *  The call ended: with a result, an error result, a denial or a cancellation. The result
+ *  content is what the model receives (capped at the transcript limit).
+ */
+({ type: "tool_call.completed"; call_id: CallId; status: ToolCallStatus; is_error: boolean; duration_ms: number; result_preview: string; result: ResultPart[] }) & { args?: never; block?: never; chat_id?: never; code?: never; connector?: never; connector_name?: never; detail?: never; display?: never; fragment?: never; guard?: never; interaction?: never; interaction_id?: never; kind?: never; message?: never; message_id?: never; mode?: never; model?: never; model_tool_name?: never; part?: never; resolution?: never; retryable?: never; role?: never; snapshot?: never; source?: never; stop_reason?: never; text?: never; tier?: never; tool?: never; tool_calls?: never; usage?: never } | ({ type: "provider.notice"; kind: string; detail: string }) & { args?: never; block?: never; call_id?: never; chat_id?: never; code?: never; connector?: never; connector_name?: never; display?: never; duration_ms?: never; fragment?: never; guard?: never; interaction?: never; interaction_id?: never; is_error?: never; message?: never; message_id?: never; mode?: never; model?: never; model_tool_name?: never; part?: never; resolution?: never; result?: never; result_preview?: never; retryable?: never; role?: never; snapshot?: never; source?: never; status?: never; stop_reason?: never; text?: never; tier?: never; tool?: never; tool_calls?: never; usage?: never } | ({ type: "message.completed"; message_id: MessageId; stop_reason: StopReason; usage: Usage | null }) & { args?: never; block?: never; call_id?: never; chat_id?: never; code?: never; connector?: never; connector_name?: never; detail?: never; display?: never; duration_ms?: never; fragment?: never; guard?: never; interaction?: never; interaction_id?: never; is_error?: never; kind?: never; message?: never; mode?: never; model?: never; model_tool_name?: never; part?: never; resolution?: never; result?: never; result_preview?: never; retryable?: never; role?: never; snapshot?: never; source?: never; status?: never; text?: never; tier?: never; tool?: never; tool_calls?: never } | ({ type: "turn.completed"; status: TurnStatus; usage: Usage | null; duration_ms: number; tool_calls: number }) & { args?: never; block?: never; call_id?: never; chat_id?: never; code?: never; connector?: never; connector_name?: never; detail?: never; display?: never; fragment?: never; guard?: never; interaction?: never; interaction_id?: never; is_error?: never; kind?: never; message?: never; message_id?: never; mode?: never; model?: never; model_tool_name?: never; part?: never; resolution?: never; result?: never; result_preview?: never; retryable?: never; role?: never; snapshot?: never; source?: never; stop_reason?: never; text?: never; tier?: never; tool?: never } | ({ type: "error"; code: string; message: string; retryable: boolean }) & { args?: never; block?: never; call_id?: never; chat_id?: never; connector?: never; connector_name?: never; detail?: never; display?: never; duration_ms?: never; fragment?: never; guard?: never; interaction?: never; interaction_id?: never; is_error?: never; kind?: never; message_id?: never; mode?: never; model?: never; model_tool_name?: never; part?: never; resolution?: never; result?: never; result_preview?: never; role?: never; snapshot?: never; source?: never; status?: never; stop_reason?: never; text?: never; tier?: never; tool?: never; tool_calls?: never; usage?: never } | 
+/**  The whole current state of an active turn; first on `subscribe_turn`. */
+({ type: "turn.snapshot"; snapshot: TurnSnapshot_Serialize }) & { args?: never; block?: never; call_id?: never; chat_id?: never; code?: never; connector?: never; connector_name?: never; detail?: never; display?: never; duration_ms?: never; fragment?: never; guard?: never; interaction?: never; interaction_id?: never; is_error?: never; kind?: never; message?: never; message_id?: never; mode?: never; model?: never; model_tool_name?: never; part?: never; resolution?: never; result?: never; result_preview?: never; retryable?: never; role?: never; source?: never; status?: never; stop_reason?: never; text?: never; tier?: never; tool?: never; tool_calls?: never; usage?: never };
+
+export type AgentEvent_Deserialize = {
 	/**  Monotonic within the turn, starting at 1. */
 	seq: number,
 	/**  Milliseconds since the Unix epoch. */
 	ts: number,
 	turn_id: TurnId,
-	event: AgentEventKind,
+	event: AgentEventKind_Deserialize,
 };
 
-/**  The wire unit on the channel. */
-export type AgentEventBatch = {
+export type AgentEvent_Serialize = {
+	/**  Monotonic within the turn, starting at 1. */
+	seq: number,
+	/**  Milliseconds since the Unix epoch. */
+	ts: number,
 	turn_id: TurnId,
-	events: AgentEvent[],
+	event: AgentEventKind_Serialize,
 };
-
-export type AgentEventKind = { type: "turn.started"; chat_id: ChatId; mode: Mode; guard: boolean; model: ModelRef } | 
-/**  One per model round: the first assistant message and every one after a tool round. */
-{ type: "message.started"; message_id: MessageId; role: Role } | { type: "text.delta"; message_id: MessageId; block: number; text: string } | { type: "thinking.delta"; message_id: MessageId; block: number; text: string } | 
-/**  A block is complete; its final part is authoritative. */
-{ type: "block.done"; message_id: MessageId; block: number; part: ContentPart } | 
-/**  The model started a tool call; arguments may follow as deltas. */
-{ type: "tool_call.started"; call_id: CallId; message_id: MessageId; 
-/**  Namespace prefix: a connector id, or `gantry` for runtime tools. */
-connector: string; connector_name: string; tool: string; model_tool_name: string } | { type: "tool_call.args_delta"; call_id: CallId; fragment: string } | 
-/**  Arguments are complete and the call is classified. */
-{ type: "tool_call.ready"; call_id: CallId; args: unknown; tier: RiskTier; display: ToolDisplay } | 
-/**  The turn waits for the user (04 §10). */
-{ type: "decision.requested"; interaction: Interaction } | { type: "decision.resolved"; interaction_id: InteractionId; resolution: InteractionResolution; source: DecisionSource } | 
-/**  The call was allowed and is running; `source` says who allowed it. */
-{ type: "tool_call.executing"; call_id: CallId; source: DecisionSource } | 
-/**
- *  The call ended: with a result, an error result, a denial or a cancellation. The result
- *  content is what the model receives (capped at the transcript limit).
- */
-{ type: "tool_call.completed"; call_id: CallId; status: ToolCallStatus; is_error: boolean; duration_ms: number; result_preview: string; result: ResultPart[] } | { type: "provider.notice"; kind: string; detail: string } | { type: "message.completed"; message_id: MessageId; stop_reason: StopReason; usage: Usage | null } | { type: "turn.completed"; status: TurnStatus; usage: Usage | null; duration_ms: number; tool_calls: number } | { type: "error"; code: string; message: string; retryable: boolean } | 
-/**  The whole current state of an active turn; first on `subscribe_turn`. */
-{ type: "turn.snapshot"; snapshot: TurnSnapshot };
 
 /**
  *  Facts about the running application, returned by the `app_info` command.
@@ -176,7 +228,10 @@ export type CacheSupport = "none" | "automatic" | "explicit";
 export type CallId = string;
 
 /**  Everything the chat view needs. */
-export type ChatDetail = {
+export type ChatDetail = ChatDetail_Serialize | ChatDetail_Deserialize;
+
+/**  Everything the chat view needs. */
+export type ChatDetail_Deserialize = {
 	id: ChatId,
 	title: string,
 	pinned: boolean,
@@ -188,8 +243,29 @@ export type ChatDetail = {
 	mode: Mode,
 	guard: boolean,
 	effort: ReasoningEffort,
+	/**  Whether the provider's own web search tool is offered to the model (02 §3). */
+	web_search: boolean,
 	active_turn: TurnId | null,
-	turns: TurnDto[],
+	turns: TurnDto_Deserialize[],
+};
+
+/**  Everything the chat view needs. */
+export type ChatDetail_Serialize = {
+	id: ChatId,
+	title: string,
+	pinned: boolean,
+	archived: boolean,
+	project_id: ProjectId | null,
+	created_at: number,
+	last_message_at: number,
+	model: ModelRef,
+	mode: Mode,
+	guard: boolean,
+	effort: ReasoningEffort,
+	/**  Whether the provider's own web search tool is offered to the model (02 §3). */
+	web_search: boolean,
+	active_turn: TurnId | null,
+	turns: TurnDto_Serialize[],
 };
 
 /**  A conversation. Owns its mode, connectors, grants, roots, instructions and artifacts. */
@@ -227,6 +303,7 @@ export type ChatUpdate = {
 	mode: Mode | null,
 	guard: boolean | null,
 	effort: ReasoningEffort | null,
+	web_search: boolean | null,
 	title: string | null,
 	pinned: boolean | null,
 	archived: boolean | null,
@@ -239,15 +316,54 @@ export type ChatsChanged = {
 };
 
 /**  One block of a message. */
-export type ContentPart = { kind: "text"; text: string } | { kind: "image"; source: MediaSource; mime: string } | { kind: "document"; source: MediaSource; mime: string; name: string } | { kind: "tool_call"; id: CallId; name: string; args: unknown } | { kind: "tool_result"; call_id: CallId; content: ResultPart[]; is_error: boolean } | 
+export type ContentPart = ContentPart_Serialize | ContentPart_Deserialize;
+
+/**  One block of a message. */
+export type ContentPart_Deserialize = ({ kind: "text"; text: string }) & { added?: never; args?: never; block_kind?: never; call_id?: never; content?: never; id?: never; is_error?: never; item_id?: never; json?: never; mime?: never; name?: never; provider?: never; removed?: never; signature?: never; source?: never } | ({ kind: "image"; source: MediaSource; mime: string }) & { added?: never; args?: never; block_kind?: never; call_id?: never; content?: never; id?: never; is_error?: never; item_id?: never; json?: never; name?: never; provider?: never; removed?: never; signature?: never; text?: never } | ({ kind: "document"; source: MediaSource; mime: string; name: string }) & { added?: never; args?: never; block_kind?: never; call_id?: never; content?: never; id?: never; is_error?: never; item_id?: never; json?: never; provider?: never; removed?: never; signature?: never; text?: never } | ({ kind: "tool_call"; id: CallId; name: string; args: unknown; 
+/**
+ *  A provider token bound to the call that must be echoed on replay (Gemini thought
+ *  signatures). Opaque; only the provider that produced it reads it.
+ */
+signature?: string | null }) & { added?: never; block_kind?: never; call_id?: never; content?: never; is_error?: never; item_id?: never; json?: never; mime?: never; provider?: never; removed?: never; source?: never; text?: never } | ({ kind: "tool_result"; call_id: CallId; content: ResultPart[]; is_error: boolean }) & { added?: never; args?: never; block_kind?: never; id?: never; item_id?: never; json?: never; mime?: never; name?: never; provider?: never; removed?: never; signature?: never; source?: never; text?: never } | 
 /**  Model reasoning. Opaque: replayed only to the provider that produced it. */
-{ kind: "thinking"; text: string; signature: string | null; provider: ProviderKind } | 
+({ kind: "thinking"; text: string; signature: string | null; provider: ProviderKind; 
+/**
+ *  The provider's own id for the block when replay needs it (OpenAI Responses reasoning
+ *  items carry an `rs_…` id next to their encrypted content).
+ */
+item_id?: string | null }) & { added?: never; args?: never; block_kind?: never; call_id?: never; content?: never; id?: never; is_error?: never; json?: never; mime?: never; name?: never; removed?: never; source?: never } | 
 /**  Server-tool blocks, citations and other vendor content persisted and replayed verbatim. */
-{ kind: "provider_opaque"; provider: ProviderKind; block_kind: string; json: unknown } | 
+({ kind: "provider_opaque"; provider: ProviderKind; block_kind: string; json: unknown }) & { added?: never; args?: never; call_id?: never; content?: never; id?: never; is_error?: never; item_id?: never; mime?: never; name?: never; removed?: never; signature?: never; source?: never; text?: never } | 
 /**  An instruction change mid-chat (role `System`). */
-{ kind: "system_note"; text: string } | 
+({ kind: "system_note"; text: string }) & { added?: never; args?: never; block_kind?: never; call_id?: never; content?: never; id?: never; is_error?: never; item_id?: never; json?: never; mime?: never; name?: never; provider?: never; removed?: never; signature?: never; source?: never } | 
 /**  Connectors attached or detached mid-chat (role `System`). */
-{ kind: "tool_set_change"; added: string[]; removed: string[] };
+({ kind: "tool_set_change"; added: string[]; removed: string[] }) & { args?: never; block_kind?: never; call_id?: never; content?: never; id?: never; is_error?: never; item_id?: never; json?: never; mime?: never; name?: never; provider?: never; signature?: never; source?: never; text?: never };
+
+/**  One block of a message. */
+export type ContentPart_Serialize = ({ kind: "text"; text: string }) & { added?: never; args?: never; block_kind?: never; call_id?: never; content?: never; id?: never; is_error?: never; item_id?: never; json?: never; mime?: never; name?: never; provider?: never; removed?: never; signature?: never; source?: never } | ({ kind: "image"; source: MediaSource; mime: string }) & { added?: never; args?: never; block_kind?: never; call_id?: never; content?: never; id?: never; is_error?: never; item_id?: never; json?: never; name?: never; provider?: never; removed?: never; signature?: never; text?: never } | ({ kind: "document"; source: MediaSource; mime: string; name: string }) & { added?: never; args?: never; block_kind?: never; call_id?: never; content?: never; id?: never; is_error?: never; item_id?: never; json?: never; provider?: never; removed?: never; signature?: never; text?: never } | ({ kind: "tool_call"; id: CallId; name: string; args: unknown; 
+/**
+ *  A provider token bound to the call that must be echoed on replay (Gemini thought
+ *  signatures). Opaque; only the provider that produced it reads it.
+ */
+signature?: string | null }) & { added?: never; block_kind?: never; call_id?: never; content?: never; is_error?: never; item_id?: never; json?: never; mime?: never; provider?: never; removed?: never; source?: never; text?: never } | ({ kind: "tool_result"; call_id: CallId; content: ResultPart[]; is_error: boolean }) & { added?: never; args?: never; block_kind?: never; id?: never; item_id?: never; json?: never; mime?: never; name?: never; provider?: never; removed?: never; signature?: never; source?: never; text?: never } | 
+/**  Model reasoning. Opaque: replayed only to the provider that produced it. */
+({ kind: "thinking"; text: string; signature: string | null; provider: ProviderKind; 
+/**
+ *  The provider's own id for the block when replay needs it (OpenAI Responses reasoning
+ *  items carry an `rs_…` id next to their encrypted content).
+ */
+item_id?: string | null }) & { added?: never; args?: never; block_kind?: never; call_id?: never; content?: never; id?: never; is_error?: never; json?: never; mime?: never; name?: never; removed?: never; source?: never } | 
+/**  Server-tool blocks, citations and other vendor content persisted and replayed verbatim. */
+({ kind: "provider_opaque"; provider: ProviderKind; block_kind: string; json: unknown }) & { added?: never; args?: never; call_id?: never; content?: never; id?: never; is_error?: never; item_id?: never; mime?: never; name?: never; removed?: never; signature?: never; source?: never; text?: never } | 
+/**  An instruction change mid-chat (role `System`). */
+({ kind: "system_note"; text: string }) & { added?: never; args?: never; block_kind?: never; call_id?: never; content?: never; id?: never; is_error?: never; item_id?: never; json?: never; mime?: never; name?: never; provider?: never; removed?: never; signature?: never; source?: never } | 
+/**  Connectors attached or detached mid-chat (role `System`). */
+({ kind: "tool_set_change"; added: string[]; removed: string[] }) & { args?: never; block_kind?: never; call_id?: never; content?: never; id?: never; is_error?: never; item_id?: never; json?: never; mime?: never; name?: never; provider?: never; signature?: never; source?: never; text?: never };
+
+export type CustomEndpoint = {
+	label: string,
+	base_url: string,
+};
 
 /**  What Settings → Data & privacy shows and what its buttons do. */
 export type DataInfo = {
@@ -338,10 +454,16 @@ export type MediaSource =
 { kind: "blob"; hash: string };
 
 /**  One message in a transcript. */
-export type Message = {
+export type Message = Message_Serialize | Message_Deserialize;
+
+/**  One message in a transcript. */
+export type MessageId = string;
+
+/**  One message in a transcript. */
+export type Message_Deserialize = {
 	id: MessageId,
 	role: Role,
-	parts: ContentPart[],
+	parts: ContentPart_Deserialize[],
 	/**  The provider that produced an assistant message; `None` for user and system messages. */
 	origin: ProviderKind | null,
 	/**  Milliseconds since the Unix epoch. */
@@ -349,7 +471,15 @@ export type Message = {
 };
 
 /**  One message in a transcript. */
-export type MessageId = string;
+export type Message_Serialize = {
+	id: MessageId,
+	role: Role,
+	parts: ContentPart_Serialize[],
+	/**  The provider that produced an assistant message; `None` for user and system messages. */
+	origin: ProviderKind | null,
+	/**  Milliseconds since the Unix epoch. */
+	created_at: number,
+};
 
 /**  The permission mode of a chat (docs/plan/04 §3). */
 export type Mode = "manual" | "auto_edit" | "plan" | "auto";
@@ -440,6 +570,11 @@ export type ProviderRow = {
 	default_model: string | null,
 	/**  Whether this build has a client for the provider's kind. */
 	available: boolean,
+	/**
+	 *  A user-added OpenAI-compatible endpoint (`custom:<ulid>`); the only kind that can be
+	 *  removed.
+	 */
+	custom: boolean,
 };
 
 export type ProviderTest = {
@@ -587,17 +722,44 @@ export type ToolDisplay = {
 export type ToolDisplayKind = "edit" | "command" | "connector" | "read";
 
 /**  One user message and everything the assistant did in reply. */
-export type TurnDto = {
+export type TurnDto = TurnDto_Serialize | TurnDto_Deserialize;
+
+/**  One user message and everything the assistant did in reply. */
+export type TurnDto_Deserialize = {
 	id: TurnId,
 	status: TurnStatus,
 	model: ModelRef,
-	user: Message,
+	user: Message_Deserialize,
 	/**
 	 *  The assistant and tool messages of the turn in order: one assistant message per model
 	 *  round, a tool message after each round that called tools. Empty while the turn runs;
 	 *  the live messages come through the channel.
 	 */
-	messages: Message[],
+	messages: Message_Deserialize[],
+	/**  Every tool call of the turn, in the order the model made them. */
+	tool_calls: ToolCallDto[],
+	/**  Provider and loop notices shown inline (05 §1): a round cap, a dropped block, a retry. */
+	notices: string[],
+	usage: Usage | null,
+	stop_reason: StopReason | null,
+	error: string | null,
+	feedback: Feedback | null,
+	started_at: number,
+	ended_at: number | null,
+};
+
+/**  One user message and everything the assistant did in reply. */
+export type TurnDto_Serialize = {
+	id: TurnId,
+	status: TurnStatus,
+	model: ModelRef,
+	user: Message_Serialize,
+	/**
+	 *  The assistant and tool messages of the turn in order: one assistant message per model
+	 *  round, a tool message after each round that called tools. Empty while the turn runs;
+	 *  the live messages come through the channel.
+	 */
+	messages: Message_Serialize[],
 	/**  Every tool call of the turn, in the order the model made them. */
 	tool_calls: ToolCallDto[],
 	/**  Provider and loop notices shown inline (05 §1): a round cap, a dropped block, a retry. */
@@ -617,11 +779,34 @@ export type TurnId = string;
  *  What a late subscriber needs to draw an in-flight turn: every message of the turn so far
  *  (the last one may still be streaming), the tool calls and the pending decisions.
  */
-export type TurnSnapshot = {
+export type TurnSnapshot = TurnSnapshot_Serialize | TurnSnapshot_Deserialize;
+
+/**
+ *  What a late subscriber needs to draw an in-flight turn: every message of the turn so far
+ *  (the last one may still be streaming), the tool calls and the pending decisions.
+ */
+export type TurnSnapshot_Deserialize = {
 	chat_id: ChatId,
 	status: TurnStatus,
 	/**  Assistant and tool messages of the turn in order; parts in block order. */
-	messages: Message[],
+	messages: Message_Deserialize[],
+	tool_calls: ToolCallDto[],
+	pending: Interaction[],
+	usage: Usage | null,
+	started_at: number,
+	/**  The last `seq` this snapshot covers; live events continue from `seq + 1`. */
+	seq: number,
+};
+
+/**
+ *  What a late subscriber needs to draw an in-flight turn: every message of the turn so far
+ *  (the last one may still be streaming), the tool calls and the pending decisions.
+ */
+export type TurnSnapshot_Serialize = {
+	chat_id: ChatId,
+	status: TurnStatus,
+	/**  Assistant and tool messages of the turn in order; parts in block order. */
+	messages: Message_Serialize[],
 	tool_calls: ToolCallDto[],
 	pending: Interaction[],
 	usage: Usage | null,

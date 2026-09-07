@@ -107,6 +107,8 @@ pub struct ChatDetail {
     pub mode: Mode,
     pub guard: bool,
     pub effort: ReasoningEffort,
+    /// Whether the provider's own web search tool is offered to the model (02 §3).
+    pub web_search: bool,
     pub active_turn: Option<TurnId>,
     pub turns: Vec<TurnDto>,
 }

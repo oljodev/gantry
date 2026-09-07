@@ -1,11 +1,11 @@
 # Judge model per provider: the cheapest fast model of the provider the chat uses
 # (docs/plan/04 §6, D10). Also names chats (the title generator, M2). Keys are provider ids
 # (`openrouter`, `anthropic`, …) or, as a fallback, client kinds (`openai_chat`, …); a provider
-# with neither uses the chat's own model.
+# with neither (a custom endpoint) uses the chat's own model.
 
 [judge]
 openrouter = "deepseek/deepseek-v4-flash"
-# anthropic = "claude-haiku-4-5-20251001"          # M4
-# openai = "gpt-5-mini"                            # M4
-# google = "gemini-3-flash"                        # M4
-# xai = "grok-4-fast"                              # M4
+anthropic = "claude-haiku-4-5"
+openai = "gpt-5-mini"
+google = "gemini-2.5-flash"
+xai = "grok-4-fast-non-reasoning"

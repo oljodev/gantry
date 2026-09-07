@@ -11,7 +11,7 @@ use std::{
 use gantry_agent::{ChatBook, ChatNotifier, PromptContext, RuntimeTools, TurnManager};
 use gantry_connectors::ConnectorRegistry;
 use gantry_core::{ChatId, ProviderId, Settings};
-use gantry_providers::{ProviderRegistry, openai_chat::http_client};
+use gantry_providers::{ProviderRegistry, http_client};
 use gantry_secrets::SecretVault;
 use gantry_store::{BlobStore, Store, repos};
 use tauri::{App, AppHandle, Manager, plugin::TauriPlugin};
@@ -122,6 +122,7 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn Error>> {
 
     let settings = Arc::new(RwLock::new(load_settings(&store)?));
 
+    // The five accounts of 02 §1, one row each; custom endpoints are added from Settings.
     store.write_blocking(|conn| {
         repos::providers::ensure(
             conn,
@@ -129,6 +130,16 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn Error>> {
             "openai_chat",
             "OpenRouter",
             Some("https://openrouter.ai/api/v1"),
+        )?;
+        repos::providers::ensure(conn, "anthropic", "anthropic", "Anthropic", None)?;
+        repos::providers::ensure(conn, "openai", "openai_responses", "OpenAI", None)?;
+        repos::providers::ensure(conn, "google", "gemini", "Google", None)?;
+        repos::providers::ensure(
+            conn,
+            "xai",
+            "openai_chat",
+            "xAI",
+            Some("https://api.x.ai/v1"),
         )
     })?;
     let providers = Arc::new(ProviderRegistry::new(

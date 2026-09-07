@@ -100,6 +100,7 @@ mod tests {
             model: ModelRef::default_model(),
             mode: Mode::Plan,
             guard: true,
+            web_search: false,
             effort: ReasoningEffort::Off,
             active_turn: None,
             turns: vec![TurnDto {

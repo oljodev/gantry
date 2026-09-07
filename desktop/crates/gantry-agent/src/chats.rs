@@ -29,10 +29,14 @@ pub struct TurnInput {
     pub mode: Mode,
     pub guard: bool,
     pub effort: ReasoningEffort,
+    pub web_search: bool,
     pub system: String,
     pub messages: Vec<Message>,
     /// Whether this is the chat's first turn (the title generator runs after it).
     pub first_turn: bool,
+    /// The model of the chat's previous turn, so the runner can say when thinking from another
+    /// model is left behind (02 §5).
+    pub previous_model: Option<ModelRef>,
 }
 
 /// Chat settings the composer and the sidebar can change; `None` leaves a field alone.
@@ -42,6 +46,7 @@ pub struct ChatPatch {
     pub mode: Option<Mode>,
     pub guard: Option<bool>,
     pub effort: Option<ReasoningEffort>,
+    pub web_search: Option<bool>,
     pub title: Option<String>,
     pub pinned: Option<bool>,
     pub archived: Option<bool>,
@@ -204,6 +209,7 @@ impl ChatBook {
                 }
                 let seq = turns::next_seq(conn, chat_id)?;
                 let first_turn = seq == 1;
+                let previous_model = turns::last_for_chat(conn, chat_id)?.map(|t| t.model);
                 if first_turn && chat.title_source == "auto" {
                     chat.title = title_from(&user.text());
                 }
@@ -261,9 +267,11 @@ impl ChatBook {
                     mode: chat.mode,
                     guard: chat.guard,
                     effort: chat.effort,
+                    web_search: chat.web_search,
                     system: chat.system_snapshot.clone(),
                     messages: inline_media(&blobs, transcript),
                     first_turn,
+                    previous_model,
                 })
             })
             .map_err(|e| match e {
@@ -343,6 +351,9 @@ impl ChatBook {
                 }
                 if let Some(e) = patch.effort {
                     chat.effort = e;
+                }
+                if let Some(w) = patch.web_search {
+                    chat.web_search = w;
                 }
                 if let Some(t) = patch.title {
                     chat.title = t;
@@ -665,6 +676,7 @@ fn detail(
         mode: chat.mode,
         guard: chat.guard,
         effort: chat.effort,
+        web_search: chat.web_search,
         active_turn: turns
             .iter()
             .find(|t| t.status == TurnStatus::Running)

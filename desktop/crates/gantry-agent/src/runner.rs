@@ -13,7 +13,7 @@ use gantry_core::{
     ProviderErrorKind, ProviderKind, ResultPart, RiskTier, Role, StopReason, ToolCallDto,
     ToolCallStatus, TurnStatus, Usage, now_ms, result_preview,
 };
-use gantry_providers::{ChatRequest, Provider, ProviderError, StreamEvent};
+use gantry_providers::{ChatRequest, Provider, ProviderError, ServerTool, StreamEvent};
 use serde_json::json;
 
 use crate::{
@@ -71,6 +71,12 @@ pub async fn run_turn(ctx: RunContext) {
     });
 
     let mut transcript = ctx.input.messages.clone();
+    if let Some(detail) = thinking_reset_notice(&ctx.input) {
+        batcher.push(AgentEventKind::ProviderNotice {
+            kind: "thinking_dropped".into(),
+            detail,
+        });
+    }
     let mut usage_total: Option<Usage> = None;
     let mut rounds: u32 = 0;
     let mut call_count: u32 = 0;
@@ -98,7 +104,7 @@ pub async fn run_turn(ctx: RunContext) {
             .parts
             .iter()
             .filter_map(|p| match p {
-                ContentPart::ToolCall { id, name, args } => Some(Call {
+                ContentPart::ToolCall { id, name, args, .. } => Some(Call {
                     id: id.clone(),
                     name: name.clone(),
                     args: args.clone(),
@@ -284,6 +290,9 @@ async fn stream_round(ctx: &RunContext, transcript: &[Message]) -> Round {
     req.max_output_tokens = ctx.max_output_tokens;
     req.reasoning = ctx.input.effort;
     req.tools = ctx.tools.specs();
+    if ctx.input.web_search {
+        req.server_tools = vec![ServerTool::WebSearch { max_uses: None }];
+    }
     req.metadata.chat_id = Some(ctx.input.chat_id);
     req.metadata.turn_id = Some(ctx.input.turn_id);
     let cancel = ctx.active.cancel.clone();
@@ -363,6 +372,7 @@ fn apply(
                     .parts
                     .entry(index)
                     .or_insert_with(|| ContentPart::Thinking {
+                        item_id: None,
                         text: String::new(),
                         signature: None,
                         provider,
@@ -391,6 +401,7 @@ fn apply(
             round.parts.insert(
                 index,
                 ContentPart::ToolCall {
+                    signature: None,
                     id: id.clone(),
                     name: name.clone(),
                     args: serde_json::Value::Null,
@@ -453,10 +464,22 @@ fn apply(
         }
         StreamEvent::ToolCallEnd { index, args } => {
             let args = if args.is_object() { args } else { json!({}) };
+            // The observed column of 13 §2: whether this provider streamed the arguments.
+            log::info!(
+                "tool arguments from {:?} · {}: {}",
+                provider,
+                ctx.input.model.model,
+                if raw_args.get(&index).is_some_and(|s| !s.is_empty()) {
+                    "streamed in fragments"
+                } else {
+                    "arrived whole"
+                }
+            );
             if let Some(ContentPart::ToolCall {
                 id,
                 name,
                 args: slot,
+                ..
             }) = round.parts.get_mut(&index)
             {
                 *slot = args.clone();
@@ -501,6 +524,30 @@ fn update_call(ctx: &RunContext, id: &CallId, f: impl FnOnce(&mut ToolCallDto)) 
 }
 
 pub const CANCELLED_RESULT: &str = "Cancelled by the user before this tool call ran.";
+
+/// The "Thinking context reset" notice (05 §1): the chat's model changed since the last turn,
+/// and the last reply's thinking belongs to the previous one, so it is not sent along (02 §5).
+fn thinking_reset_notice(input: &TurnInput) -> Option<String> {
+    let previous = input.previous_model.as_ref()?;
+    if previous == &input.model {
+        return None;
+    }
+    let last_reply = input
+        .messages
+        .iter()
+        .rev()
+        .find(|m| m.role == Role::Assistant)?;
+    let had_thinking = last_reply
+        .parts
+        .iter()
+        .any(|p| matches!(p, ContentPart::Thinking { .. }));
+    had_thinking.then(|| {
+        format!(
+            "Thinking context reset: the reasoning {} did earlier is not sent to {}.",
+            previous.model, input.model.model
+        )
+    })
+}
 
 /// Error results for calls that will not run, so the transcript stays replayable (02 §3).
 fn synthetic_results(calls: &[Call], text: &str) -> Vec<ContentPart> {

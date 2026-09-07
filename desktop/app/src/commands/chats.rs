@@ -17,6 +17,7 @@ pub struct ChatUpdate {
     pub mode: Option<Mode>,
     pub guard: Option<bool>,
     pub effort: Option<ReasoningEffort>,
+    pub web_search: Option<bool>,
     pub title: Option<String>,
     pub pinned: Option<bool>,
     pub archived: Option<bool>,
@@ -77,6 +78,7 @@ pub fn update_chat(
             mode: update.mode,
             guard: update.guard,
             effort: update.effort,
+            web_search: update.web_search,
             title: update
                 .title
                 .map(|t| t.trim().to_owned())

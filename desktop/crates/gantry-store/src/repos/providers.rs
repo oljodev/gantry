@@ -93,3 +93,10 @@ pub fn set_base_url(conn: &Connection, id: &str, base_url: Option<&str>) -> Resu
     )?;
     Ok(())
 }
+
+/// Removes a provider row; its cached models cascade, its credential row is the vault's to
+/// delete first.
+pub fn delete(conn: &Connection, id: &str) -> Result<()> {
+    conn.execute("DELETE FROM providers WHERE id = ?1", params![id])?;
+    Ok(())
+}

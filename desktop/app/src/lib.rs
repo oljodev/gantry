@@ -31,6 +31,8 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::providers::test_provider,
             commands::providers::list_models,
             commands::providers::update_provider,
+            commands::providers::add_custom_provider,
+            commands::providers::remove_provider,
             commands::chats::create_chat,
             commands::chats::list_chats,
             commands::chats::get_chat,
