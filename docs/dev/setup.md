@@ -66,7 +66,9 @@ provider. Two things need a real key, both opt-in:
 # The live smoke test: key check, model list, one short stream. A fraction of a cent.
 OPENROUTER_API_KEY=sk-or-… cargo test -p gantry-providers --test live -- --ignored
 
-# Capture a real stream as a fixture (no key ends up in the file):
+# Capture a real stream as a fixture (no key ends up in the file). Export the key in this shell
+# first (`set -x OPENROUTER_API_KEY sk-or-…` in fish); the app's stored key is not visible here.
+test -n "$OPENROUTER_API_KEY" || echo "OPENROUTER_API_KEY is not set"
 curl -sN https://openrouter.ai/api/v1/chat/completions \
   -H "Authorization: Bearer $OPENROUTER_API_KEY" -H "Content-Type: application/json" \
   -d '{"model":"deepseek/deepseek-v4-flash","stream":true,"reasoning":{"effort":"low"},"max_tokens":120,"messages":[{"role":"user","content":"In two sentences, what is a gantry crane?"}]}' \
