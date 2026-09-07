@@ -1,0 +1,54 @@
+{
+  "manifest_version": "1",
+  "id": "github",
+  "name": "GitHub",
+  "description": "Issues, pull requests, code search and reviews on the repositories you can reach.",
+  "long_description": "GitHub's own hosted MCP server. It reads and writes issues, pull requests, files, workflows and releases, using your GitHub account's permissions — it can reach exactly what you can reach, and nothing more.\n\nThere are two ways to connect. **Sign in** uses OAuth, which needs a GitHub OAuth application's client id: GitHub registers no client automatically, so either Gantry ships one or you paste your own. **Use a token** takes a fine-grained personal access token instead and works immediately.\n\nWhichever you choose, the credential is encrypted on this machine and is never sent anywhere except to GitHub.",
+  "version": "0.1.0",
+  "icon": "icon.svg",
+  "category": "developer",
+  "keywords": ["github", "git", "issues", "pull requests", "code review", "repository"],
+  "publisher": { "name": "GitHub", "url": "https://github.com" },
+  "first_party": false,
+  "homepage": "https://github.com/github/github-mcp-server",
+  "documentation": "https://docs.github.com/en/copilot/how-tos/provide-context/use-mcp-in-your-ide/set-up-the-github-mcp-server",
+  "runtime": { "kind": "mcp-remote", "url": "https://api.githubcopilot.com/mcp/" },
+  "auth": {
+    "type": "oauth2",
+    "registration": ["preregistered", "user_supplied"],
+    "scopes": ["repo", "read:org", "read:user", "gist", "workflow"],
+    "user_supplied_fields": ["client_id"],
+    "instructions": "GitHub does not register clients automatically. Paste the client id of a GitHub OAuth application (Settings → Developer settings → OAuth Apps) with the callback http://127.0.0.1:17321/callback, or use a token instead."
+  },
+  "auth_alternate": {
+    "type": "headers",
+    "fields": [
+      {
+        "name": "Personal access token",
+        "header": "Authorization",
+        "format": "Bearer {value}",
+        "sensitive": true
+      }
+    ],
+    "instructions": "Create a fine-grained token at github.com/settings/personal-access-tokens with access to the repositories you want, then paste it here."
+  },
+  "risk": {
+    "network": "internet",
+    "local_system": "none",
+    "default_tool_tier": "write_external",
+    "notes": "Acts as you on GitHub. Merging, force-pushing and deleting are asked about every time."
+  },
+  "tool_overrides": {
+    "delete_repository": { "risk": "destructive", "always_confirm": true },
+    "delete_file": { "risk": "destructive", "always_confirm": true },
+    "merge_pull_request": { "always_confirm": true },
+    "push_files": { "always_confirm": true }
+  },
+  "tools_generated": true,
+  "compatibility": { "platforms": ["darwin", "win32", "linux"], "gantry": ">=0.1.0" },
+  "catalog": {
+    "featured": true,
+    "sort_weight": 20,
+    "suggest_for": ["github", "issue", "pull request", "repository", "code review", "release"]
+  }
+}

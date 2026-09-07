@@ -4,6 +4,7 @@
 pub mod artifacts;
 pub mod blobs;
 pub mod chats;
+pub mod connectors;
 pub mod credentials;
 pub mod events;
 pub mod grants;

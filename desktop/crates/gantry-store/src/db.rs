@@ -18,6 +18,7 @@ const MIGRATIONS: &[M<'static>] = &[
     M::up(include_str!("../migrations/0003_tools.sql")),
     M::up(include_str!("../migrations/0004_artifacts.sql")),
     M::up(include_str!("../migrations/0005_grants.sql")),
+    M::up(include_str!("../migrations/0006_connectors.sql")),
 ];
 const READERS: usize = 3;
 

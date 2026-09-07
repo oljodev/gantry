@@ -5,6 +5,11 @@
 
 #![forbid(unsafe_code)]
 
+pub mod auth;
+pub mod catalog;
+pub mod manifest;
+pub mod mcp;
+
 use std::{
     collections::BTreeMap,
     sync::{Arc, RwLock},

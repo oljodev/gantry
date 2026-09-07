@@ -1,0 +1,25 @@
+{
+  "manifest_version": "1",
+  "id": "cloudflare-docs",
+  "name": "Cloudflare Docs",
+  "description": "Search Cloudflare's documentation and read the current reference for any product.",
+  "long_description": "Cloudflare's hosted documentation server. It answers questions about Workers, Pages, DNS, R2, D1 and the rest of the platform from the live documentation, which is more current than any model's training. It needs no account and no sign-in: it reads public documentation and nothing of yours.",
+  "version": "0.1.0",
+  "icon": "icon.svg",
+  "category": "developer",
+  "keywords": ["cloudflare", "workers", "pages", "dns", "documentation", "reference"],
+  "publisher": { "name": "Cloudflare", "url": "https://developers.cloudflare.com" },
+  "first_party": false,
+  "homepage": "https://developers.cloudflare.com/agents/model-context-protocol/mcp-servers-for-cloudflare/",
+  "documentation": "https://developers.cloudflare.com/agents/model-context-protocol/",
+  "runtime": { "kind": "mcp-remote", "url": "https://docs.mcp.cloudflare.com/mcp" },
+  "auth": { "type": "none" },
+  "risk": { "network": "internet", "local_system": "none", "default_tool_tier": "read" },
+  "tools_generated": true,
+  "compatibility": { "platforms": ["darwin", "win32", "linux"], "gantry": ">=0.1.0" },
+  "catalog": {
+    "featured": true,
+    "sort_weight": 10,
+    "suggest_for": ["cloudflare", "workers", "wrangler", "cloudflare docs"]
+  }
+}

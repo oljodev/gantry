@@ -1,0 +1,33 @@
+{
+  "manifest_version": "1",
+  "id": "cloudflare-bindings",
+  "name": "Cloudflare Workers",
+  "description": "Build and inspect Workers with their storage: KV, R2, D1 and the rest of your account.",
+  "long_description": "Cloudflare's hosted Workers server, connected to your own account. It can list and read your Workers, KV namespaces, R2 buckets and D1 databases, and create the bindings a Worker needs.\n\nIt signs in through Cloudflare in your browser; Gantry never sees your Cloudflare password, and the token it receives is stored encrypted on this machine. Every tool call is still subject to the chat's permission mode, so writing to your account asks first unless you say otherwise.",
+  "version": "0.1.0",
+  "icon": "icon.svg",
+  "category": "developer",
+  "keywords": ["cloudflare", "workers", "kv", "r2", "d1", "bindings", "deploy"],
+  "publisher": { "name": "Cloudflare", "url": "https://developers.cloudflare.com" },
+  "first_party": false,
+  "homepage": "https://developers.cloudflare.com/agents/model-context-protocol/mcp-servers-for-cloudflare/",
+  "runtime": { "kind": "mcp-remote", "url": "https://bindings.mcp.cloudflare.com/mcp" },
+  "auth": {
+    "type": "oauth2",
+    "registration": ["dcr"],
+    "instructions": "Sign in to Cloudflare in your browser and choose the account this chat may reach."
+  },
+  "risk": {
+    "network": "internet",
+    "local_system": "none",
+    "default_tool_tier": "write_external",
+    "notes": "Reaches your Cloudflare account. Reads are cheap; writes create and change real resources."
+  },
+  "tools_generated": true,
+  "compatibility": { "platforms": ["darwin", "win32", "linux"], "gantry": ">=0.1.0" },
+  "catalog": {
+    "featured": true,
+    "sort_weight": 9,
+    "suggest_for": ["cloudflare", "workers", "kv", "r2", "d1", "deploy a worker"]
+  }
+}

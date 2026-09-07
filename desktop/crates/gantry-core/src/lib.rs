@@ -9,6 +9,7 @@ mod app_info;
 pub mod artifact;
 pub mod attachment;
 pub mod chat;
+pub mod connector;
 pub mod error;
 pub mod event;
 pub mod grant;
@@ -26,6 +27,10 @@ pub use artifact::{
 };
 pub use attachment::{AttachmentInput, MAX_IMAGE_BYTES, MAX_TEXT_BYTES};
 pub use chat::{ChatDetail, ChatSummary, Feedback, SearchHit, SearchHitKind, TurnDto, TurnStatus};
+pub use connector::{
+    AuthState, AuthType, CatalogEntryDto, ConnectorConfig, ConnectorInstanceDto, ConnectorKind,
+    RuntimeRequirement, ServerInfo, ToolInfo,
+};
 pub use error::{ErrorDto, GantryError, ProviderErrorKind};
 pub use event::{AgentEvent, AgentEventBatch, AgentEventKind, TurnSnapshot};
 pub use grant::{ArgScope, ChatGrant, GrantScope, GrantSource};
