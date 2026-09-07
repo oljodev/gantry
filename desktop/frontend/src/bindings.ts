@@ -95,7 +95,9 @@ export const commands = {
 	reportArtifactRender: (artifactId: ArtifactId, version: number, report: RenderReport) => typedError<boolean, ErrorDto>(__TAURI_INVOKE("report_artifact_render", { artifactId, version, report })),
 	/**
 	 *  Opens the artifact in its own window (13 §4, §5): a separate webview, which on every
-	 *  platform is at least a separate document and on most a separate process.
+	 *  platform is at least a separate document and on most a separate process. The frontend
+	 *  router uses hash history, so the route sits behind `index.html#`; the window gets the same
+	 *  frameless treatment as the main one (the app draws its own title strip, `startup.rs`).
 	 */
 	openArtifactWindow: (artifactId: ArtifactId) => typedError<null, ErrorDto>(__TAURI_INVOKE("open_artifact_window", { artifactId })),
 };

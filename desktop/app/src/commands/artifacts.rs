@@ -203,20 +203,39 @@ pub fn report_artifact_render(
 }
 
 /// Opens the artifact in its own window (13 §4, §5): a separate webview, which on every
-/// platform is at least a separate document and on most a separate process.
+/// platform is at least a separate document and on most a separate process. The frontend
+/// router uses hash history, so the route sits behind `index.html#`; the window gets the same
+/// frameless treatment as the main one (the app draws its own title strip, `startup.rs`).
 #[tauri::command]
 #[specta::specta]
-pub fn open_artifact_window(app: AppHandle, artifact_id: ArtifactId) -> Result<(), ErrorDto> {
+pub fn open_artifact_window(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    artifact_id: ArtifactId,
+) -> Result<(), ErrorDto> {
     let label = format!("artifact-{artifact_id}");
     if let Some(existing) = app.get_webview_window(&label) {
         let _ = existing.set_focus();
         return Ok(());
     }
-    let url = tauri::WebviewUrl::App(format!("artifact-window?id={artifact_id}").into());
-    tauri::WebviewWindowBuilder::new(&app, &label, url)
-        .title("Gantry artifact")
+    let title = state
+        .artifacts
+        .read(artifact_id, None)
+        .map(|c| c.artifact.title)
+        .unwrap_or_else(|_| "Artifact".to_string());
+    let url =
+        tauri::WebviewUrl::App(format!("index.html#/artifact-window?id={artifact_id}").into());
+    let builder = tauri::WebviewWindowBuilder::new(&app, &label, url)
+        .title(format!("{title} · Gantry"))
         .inner_size(900.0, 700.0)
-        .min_inner_size(400.0, 300.0)
+        .min_inner_size(400.0, 300.0);
+    #[cfg(target_os = "macos")]
+    let builder = builder
+        .title_bar_style(tauri::TitleBarStyle::Overlay)
+        .hidden_title(true);
+    #[cfg(not(target_os = "macos"))]
+    let builder = builder.decorations(false);
+    builder
         .build()
         .map_err(|e| GantryError::invalid(format!("could not open the window: {e}")))?;
     Ok(())
