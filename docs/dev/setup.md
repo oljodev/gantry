@@ -56,6 +56,46 @@ Commands are declared once in Rust (`desktop/app/src/commands/`) and collected i
 `gen_bindings` test fails when the committed file differs from what the Rust side would generate.
 After adding or changing a command: `cargo xtask gen-bindings`, then commit the result.
 
+## Testing against OpenRouter
+
+Everything that can run offline does: the provider layer replays recorded streams under
+`desktop/crates/gantry-providers/tests/fixtures/openrouter/`, the agent runs on a scripted
+provider. Two things need a real key, both opt-in:
+
+```sh
+# The live smoke test: key check, model list, one short stream. A fraction of a cent.
+OPENROUTER_API_KEY=sk-or-… cargo test -p gantry-providers --test live -- --ignored
+
+# Capture a real stream as a fixture (no key ends up in the file):
+curl -sN https://openrouter.ai/api/v1/chat/completions \
+  -H "Authorization: Bearer $OPENROUTER_API_KEY" -H "Content-Type: application/json" \
+  -d '{"model":"deepseek/deepseek-v4-flash","stream":true,"reasoning":{"effort":"low"},"max_tokens":120,"messages":[{"role":"user","content":"In two sentences, what is a gantry crane?"}]}' \
+  > desktop/crates/gantry-providers/tests/fixtures/openrouter/live-capture.sse
+```
+
+The key itself is entered in the app (Settings → Providers), stored encrypted, and never logged:
+`grep -ci authorization` on the log file must print 0 after a session.
+
+### The M1 checklist (hands-on, under $0.25 on DeepSeek V4 Flash)
+
+1. Settings → Providers: add the key. The row shows `Set ····abcd`; it is still set after a
+   restart. Test shows the key label and usage; a wrong key shows "invalid key".
+2. Refresh lists: hundreds of models; DeepSeek V4 Flash is the default in the picker.
+3. New chat, "Say hello in five words": text streams, the hover footer shows model, duration
+   and tokens, the sidebar shows the chat titled from your words.
+4. "Explain WAL mode in SQLite in 300 words with a code block": markdown and the code block
+   render while streaming; the view follows; no flicker.
+5. "Which is heavier, a litre of water or a litre of oil, and by how much?": the Thinking row
+   appears collapsed and expands to the reasoning.
+6. Start a long answer and press Stop: the text stops within a second, the turn says Stopped,
+   a follow-up message works.
+7. Switch chats mid-stream and back: the stream is still there and completes.
+8. Reload the webview (Ctrl+R) mid-stream: the view reattaches and shows the rest.
+9. Remove the key, send: a clear "No API key" error row, no crash.
+10. Set the key's credit limit to a tiny amount and send: the "no credit left" error is text,
+    not a crash.
+11. Linux: Settings → Providers says whether the master key is in the keyring or in the file.
+
 ## Where the app keeps its data
 
 Tauri's app data directory under the identifier `dev.oljo.gantry`:

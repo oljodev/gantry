@@ -88,7 +88,7 @@ The transcript is `messages` ordered by `seq`. It is append-only; edits to histo
 
 - **blobs** — `hash PK, size, mime NULL, refcount, created_at`; files live under `blobs/`. Refcounts are maintained by the repositories that reference blobs; a weekly sweep deletes unreferenced files.
 - **messages_fts** (FTS5, external content over the text parts of `messages`) and **chats_fts** (titles), maintained by triggers. The `search` command unions both and returns snippets. **artifacts_fts** (title, summary, current content) and **memories_fts** (text, tags) serve the artifact search and the memory selector (12 §B4).
-- **schema_migrations** — `version, applied_at`
+- The schema version is SQLite's `user_version` pragma, managed by `rusqlite_migration` (no `schema_migrations` table)
 
 ## 4. Where each kind of data lives
 

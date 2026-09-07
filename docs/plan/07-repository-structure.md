@@ -26,9 +26,9 @@ gantry/
 │   │   ├── capabilities/default.json     # Tauri v2 capabilities (dialog, opener, clipboard, notification, window-state)
 │   │   ├── icons/                        # generated from desktop/assets/branding/app-icon by `pnpm tauri icon`
 │   │   └── src/
-│   │       ├── main.rs  lib.rs  state.rs  startup.rs  channel_sink.rs  menu.rs  artifact_window.rs   # lib.rs holds the specta builder and the gen_bindings drift test
-│   │       └── commands/{mod.rs, chats.rs, turns.rs, interactions.rs, activity.rs, projects.rs, connectors.rs, providers.rs,
-│   │                     settings.rs, artifacts.rs, skills.rs, memory.rs, app.rs}
+│   │       ├── main.rs  lib.rs  state.rs  startup.rs  events.rs  menu.rs  artifact_window.rs   # lib.rs holds the specta builder and the gen_bindings drift test; events.rs the global events
+│   │       └── commands/{mod.rs, app.rs, settings.rs, providers.rs, chats.rs, turns.rs (with ChannelSink), interactions.rs, activity.rs, projects.rs,
+│   │                     connectors.rs, artifacts.rs, skills.rs, memory.rs}
 │   │
 │   ├── frontend/                         # package @gantry/frontend: the React app (module map in 01 §5)
 │   │   ├── package.json  index.html  vite.config.ts  tsconfig.json (+ tsconfig.app.json, tsconfig.node.json)  components.json  eslint.config.js
@@ -44,8 +44,10 @@ gantry/
 │   │       │   └── layout/{AppShell.tsx, Sidebar.tsx, TitleStrip.tsx, WindowControls.tsx}   # 15 §7
 │   │       ├── fixtures/{types.ts, chat.ts, connectors.ts, settings.ts}   # fixture data for the gallery and mock screens (15 §11); M1 replaces the types with bindings
 │   │       ├── lib/
-│   │       │   ├── ipc/{client.ts, keys.ts, hooks/…, events.ts}
-│   │       │   ├── stores/{runStore.ts, uiStore.ts}
+│   │       │   ├── ipc/{client.ts, keys.ts, events.ts, hooks/{useAppInfo.ts, settings.ts, providers.ts, chats.ts}}   # queries per command; events → invalidation
+│   │       │   ├── stores/{runStore.ts, uiStore.ts}   # runStore: the turn channel, the rAF drain, one LiveTurn per chat
+│   │       │   ├── view/toTurns.ts           # backend chat + live turn → the Turn view model the components render
+│   │       │   ├── markdown/blocks.ts        # top-level block splitter for the memoised renderer
 │   │       │   ├── partial/{partialJson.ts}
 │   │       │   └── utils.ts  modes.ts
 │   │       ├── features/
@@ -66,7 +68,7 @@ gantry/
 │   │       │   ├── onboarding/{Onboarding.tsx, Welcome.tsx}
 │   │       │   └── gallery/{GalleryPage.tsx, types.tsx, entries/{primitives,composites}.tsx}   # development builds only (15 §11)
 │   │       ├── components/ui/            # shadcn/ui (Base UI) primitives, reshaped to the tokens (15 §8)
-│   │       ├── components/gantry/        # composites (15 §8): activity/{ActivityRow, HunkPreview, TurnSummary}, chat/{UserMessage, TurnView, TurnFooter, InteractionCard},
+│   │       ├── components/gantry/        # composites (15 §8): activity/{ActivityRow, HunkPreview, TurnSummary}, chat/{UserMessage, TurnView, TurnFooter, ThinkingBlock, InteractionCard},
 │   │       │                             #   composer/{Composer, ModeChip, ModelPicker}, pane/{RightPane, DiffView, CommandOutput, ToolCallDetail},
 │   │       │                             #   markdown/{Markdown, CodeBlock}, sidebar/ChatRow, connectors/ConnectorTile, ConnectorMark, TierLabel, EmptyState, Logo
 │   │       ├── styles/{globals.css, tokens.css, fonts.css}   # tokens.css is the only place a colour, size or duration is written (15)
@@ -74,11 +76,11 @@ gantry/
 │   │
 │   ├── crates/
 │   │   ├── gantry-core/
-│   │   │   └── src/{lib.rs, app_info.rs, ids.rs, message.rs, tool.rs, risk.rs, event.rs, interaction.rs, permission.rs, settings.rs, artifact.rs, skill.rs, memory.rs, error.rs}
+│   │   │   └── src/{lib.rs, app_info.rs, ids.rs, time.rs, message.rs, event.rs, chat.rs, settings.rs, error.rs; later tool.rs, risk.rs, interaction.rs, permission.rs, artifact.rs, skill.rs, memory.rs}
 │   │   ├── gantry-store/
-│   │   │   ├── migrations/               # 0001_init.sql, 0002_….sql (forward-only)
+│   │   │   ├── migrations/               # 0001_init.sql (settings, providers, models, credentials), 0002_….sql (forward-only)
 │   │   │   └── src/
-│   │   │       ├── lib.rs  db.rs         # writer actor + read pool, pragmas
+│   │   │       ├── lib.rs  db.rs         # writer actor + read pool, pragmas, backup before migration, newer-schema refusal
 │   │   │       ├── blobs.rs  fts.rs  migrate.rs
 │   │   │       └── repos/{chats.rs, messages.rs, events.rs, tool_calls.rs, file_edits.rs, command_runs.rs,
 │   │   │                  interactions.rs, projects.rs, connectors.rs, credentials.rs, providers.rs, settings.rs,
@@ -87,17 +89,17 @@ gantry/
 │   │   │   └── src/{lib.rs, master_key.rs, envelope.rs, vault.rs, platform/{macos.rs, windows.rs, linux.rs, mod.rs}}
 │   │   ├── gantry-providers/
 │   │   │   ├── src/
-│   │   │   │   ├── lib.rs  provider.rs  types.rs  stream.rs  registry.rs
-│   │   │   │   ├── sanitize.rs           # ToolSchemaSanitizer per provider
-│   │   │   │   ├── sse.rs  retry.rs  catalog.rs  judge_defaults.rs
-│   │   │   │   ├── anthropic/{mod.rs, request.rs, stream.rs, project.rs}
-│   │   │   │   ├── openai_responses/{mod.rs, request.rs, stream.rs, project.rs}
-│   │   │   │   ├── openai_chat/{mod.rs, profiles.rs, request.rs, stream.rs, project.rs}
-│   │   │   │   └── gemini/{mod.rs, request.rs, stream.rs, project.rs}
+│   │   │   │   ├── lib.rs  provider.rs  error.rs  registry.rs  catalog.rs   # trait + types, error classes, the configured set, the cached model lists
+│   │   │   │   ├── sse.rs  retry.rs          # SSE decoder with first-token/idle timeouts; retry before the first byte
+│   │   │   │   ├── sanitize.rs  judge_defaults.rs   # later
+│   │   │   │   ├── openai_chat/{mod.rs, profiles.rs, request.rs, stream.rs, models.rs, key.rs}   # profiles: openrouter, xai, custom
+│   │   │   │   ├── anthropic/{mod.rs, request.rs, stream.rs, project.rs}          # M4
+│   │   │   │   ├── openai_responses/{mod.rs, request.rs, stream.rs, project.rs}   # M4
+│   │   │   │   └── gemini/{mod.rs, request.rs, stream.rs, project.rs}             # M4
 │   │   │   └── tests/
-│   │   │       ├── fixtures/{anthropic,openai_responses,openai_chat,gemini}/*.sse
-│   │   │       ├── normalization.rs      # one test per row of the table in 02 §3
-│   │   │       └── live.rs               # --features live conformance run
+│   │   │       ├── fixtures/openrouter/*.sse   # recorded and hand-written streams; later {anthropic,openai_responses,gemini}/
+│   │   │       ├── openrouter.rs             # every fixture through the real decoder and parser
+│   │   │       └── live.rs                   # opt-in (`--ignored`) smoke test on OPENROUTER_API_KEY
 │   │   ├── gantry-connectors/
 │   │   │   ├── build.rs                  # validates and embeds ../../connectors/*/manifest.json
 │   │   │   └── src/
@@ -111,9 +113,10 @@ gantry/
 │   │   ├── gantry-workspace/
 │   │   │   └── src/{lib.rs, scope.rs, fs.rs, journal.rs, diff.rs, search.rs, runner.rs, classify.rs, encoding.rs}
 │   │   ├── gantry-agent/
-│   │   │   ├── build.rs                  # validates and embeds ../../skills/*/SKILL.md
+│   │   │   ├── build.rs                  # validates and embeds ../../skills/*/SKILL.md (M12)
+│   │   │   ├── tests/{turns.rs, prompts.rs, fixtures/prompts/<mode>.txt}   # the loop on a scripted provider; one pinned prompt per mode
 │   │   │   └── src/
-│   │   │       ├── lib.rs  turn_manager.rs  runner.rs
+│   │   │       ├── lib.rs  chats.rs  events.rs  turn_manager.rs  runner.rs   # chats.rs: the in-memory ChatBook until M2; events.rs: EventSink, FanoutSink, Batcher
 │   │   │       ├── transcript.rs  projection.rs  context.rs  system_prompt.rs   # system_prompt assembles the layers of 10 §2
 │   │   │       ├── permissions/{mod.rs, engine.rs, tiers.rs, grants.rs, guardrails.rs, judge.rs}
 │   │   │       ├── runtime_tools/{mod.rs, access.rs, catalog.rs, artifacts.rs, skills.rs, memory.rs}

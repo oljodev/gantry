@@ -6,6 +6,8 @@ Goals: one internal request/response/stream model; five provider accounts (Anthr
 
 Non-goals: embeddings, batch, fine-tuning, audio.
 
+**Build order (decided 2026-09-07).** The `openai_chat` client with the `openrouter` profile shipped first, in M1, because the developer tests only through OpenRouter; Anthropic, OpenAI Responses and Gemini follow in M4. Nothing in the trait or the types depends on the order.
+
 **Decision: write the layer, do not adopt a unification crate.** The Rust ecosystem has usable multi-provider crates (`genai` is the most complete, and its source is a good reference for provider quirks). None of them expose what Gantry's agent loop needs as first-class concepts: append-only transcript rules on Anthropic (mid-conversation `system` messages, `tool_addition`/`tool_removal`, `defer_loading`, cache breakpoints), partial tool-argument streaming for live previews, provider server tools as opaque replayable parts, or Gemini's Interactions API. Wrapping a crate and patching around it costs more than owning ~4 clients that each map one well-documented HTTP API onto our types. LiteLLM-style Python layers are excluded by the brief.
 
 The layer is four client implementations for five providers:

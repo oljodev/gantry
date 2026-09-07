@@ -48,7 +48,7 @@ Artifacts running in the sandbox receive the resolved theme through the bridge (
 
 ## 4. Providers and keys
 
-Exactly the credential design of 06 §5, surfaced:
+Exactly the credential design of 06 §5, surfaced. M1 ships the OpenRouter row; the other four show "Arrives with M4" until their clients exist. The page also states where the master key lives (the OS store's name, or the Linux file fallback with its path).
 
 - A row per provider: name, key status (`none`, `set ····abcd`, `invalid` after a failed test), **Add key** / **Replace key** (a modal that never echoes the value), **Remove**, **Test** (calls `test_provider`, which lists models with the key and reports the error class on failure), default model picker, and for OpenRouter, xAI and custom endpoints an optional base URL.
 - **Custom endpoint** creates a `providers` row of kind `openai_chat` with the `custom` profile (02 §4): label, base URL, optional key.

@@ -6,7 +6,7 @@ Ordering principle: something visible in the first week, one risky subsystem ret
 |---|-----------|-------|---------------------|
 | M0 | Skeleton | 1 | open the app on all three OSes, in light and dark, and see the shell |
 | M0b | Design system and mock screens | 1 | see the finished chat, connectors and settings screens on fixture data, in both themes, before any of it is wired |
-| M1 | First conversation | 1–2 | chat with Claude, streaming, with your own key |
+| M1 | First conversation | 1–2 | chat with any OpenRouter model, streaming, with your own key |
 | M2 | Persistence, sidebar, settings | 1–2 | keep many chats, search them, survive restarts, set your defaults and instructions |
 | M3 | Tool loop and Manual mode | 1 | watch the model call a tool and approve it |
 | M4 | All providers | 2 | continue one chat across Anthropic, OpenAI, Gemini, xAI, OpenRouter |
@@ -52,28 +52,50 @@ Layers 2 and 3 of the design document (15), built before a single backend call i
 
 Done when: the gallery and the three screens pass a screenshot review in both themes and densities on WebKitGTK and on the macOS and Windows CI builds, and the light theme passes the contrast script.
 
-## M1 — First conversation (1–2 weeks)
+## M1 — First conversation (1–2 weeks) — done 2026-09-07
 
-- `gantry-core`: ids, `Message`/`ContentPart`, `StreamEvent`, `AgentEvent`, `Settings` with defaults, errors.
-- `gantry-secrets`: master key in the OS store on all three platforms, envelope encryption, vault API, Linux fallback with warning.
-- `gantry-providers`: the trait, SSE parsing, retry policy, the **Anthropic** client (text only, thinking, usage, stop reasons, refusal handling).
-- **System prompt v1** (10): `desktop/assets/prompts/core.md` and the mode fragments; `SystemPromptBuilder` assembling the layers in order (layers 4–7 empty for now); the prompt fixture test.
-- Settings infrastructure (`get_settings`/`update_settings`, `settings:changed`) and the **Providers** page: enter an Anthropic key (write-only), test it, list models.
-- `gantry-agent`: a minimal `TurnRunner` (no tools), `EventSink` + `Batcher`; `send_message` with a channel; cancel.
-- Frontend: run store, rAF drain, streaming markdown (block memoization, shiki) and Stop wired into the M0b `ChatView` and `Composer`; no new visual design in this milestone. Chats are in memory only.
+Built in session 5. Two deviations from the plan as first written, decided with Olav: the
+OpenAI-compatible Chat Completions client with the **OpenRouter** profile came first (Olav tests
+only through OpenRouter with DeepSeek V4 Flash), so the Anthropic client moved to M4; and the
+store foundation (`settings`, `providers`, `models`, `credentials`, the writer actor, migration
+0001 with a backup first) landed here, because keys and settings must survive a restart. Chats
+stay in memory until M2. Landed:
 
-Done when: streaming feels instant, cancel works mid-stream, and the key never appears in logs or the frontend.
+- `gantry-core`: `Message`/`ContentPart`, `StopReason`, `Usage`, `AgentEvent` (the text-only
+  subset with `turn.snapshot`), `Settings` with section patches, the chat DTOs, provider error
+  kinds; 64-bit numbers and JSON values export to TypeScript through specta-typescript markers.
+- `gantry-secrets`: master key in the OS store (keyring-core with the Apple, Windows and zbus
+  Secret Service stores), a 0600 file fallback on Linux with a visible status, XChaCha20-Poly1305
+  envelopes with the credential id and kind as associated data, the vault API.
+- `gantry-providers`: the trait, the SSE decoder with first-token and idle timeouts, retry before
+  the first byte, `openai_chat` with the `openrouter`, `xai` and `custom` profiles (system first,
+  `reasoning: {effort}`, same-provider thinking replay, tool-call fragments parsed for M3), the
+  model list and key check, the registry and the cached catalog; recorded fixtures replayed through
+  the real decoder; an opt-in live smoke test.
+- **System prompt v1** (10): `core.md` and the four mode fragments; `SystemPromptBuilder` with
+  layers 1, 2 and 4; fixtures pin one prompt per mode.
+- `gantry-agent`: the in-memory `ChatBook`, `EventSink` + `Batcher` (16 ms, 64 events, 64 KB,
+  merged deltas), `TurnManager` with start, cancel, `subscribe` (snapshot then live) and
+  `list_active`, the runner; tests on a scripted provider.
+- App: settings, provider, chat and turn commands; `send_message` over a channel;
+  `ChatsChanged`/`ProvidersChanged`/`SettingsChanged` events.
+- Frontend: query hooks and event invalidation, the run store with the rAF drain, the view
+  projection onto the M0b components, block-level markdown memoisation, the thinking block, the
+  wired welcome, chat, sidebar, palette, model picker and Providers pages.
+
+Done when: streaming feels instant, cancel works mid-stream, and the key never appears in logs
+or the frontend. Olav's live checklist is in `docs/dev/setup.md`.
 
 ## M2 — Persistence, sidebar, settings (1–2 weeks)
 
-- `gantry-store`: schema for `settings`, `providers`, `models`, `credentials`, `chats` (including `instructions` and `system_snapshot`), `turns`, `messages`, `attachments`, `events`, `blobs`, FTS; migrations; writer actor + read pool; crash recovery at startup.
+- `gantry-store`: migration 0002 with `chats` (including `instructions` and `system_snapshot`), `turns`, `messages`, `attachments`, `events`, `blobs`, FTS (the writer actor, the read pool and the first four tables landed in M1); crash recovery at startup; the `ChatBook` of M1 moves behind the store.
 - Chat CRUD commands; the sidebar with New chat, pinned, day groups, context menu, running indicator; `chats:changed` invalidation; optimistic pin/rename.
 - The frozen `system_snapshot` per chat and `SystemNote` deltas for instruction changes (10 §4).
 - Settings pages **General** (default mode and guard, global custom instructions), **Appearance**, **Data & privacy** (data dir, export a chat) and **Advanced** (developer mode: show the assembled system prompt).
 - Title generation with the same provider's cheapest model (first use of `judge_defaults.toml`).
 - Attachments: text files and images as message parts; drag-and-drop and paste.
 - The command palette (15 A15) gains real search over `messages_fts` + `chats_fts` alongside its actions.
-- `subscribe_turn` and `turn.snapshot` so switching chats mid-stream works.
+- `subscribe_turn` and `turn.snapshot` (landed in M1) replay persisted events after the snapshot.
 
 Done when: you can close the app during a stream and reopen to a consistent chat marked "interrupted", with your instructions and theme intact.
 
@@ -90,7 +112,7 @@ Rationale for placing this before the other providers: the tool loop is the harn
 
 ## M4 — All providers (2 weeks)
 
-- `openai_responses` (stateless, encrypted reasoning replay, function calls, built-in web search), `openai_chat` with the `xai`, `openrouter` and `custom` profiles, `gemini` on the Interactions API (function calls with ids, thought signatures, streaming argument deltas).
+- The **Anthropic** client (moved here from M1: thinking blocks and the append-only rules, usage with cache reads and writes, refusal handling, server tools), `openai_responses` (stateless, encrypted reasoning replay, function calls, built-in web search), `openai_chat`'s `xai` and `custom` profiles exercised (the client and the `openrouter` profile landed in M1), `gemini` on the Interactions API (function calls with ids, thought signatures, streaming argument deltas).
 - Model catalog with live lists merged with `desktop/assets/models/overrides.toml`; capability-driven UI (thinking selector, web search toggle availability).
 - Fixture tests for every row of the normalization table; the 12-scenario live conformance checklist run once per provider by hand, **now including "streams partial tool arguments" as a recorded per-provider result** (13 §2 depends on it).
 - Provider error surfaces (rate limit, auth, context too long) with a Retry affordance.
