@@ -50,12 +50,21 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::interactions::list_pending_interactions,
             commands::interactions::resolve_interaction,
             commands::interactions::get_tool_call,
+            commands::artifacts::list_artifacts,
+            commands::artifacts::get_artifact,
+            commands::artifacts::get_artifact_version,
+            commands::artifacts::save_artifact_version,
+            commands::artifacts::restore_artifact_version,
+            commands::artifacts::export_artifact,
+            commands::artifacts::report_artifact_render,
+            commands::artifacts::open_artifact_window,
         ])
         .events(tauri_specta::collect_events![
             events::ChatsChanged,
             events::ProvidersChanged,
             events::SettingsChanged,
             events::InteractionsChanged,
+            events::ArtifactsChanged,
         ])
 }
 

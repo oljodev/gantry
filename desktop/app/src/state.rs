@@ -5,7 +5,7 @@ use std::{
     time::Instant,
 };
 
-use gantry_agent::TurnManager;
+use gantry_agent::{Artifacts, TurnManager};
 use gantry_core::Settings;
 use gantry_providers::ProviderRegistry;
 use gantry_secrets::SecretVault;
@@ -25,6 +25,7 @@ pub struct AppState {
     /// The cached `settings` table; every write goes through `update_settings`.
     pub settings: Arc<RwLock<Settings>>,
     pub turns: Arc<TurnManager>,
+    pub artifacts: Arc<Artifacts>,
     /// Providers whose last key test failed with an auth error; cleared when the key changes.
     pub invalid_keys: Mutex<HashSet<String>>,
 }

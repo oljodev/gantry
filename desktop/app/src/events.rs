@@ -1,6 +1,6 @@
 //! Global invalidation events (docs/plan/01 §4): ids only, never data.
 
-use gantry_core::ChatId;
+use gantry_core::{ArtifactId, ChatId};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type, tauri_specta::Event)]
@@ -19,4 +19,11 @@ pub struct SettingsChanged;
 pub struct InteractionsChanged {
     pub chat_id: ChatId,
     pub pending: u32,
+}
+
+/// A user edit or restore made a new artifact version outside a turn (13 §10).
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type, tauri_specta::Event)]
+pub struct ArtifactsChanged {
+    pub chat_id: ChatId,
+    pub artifact_id: ArtifactId,
 }

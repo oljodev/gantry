@@ -8,7 +8,7 @@ use std::{
     time::Instant,
 };
 
-use gantry_agent::{ChatBook, ChatNotifier, PromptContext, RuntimeTools, TurnManager};
+use gantry_agent::{Artifacts, ChatBook, ChatNotifier, PromptContext, RuntimeTools, TurnManager};
 use gantry_connectors::ConnectorRegistry;
 use gantry_core::{ChatId, ProviderId, Settings};
 use gantry_providers::{ProviderRegistry, http_client};
@@ -150,8 +150,9 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn Error>> {
     providers.rebuild()?;
 
     // Runtime tools are always registered; installed connectors join the registry with M9.
+    let artifacts = Arc::new(Artifacts::new(store.clone(), blobs.clone()));
     let connectors = Arc::new(ConnectorRegistry::new());
-    connectors.register(Arc::new(RuntimeTools::new()));
+    connectors.register(Arc::new(RuntimeTools::with_artifacts(artifacts.clone())));
 
     let turns = TurnManager::new(
         Arc::new(ChatBook::new(store.clone(), blobs)),
@@ -177,6 +178,7 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn Error>> {
         providers,
         settings,
         turns,
+        artifacts,
         invalid_keys: Mutex::new(Default::default()),
     });
     Ok(())
