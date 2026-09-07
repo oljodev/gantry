@@ -54,7 +54,7 @@ pub async fn generate_title(
         excerpt(assistant_text, 800)
     );
     let mut req = ChatRequest::new(model, SYSTEM, vec![Message::user_text(prompt)]);
-    req.max_output_tokens = 32;
+    req.max_output_tokens = 64;
     req.reasoning = ReasoningEffort::Off;
     let mut stream = provider.stream(req).await?;
     let mut text = String::new();

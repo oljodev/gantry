@@ -131,7 +131,9 @@ export function Data() {
           <div className="flex items-center gap-1">
             <Select value={selected} onValueChange={(v) => v && setChatId(v)}>
               <SelectTrigger aria-label="Chat to export" className="max-w-64">
-                <SelectValue placeholder="No chats yet" />
+                <SelectValue placeholder="No chats yet">
+                  {(id: string) => chatRows.find((c) => c.id === id)?.title ?? id}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {chatRows.map((c) => (
@@ -143,7 +145,9 @@ export function Data() {
             </Select>
             <Select value={format} onValueChange={(v) => v && setFormat(v as ExportFormat)}>
               <SelectTrigger aria-label="Format" className="min-w-28">
-                <SelectValue />
+                <SelectValue>
+                  {(v: ExportFormat) => (v === 'json' ? 'JSON' : 'Markdown')}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="markdown">Markdown</SelectItem>

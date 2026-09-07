@@ -326,7 +326,7 @@ impl TurnManager {
                 Ok(false) => {}
                 Err(err) => log::warn!("could not store the title of {chat_id}: {err}"),
             },
-            Ok(_) => log::debug!("the title generator returned nothing for {chat_id}"),
+            Ok(_) => log::warn!("the title generator returned nothing for {chat_id}"),
             Err(err) => log::warn!("title generation failed for {chat_id}: {err}"),
         }
     }

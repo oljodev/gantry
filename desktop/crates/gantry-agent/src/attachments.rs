@@ -34,6 +34,11 @@ fn ingest_one(blobs: &BlobStore, input: AttachmentInput) -> Result<Ingested, Gan
                 .file_name()
                 .map(|n| n.to_string_lossy().into_owned())
                 .unwrap_or_else(|| path.clone());
+            if p.is_dir() {
+                return Err(GantryError::invalid(format!(
+                    "{name} is a folder; attach files one by one (adding a folder to the workspace arrives with M6)"
+                )));
+            }
             let bytes = std::fs::read(p)
                 .map_err(|e| GantryError::invalid(format!("could not read {name}: {e}")))?;
             (name, None, bytes)

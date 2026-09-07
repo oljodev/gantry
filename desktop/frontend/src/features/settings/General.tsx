@@ -49,7 +49,7 @@ export function General() {
             onValueChange={(v) => v && patch({ default_mode: v as Mode })}
           >
             <SelectTrigger aria-label="Default permission mode">
-              <SelectValue />
+              <SelectValue>{(v: Mode) => MODE_LABEL[v]}</SelectValue>
             </SelectTrigger>
             <SelectContent>
               {MODES.map((m) => (

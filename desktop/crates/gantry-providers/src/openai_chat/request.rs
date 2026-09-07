@@ -37,7 +37,15 @@ pub fn build_body(profile: &CompatProfile, req: &ChatRequest, info: Option<&Mode
     }
     match (profile.reasoning_param, req.reasoning) {
         _ if !supports_reasoning => {}
-        (_, ReasoningEffort::Off) | (ReasoningParam::None, _) => {}
+        (ReasoningParam::None, _) => {}
+        // Reasoning models think by default; "off" has to be said, or a short budget is spent
+        // on thinking before any text arrives (the title generator found this out).
+        (ReasoningParam::OpenRouterObject, ReasoningEffort::Off) => {
+            obj.insert("reasoning".into(), json!({ "enabled": false }));
+        }
+        (ReasoningParam::OpenAiEffort, ReasoningEffort::Off) => {
+            obj.insert("reasoning_effort".into(), json!("none"));
+        }
         (ReasoningParam::OpenRouterObject, effort) => {
             obj.insert("reasoning".into(), json!({ "effort": effort_name(effort) }));
         }
@@ -257,6 +265,12 @@ mod tests {
         assert_eq!(body["messages"][0]["role"], "system");
         assert_eq!(body["messages"][1]["content"], "hi");
         assert_eq!(body["reasoning"]["effort"], "low");
+        req.reasoning = ReasoningEffort::Off;
+        let body = build_body(&CompatProfile::openrouter(), &req, Some(&thinking));
+        assert_eq!(
+            body["reasoning"]["enabled"], false,
+            "off is stated, not left to the model's default"
+        );
         assert_eq!(body["max_tokens"], 512);
         assert_eq!(body["stream"], true);
         assert!(body.get("stream_options").is_none());
