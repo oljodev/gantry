@@ -12,7 +12,10 @@ use tauri::{AppHandle, State};
 use tauri_plugin_opener::OpenerExt;
 use tauri_specta::Event;
 
-use crate::{AppState, events::ConnectorsChanged};
+use crate::{
+    AppState,
+    events::{ConnectorsChanged, DeviceCodeNeeded},
+};
 
 /// A server the user described by hand, or pasted from another client's configuration (03 §8).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
@@ -115,6 +118,17 @@ pub async fn authorize_connector(
         .begin_authorization(instance_id, client_id)
         .await?;
     let _ = ConnectorsChanged.emit(&app);
+    // A device sign-in asks the user to type a code, so the code has to be on screen before the
+    // browser takes the focus away.
+    if let Some(user_code) = authorization.user_code.clone() {
+        let _ = DeviceCodeNeeded {
+            instance_id,
+            connector: state.connectors.instance(instance_id)?.name,
+            user_code,
+            verification_uri: authorization.url.clone(),
+        }
+        .emit(&app);
+    }
     app.opener()
         .open_url(authorization.url.clone(), None::<&str>)
         .map_err(|e| GantryError::internal(format!("opening the browser: {e}")))?;

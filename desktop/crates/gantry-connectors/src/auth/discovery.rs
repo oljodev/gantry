@@ -36,6 +36,14 @@ pub struct AuthServer {
     pub code_challenge_methods_supported: Vec<String>,
     #[serde(default)]
     pub scopes_supported: Vec<String>,
+    /// RFC 8628. Present on servers that let a device sign in with a code the user types.
+    #[serde(default)]
+    pub device_authorization_endpoint: Option<String>,
+    /// A server that lists `none` accepts a client with no secret; one that lists nothing has
+    /// not said, and GitHub's silence means it wants a secret it will never get from a desktop
+    /// application.
+    #[serde(default)]
+    pub token_endpoint_auth_methods_supported: Vec<String>,
     #[serde(default)]
     pub client_id_metadata_document_supported: bool,
     #[serde(default)]

@@ -375,12 +375,19 @@ the flow above has to survive:
   path-insertion form of RFC 8414. `<issuer>/.well-known/oauth-authorization-server` is a 404
   there. Discovery tries the path-insertion form, then the suffix form, then OpenID's
   `.well-known/openid-configuration`, in that order.
-- **GitHub supports neither Dynamic Client Registration nor a Client ID Metadata Document.** Its
-  metadata advertises `code_challenge_methods_supported: ["S256"]` and the device flow, and no
-  `registration_endpoint`. So GitHub is a **pre-registered client**: the manifest carries a client
-  id, or the install dialog asks for one. The entry also offers a **personal access token** as an
-  alternative (the server accepts `Authorization: Bearer <token>`), which is what makes it usable
-  before any OAuth application exists. Cloudflare, by contrast, registers dynamically:
+- **GitHub supports neither Dynamic Client Registration nor a Client ID Metadata Document, and
+  will not take a client without a secret.** Its metadata advertises `code_challenge_methods_
+  supported: ["S256"]`, no `registration_endpoint`, and — the load-bearing omission — no
+  `token_endpoint_auth_methods_supported`. A PKCE redirect exchange with a client id alone comes
+  back `incorrect_client_credentials`, which is confirmed by their documentation: the secret is
+  required for the redirect flow, and only the **device flow** (RFC 8628, which their metadata
+  does advertise) works without one. So GitHub signs in with a code the user types on github.com,
+  from a pre-registered client id with *Enable Device Flow* ticked, and the entry also offers a
+  **personal access token** as an alternative (the server accepts `Authorization: Bearer <token>`)
+  for anyone who would rather register nothing. Which flow is used is decided by what the server
+  says, not by its name: a server listing `none` among its token endpoint's authentication
+  methods gets the redirect, and one that offers a device endpoint without saying `none` gets the
+  code. Cloudflare, by contrast, registers dynamically and lists `none`:
   `https://bindings.mcp.cloudflare.com` advertises a `registration_endpoint`, `S256`,
   `token_endpoint_auth_method: none` and `authorization_response_iss_parameter_supported: true`,
   which is exactly the path §7 describes.

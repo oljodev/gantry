@@ -188,11 +188,33 @@ pub async fn refresh(
     post_token(http, &server.token_endpoint, &form).await
 }
 
+/// What a token endpoint said. An OAuth error is a *shape*, not a status: GitHub answers 200
+/// with `{"error":"..."}`, and the device flow's "not yet" arrives the same way, so the code has
+/// to be read rather than the status.
+enum Answer {
+    Token(Box<TokenSet>),
+    Error {
+        code: Option<String>,
+        message: String,
+    },
+}
+
 async fn post_token(
     http: &reqwest::Client,
     endpoint: &str,
     form: &[(&str, String)],
 ) -> Result<TokenSet, AuthError> {
+    match ask(http, endpoint, form).await? {
+        Answer::Token(set) => Ok(*set),
+        Answer::Error { message, .. } => Err(AuthError::Token(message)),
+    }
+}
+
+async fn ask(
+    http: &reqwest::Client,
+    endpoint: &str,
+    form: &[(&str, String)],
+) -> Result<Answer, AuthError> {
     let response = http
         .post(endpoint)
         .header(reqwest::header::ACCEPT, "application/json")
@@ -201,17 +223,174 @@ async fn post_token(
         .await?;
     let status = response.status();
     let body = response.text().await.unwrap_or_default();
-    if !status.is_success() {
-        return Err(AuthError::Token(format!(
-            "{status}: {}",
-            body.chars().take(300).collect::<String>()
-        )));
+    let answer = read(&body);
+    // A failing status with nothing readable in it still has to say something.
+    if let Answer::Error { code, message } = &answer
+        && !status.is_success()
+        && code.is_none()
+        && message.is_empty()
+    {
+        return Ok(Answer::Error {
+            code: None,
+            message: format!("{status}: {}", body.chars().take(300).collect::<String>()),
+        });
+    }
+    Ok(answer)
+}
+
+/// JSON or form-encoded, a token or an error, in one reading.
+fn read(body: &str) -> Answer {
+    if body.trim_start().starts_with('{') {
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(body) else {
+            return Answer::Error {
+                code: None,
+                message: String::new(),
+            };
+        };
+        if let Some(code) = value.get("error").and_then(|v| v.as_str()) {
+            return Answer::Error {
+                message: value
+                    .get("error_description")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or(code)
+                    .to_owned(),
+                code: Some(code.to_owned()),
+            };
+        }
+        return match serde_json::from_value::<TokenSet>(value) {
+            Ok(set) => Answer::Token(Box::new(set)),
+            Err(err) => Answer::Error {
+                code: None,
+                message: err.to_string(),
+            },
+        };
     }
     // GitHub answers form-encoded unless asked for JSON, and asking is not always enough.
-    if body.trim_start().starts_with('{') {
-        serde_json::from_str(&body).map_err(|e| AuthError::Token(e.to_string()))
+    match form_token(body) {
+        Ok(set) => Answer::Token(Box::new(set)),
+        Err(err) => Answer::Error {
+            code: None,
+            message: err.to_string(),
+        },
+    }
+}
+
+/// What the user has to do for a device sign-in (RFC 8628): a code to type, and where.
+#[derive(Debug, Clone)]
+pub struct DeviceStart {
+    pub device_code: String,
+    pub user_code: String,
+    pub verification_uri: String,
+    /// The page with the code already filled in, when the server offers one.
+    pub verification_uri_complete: Option<String>,
+    pub interval: Duration,
+    pub expires_in: Duration,
+}
+
+/// Asks the server for a code the user can type (RFC 8628 §3.1). This is the way in for a
+/// server that will not take a client without a secret — GitHub, which is the reason it exists
+/// here at all (03 §7).
+pub async fn device_begin(
+    http: &reqwest::Client,
+    server: &AuthServer,
+    client_id: &str,
+    scopes: &[String],
+) -> Result<DeviceStart, AuthError> {
+    let endpoint = server
+        .device_authorization_endpoint
+        .as_deref()
+        .ok_or_else(|| AuthError::Discovery("this server has no device endpoint".into()))?;
+    let mut form = vec![("client_id", client_id.to_owned())];
+    if !scopes.is_empty() {
+        form.push(("scope", scopes.join(" ")));
+    }
+    let response = http
+        .post(endpoint)
+        .header(reqwest::header::ACCEPT, "application/json")
+        .form(&form)
+        .send()
+        .await?;
+    let body = response.text().await.unwrap_or_default();
+    let value: serde_json::Value = if body.trim_start().starts_with('{') {
+        serde_json::from_str(&body).map_err(|e| AuthError::Token(e.to_string()))?
     } else {
-        form_token(&body)
+        let mut map = serde_json::Map::new();
+        for (k, v) in url::form_urlencoded::parse(body.as_bytes()) {
+            map.insert(k.into_owned(), serde_json::Value::String(v.into_owned()));
+        }
+        serde_json::Value::Object(map)
+    };
+    if let Some(code) = value.get("error").and_then(|v| v.as_str()) {
+        let message = value
+            .get("error_description")
+            .and_then(|v| v.as_str())
+            .unwrap_or(code);
+        // The one failure worth explaining: the application exists but has not been allowed to
+        // use this flow, which is a checkbox on the server's own settings page.
+        if code == "device_flow_disabled" {
+            return Err(AuthError::DeviceFlowDisabled);
+        }
+        return Err(AuthError::Token(message.to_owned()));
+    }
+    let text = |key: &str| value.get(key).and_then(|v| v.as_str()).map(str::to_owned);
+    let seconds = |key: &str, fallback: u64| {
+        value
+            .get(key)
+            .and_then(|v| {
+                v.as_u64()
+                    .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
+            })
+            .unwrap_or(fallback)
+    };
+    Ok(DeviceStart {
+        device_code: text("device_code")
+            .ok_or_else(|| AuthError::Token("the server sent no device code".into()))?,
+        user_code: text("user_code")
+            .ok_or_else(|| AuthError::Token("the server sent no user code".into()))?,
+        verification_uri: text("verification_uri")
+            .or_else(|| text("verification_url"))
+            .ok_or_else(|| AuthError::Token("the server sent nowhere to go".into()))?,
+        verification_uri_complete: text("verification_uri_complete"),
+        interval: Duration::from_secs(seconds("interval", 5).clamp(1, 60)),
+        expires_in: Duration::from_secs(seconds("expires_in", 900)),
+    })
+}
+
+/// Polls until the user has approved, refused, or run out of time (RFC 8628 §3.4–3.5).
+pub async fn device_wait(
+    http: &reqwest::Client,
+    server: &AuthServer,
+    client_id: &str,
+    start: &DeviceStart,
+) -> Result<TokenSet, AuthError> {
+    let deadline = tokio::time::Instant::now() + start.expires_in;
+    let mut interval = start.interval;
+    loop {
+        tokio::time::sleep(interval).await;
+        if tokio::time::Instant::now() >= deadline {
+            return Err(AuthError::Timeout);
+        }
+        let form = vec![
+            ("client_id", client_id.to_owned()),
+            ("device_code", start.device_code.clone()),
+            (
+                "grant_type",
+                "urn:ietf:params:oauth:grant-type:device_code".to_owned(),
+            ),
+        ];
+        match ask(http, &server.token_endpoint, &form).await? {
+            Answer::Token(set) => return Ok(*set),
+            Answer::Error { code, message } => match code.as_deref() {
+                Some("authorization_pending") => {}
+                // The server is asking to be left alone for longer; obliging is the protocol.
+                Some("slow_down") => interval += Duration::from_secs(5),
+                Some("access_denied") => {
+                    return Err(AuthError::Denied("the sign-in was refused".into()));
+                }
+                Some("expired_token") => return Err(AuthError::Timeout),
+                _ => return Err(AuthError::Token(message)),
+            },
+        }
     }
 }
 

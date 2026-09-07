@@ -8,7 +8,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use gantry_connectors::{
     ConnectorRegistry,
-    auth::{self, AuthError, ClientSource, discovery, flow},
+    auth::{self, AuthError, ClientSource, DeviceStart, discovery, flow},
     catalog::Catalog,
     manifest::Manifest,
     mcp::{Endpoint, McpConnector, McpError},
@@ -339,15 +339,35 @@ impl ConnectorService {
         }
 
         let scopes = scopes_for(manifest.as_deref(), &resource, &server);
-        let pending = flow::begin(&server, &client_id, &scopes, Some(&resource.resource))
-            .await
-            .map_err(auth_error)?;
+        let (url, user_code, step) = if auth::prefers_device(&server) {
+            let start = flow::device_begin(&self.http, &server, &client_id, &scopes)
+                .await
+                .map_err(auth_error)?;
+            (
+                start
+                    .verification_uri_complete
+                    .clone()
+                    .unwrap_or_else(|| start.verification_uri.clone()),
+                Some(start.user_code.clone()),
+                Step::Device(Box::new(start)),
+            )
+        } else {
+            let pending = flow::begin(&server, &client_id, &scopes, Some(&resource.resource))
+                .await
+                .map_err(auth_error)?;
+            (
+                pending.authorize_url.clone(),
+                None,
+                Step::Redirect(Box::new(pending)),
+            )
+        };
         self.store
             .write(move |c| repos::connectors::set_auth_state(c, id, AuthState::Authorizing, None))
             .await?;
         Ok(Authorization {
-            url: pending.authorize_url.clone(),
-            pending,
+            url,
+            user_code,
+            step,
             server,
             client_id,
             resource: resource.resource,
@@ -362,16 +382,21 @@ impl ConnectorService {
         authorization: Authorization,
     ) -> Result<(), GantryError> {
         let Authorization {
-            pending,
+            step,
             server,
             client_id,
             resource,
             issuer,
             ..
         } = authorization;
-        let result = pending
-            .complete(&self.http, &server, &client_id, Some(&resource))
-            .await;
+        let result = match step {
+            Step::Redirect(pending) => {
+                pending
+                    .complete(&self.http, &server, &client_id, Some(&resource))
+                    .await
+            }
+            Step::Device(start) => flow::device_wait(&self.http, &server, &client_id, &start).await,
+        };
         match result {
             Ok(tokens) => {
                 let stored = StoredToken {
@@ -560,14 +585,23 @@ impl ConnectorService {
     }
 }
 
-/// An authorization in flight: the URL to open, and the state needed to redeem the code.
+/// An authorization in flight. Which half of it depends on what the server accepts (03 §7):
+/// a redirect to a loopback port, or a code the user types on the server's own page.
 pub struct Authorization {
+    /// The page to open in the browser.
     pub url: String,
-    pending: flow::Pending,
+    /// The code to type there, when the server asked for one.
+    pub user_code: Option<String>,
+    step: Step,
     server: discovery::AuthServer,
     client_id: String,
     resource: String,
     issuer: String,
+}
+
+enum Step {
+    Redirect(Box<flow::Pending>),
+    Device(Box<DeviceStart>),
 }
 
 /// The scopes to ask for: the manifest's list, else what the resource says it supports.

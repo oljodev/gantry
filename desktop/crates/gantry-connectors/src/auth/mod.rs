@@ -6,7 +6,7 @@ pub mod discovery;
 pub mod flow;
 
 pub use discovery::{AuthServer, ProtectedResource, RegisteredClient};
-pub use flow::{PORTS, Pending, TokenSet};
+pub use flow::{DeviceStart, PORTS, Pending, TokenSet};
 
 #[derive(Debug, thiserror::Error)]
 pub enum AuthError {
@@ -24,6 +24,10 @@ pub enum AuthError {
     NoPort,
     #[error("the sign-in was not finished in time")]
     Timeout,
+    #[error(
+        "this application has not been allowed to sign in with a code; tick \"Enable Device Flow\" in its settings"
+    )]
+    DeviceFlowDisabled,
     #[error("network: {0}")]
     Http(#[from] reqwest::Error),
     #[error("io: {0}")]
@@ -70,6 +74,22 @@ pub fn choose_client(
     Err(AuthError::NeedsClientId)
 }
 
+/// Whether to sign in with a code the user types instead of a redirect (RFC 8628).
+///
+/// The rule is what the server says about itself. A server that lists `none` among its token
+/// endpoint's authentication methods takes a client with no secret, so the redirect flow with
+/// PKCE works — Cloudflare. A server that says nothing wants a secret a desktop application
+/// cannot keep, and if it offers a device endpoint that is the honest way in — GitHub, which
+/// answers `incorrect_client_credentials` to a PKCE exchange without one.
+#[must_use]
+pub fn prefers_device(server: &AuthServer) -> bool {
+    server.device_authorization_endpoint.is_some()
+        && !server
+            .token_endpoint_auth_methods_supported
+            .iter()
+            .any(|m| m == "none")
+}
+
 /// The redirect URIs Gantry can serve, for a registration request.
 #[must_use]
 pub fn redirect_uris() -> Vec<String> {
@@ -91,6 +111,8 @@ mod tests {
             registration_endpoint: registration.map(str::to_owned),
             code_challenge_methods_supported: vec!["S256".into()],
             scopes_supported: Vec::new(),
+            device_authorization_endpoint: None,
+            token_endpoint_auth_methods_supported: vec!["none".into()],
             client_id_metadata_document_supported: cimd,
             authorization_response_iss_parameter_supported: true,
         }
@@ -120,6 +142,21 @@ mod tests {
             choose_client(None, None, &server(Some("/reg"), false)),
             Ok(ClientSource::Dynamic)
         ));
+    }
+
+    #[test]
+    fn a_public_client_server_uses_the_redirect() {
+        // Cloudflare: `none` is listed, so PKCE without a secret is enough.
+        assert!(!prefers_device(&server(Some("/reg"), false)));
+    }
+
+    #[test]
+    fn a_server_that_wants_a_secret_signs_in_with_a_code() {
+        // GitHub: no `none`, but a device endpoint, so the code flow is the way in.
+        let mut github = server(None, false);
+        github.token_endpoint_auth_methods_supported = Vec::new();
+        github.device_authorization_endpoint = Some("https://github.com/login/device/code".into());
+        assert!(prefers_device(&github));
     }
 
     #[test]

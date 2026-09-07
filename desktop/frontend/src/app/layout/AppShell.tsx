@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 
 import { Sidebar } from '@/app/layout/Sidebar';
 import { TitleStrip } from '@/app/layout/TitleStrip';
+import { DeviceCodeDialog } from '@/features/connectors/DeviceCodeDialog';
 import { CustomizeDialog } from '@/features/customize/CustomizeDialog';
 import { SettingsDialog } from '@/features/settings/SettingsDialog';
 import { useUiStore } from '@/lib/stores/uiStore';
@@ -18,6 +19,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       </div>
       <SettingsDialog />
       <CustomizeDialog />
+      <DeviceCodeDialog />
     </div>
   );
 }

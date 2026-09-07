@@ -84,6 +84,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             events::InteractionsChanged,
             events::ArtifactsChanged,
             events::ConnectorsChanged,
+            events::DeviceCodeNeeded,
         ])
 }
 

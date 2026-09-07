@@ -154,6 +154,7 @@ export const events = {
 	artifactsChanged: makeEvent<ArtifactsChanged>("artifacts-changed"),
 	chatsChanged: makeEvent<ChatsChanged>("chats-changed"),
 	connectorsChanged: makeEvent<ConnectorsChanged>("connectors-changed"),
+	deviceCodeNeeded: makeEvent<DeviceCodeNeeded>("device-code-needed"),
 	interactionsChanged: makeEvent<InteractionsChanged>("interactions-changed"),
 	providersChanged: makeEvent<ProvidersChanged>("providers-changed"),
 	settingsChanged: makeEvent<SettingsChanged>("settings-changed"),
@@ -623,6 +624,17 @@ export type DataInfo = {
 export type DecisionSource = "mode" | "grant" | "user_once" | "user_chat_grant" | "judge" | "guardrail" | "scope" | "plan_mode";
 
 export type Density = "comfortable" | "compact";
+
+/**
+ *  A sign-in needs the user to type a code on the server's own page (RFC 8628, 03 §7). Sent
+ *  before the browser opens, and answered by the user, not by the app.
+ */
+export type DeviceCodeNeeded = {
+	instance_id: InstanceId,
+	connector: string,
+	user_code: string,
+	verification_uri: string,
+};
 
 /**
  *  What the frontend receives when a command fails. Never carries secrets or paths the

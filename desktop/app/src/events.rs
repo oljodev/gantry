@@ -1,6 +1,6 @@
 //! Global invalidation events (docs/plan/01 §4): ids only, never data.
 
-use gantry_core::{ArtifactId, ChatId};
+use gantry_core::{ArtifactId, ChatId, InstanceId};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type, tauri_specta::Event)]
@@ -31,3 +31,13 @@ pub struct ArtifactsChanged {
 /// The installed connectors, their auth state or their attachment to a chat changed (03 §10).
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type, tauri_specta::Event)]
 pub struct ConnectorsChanged;
+
+/// A sign-in needs the user to type a code on the server's own page (RFC 8628, 03 §7). Sent
+/// before the browser opens, and answered by the user, not by the app.
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type, tauri_specta::Event)]
+pub struct DeviceCodeNeeded {
+    pub instance_id: InstanceId,
+    pub connector: String,
+    pub user_code: String,
+    pub verification_uri: String,
+}
