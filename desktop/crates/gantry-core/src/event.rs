@@ -85,7 +85,9 @@ pub enum AgentEventKind {
     },
     /// The turn waits for the user (04 §10).
     #[serde(rename = "decision.requested")]
-    DecisionRequested { interaction: Interaction },
+    // Boxed: an interaction carries a whole permission request and would otherwise set the
+    // size of every event in the stream.
+    DecisionRequested { interaction: Box<Interaction> },
     #[serde(rename = "decision.resolved")]
     DecisionResolved {
         interaction_id: InteractionId,

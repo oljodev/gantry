@@ -1,6 +1,7 @@
 import type {
   ChatDetail,
   ContentPart,
+  GrantScope,
   Interaction,
   Message,
   ToolCallDto,
@@ -333,8 +334,15 @@ export function permissionOf(i: Interaction): Permission {
     args,
     note: r.description,
     why: r.why ?? undefined,
-    scopes: [{ id: 'once', label: 'Allow once' }],
+    scopes: [{ id: 'once', label: 'Allow once' }, ...r.scopes.map((s) => scopeOption(s, r.tool))],
   };
+}
+
+/** A grant scope as the card's dropdown shows it (04 §8). */
+function scopeOption(scope: GrantScope, tool: string): { id: string; label: string } {
+  return scope === 'all_reads'
+    ? { id: 'all_reads', label: 'Allow all reads for this chat' }
+    : { id: 'tool', label: `Allow ${tool} for this chat` };
 }
 
 function textOf(messages: Message[]): string | undefined {

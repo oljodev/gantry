@@ -223,10 +223,11 @@ export const authChat: ChatDetail = {
               body: 'From the artifact “Auth expiry fix”',
             },
             note: 'External write: creates something visible to other people.',
+            // What a write_external call may be granted (04 §8): only reads offer the
+            // wholesale scope.
             scopes: [
               { id: 'once', label: 'Allow once' },
               { id: 'tool', label: 'Allow create_pull_request for this chat' },
-              { id: 'connector', label: 'Allow everything GitHub does for this chat' },
             ],
           },
         },

@@ -8,10 +8,10 @@ use std::{collections::BTreeMap, sync::Arc, time::Instant};
 use futures_util::StreamExt;
 use gantry_connectors::{ChatScope, ToolCallRequest, ToolEventSink, ToolOutcome};
 use gantry_core::{
-    AgentEventKind, CallId, ContentPart, DecisionSource, Interaction, InteractionPayload,
-    InteractionResolution, Message, MessageId, PermissionDecision, PermissionRequest,
-    ProviderErrorKind, ProviderKind, ResultPart, RiskTier, Role, StopReason, ToolCallDto,
-    ToolCallStatus, TurnStatus, Usage, now_ms, result_preview,
+    AgentEventKind, CallId, ContentPart, DecisionSource, GrantScope, GrantSource, Interaction,
+    InteractionPayload, InteractionResolution, Message, MessageId, PermissionDecision,
+    PermissionRequest, ProviderErrorKind, ProviderKind, ResultPart, RiskTier, Role, StopReason,
+    ToolCallDto, ToolCallStatus, TurnStatus, Usage, now_ms, result_preview,
 };
 use gantry_providers::{ChatRequest, Provider, ProviderError, ServerTool, StreamEvent};
 use serde_json::json;
@@ -639,6 +639,12 @@ async fn run_calls(
         tokio::sync::oneshot::Receiver<InteractionResolution>,
     )> = Vec::new();
     let why = last_sentence(&assistant.text());
+    // The chat's standing grants, read once for this batch (04 §8). A grant made in answer to
+    // one card applies from the next batch, which is where the model asks again anyway.
+    let grants = ctx.chats.grants(ctx.input.chat_id).unwrap_or_else(|err| {
+        log::warn!("could not read the chat's grants: {err}");
+        Vec::new()
+    });
 
     for (i, call) in calls.iter().enumerate() {
         let Some(entry) = ctx.tools.resolve(&call.name).cloned() else {
@@ -657,7 +663,17 @@ async fn run_calls(
             ));
             continue;
         };
-        match permissions::decide(ctx.input.mode, ctx.input.guard, &entry.def) {
+        let decision = permissions::decide(
+            ctx.input.mode,
+            ctx.input.guard,
+            &permissions::Call {
+                def: &entry.def,
+                instance_id: entry.connector_id(),
+                args: &call.args,
+            },
+            &grants,
+        );
+        match decision {
             Decision::Allow(source) => allowed.push((i, entry, source)),
             Decision::Deny { source, reason } => {
                 update_call(ctx, &call.id, |c| c.decision_source = Some(source));
@@ -688,6 +704,7 @@ async fn run_calls(
                             display: display_for(Some(&entry.def), &call.args),
                             why: why.clone(),
                             description: entry.def.description.clone(),
+                            scopes: GrantScope::for_tier(entry.def.tier),
                         },
                     },
                 );
@@ -700,7 +717,7 @@ async fn run_calls(
                     s.pending.push(interaction.clone());
                 }
                 batcher.push(AgentEventKind::DecisionRequested {
-                    interaction: interaction.clone(),
+                    interaction: Box::new(interaction.clone()),
                 });
                 waiting.push((i, entry, interaction, rx));
             }
@@ -726,21 +743,37 @@ async fn run_calls(
             s.pending.retain(|p| p.id != interaction.id);
         }
         match resolution {
-            InteractionResolution::Permission {
-                decision: PermissionDecision::AllowOnce,
-                ..
-            } => {
+            InteractionResolution::Permission { decision, .. } if decision.allows() => {
+                // "Allow for this chat" is remembered before the call runs, so a crash in the
+                // middle of the call cannot lose the answer the user just gave (04 §8).
+                let source = match decision {
+                    PermissionDecision::AllowChat { scope } => {
+                        let grant = scope.grant(
+                            ctx.input.chat_id,
+                            entry.connector_id(),
+                            entry.connector_name(),
+                            &entry.def.name,
+                            GrantSource::UserPrompt,
+                        );
+                        match ctx.chats.add_grant(grant) {
+                            Ok(()) => DecisionSource::UserChatGrant,
+                            Err(err) => {
+                                log::warn!("could not store the grant: {err}");
+                                DecisionSource::UserOnce
+                            }
+                        }
+                    }
+                    _ => DecisionSource::UserOnce,
+                };
                 batcher.push(AgentEventKind::DecisionResolved {
                     interaction_id: interaction.id,
                     resolution,
-                    source: DecisionSource::UserOnce,
+                    source,
                 });
-                allowed.push((i, entry, DecisionSource::UserOnce));
+                allowed.push((i, entry, source));
             }
-            InteractionResolution::Permission {
-                decision: PermissionDecision::Deny,
-                message,
-            } => {
+            // Everything the guard above did not take is a denial.
+            InteractionResolution::Permission { message, .. } => {
                 batcher.push(AgentEventKind::DecisionResolved {
                     interaction_id: interaction.id,
                     resolution: InteractionResolution::Permission {

@@ -6,6 +6,7 @@ pub mod blobs;
 pub mod chats;
 pub mod credentials;
 pub mod events;
+pub mod grants;
 pub mod interactions;
 pub mod messages;
 pub mod models;

@@ -60,6 +60,8 @@ id_type!(/// A named group of chats with shared instructions, knowledge and defa
     ProjectId);
 id_type!(/// A versioned piece of content shown beside the chat.
     ArtifactId);
+id_type!(/// A standing permission for one chat (04 §8).
+    GrantId);
 id_type!(/// A decision the turn waits on: a permission prompt, an access request, a proposal.
     InteractionId);
 

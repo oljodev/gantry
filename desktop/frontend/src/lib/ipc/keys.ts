@@ -12,6 +12,7 @@ export const keys = {
   systemPrompt: (chatId: string) => ['system_prompt', chatId] as const,
   pendingInteractions: ['pending_interactions'] as const,
   toolCall: (callId: string) => ['tool_call', callId] as const,
+  grants: (chatId: string) => ['grants', chatId] as const,
   artifacts: (chatId: string) => ['artifacts', chatId] as const,
   /** The library across every chat; `['artifacts']` as a prefix invalidates every list. */
   allArtifacts: ['artifacts', 'all'] as const,

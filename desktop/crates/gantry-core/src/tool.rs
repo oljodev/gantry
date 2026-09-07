@@ -28,6 +28,20 @@ pub enum RiskTier {
 }
 
 impl RiskTier {
+    /// How much a tier is trusted with, lowest first, for the `tier_ceiling` of a grant
+    /// (04 §8). `App` is outside the ladder: it never asks, so it is never granted.
+    #[must_use]
+    pub fn rank(self) -> u8 {
+        match self {
+            RiskTier::App => 0,
+            RiskTier::Read => 1,
+            RiskTier::Write => 2,
+            RiskTier::WriteExternal => 3,
+            RiskTier::Execute => 4,
+            RiskTier::Destructive => 5,
+        }
+    }
+
     #[must_use]
     pub fn as_str(self) -> &'static str {
         match self {

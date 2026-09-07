@@ -115,6 +115,7 @@ fn the_projection_follows_a_call_from_start_to_completion() {
                         display: c.display.clone(),
                         why: None,
                         description: String::new(),
+                        scopes: Vec::new(),
                     },
                 },
             );
@@ -125,7 +126,7 @@ fn the_projection_follows_a_call_from_start_to_completion() {
                     turn_id,
                     3,
                     AgentEventKind::DecisionRequested {
-                        interaction: interaction.clone(),
+                        interaction: Box::new(interaction.clone()),
                     },
                 ),
             )?;
@@ -240,6 +241,7 @@ fn recovery_closes_calls_prompts_and_transcripts() {
                         },
                         why: None,
                         description: String::new(),
+                        scopes: Vec::new(),
                     },
                 },
             );

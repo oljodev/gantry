@@ -10,6 +10,7 @@ import {
 import { type ReactNode, useCallback, useRef, useState } from 'react';
 
 import { Logo } from '@/components/gantry/Logo';
+import { PermissionsDialog } from '@/components/gantry/chat/PermissionsDialog';
 import { SystemPromptDialog } from '@/components/gantry/chat/SystemPromptDialog';
 import { ChatRow } from '@/components/gantry/sidebar/ChatRow';
 import { toast } from '@/components/ui/toast';
@@ -37,6 +38,7 @@ export function Sidebar() {
   const { update, remove, exportChat } = useChatMutations();
   const developer = useSettings().data?.advanced?.developer_mode === true;
   const [promptFor, setPromptFor] = useState<string | null>(null);
+  const [permissionsFor, setPermissionsFor] = useState<string | null>(null);
   const exportOne = async (c: ChatSummary) => {
     const { save } = await import('@tauri-apps/plugin-dialog');
     const path = await save({
@@ -82,6 +84,7 @@ export function Sidebar() {
       onArchive={(a) => update.mutate({ chatId: c.id, update: { archived: a } })}
       onDelete={() => remove.mutate(c.id)}
       onExport={() => void exportOne(c)}
+      onViewPermissions={() => setPermissionsFor(c.id)}
       onViewPrompt={developer ? () => setPromptFor(c.id) : undefined}
     />
   );
@@ -184,6 +187,7 @@ export function Sidebar() {
       />
       <div className="pointer-events-none absolute inset-y-0 right-0 w-px bg-line" />
       <SystemPromptDialog chatId={promptFor} onClose={() => setPromptFor(null)} />
+      <PermissionsDialog chatId={permissionsFor} onClose={() => setPermissionsFor(null)} />
     </aside>
   );
 }

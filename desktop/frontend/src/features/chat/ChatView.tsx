@@ -1,8 +1,16 @@
-import { ArrowDownIcon, FileTextIcon, GitDiffIcon, TerminalIcon } from '@phosphor-icons/react';
+import {
+  ArrowDownIcon,
+  FileTextIcon,
+  GitDiffIcon,
+  PlayIcon,
+  TerminalIcon,
+} from '@phosphor-icons/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import type { PermissionDecision } from '@/bindings';
 import { ArtifactGlyph } from '@/components/gantry/chat/ArtifactCard';
 import type { PermissionAnswer } from '@/components/gantry/chat/InteractionCard';
+import { Button } from '@/components/ui/button';
 import { TurnView } from '@/components/gantry/chat/TurnView';
 import { Composer } from '@/components/gantry/composer/Composer';
 import { CommandOutput } from '@/components/gantry/pane/CommandOutput';
@@ -222,10 +230,14 @@ export function ChatView({
   const decide = (interactionId: string, answer: PermissionAnswer) => {
     const resolution =
       answer.kind === 'allow'
-        ? { kind: 'permission' as const, decision: 'allow_once' as const, message: null }
+        ? {
+            kind: 'permission' as const,
+            decision: grantDecision(answer.scope),
+            message: null,
+          }
         : {
             kind: 'permission' as const,
-            decision: 'deny' as const,
+            decision: { kind: 'deny' as const },
             message: answer.message ?? null,
           };
     void resolve(chatId, interactionId, resolution).catch((err) =>
@@ -263,6 +275,16 @@ export function ChatView({
                 }}
               />
             ))}
+            {/* Plan mode's way out (04 §4): the plan is written, the constraint is lifted with
+                one click and the mode change reaches the model as a note. */}
+            {detail.mode === 'plan' && !running && turns.length > 0 && (
+              <div className="flex justify-start pb-2">
+                <Button variant="secondary" onClick={() => patch({ mode: 'auto_edit' })}>
+                  <PlayIcon />
+                  Switch to Auto-edit and execute
+                </Button>
+              </div>
+            )}
           </div>
         </div>
         {released && (
@@ -315,6 +337,13 @@ export function ChatView({
       )}
     </div>
   );
+}
+
+/** The card's scope choice as the backend's decision (04 §8). */
+function grantDecision(scope: string): PermissionDecision {
+  if (scope === 'tool') return { kind: 'allow_chat', scope: 'tool' };
+  if (scope === 'all_reads') return { kind: 'allow_chat', scope: 'all_reads' };
+  return { kind: 'allow_once' };
 }
 
 function describe(err: unknown): string {

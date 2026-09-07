@@ -1,14 +1,17 @@
 //! Pending decisions (docs/plan/04 §10) and the activity detail (05 §1).
 
 use gantry_core::{
-    CallId, ChatId, ErrorDto, GantryError, Interaction, InteractionId, InteractionResolution,
-    ToolCallDto,
+    CallId, ChatGrant, ChatId, ErrorDto, GantryError, GrantId, Interaction, InteractionId,
+    InteractionResolution, ToolCallDto,
 };
 use gantry_store::repos;
 use tauri::{AppHandle, State};
 use tauri_specta::Event;
 
-use crate::{AppState, events::InteractionsChanged};
+use crate::{
+    AppState,
+    events::{ChatsChanged, InteractionsChanged},
+};
 
 /// Interactions waiting for the user, oldest first, for one chat or every chat. Cards render
 /// from the run store while a turn streams; this fills a chat view that mounts later.
@@ -61,4 +64,47 @@ pub fn get_tool_call(state: State<'_, AppState>, call_id: CallId) -> Result<Tool
         .flat_map(|t| t.tool_calls)
         .find(|c| c.id == call_id)
         .unwrap_or(call))
+}
+
+/// The chat's standing permissions (04 §8), oldest first, for the Permissions panel.
+#[tauri::command]
+#[specta::specta]
+pub fn list_chat_grants(
+    state: State<'_, AppState>,
+    chat_id: ChatId,
+) -> Result<Vec<ChatGrant>, ErrorDto> {
+    Ok(state.turns.chats().grants(chat_id)?)
+}
+
+/// Revokes one standing permission. The next call it would have covered asks again.
+#[tauri::command]
+#[specta::specta]
+pub fn revoke_chat_grant(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    grant_id: GrantId,
+) -> Result<(), ErrorDto> {
+    if let Some(chat_id) = state.turns.chats().revoke_grant(grant_id)? {
+        let _ = ChatsChanged {
+            chat_ids: vec![chat_id],
+        }
+        .emit(&app);
+    }
+    Ok(())
+}
+
+/// Revokes every standing permission of one chat.
+#[tauri::command]
+#[specta::specta]
+pub fn revoke_all_chat_grants(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    chat_id: ChatId,
+) -> Result<u32, ErrorDto> {
+    let n = state.turns.chats().revoke_all_grants(chat_id)?;
+    let _ = ChatsChanged {
+        chat_ids: vec![chat_id],
+    }
+    .emit(&app);
+    Ok(u32::try_from(n).unwrap_or(u32::MAX))
 }

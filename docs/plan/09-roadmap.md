@@ -257,6 +257,14 @@ Done when: a real repository can be modified by the model, every change is visib
 
 ## M7 — Shell, Plan mode, grants (1–2 weeks)
 
+Partly done ahead of its milestone (2026-09-07), because the modes are one policy function and
+the pieces that make Manual and Plan usable are small: **grants** (`chat_grants`, migration
+0005, the scope selector on the permission card, the chat's Permissions panel with revoke and
+revoke all), Plan mode's tool filtering and its **Switch to Auto-edit and execute** action.
+What is left here is the shell itself, the command classifier that fills Plan mode's execute
+row, the guardrail floor and its settings page, and the argument-scoped grants that need a path
+or a command to scope to.
+
 - `desktop/connectors/shell`: run with streaming output, caps, timeouts, kill, process-group termination, PowerShell/cmd on Windows, login-shell `PATH` on macOS; `CommandClassifier` with its fixture corpus.
 - Command rows and the command drawer with ANSI rendering.
 - **Plan** mode: filtered tool set, read prompts with "Allow all reads", the "Switch to Auto-edit and execute" action.

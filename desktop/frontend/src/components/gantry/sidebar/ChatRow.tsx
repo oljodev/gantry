@@ -28,6 +28,8 @@ export interface ChatRowActions {
   onExport?: () => void;
   /** Present only in developer mode (Settings → Advanced). */
   onViewPrompt?: () => void;
+  /** Opens the chat's Permissions panel (04 §8). */
+  onViewPermissions?: () => void;
 }
 
 type ItemProps = {
@@ -55,6 +57,7 @@ export function ChatRow({ chat, ...actions }: { chat: ChatSummary } & ChatRowAct
       <Item onClick={() => actions.onExport?.()} disabled={!actions.onExport}>
         Export…
       </Item>
+      {actions.onViewPermissions && <Item onClick={actions.onViewPermissions}>Permissions…</Item>}
       {actions.onViewPrompt && <Item onClick={actions.onViewPrompt}>View system prompt</Item>}
       <Separator />
       <Item onClick={() => actions.onArchive?.(!chat.archived)}>

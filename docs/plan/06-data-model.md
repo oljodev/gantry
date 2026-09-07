@@ -48,7 +48,7 @@ Types are indicative; the migrations are the source of truth.
 - **chats** — `id, project_id NULL, title, title_source (auto|user), pinned, permission_mode, auto_guard, provider_id, model_id, effort, web_search, instructions` (chat-level custom instructions, 10 §2), `system_snapshot` (the frozen system prompt text, 02 §6), `system_snapshot_version, snapshot_memory_ids_json` (10 §6, 12 §B4), `declared_tools_json` (the tool set declared to Anthropic with `defer_loading`), `created_at, updated_at, last_message_at, archived_at`
 - **chat_roots** — `chat_id, path, added_at` · PK `(chat_id, path)`
 - **chat_connectors** — `chat_id, instance_id, tool_filter_json NULL, source (user|project_default|access_request|suggestion), attached_at` · PK `(chat_id, instance_id)`
-- **chat_grants** — `id, chat_id, instance_id, tool_name NULL, tier_ceiling NULL, arg_scope_json NULL, source, created_at, revoked_at`
+- **chat_grants** — `id, chat_id, instance_id, instance_name, tool_name NULL, tier_ceiling NULL, arg_scope_json NULL, source, created_at, revoked_at` · index `(chat_id, revoked_at)`; migration 0005. `instance_name` is carried so the Permissions panel can name the connector without joining a catalog that may have changed.
 - **chat_skills** — `chat_id, skill_id, pinned_at` · PK `(chat_id, skill_id)`; **project_skills** — `project_id, skill_id, pinned_at` · PK `(project_id, skill_id)`
 
 ### Transcript

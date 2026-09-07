@@ -34,6 +34,7 @@ const interaction: Interaction = {
       display: { kind: 'read', summary: '' },
       why: 'Let me check',
       description: 'The time',
+      scopes: ['tool', 'all_reads'],
     },
   },
   status: 'pending',
@@ -134,7 +135,11 @@ describe('the run store follows a tool call through a permission prompt', () => 
         ev({
           type: 'decision.resolved',
           interaction_id: interaction.id,
-          resolution: { kind: 'permission', decision: 'allow_once', message: null },
+          resolution: {
+            kind: 'permission',
+            decision: { kind: 'allow_once' },
+            message: null,
+          },
           source: 'user_once',
         }),
         ev({ type: 'tool_call.executing', call_id: CALL, source: 'user_once' }),

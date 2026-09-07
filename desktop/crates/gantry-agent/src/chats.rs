@@ -4,15 +4,16 @@
 use std::sync::Arc;
 
 use gantry_core::{
-    ChatDetail, ChatId, ChatSummary, ContentPart, Feedback, GantryError, MediaSource, Message,
-    MessageId, Mode, ModelRef, ReasoningEffort, Role, StopReason, TurnDto, TurnId, TurnStatus,
-    Usage, now_ms,
+    ChatDetail, ChatGrant, ChatId, ChatSummary, ContentPart, Feedback, GantryError, MediaSource,
+    Message, MessageId, Mode, ModelRef, ReasoningEffort, Role, StopReason, TurnDto, TurnId,
+    TurnStatus, Usage, now_ms,
 };
 use gantry_store::{
     BlobStore, Store,
     repos::{
         artifacts, blobs,
         chats::{self, ChatRecord},
+        grants,
         messages::{self, AttachmentRecord, MessageRecord},
         tool_calls,
         turns::{self, TurnRecord},
@@ -373,6 +374,34 @@ impl ChatBook {
                 Ok(summary(&chat, running))
             })
             .map_err(not_found_or_store)
+    }
+
+    /// The chat's standing permissions (04 §8), oldest first.
+    pub fn grants(&self, chat_id: ChatId) -> Result<Vec<ChatGrant>, GantryError> {
+        self.store
+            .read(move |conn| grants::active(conn, chat_id))
+            .map_err(store_err)
+    }
+
+    /// Remembers the scope the user picked on a permission card.
+    pub fn add_grant(&self, grant: ChatGrant) -> Result<(), GantryError> {
+        self.store
+            .write_blocking(move |conn| grants::insert(conn, &grant))
+            .map_err(store_err)
+    }
+
+    /// Revokes one grant and answers with the chat it belonged to.
+    pub fn revoke_grant(&self, id: gantry_core::GrantId) -> Result<Option<ChatId>, GantryError> {
+        self.store
+            .write_blocking(move |conn| grants::revoke(conn, id))
+            .map_err(store_err)
+    }
+
+    /// Revokes every standing grant of one chat.
+    pub fn revoke_all_grants(&self, chat_id: ChatId) -> Result<usize, GantryError> {
+        self.store
+            .write_blocking(move |conn| grants::revoke_all(conn, chat_id))
+            .map_err(store_err)
     }
 
     /// Whether the chat has any turn; new chats get a fresh snapshot instead of a note.

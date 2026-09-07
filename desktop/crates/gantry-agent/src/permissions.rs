@@ -1,10 +1,10 @@
-//! The permission engine (docs/plan/04 §3): mode and tier decide; the user is asked when the
-//! table says so. M3 ships the mode policy. Grants (M7), the guardrail floor (M7), scope
-//! checks (M6) and the judge (M8) slot in front of the mode step as they land; until the judge
-//! exists, Guarded Auto asks the user for anything it would have sent to the judge, which is
-//! the "fail closed" rule of 04 §1.
+//! The permission engine (docs/plan/04 §3): mode and tier decide, a standing grant can answer
+//! a prompt the user already answered once, and the user is asked for everything else. The
+//! guardrail floor (M7), scope checks (M6) and the judge (M8) slot in as they land; until the
+//! judge exists, Guarded Auto asks the user for anything it would have sent to the judge,
+//! which is the "fail closed" rule of 04 §1.
 
-use gantry_core::{DecisionSource, Mode, RiskTier, ToolDef};
+use gantry_core::{ChatGrant, DecisionSource, Mode, RiskTier, ToolDef};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Decision {
@@ -16,9 +16,35 @@ pub enum Decision {
     },
 }
 
-/// The 04 §3 table for one call.
+/// What one call is: the tool, who owns it, and the arguments a grant may be scoped to.
+pub struct Call<'a> {
+    pub def: &'a ToolDef,
+    pub instance_id: &'a str,
+    pub args: &'a serde_json::Value,
+}
+
+/// The 04 §3 table plus the chat's standing grants (§8).
+///
+/// A grant may only turn **Ask** into an allow. It never lifts a denial, so Plan mode still
+/// refuses what it refuses, and it never overrides `always_confirm`, so the tools that ask in
+/// every mode keep asking.
 #[must_use]
-pub fn decide(mode: Mode, guard: bool, def: &ToolDef) -> Decision {
+pub fn decide(mode: Mode, guard: bool, call: &Call<'_>, grants: &[ChatGrant]) -> Decision {
+    let policy = mode_policy(mode, guard, call.def);
+    if policy == Decision::Ask
+        && !call.def.always_confirm
+        && grants
+            .iter()
+            .any(|g| g.covers(call.instance_id, &call.def.name, call.def.tier, call.args))
+    {
+        return Decision::Allow(DecisionSource::UserChatGrant);
+    }
+    policy
+}
+
+/// The 04 §3 table for one call, before grants.
+#[must_use]
+pub fn mode_policy(mode: Mode, guard: bool, def: &ToolDef) -> Decision {
     use RiskTier::*;
     if def.tier == App {
         return Decision::Allow(DecisionSource::Mode);
@@ -52,6 +78,10 @@ mod tests {
 
     fn def(tier: RiskTier) -> ToolDef {
         ToolDef::new("t", "d", serde_json::json!({}), tier)
+    }
+
+    fn decide(mode: Mode, guard: bool, def: &ToolDef) -> Decision {
+        mode_policy(mode, guard, def)
     }
 
     #[test]
@@ -91,5 +121,74 @@ mod tests {
         let mut confirm = def(Read);
         confirm.always_confirm = true;
         assert_eq!(decide(Mode::Auto, false, &confirm), Decision::Ask);
+    }
+
+    fn grant(scope: gantry_core::GrantScope, tool: &str) -> ChatGrant {
+        scope.grant(
+            gantry_core::ChatId::new(),
+            "fs",
+            "Files",
+            tool,
+            gantry_core::GrantSource::UserPrompt,
+        )
+    }
+
+    fn call<'a>(def: &'a ToolDef, args: &'a serde_json::Value) -> Call<'a> {
+        Call {
+            def,
+            instance_id: "fs",
+            args,
+        }
+    }
+
+    #[test]
+    fn a_grant_answers_a_prompt_the_user_already_answered() {
+        use gantry_core::GrantScope;
+        let args = serde_json::json!({});
+        let read = def(RiskTier::Read);
+        let grants = vec![grant(GrantScope::Tool, "t")];
+        assert_eq!(
+            super::decide(Mode::Manual, true, &call(&read, &args), &grants),
+            Decision::Allow(DecisionSource::UserChatGrant)
+        );
+        assert_eq!(
+            super::decide(Mode::Manual, true, &call(&read, &args), &[]),
+            Decision::Ask
+        );
+    }
+
+    #[test]
+    fn a_grant_never_lifts_a_denial_or_an_always_confirm() {
+        use gantry_core::GrantScope;
+        let args = serde_json::json!({});
+        let write = def(RiskTier::Write);
+        let grants = vec![grant(GrantScope::Tool, "t")];
+        assert!(matches!(
+            super::decide(Mode::Plan, true, &call(&write, &args), &grants),
+            Decision::Deny { .. }
+        ));
+        let mut confirm = def(RiskTier::Read);
+        confirm.always_confirm = true;
+        assert_eq!(
+            super::decide(Mode::Manual, true, &call(&confirm, &args), &grants),
+            Decision::Ask
+        );
+    }
+
+    #[test]
+    fn all_reads_covers_a_second_read_tool_but_not_a_write() {
+        use gantry_core::GrantScope;
+        let args = serde_json::json!({});
+        let grants = vec![grant(GrantScope::AllReads, "other")];
+        let read = def(RiskTier::Read);
+        let write = def(RiskTier::Write);
+        assert_eq!(
+            super::decide(Mode::Manual, true, &call(&read, &args), &grants),
+            Decision::Allow(DecisionSource::UserChatGrant)
+        );
+        assert_eq!(
+            super::decide(Mode::Manual, true, &call(&write, &args), &grants),
+            Decision::Ask
+        );
     }
 }

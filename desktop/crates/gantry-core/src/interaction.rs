@@ -4,6 +4,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    grant::GrantScope,
     ids::{CallId, ChatId, InteractionId, TurnId},
     tool::{RiskTier, ToolDisplay},
 };
@@ -45,6 +46,8 @@ pub struct PermissionRequest {
     pub why: Option<String>,
     /// The tool's description, shown on hover.
     pub description: String,
+    /// The standing scopes this call may be granted, beyond "allow once" (04 §7, §8).
+    pub scopes: Vec<GrantScope>,
 }
 
 /// The kind-specific body of an interaction.
@@ -64,14 +67,27 @@ impl InteractionPayload {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, specta::Type)]
-#[serde(rename_all = "snake_case")]
+#[serde(tag = "kind", rename_all = "snake_case")]
 pub enum PermissionDecision {
     AllowOnce,
+    /// Allow, and remember the answer for the rest of this chat at the given scope (04 §8).
+    AllowChat {
+        scope: GrantScope,
+    },
     Deny,
 }
 
-/// How an interaction ended. Grants ("allow for this chat") arrive with M7 as another
-/// permission decision.
+impl PermissionDecision {
+    #[must_use]
+    pub fn allows(self) -> bool {
+        matches!(
+            self,
+            PermissionDecision::AllowOnce | PermissionDecision::AllowChat { .. }
+        )
+    }
+}
+
+/// How an interaction ended.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum InteractionResolution {
@@ -137,15 +153,25 @@ mod tests {
                 },
                 why: None,
                 description: String::new(),
+                scopes: GrantScope::for_tier(RiskTier::Read),
             },
         };
         assert_eq!(serde_json::to_value(&p).unwrap()["kind"], "permission");
+        let chat_grant = InteractionResolution::Permission {
+            decision: PermissionDecision::AllowChat {
+                scope: GrantScope::AllReads,
+            },
+            message: None,
+        };
+        let json = serde_json::to_value(&chat_grant).unwrap();
+        assert_eq!(json["decision"]["kind"], "allow_chat");
+        assert_eq!(json["decision"]["scope"], "all_reads");
         let r = InteractionResolution::Permission {
             decision: PermissionDecision::Deny,
             message: Some("no".into()),
         };
         let json = serde_json::to_value(&r).unwrap();
         assert_eq!(json["kind"], "permission");
-        assert_eq!(json["decision"], "deny");
+        assert_eq!(json["decision"]["kind"], "deny");
     }
 }

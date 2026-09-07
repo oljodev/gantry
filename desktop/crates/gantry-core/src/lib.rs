@@ -11,6 +11,7 @@ pub mod attachment;
 pub mod chat;
 pub mod error;
 pub mod event;
+pub mod grant;
 pub mod ids;
 pub mod interaction;
 pub mod message;
@@ -27,8 +28,10 @@ pub use attachment::{AttachmentInput, MAX_IMAGE_BYTES, MAX_TEXT_BYTES};
 pub use chat::{ChatDetail, ChatSummary, Feedback, SearchHit, SearchHitKind, TurnDto, TurnStatus};
 pub use error::{ErrorDto, GantryError, ProviderErrorKind};
 pub use event::{AgentEvent, AgentEventBatch, AgentEventKind, TurnSnapshot};
+pub use grant::{ArgScope, ChatGrant, GrantScope, GrantSource};
 pub use ids::{
-    ArtifactId, CallId, ChatId, EventId, InstanceId, InteractionId, MessageId, ProjectId, TurnId,
+    ArtifactId, CallId, ChatId, EventId, GrantId, InstanceId, InteractionId, MessageId, ProjectId,
+    TurnId,
 };
 pub use interaction::{
     Interaction, InteractionKind, InteractionPayload, InteractionResolution, InteractionStatus,

@@ -78,6 +78,12 @@ export const commands = {
 	listPendingInteractions: (chatId: string | null) => typedError<Interaction[], ErrorDto>(__TAURI_INVOKE("list_pending_interactions", { chatId })),
 	/**  Answers a pending decision; the waiting turn continues. */
 	resolveInteraction: (interactionId: InteractionId, resolution: InteractionResolution) => typedError<Interaction, ErrorDto>(__TAURI_INVOKE("resolve_interaction", { interactionId, resolution })),
+	/**  The chat's standing permissions (04 §8), oldest first, for the Permissions panel. */
+	listChatGrants: (chatId: ChatId) => typedError<ChatGrant[], ErrorDto>(__TAURI_INVOKE("list_chat_grants", { chatId })),
+	/**  Revokes one standing permission. The next call it would have covered asks again. */
+	revokeChatGrant: (grantId: GrantId) => typedError<null, ErrorDto>(__TAURI_INVOKE("revoke_chat_grant", { grantId })),
+	/**  Revokes every standing permission of one chat. */
+	revokeAllChatGrants: (chatId: ChatId) => typedError<number, ErrorDto>(__TAURI_INVOKE("revoke_all_chat_grants", { chatId })),
 	/**  One tool call with its full result, for the detail pane of a finished turn. */
 	getToolCall: (callId: CallId) => typedError<ToolCallDto, ErrorDto>(__TAURI_INVOKE("get_tool_call", { callId })),
 	/**
@@ -245,6 +251,12 @@ export type AppearanceSettings = {
 	density?: Density,
 };
 
+/**
+ *  A predicate on the call's arguments (04 §8). The path and command forms wait for the tools
+ *  that produce them; both match by prefix on the named argument when it is a string.
+ */
+export type ArgScope = { kind: "path_prefix"; prefix: string } | { kind: "command_prefix"; prefix: string };
+
 /**  An artifact with the content of one version and its history, as the panel reads it. */
 export type ArtifactContent = {
 	artifact: ArtifactDto,
@@ -343,6 +355,24 @@ export type ChatDetail_Serialize = {
 	web_search: boolean,
 	active_turn: TurnId | null,
 	turns: TurnDto_Serialize[],
+};
+
+/**
+ *  One standing permission. `tool_name` unset means every tool of the instance; `tier_ceiling`
+ *  set means every tool at or under that tier, which is how "allow all reads" is expressed.
+ */
+export type ChatGrant = {
+	id: GrantId,
+	chat_id: ChatId,
+	/**  The connector id, or `gantry` for the runtime tools. */
+	instance_id: string,
+	instance_name: string,
+	tool_name: string | null,
+	tier_ceiling: RiskTier | null,
+	arg_scope: ArgScope | null,
+	source: GrantSource,
+	created_at: number,
+	revoked_at: number | null,
 };
 
 /**  A conversation. Owns its mode, connectors, grants, roots, instructions and artifacts. */
@@ -469,6 +499,25 @@ export type ExportFormat = "markdown" | "json";
 /**  The user's verdict on an assistant reply. */
 export type Feedback = "good" | "bad";
 
+/**  A standing permission for one chat (04 §8). */
+export type GrantId = string;
+
+/**  The scopes a permission card can offer, in the order they are shown (04 §7, §8). */
+export type GrantScope = 
+/**  This tool, from this connector, for the rest of this chat. */
+"tool" | 
+/**  Every read from this connector for the rest of this chat. */
+"all_reads";
+
+/**  Where a grant came from (04 §8). */
+export type GrantSource = 
+/**  The user chose a scope on a permission card. */
+"user_prompt" | 
+/**  The user answered a mid-conversation access request (04 §9). */
+"access_request" | 
+/**  Inherited from the project the chat belongs to. */
+"project_default";
+
 export type Interaction = {
 	id: InteractionId,
 	chat_id: ChatId,
@@ -489,10 +538,7 @@ export type InteractionKind = "permission" | "access_request" | "connector_sugge
 /**  The kind-specific body of an interaction. */
 export type InteractionPayload = { kind: "permission"; request: PermissionRequest };
 
-/**
- *  How an interaction ended. Grants ("allow for this chat") arrive with M7 as another
- *  permission decision.
- */
+/**  How an interaction ended. */
 export type InteractionResolution = { kind: "permission"; decision: PermissionDecision; 
 /**  Shown to the model with a denial. */
 message: string | null } | 
@@ -591,7 +637,9 @@ export type ModelRef = {
 	model: string,
 };
 
-export type PermissionDecision = "allow_once" | "deny";
+export type PermissionDecision = { kind: "allow_once" } | 
+/**  Allow, and remember the answer for the rest of this chat at the given scope (04 §8). */
+{ kind: "allow_chat"; scope: GrantScope } | { kind: "deny" };
 
 /**  What a permission card shows (04 §7). */
 export type PermissionRequest = {
@@ -607,6 +655,8 @@ export type PermissionRequest = {
 	why: string | null,
 	/**  The tool's description, shown on hover. */
 	description: string,
+	/**  The standing scopes this call may be granted, beyond "allow once" (04 §7, §8). */
+	scopes: GrantScope[],
 };
 
 /**  US dollars per million tokens. */
