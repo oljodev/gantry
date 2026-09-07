@@ -32,7 +32,11 @@ export function TurnActions({ turn, pinned, onCopy, onRate, onRetry }: TurnActio
   const f = turn.footer;
   const copy = async () => {
     if (!turn.text) return;
-    await onCopy?.(turn.text);
+    try {
+      await onCopy?.(turn.text);
+    } catch {
+      return;
+    }
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   };

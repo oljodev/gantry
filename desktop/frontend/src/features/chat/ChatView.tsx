@@ -6,6 +6,7 @@ import { Composer } from '@/components/gantry/composer/Composer';
 import { CommandOutput } from '@/components/gantry/pane/CommandOutput';
 import { DiffView } from '@/components/gantry/pane/DiffView';
 import { type PaneTab, RightPane } from '@/components/gantry/pane/RightPane';
+import { toast } from '@/components/ui/toast';
 import { ToolCallDetail } from '@/components/gantry/pane/ToolCallDetail';
 import type { ActivityItem, ModelRef } from '@/fixtures/types';
 import { copyText } from '@/lib/clipboard';
@@ -113,8 +114,18 @@ export function ChatView({ chatId }: { chatId: string }) {
                 turn={turn}
                 isLast={i === turns.length - 1}
                 onOpenItem={openItem}
-                onCopy={copyText}
-                onRate={(feedback) => rate.mutate({ chatId, turnId: turn.id, feedback })}
+                onCopy={async (text) => {
+                  try {
+                    await copyText(text);
+                  } catch (err) {
+                    toast.add({ title: 'Could not copy', description: String(err), type: 'error' });
+                    throw err;
+                  }
+                }}
+                onRate={(feedback) => {
+                  rate.mutate({ chatId, turnId: turn.id, feedback });
+                  if (feedback) toast.add({ title: 'Thanks for the feedback', type: 'success' });
+                }}
                 onRetry={() => {
                   clear(chatId);
                   void retry(chatId, turn.id);
