@@ -46,6 +46,7 @@ gantry/
 │   │       │   ├── ipc/{client.ts, keys.ts, events.ts, hooks/{useAppInfo.ts, settings.ts, providers.ts, chats.ts}}   # queries per command; events → invalidation
 │   │       │   ├── stores/{runStore.ts, uiStore.ts}   # runStore: the turn channel, the rAF drain, one LiveTurn per chat
 │   │       │   ├── view/toTurns.ts           # backend chat + live turn → the Turn view model the components render
+│   │       │   ├── view/summarize.ts         # the folded steps line: "Created an artifact, read 3 files" (15 A7)
 │   │       │   ├── markdown/blocks.ts        # top-level block splitter for the memoised renderer
 │   │       │   ├── attachments.ts            # the composer's tray: paths from the dialog or a drop, bytes from paste
 │   │       │   ├── settingsDefaults.ts       # the Rust defaults mirrored for the settings pages
@@ -69,7 +70,7 @@ gantry/
 │   │       │   ├── onboarding/{Onboarding.tsx, Welcome.tsx}
 │   │       │   └── gallery/{GalleryPage.tsx, types.tsx, entries/{primitives,composites}.tsx}   # development builds only (15 §11)
 │   │       ├── components/ui/            # shadcn/ui (Base UI) primitives, reshaped to the tokens (15 §8)
-│   │       ├── components/gantry/        # composites (15 §8): activity/{ActivityRow, HunkPreview, TurnSummary}, chat/{UserMessage, TurnView, TurnActions, ThinkingBlock, InteractionCard, SystemPromptDialog},
+│   │       ├── components/gantry/        # composites (15 §8): activity/{ActivityRow, HunkPreview, TurnSteps}, chat/{UserMessage, TurnView, TurnActions, ThinkingBlock, ArtifactCard, InteractionCard, SystemPromptDialog},
 │   │       │                             #   composer/{Composer (with AttachmentTray), ModeChip, ModelPicker}, pane/{RightPane, DiffView, CommandOutput, ToolCallDetail},
 │   │       │                             #   markdown/{Markdown, CodeBlock}, sidebar/ChatRow, settings/SettingsRow, connectors/ConnectorTile, ConnectorMark, TierLabel, EmptyState, Logo
 │   │       ├── styles/{globals.css, tokens.css, fonts.css}   # tokens.css is the only place a colour, size or duration is written (15)

@@ -1,12 +1,7 @@
-import {
-  ArrowDownIcon,
-  FileTextIcon,
-  GitDiffIcon,
-  SparkleIcon,
-  TerminalIcon,
-} from '@phosphor-icons/react';
+import { ArrowDownIcon, FileTextIcon, GitDiffIcon, TerminalIcon } from '@phosphor-icons/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import { ArtifactGlyph } from '@/components/gantry/chat/ArtifactCard';
 import type { PermissionAnswer } from '@/components/gantry/chat/InteractionCard';
 import { TurnView } from '@/components/gantry/chat/TurnView';
 import { Composer } from '@/components/gantry/composer/Composer';
@@ -51,12 +46,11 @@ export function ChatView({ chatId }: { chatId: string }) {
   const openArtifacts = useArtifactStore((s) => s.openByChat[chatId]);
   const openArtifact = useArtifactStore((s) => s.open);
   const closeArtifact = useArtifactStore((s) => s.close);
-  const titles = useMemo(
-    () => Object.fromEntries((artifactList.data ?? []).map((a) => [a.id, a.title])),
-    [artifactList.data],
-  );
-  const typesById = useMemo(
-    () => Object.fromEntries((artifactList.data ?? []).map((a) => [a.id, a.type])),
+  const artifacts = useMemo(
+    () =>
+      Object.fromEntries(
+        (artifactList.data ?? []).map((a) => [a.id, { title: a.title, type: a.type }]),
+      ),
     [artifactList.data],
   );
   const [released, setReleased] = useState(false);
@@ -152,8 +146,8 @@ export function ChatView({ chatId }: { chatId: string }) {
   );
   const artifactTabs: PaneTab[] = (openArtifacts ?? []).map((id) => ({
     id: `artifact-${id}`,
-    title: titles[id] ?? 'Artifact',
-    icon: <SparkleIcon />,
+    title: artifacts[id]?.title ?? 'Artifact',
+    icon: <ArtifactGlyph type={artifacts[id]?.type ?? ''} />,
     temporary: false,
     content: (
       <ArtifactPanel
@@ -164,7 +158,6 @@ export function ChatView({ chatId }: { chatId: string }) {
     ),
   }));
   const tabs = [...artifactTabs, ...detailTabs];
-  void typesById;
 
   useEffect(() => {
     const el = scroller.current;
@@ -198,7 +191,7 @@ export function ChatView({ chatId }: { chatId: string }) {
   }
   const detail = chat.data;
   const running = live?.status === 'running' || detail.active_turn !== null;
-  const turns = toTurns(detail, live, (ref) => modelLabel(providers, ref), titles);
+  const turns = toTurns(detail, live, (ref) => modelLabel(providers, ref), artifacts);
   const defaultEffort = settings.data?.chat?.default_effort ?? 'medium';
   const thinking = detail.effort !== 'off';
   // Capability-driven controls (02 §2): the catalog says what the model can do; an unlisted

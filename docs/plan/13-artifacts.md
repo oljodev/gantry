@@ -78,8 +78,9 @@ For executable types the tool result is not returned until the sandbox reports `
 
 ```
 features/artifacts/
-  ArtifactPanel.tsx  the pane tab's content: toolbar (Rendered | Source · version stepper "v3 of 5" · Copy · Download ·
-                     Open in window · Edit · Fix this · Restore), the renderer, the Problems strip
+  ArtifactPanel.tsx  the pane tab's content: one toolbar row (Rendered | Source glyphs · version stepper "v3 of 5" when
+                     there is more than one · Restore · Fix this · Copy · a menu with Download, Open in window and Edit
+                     source), the renderer, the Problems strip
   renderers/         MarkdownRenderer · CodeRenderer · SvgRenderer · SandboxHost (html, mermaid, react)
   registry.ts        type → renderer, mirrors the Rust registry
   bridge.ts          the parent side of the postMessage protocol (§5) and the html prelude
@@ -87,11 +88,11 @@ features/artifacts/
 desktop/artifact-runtime/    separate Vite package that builds the sandbox document (§6); the app imports `dist/runtime.html?raw`
 ```
 
-As built in M5: the tabs are the right pane's own tabs (15 A17), one per open artifact, closable; the toolbar and Problems strip live inside the tab's content.
+As built in M5: the tabs are the right pane's own tabs (15 A17), one per open artifact with the type's glyph, closable; the toolbar and Problems strip live inside the tab's content. The pane opens at half the window.
 
 - The panel opens automatically the first time a turn creates an artifact (setting) and stays where the user left it afterwards. `Ctrl/Cmd+Shift+A` toggles it.
 - Copy and Download are parent-side: the app holds the content, so the sandbox needs neither clipboard nor download rights. Download goes through `tauri-plugin-dialog` and the Rust side writes the file (`export_artifact`).
-- **Open in window** opens a second `WebviewWindow` (label `artifact-<id>`) on the app's own `/artifact-window?id=` route, which renders the same panel full-window; the sandbox document inside it is the same. This exists for long-running or heavy artifacts (§5, hang risk) and for people who want the artifact on another screen.
+- **Open in window** opens a second `WebviewWindow` (label `artifact-<id>`, titled after the artifact, frameless like the main window) on the app's own `index.html#/artifact-window?id=` route (the router uses hash history), which renders the same panel full-window with the title in its toolbar; the sandbox document inside it is the same. This exists for long-running or heavy artifacts (§5, hang risk) and for people who want the artifact on another screen.
 - Renderers are pure: `(content, theme, props) → view`; the streaming state is a prop. Adding a type never touches the panel.
 
 ## 5. Sandboxing
@@ -200,7 +201,7 @@ Why not project-scoped ownership: the transcript that explains an artifact belon
 
 ## 10. Activity, events and commands
 
-- Activity rows: "Created artifact · Title (React)" and "Updated artifact · Title (v3)", opening the panel on click (05 §1).
+- Activity rows: "Created artifact · Title (React)" and "Updated artifact · Title (v3)" inside the turn's folded steps, opening the panel on click (05 §1). After the assistant text, an artifact card per artifact the turn created or changed (title, type, newest version), which also opens the panel (15 §8 `ArtifactCard`).
 - Events: `artifact.created { artifact_id, version, artifact_type, title }` and `artifact.updated { artifact_id, version, source, title }` in the turn stream and the `events` table, emitted by the runtime tool itself through `ToolEventSink::event`; `artifacts:changed { chat_id, artifact_id }` as the global invalidation event for user edits.
 - Commands: `list_artifacts { chat_id | project_id }`, `get_artifact`, `get_artifact_version`, `save_artifact_version` (user edit), `restore_artifact_version`, `export_artifact`, `open_artifact_window`, `report_artifact_render` (the panel's half of §2's handshake) (01 §4).
 

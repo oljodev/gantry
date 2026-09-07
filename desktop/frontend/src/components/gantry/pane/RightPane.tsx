@@ -2,7 +2,7 @@ import { XIcon } from '@phosphor-icons/react';
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
-import { PANE_MIN, useUiStore } from '@/lib/stores/uiStore';
+import { PANE_MIN, paneWidthFor, useUiStore } from '@/lib/stores/uiStore';
 import { cn } from '@/lib/utils';
 
 export interface PaneTab {
@@ -18,8 +18,8 @@ export interface PaneTab {
 const OVERLAY_BELOW = 1100;
 
 /**
- * The one right pane: resizable from 360 px to half the window, pushing the chat; below
- * 1100 px it overlays instead. Tabs for artifacts and temporary detail tabs (15 §7, A17).
+ * The one right pane: opens at half the window and resizes down to 360 px, pushing the chat;
+ * below 1100 px it overlays instead. Tabs for artifacts and temporary detail tabs (15 §7, A17).
  */
 export function RightPane({
   tabs,
@@ -37,13 +37,15 @@ export function RightPane({
   /** Every tab shows a close button, not only the temporary ones (artifact tabs, 13 §4). */
   allClosable?: boolean;
 }) {
-  const width = useUiStore((s) => s.paneWidth);
+  const stored = useUiStore((s) => s.paneWidth);
   const setWidth = useUiStore((s) => s.setPaneWidth);
-  const [overlay, setOverlay] = useState(() => window.innerWidth < OVERLAY_BELOW);
+  const [windowWidth, setWindowWidth] = useState(() => window.innerWidth);
+  const width = paneWidthFor(stored, windowWidth);
+  const overlay = windowWidth < OVERLAY_BELOW;
   const dragging = useRef(false);
 
   useEffect(() => {
-    const onResize = () => setOverlay(window.innerWidth < OVERLAY_BELOW);
+    const onResize = () => setWindowWidth(window.innerWidth);
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, []);
@@ -87,7 +89,7 @@ export function RightPane({
   return (
     <aside
       aria-label="Details"
-      style={{ width: Math.min(width, Math.floor(window.innerWidth / 2)), minWidth: PANE_MIN }}
+      style={{ width, minWidth: PANE_MIN }}
       className={cn(
         'relative flex h-full shrink-0 flex-col border-l border-line bg-surface pt-(--title-strip)',
         overlay && 'absolute inset-y-0 right-0 z-40 shadow-float',

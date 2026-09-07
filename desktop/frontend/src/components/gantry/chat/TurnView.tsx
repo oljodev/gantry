@@ -1,16 +1,34 @@
 import { WarningCircleIcon } from '@phosphor-icons/react';
 
-import { TurnSummary } from '@/components/gantry/activity/TurnSummary';
+import { type StepBlock, TurnSteps } from '@/components/gantry/activity/TurnSteps';
+import { ArtifactCard } from '@/components/gantry/chat/ArtifactCard';
 import { type PermissionAnswer, PermissionCard } from '@/components/gantry/chat/InteractionCard';
-import { ThinkingBlock } from '@/components/gantry/chat/ThinkingBlock';
 import { TurnActions, type TurnActionsProps } from '@/components/gantry/chat/TurnActions';
 import { UserMessage } from '@/components/gantry/chat/UserMessage';
 import { Markdown } from '@/components/gantry/markdown/Markdown';
-import type { ActivityItem, Turn } from '@/fixtures/types';
+import type { ActivityItem, Block, Turn } from '@/fixtures/types';
+
+/** Consecutive reasoning and activity blocks fold into one steps line (15 A7). */
+type Group = Block | { kind: 'steps'; steps: StepBlock[] };
+
+function groupBlocks(blocks: Block[]): Group[] {
+  const groups: Group[] = [];
+  for (const b of blocks) {
+    if (b.kind === 'thinking' || b.kind === 'activity') {
+      const last = groups[groups.length - 1];
+      if (last?.kind === 'steps') last.steps.push(b);
+      else groups.push({ kind: 'steps', steps: [b] });
+    } else {
+      groups.push(b);
+    }
+  }
+  return groups;
+}
 
 /**
- * One turn: the user block, then the assistant's text with activity inline in the order it
- * happened, an optional decision card, and the hover footer (05 §1, 15 §7).
+ * One turn: the user block, then the assistant's text with its work folded inline in the
+ * order it happened, artifact cards, an optional decision card, and the hover footer
+ * (05 §1, 15 §7).
  */
 export function TurnView({
   turn,
@@ -28,23 +46,42 @@ export function TurnView({
   isLast?: boolean;
 } & Pick<TurnActionsProps, 'onCopy' | 'onRate' | 'onRetry'>) {
   const hasText = turn.blocks.some((b) => b.kind === 'text');
-  const firstCard = turn.blocks.findIndex((b) => b.kind === 'permission');
+  const groups = groupBlocks(turn.blocks);
+  const firstCard = groups.findIndex((b) => b.kind === 'permission');
   return (
     <article className="group/turn flex flex-col gap-3 py-4">
       <UserMessage user={turn.user} />
       <div className="flex flex-col">
-        {turn.blocks.map((block, i) => {
+        {groups.map((block, i) => {
           switch (block.kind) {
             case 'text':
               return <Markdown key={i}>{block.markdown}</Markdown>;
-            case 'thinking':
+            case 'steps':
+              return <TurnSteps key={i} steps={block.steps} onOpen={onOpenItem} />;
+            case 'artifact':
               return (
-                <ThinkingBlock
-                  key={i}
-                  text={block.text}
-                  running={block.running}
-                  durationMs={block.durationMs}
-                />
+                <div key={i} className="my-3">
+                  <ArtifactCard
+                    title={block.title}
+                    type={block.type}
+                    version={block.version}
+                    onOpen={
+                      onOpenItem
+                        ? () =>
+                            onOpenItem({
+                              kind: 'artifact',
+                              id: block.artifactId,
+                              artifactId: block.artifactId,
+                              title: block.title,
+                              type: block.type,
+                              version: block.version,
+                              action: block.action,
+                              status: 'done',
+                            })
+                        : undefined
+                    }
+                  />
+                </div>
               );
             case 'error':
               return (
@@ -56,15 +93,6 @@ export function TurnView({
                   <WarningCircleIcon className="mt-0.5 size-4 shrink-0" />
                   <span className="selectable">{block.message}</span>
                 </div>
-              );
-            case 'activity':
-              return (
-                <TurnSummary
-                  key={i}
-                  items={block.items}
-                  defaultOpen={turn.status !== 'done' || i >= turn.blocks.length - 3}
-                  onOpen={onOpenItem}
-                />
               );
             case 'permission':
               return (

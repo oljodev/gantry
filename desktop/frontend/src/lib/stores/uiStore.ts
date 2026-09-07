@@ -17,11 +17,23 @@ interface UiState {
   setPaneWidth: (width: number, max: number) => void;
 }
 
+type Persisted = Pick<
+  UiState,
+  'theme' | 'density' | 'sidebarWidth' | 'sidebarCollapsed' | 'paneWidth'
+>;
+
 export const SIDEBAR_MIN = 200;
 export const SIDEBAR_MAX = 320;
 export const SIDEBAR_DEFAULT = 240;
 export const PANE_MIN = 360;
-export const PANE_DEFAULT = 440;
+/** `paneWidth` 0 means "half the window", the width the pane opens at until it is dragged. */
+export const PANE_DEFAULT = 0;
+
+/** The pane's width for a window: the dragged width, else half the window (15 A17). */
+export function paneWidthFor(stored: number, windowWidth: number): number {
+  const half = Math.floor(windowWidth / 2);
+  return stored > 0 ? Math.min(stored, half) : half;
+}
 
 /**
  * Per-window UI preferences, persisted to localStorage under `gantry.ui`. The inline script in
@@ -46,6 +58,12 @@ export const useUiStore = create<UiState>()(
     }),
     {
       name: 'gantry.ui',
+      // v1: the pane opens at half the window instead of a fixed 440 px.
+      version: 1,
+      migrate: (persisted, version) => {
+        const s = persisted as Persisted;
+        return version < 1 ? { ...s, paneWidth: PANE_DEFAULT } : s;
+      },
       partialize: (s) => ({
         theme: s.theme,
         density: s.density,

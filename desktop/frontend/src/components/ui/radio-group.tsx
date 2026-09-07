@@ -1,5 +1,6 @@
 import { Radio as RadioPrimitive } from '@base-ui/react/radio';
 import { RadioGroup as RadioGroupPrimitive } from '@base-ui/react/radio-group';
+import type { ReactNode } from 'react';
 
 import { cn } from '@/lib/utils';
 
@@ -44,7 +45,8 @@ function Segmented<T extends string>({
 }: {
   value: T;
   onValueChange: (value: T) => void;
-  options: readonly (readonly [T, string])[];
+  /** Value, label; a third element names an icon-only option for screen readers and hover. */
+  options: readonly (readonly [T, ReactNode] | readonly [T, ReactNode, string])[];
   className?: string;
   'aria-label'?: string;
 }) {
@@ -56,12 +58,17 @@ function Segmented<T extends string>({
       data-slot="segmented"
       className={cn('inline-flex rounded-2 border border-line bg-raised p-0.5', className)}
     >
-      {options.map(([v, label]) => (
+      {options.map(([v, label, name]) => (
         <RadioPrimitive.Root
           key={v}
           value={v}
           data-slot="segmented-item"
-          className="h-(--control-sm) rounded-1 px-3 text-ui text-fg-2 transition-colors duration-(--dur-1) hover:text-fg data-checked:bg-selected data-checked:text-fg"
+          aria-label={name}
+          title={name}
+          className={cn(
+            'flex h-(--control-sm) items-center rounded-1 text-ui text-fg-2 transition-colors duration-(--dur-1) hover:text-fg data-checked:bg-selected data-checked:text-fg [&_svg]:size-3.5',
+            name ? 'px-2' : 'px-3',
+          )}
         >
           {label}
         </RadioPrimitive.Root>

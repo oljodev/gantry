@@ -1,6 +1,7 @@
 import { ActivityRow } from '@/components/gantry/activity/ActivityRow';
 import { HunkPreview } from '@/components/gantry/activity/HunkPreview';
-import { TurnSummary } from '@/components/gantry/activity/TurnSummary';
+import { TurnSteps } from '@/components/gantry/activity/TurnSteps';
+import { ArtifactCard } from '@/components/gantry/chat/ArtifactCard';
 import { InteractionCard, PermissionCard } from '@/components/gantry/chat/InteractionCard';
 import { UserMessage } from '@/components/gantry/chat/UserMessage';
 import { Composer } from '@/components/gantry/composer/Composer';
@@ -80,10 +81,33 @@ function Activity() {
           ))}
         </div>
       </State>
-      <State label="Turn summary · collapsed and expanded">
+      <State label="Turn steps · done, running, expanded">
         <div className="flex w-full max-w-(--measure) flex-col">
-          <TurnSummary items={items} />
-          <TurnSummary items={items} defaultOpen />
+          <TurnSteps
+            steps={[
+              { kind: 'thinking', text: THINKING_TEXT, running: false, durationMs: 3200 },
+              { kind: 'activity', items },
+            ]}
+          />
+          <TurnSteps steps={[{ kind: 'activity', items: [...items, extra[1]!] }]} />
+          <TurnSteps
+            steps={[
+              { kind: 'thinking', text: THINKING_TEXT, running: false, durationMs: 3200 },
+              { kind: 'activity', items },
+            ]}
+            defaultOpen
+          />
+        </div>
+      </State>
+      <State label="Artifact card">
+        <div className="flex w-full max-w-(--measure) flex-col gap-2">
+          <ArtifactCard
+            title="Gantry cranes"
+            type="markdown"
+            version={2}
+            onOpen={() => undefined}
+          />
+          <ArtifactCard title="Sales dashboard" type="react" version={1} onOpen={() => undefined} />
         </div>
       </State>
     </>

@@ -115,6 +115,15 @@ export type Block =
   | { kind: 'thinking'; text: string; running: boolean; durationMs?: number }
   | { kind: 'error'; message: string; retryable: boolean }
   | { kind: 'activity'; items: ActivityItem[] }
+  /** The card for an artifact the turn created or changed, after the text (13 §10). */
+  | {
+      kind: 'artifact';
+      artifactId: string;
+      title: string;
+      type: string;
+      version: number;
+      action: 'created' | 'updated';
+    }
   | { kind: 'permission'; permission: Permission };
 
 export interface Turn {

@@ -18,14 +18,14 @@ type Label = (ref: { provider: string; model: string }) => string;
  * Activity is inline in the order it happened (05 §1): consecutive tool calls fold into one
  * activity block, and a pending decision becomes a permission card after them.
  */
-/** Artifact titles by id, so update rows can name what they changed. */
-export type ArtifactTitles = Record<string, string>;
+/** The chat's artifacts by id (title and type), so rows and cards can name what changed. */
+export type ArtifactIndex = Record<string, { title: string; type: string }>;
 
 export function toTurns(
   chat: ChatDetail,
   live: LiveTurn | undefined,
   modelLabel: Label,
-  titles: ArtifactTitles = {},
+  titles: ArtifactIndex = {},
 ): Turn[] {
   return chat.turns.map((t) => {
     if (live && live.turnId === t.id && (t.status === 'running' || live.status === 'running')) {
@@ -35,7 +35,7 @@ export function toTurns(
   });
 }
 
-function finishedTurn(t: TurnDto, modelLabel: Label, titles: ArtifactTitles): Turn {
+function finishedTurn(t: TurnDto, modelLabel: Label, titles: ArtifactIndex): Turn {
   const calls = Object.fromEntries(t.tool_calls.map((c) => [c.id, c]));
   const blocks = messagesToBlocks(
     t.messages.map((m) => ({ id: m.id, role: m.role, parts: [...m.parts] })),
@@ -69,7 +69,7 @@ function finishedTurn(t: TurnDto, modelLabel: Label, titles: ArtifactTitles): Tu
   };
 }
 
-function liveTurn(t: TurnDto, live: LiveTurn, modelLabel: Label, titles: ArtifactTitles): Turn {
+function liveTurn(t: TurnDto, live: LiveTurn, modelLabel: Label, titles: ArtifactIndex): Turn {
   const thinkingMs =
     live.thinkingStartedAt !== undefined
       ? (live.thinkingEndedAt ?? Date.now()) - live.thinkingStartedAt
@@ -146,7 +146,7 @@ function messagesToBlocks(
   pending: Interaction[],
   running: boolean,
   thinkingMs: number | undefined,
-  titles: ArtifactTitles,
+  titles: ArtifactIndex,
 ): Block[] {
   const blocks: Block[] = [];
   const pushItem = (item: ActivityItem) => {
@@ -188,6 +188,7 @@ function messagesToBlocks(
     if (!shown.has(c.id) && c.message_id === lastMessage?.id)
       pushItem(callItem(undefined, c, titles));
   }
+  blocks.push(...artifactCards(blocks, titles));
   for (const p of pending) {
     if (p.payload.kind === 'permission')
       blocks.push({ kind: 'permission', permission: permissionOf(p) });
@@ -195,10 +196,34 @@ function messagesToBlocks(
   return blocks;
 }
 
+/**
+ * One card per artifact the turn created or changed, once the call has finished and the
+ * artifact exists: the newest version, named by the artifact's current title (13 §10).
+ */
+function artifactCards(blocks: Block[], titles: ArtifactIndex): Block[] {
+  const cards = new Map<string, Extract<Block, { kind: 'artifact' }>>();
+  for (const b of blocks) {
+    if (b.kind !== 'activity') continue;
+    for (const item of b.items) {
+      if (item.kind !== 'artifact' || !item.artifactId || item.status !== 'done') continue;
+      const prev = cards.get(item.artifactId);
+      cards.set(item.artifactId, {
+        kind: 'artifact',
+        artifactId: item.artifactId,
+        title: titles[item.artifactId]?.title ?? item.title,
+        type: titles[item.artifactId]?.type ?? item.type,
+        version: Math.max(item.version, prev?.version ?? 0),
+        action: prev?.action ?? item.action ?? 'created',
+      });
+    }
+  }
+  return [...cards.values()];
+}
+
 function callItem(
   part: Extract<ContentPart, { kind: 'tool_call' }> | undefined,
   call: ToolCallDto | undefined,
-  titles: ArtifactTitles,
+  titles: ArtifactIndex,
 ): ActivityItem {
   const id = call?.id ?? part?.id ?? '';
   const [connector, tool] = call ? [call.connector, call.tool] : splitName(part?.name ?? '');
@@ -226,7 +251,7 @@ function artifactItem(
   tool: string,
   call: ToolCallDto | undefined,
   part: Extract<ContentPart, { kind: 'tool_call' }> | undefined,
-  titles: ArtifactTitles,
+  titles: ArtifactIndex,
 ): ActivityItem {
   const args = (call?.args ?? part?.args ?? {}) as Record<string, unknown>;
   const str = (k: string) => (typeof args[k] === 'string' ? (args[k] as string) : undefined);
@@ -239,8 +264,8 @@ function artifactItem(
     kind: 'artifact',
     id,
     artifactId,
-    title: str('title') ?? (artifactId ? (titles[artifactId] ?? 'artifact') : 'artifact'),
-    type: str('type') ?? 'artifact',
+    title: str('title') ?? (artifactId ? (titles[artifactId]?.title ?? 'artifact') : 'artifact'),
+    type: str('type') ?? (artifactId ? (titles[artifactId]?.type ?? 'artifact') : 'artifact'),
     version,
     action: tool === 'create_artifact' ? 'created' : 'updated',
     status:

@@ -4,8 +4,11 @@ import {
   CaretLeftIcon,
   CaretRightIcon,
   CheckIcon,
+  CodeIcon,
   CopyIcon,
+  DotsThreeIcon,
   DownloadSimpleIcon,
+  EyeIcon,
   PencilSimpleIcon,
   WarningCircleIcon,
   WrenchIcon,
@@ -13,10 +16,16 @@ import {
 import { useEffect, useMemo, useState } from 'react';
 
 import type { ArtifactContent, RenderReport } from '@/bindings';
+import { ArtifactGlyph } from '@/components/gantry/chat/ArtifactCard';
 import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Segmented } from '@/components/ui/radio-group';
 import { toast } from '@/components/ui/toast';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { ConsoleLine } from '@/features/artifacts/bridge';
 import { highlightLanguage, isSandboxed, typeInfo } from '@/features/artifacts/registry';
 import { CodeRenderer } from '@/features/artifacts/renderers/CodeRenderer';
@@ -44,8 +53,9 @@ export interface ArtifactPanelProps {
 }
 
 /**
- * The artifact panel (docs/plan/13 §4): toolbar (Rendered | Source, version stepper, Copy,
- * Download, Open in window, Fix this, Restore, Edit), the renderer for the type, and the
+ * The artifact panel (docs/plan/13 §4): one toolbar row (Rendered | Source as glyphs, the
+ * version stepper when there is more than one, Restore and Fix this when they apply, Copy, and
+ * a menu with Download, Open in window and Edit source), the renderer for the type, and the
  * Problems strip. Reports each version's render once so the tool result can complete.
  */
 export function ArtifactPanel({ artifactId, onFixThis, onOpenUrl, bare }: ArtifactPanelProps) {
@@ -172,40 +182,48 @@ export function ArtifactPanel({ artifactId, onFixThis, onOpenUrl, bare }: Artifa
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex h-(--row) shrink-0 items-center gap-1 border-b border-line-subtle px-2">
+      <div className="flex h-(--row) shrink-0 items-center gap-2 border-b border-line-subtle px-2">
         <Segmented
           value={mode}
           onValueChange={(v) => patchView(artifactId, { mode: v })}
           options={[
-            ['rendered', 'Rendered'],
-            ['source', 'Source'],
+            ['rendered', <EyeIcon key="r" />, 'Rendered'],
+            ['source', <CodeIcon key="s" />, 'Source'],
           ]}
           aria-label="View"
         />
-        <div className="ml-2 flex items-center gap-0.5 text-meta text-fg-2 tnum">
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Previous version"
-            disabled={version <= 1}
-            onClick={() => step(-1)}
-          >
-            <CaretLeftIcon />
-          </Button>
-          <span className="whitespace-nowrap">
-            v{version} of {latest}
+        {bare && (
+          <span className="flex min-w-0 items-center gap-1.5 text-ui font-medium [&_svg]:size-4 [&_svg]:shrink-0 [&_svg]:text-fg-2">
+            <ArtifactGlyph type={type} />
+            <span className="truncate">{title}</span>
           </span>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Next version"
-            disabled={version >= latest}
-            onClick={() => step(1)}
-          >
-            <CaretRightIcon />
-          </Button>
-        </div>
-        <div className="ml-auto flex items-center gap-0.5">
+        )}
+        {latest > 1 && (
+          <div className="flex items-center gap-0.5 text-meta text-fg-2 tnum">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Previous version"
+              disabled={version <= 1}
+              onClick={() => step(-1)}
+            >
+              <CaretLeftIcon />
+            </Button>
+            <span className="whitespace-nowrap">
+              v{version} of {latest}
+            </span>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Next version"
+              disabled={version >= latest}
+              onClick={() => step(1)}
+            >
+              <CaretRightIcon />
+            </Button>
+          </div>
+        )}
+        <div className="ml-auto flex items-center gap-1">
           {!isLatest && (
             <Button
               variant="secondary"
@@ -223,22 +241,35 @@ export function ArtifactPanel({ artifactId, onFixThis, onOpenUrl, bare }: Artifa
               Fix this
             </Button>
           )}
-          {info?.id !== undefined && isLatest && !editing && !live && (
-            <Icon label="Edit source" onClick={startEdit}>
-              <PencilSimpleIcon />
-            </Icon>
-          )}
-          <Icon label={copied ? 'Copied' : 'Copy'} onClick={() => void copy()}>
+          <Button variant="secondary" size="sm" onClick={() => void copy()} className="w-18">
             {copied ? <CheckIcon className="text-good" /> : <CopyIcon />}
-          </Icon>
-          <Icon label="Download" onClick={download}>
-            <DownloadSimpleIcon />
-          </Icon>
-          {!bare && (
-            <Icon label="Open in window" onClick={() => openWindow.mutate(artifactId)}>
-              <ArrowSquareOutIcon />
-            </Icon>
-          )}
+            {copied ? 'Copied' : 'Copy'}
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={<Button variant="ghost" size="icon-sm" aria-label="More actions" />}
+            >
+              <DotsThreeIcon weight="bold" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={download}>
+                <DownloadSimpleIcon />
+                Download…
+              </DropdownMenuItem>
+              {!bare && (
+                <DropdownMenuItem onClick={() => openWindow.mutate(artifactId)}>
+                  <ArrowSquareOutIcon />
+                  Open in window
+                </DropdownMenuItem>
+              )}
+              {isLatest && !editing && !live && (
+                <DropdownMenuItem onClick={startEdit}>
+                  <PencilSimpleIcon />
+                  Edit source
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
       <div className="relative min-h-0 flex-1 overflow-auto">
@@ -415,27 +446,6 @@ function Problems({
         ))}
       </ul>
     </div>
-  );
-}
-
-function Icon({
-  label,
-  onClick,
-  children,
-}: {
-  label: string;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        render={<Button variant="ghost" size="icon-sm" aria-label={label} onClick={onClick} />}
-      >
-        {children}
-      </TooltipTrigger>
-      <TooltipContent>{label}</TooltipContent>
-    </Tooltip>
   );
 }
 
