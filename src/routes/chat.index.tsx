@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router';
 
-import { EmptyChat } from '@/features/chat/EmptyChat';
+import { Welcome } from '@/features/onboarding/Welcome';
 
 export const Route = createFileRoute('/chat/')({
-  component: EmptyChat,
+  component: Welcome,
 });

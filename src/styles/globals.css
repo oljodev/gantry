@@ -215,3 +215,30 @@
     }
   }
 }
+
+/* shiki dual-theme output: pick the colour set from the resolved theme (light on :root, dark under the guards) */
+@layer components {
+  .shiki-host pre.shiki {
+    margin: 0;
+    background: transparent !important;
+    font-family: var(--font-mono);
+  }
+  .shiki-host .shiki,
+  .shiki-host .shiki span {
+    color: var(--shiki-light);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme='light']) .shiki-host .shiki,
+    :root:not([data-theme='light']) .shiki-host .shiki span {
+      color: var(--shiki-dark);
+    }
+  }
+  [data-theme='dark'] .shiki-host .shiki,
+  [data-theme='dark'] .shiki-host .shiki span {
+    color: var(--shiki-dark);
+  }
+  [data-theme='light'] .shiki-host .shiki,
+  [data-theme='light'] .shiki-host .shiki span {
+    color: var(--shiki-light);
+  }
+}
