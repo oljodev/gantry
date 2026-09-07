@@ -1,6 +1,8 @@
 //! Agent events: what a turn tells its subscribers (docs/plan/05 §2). Every event carries a
 //! per-turn sequence number and a timestamp; batches cross IPC on a channel (05 §5).
 //!
+//! 64-bit fields are exported to TypeScript as `number`; every value stays far below 2^53.
+//!
 //! M1 carries the text-only subset. Tool, decision and artifact kinds join with their
 //! milestones; adding a variant is additive for every consumer.
 
@@ -16,8 +18,9 @@ use crate::{
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
 pub struct AgentEvent {
     /// Monotonic within the turn, starting at 1.
-    pub seq: u64,
+    pub seq: u32,
     /// Milliseconds since the Unix epoch.
+    #[specta(type = specta_typescript::Number)]
     pub ts: i64,
     pub turn_id: TurnId,
     pub event: AgentEventKind,
@@ -66,6 +69,7 @@ pub enum AgentEventKind {
     TurnCompleted {
         status: TurnStatus,
         usage: Option<Usage>,
+        #[specta(type = specta_typescript::Number)]
         duration_ms: u64,
     },
     #[serde(rename = "error")]
@@ -88,9 +92,10 @@ pub struct TurnSnapshot {
     /// The assistant parts accumulated so far, in block order.
     pub parts: Vec<ContentPart>,
     pub usage: Option<Usage>,
+    #[specta(type = specta_typescript::Number)]
     pub started_at: i64,
     /// The last `seq` this snapshot covers; live events continue from `seq + 1`.
-    pub seq: u64,
+    pub seq: u32,
 }
 
 /// The wire unit on the channel.

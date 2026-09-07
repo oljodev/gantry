@@ -37,6 +37,7 @@ pub struct Message {
     /// The provider that produced an assistant message; `None` for user and system messages.
     pub origin: Option<ProviderKind>,
     /// Milliseconds since the Unix epoch.
+    #[specta(type = specta_typescript::Number)]
     pub created_at: i64,
 }
 
@@ -96,6 +97,7 @@ pub enum ContentPart {
     ToolCall {
         id: CallId,
         name: String,
+        #[specta(type = specta_typescript::Unknown)]
         args: serde_json::Value,
     },
     ToolResult {
@@ -113,6 +115,7 @@ pub enum ContentPart {
     ProviderOpaque {
         provider: ProviderKind,
         block_kind: String,
+        #[specta(type = specta_typescript::Unknown)]
         json: serde_json::Value,
     },
     /// An instruction change mid-chat (role `System`).
@@ -134,6 +137,7 @@ pub enum ResultPart {
         text: String,
     },
     Json {
+        #[specta(type = specta_typescript::Unknown)]
         json: serde_json::Value,
     },
     /// Base64-encoded image bytes.
@@ -165,10 +169,15 @@ pub enum StopReason {
 /// Token accounting for one request, in the provider's own count.
 #[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize, specta::Type)]
 pub struct Usage {
+    #[specta(type = specta_typescript::Number)]
     pub input: u64,
+    #[specta(type = specta_typescript::Number)]
     pub output: u64,
+    #[specta(type = specta_typescript::Number)]
     pub cache_read: u64,
+    #[specta(type = specta_typescript::Number)]
     pub cache_write: u64,
+    #[specta(type = specta_typescript::Number)]
     pub reasoning: u64,
     /// What the provider says the request cost, in US dollars, when it says so (OpenRouter does).
     pub cost_usd: Option<f64>,

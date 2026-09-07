@@ -1,20 +1,32 @@
-//! Startup: directories, logging, window chrome, state.
+//! Startup: directories, logging, the store, the vault, settings, providers, the turn manager,
+//! window chrome, state.
 
-use std::{error::Error, fs, time::Instant};
+use std::{
+    error::Error,
+    fs,
+    sync::{Arc, Mutex, RwLock},
+    time::Instant,
+};
 
+use gantry_agent::{ChatBook, PromptContext, TurnManager};
+use gantry_core::{ProviderId, Settings};
+use gantry_providers::{ProviderRegistry, openai_chat::http_client};
+use gantry_secrets::SecretVault;
+use gantry_store::{Store, repos};
 use tauri::{App, Manager, plugin::TauriPlugin};
 use tauri_plugin_log::{Target, TargetKind};
 
 use crate::AppState;
 
-/// Logging to stdout, to `<app log dir>/gantry.log`, and to the webview console.
+/// Logging to stdout, to `<app log dir>/gantry.log`, and to the webview console. Third-party
+/// crates stay at `info`, so no HTTP library ever logs a request header.
 pub fn log_plugin() -> TauriPlugin<tauri::Wry> {
     let level = if cfg!(debug_assertions) {
         log::LevelFilter::Debug
     } else {
         log::LevelFilter::Info
     };
-    tauri_plugin_log::Builder::new()
+    let mut builder = tauri_plugin_log::Builder::new()
         .targets([
             Target::new(TargetKind::Stdout),
             Target::new(TargetKind::LogDir {
@@ -22,10 +34,18 @@ pub fn log_plugin() -> TauriPlugin<tauri::Wry> {
             }),
             Target::new(TargetKind::Webview),
         ])
-        .level(log::LevelFilter::Info)
-        .level_for("gantry_app_lib", level)
-        .level_for("gantry_core", level)
-        .build()
+        .level(log::LevelFilter::Info);
+    for target in [
+        "gantry_app_lib",
+        "gantry_core",
+        "gantry_agent",
+        "gantry_providers",
+        "gantry_secrets",
+        "gantry_store",
+    ] {
+        builder = builder.level_for(target, level);
+    }
+    builder.build()
 }
 
 pub fn init(app: &mut App) -> Result<(), Box<dyn Error>> {
@@ -52,10 +72,76 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn Error>> {
         window.set_decorations(false)?;
     }
 
+    let store = Arc::new(Store::open(data_dir.join("gantry.db"))?);
+
+    // The OS credential store is touched from a plain thread: its clients bring their own
+    // event loops and must not be driven from inside an async runtime.
+    let secrets = {
+        let store = store.clone();
+        let dir = data_dir.clone();
+        std::thread::spawn(move || SecretVault::open(&dir, store))
+            .join()
+            .map_err(|_| "the secret store thread panicked")??
+    };
+    log::info!("secret store: {:?}", secrets.status());
+    let secrets = Arc::new(secrets);
+
+    let settings = Arc::new(RwLock::new(load_settings(&store)?));
+
+    store.write_blocking(|conn| {
+        repos::providers::ensure(
+            conn,
+            ProviderId::OPENROUTER,
+            "openai_chat",
+            "OpenRouter",
+            Some("https://openrouter.ai/api/v1"),
+        )
+    })?;
+    let providers = Arc::new(ProviderRegistry::new(
+        store.clone(),
+        secrets.clone(),
+        http_client(env!("CARGO_PKG_VERSION")),
+    ));
+    providers.rebuild()?;
+
+    let turns = TurnManager::new(
+        Arc::new(ChatBook::new()),
+        providers.clone(),
+        settings.clone(),
+        PromptContext {
+            platform: std::env::consts::OS.to_owned(),
+            app_version: env!("CARGO_PKG_VERSION").to_owned(),
+            workspace_roots: Vec::new(),
+            project_name: None,
+        },
+    );
+
     app.manage(AppState {
         data_dir,
         log_dir,
         started_at: Instant::now(),
+        store,
+        secrets,
+        providers,
+        settings,
+        turns,
+        invalid_keys: Mutex::new(Default::default()),
     });
     Ok(())
+}
+
+/// The settings document from its section rows; a missing or unreadable section keeps its
+/// default (11 §1).
+fn load_settings(store: &Store) -> Result<Settings, gantry_store::StoreError> {
+    let rows = store.read(repos::settings::all)?;
+    let mut doc = serde_json::Map::new();
+    for (key, json) in rows {
+        match serde_json::from_str::<serde_json::Value>(&json) {
+            Ok(v) => {
+                doc.insert(key, v);
+            }
+            Err(err) => log::warn!("settings section {key} is unreadable ({err}); using defaults"),
+        }
+    }
+    Ok(serde_json::from_value(serde_json::Value::Object(doc)).unwrap_or_default())
 }

@@ -4,7 +4,7 @@
 use std::{
     sync::{
         Arc, Mutex,
-        atomic::{AtomicBool, AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU32, Ordering},
     },
     time::Duration,
 };
@@ -51,7 +51,7 @@ pub const FLUSH_BYTES: usize = 64 * 1024;
 pub struct Batcher {
     turn_id: TurnId,
     sink: Arc<dyn EventSink>,
-    seq: AtomicU64,
+    seq: AtomicU32,
     queue: Mutex<(Vec<AgentEvent>, usize)>,
     closed: AtomicBool,
 }
@@ -63,7 +63,7 @@ impl Batcher {
         let batcher = Arc::new(Batcher {
             turn_id,
             sink,
-            seq: AtomicU64::new(0),
+            seq: AtomicU32::new(0),
             queue: Mutex::new((Vec::new(), 0)),
             closed: AtomicBool::new(false),
         });
@@ -82,12 +82,12 @@ impl Batcher {
 
     /// The last sequence number handed out.
     #[must_use]
-    pub fn last_seq(&self) -> u64 {
+    pub fn last_seq(&self) -> u32 {
         self.seq.load(Ordering::SeqCst)
     }
 
     /// Queues an event with the next sequence number and returns that number.
-    pub fn push(&self, event: AgentEventKind) -> u64 {
+    pub fn push(&self, event: AgentEventKind) -> u32 {
         let seq = self.seq.fetch_add(1, Ordering::SeqCst) + 1;
         let size = approx_size(&event);
         let flush_now = {

@@ -32,7 +32,9 @@ pub struct ChatSummary {
     pub title: String,
     pub pinned: bool,
     pub project_id: Option<ProjectId>,
+    #[specta(type = specta_typescript::Number)]
     pub created_at: i64,
+    #[specta(type = specta_typescript::Number)]
     pub last_message_at: i64,
     /// The turn currently streaming, if any.
     pub active_turn: Option<TurnId>,
@@ -50,7 +52,9 @@ pub struct TurnDto {
     pub usage: Option<Usage>,
     pub stop_reason: Option<StopReason>,
     pub error: Option<String>,
+    #[specta(type = specta_typescript::Number)]
     pub started_at: i64,
+    #[specta(type = Option<specta_typescript::Number>)]
     pub ended_at: Option<i64>,
 }
 
@@ -61,7 +65,9 @@ pub struct ChatDetail {
     pub title: String,
     pub pinned: bool,
     pub project_id: Option<ProjectId>,
+    #[specta(type = specta_typescript::Number)]
     pub created_at: i64,
+    #[specta(type = specta_typescript::Number)]
     pub last_message_at: i64,
     pub model: ModelRef,
     pub mode: Mode,

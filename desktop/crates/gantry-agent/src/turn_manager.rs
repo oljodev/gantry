@@ -181,7 +181,7 @@ impl TurnManager {
     pub fn subscribe(
         &self,
         turn_id: TurnId,
-        since_seq: u64,
+        since_seq: u32,
         sink: Arc<dyn EventSink>,
     ) -> Result<(), GantryError> {
         let active = self

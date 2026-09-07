@@ -142,6 +142,9 @@ mod tests {
     fn empty_layers_leave_no_empty_tags() {
         let prompt = SystemPromptBuilder::new(Mode::Manual, PromptContext::default()).build();
         assert!(!prompt.contains("<instructions scope="));
-        assert!(prompt.ends_with("</gantry_context>\n"), "no empty layer after the context");
+        assert!(
+            prompt.ends_with("</gantry_context>\n"),
+            "no empty layer after the context"
+        );
     }
 }

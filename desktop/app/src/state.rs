@@ -1,7 +1,17 @@
-use std::{path::PathBuf, time::Instant};
+use std::{
+    collections::HashSet,
+    path::PathBuf,
+    sync::{Arc, Mutex, RwLock},
+    time::Instant,
+};
 
-/// Process-wide state managed by Tauri. Grows with the milestones
-/// (`docs/plan/01-architecture-overview.md` §2, "AppState").
+use gantry_agent::TurnManager;
+use gantry_core::Settings;
+use gantry_providers::ProviderRegistry;
+use gantry_secrets::SecretVault;
+use gantry_store::Store;
+
+/// Process-wide state managed by Tauri (`docs/plan/01-architecture-overview.md` §2).
 pub struct AppState {
     /// The application data directory: database, blobs, skills.
     pub data_dir: PathBuf,
@@ -9,4 +19,12 @@ pub struct AppState {
     pub log_dir: PathBuf,
     /// When this process started.
     pub started_at: Instant,
+    pub store: Arc<Store>,
+    pub secrets: Arc<SecretVault>,
+    pub providers: Arc<ProviderRegistry>,
+    /// The cached `settings` table; every write goes through `update_settings`.
+    pub settings: Arc<RwLock<Settings>>,
+    pub turns: Arc<TurnManager>,
+    /// Providers whose last key test failed with an auth error; cleared when the key changes.
+    pub invalid_keys: Mutex<HashSet<String>>,
 }
