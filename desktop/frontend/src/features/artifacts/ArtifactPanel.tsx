@@ -274,7 +274,7 @@ export function ArtifactPanel({ artifactId, onFixThis, onOpenUrl, bare }: Artifa
       </div>
       <div className="relative min-h-0 flex-1 overflow-auto">
         {live && (
-          <div className="sticky top-0 z-10 flex h-6 items-center gap-2 border-b border-line-subtle bg-surface/90 px-3 text-meta text-fg-3 backdrop-blur">
+          <div className="sticky top-0 z-10 flex h-6 items-center gap-2 border-b border-line-subtle bg-raised/90 px-3 text-meta text-fg-3 backdrop-blur">
             <span className="size-1.5 animate-pulse rounded-full bg-accent" />
             Writing…
           </div>
@@ -399,7 +399,7 @@ function Editor({
         }}
         spellCheck={false}
         aria-label="Artifact source"
-        className="selectable min-h-0 flex-1 resize-none bg-surface p-3 font-mono text-code text-fg outline-none"
+        className="selectable min-h-0 flex-1 resize-none bg-transparent p-3 font-mono text-code text-fg outline-none"
       />
       <div className="flex h-(--row) shrink-0 items-center justify-end gap-1 border-t border-line-subtle px-2">
         <span className="mr-auto text-meta text-fg-3">Saving makes a new version</span>

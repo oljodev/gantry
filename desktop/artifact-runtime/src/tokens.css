@@ -9,7 +9,7 @@
 }
 :root[data-theme='dark'] {
   color-scheme: dark;
-  --bg: #17171a;
+  --bg: #1f1f23;
   --fg: #ececf1;
   --fg-2: #a2a2ad;
   --line: #2c2c33;

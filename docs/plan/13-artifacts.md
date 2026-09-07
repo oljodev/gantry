@@ -88,7 +88,7 @@ features/artifacts/
 desktop/artifact-runtime/    separate Vite package that builds the sandbox document (§6); the app imports `dist/runtime.html?raw`
 ```
 
-As built in M5: the tabs are the right pane's own tabs (15 A17), one per open artifact with the type's glyph, closable; the toolbar and Problems strip live inside the tab's content. The pane opens at half the window.
+As built in M5: the tabs are the right pane's own tabs (15 A17), one per open artifact with the type's glyph, closable; the toolbar and Problems strip live inside the tab's content. The pane is a floating level 1 card (15 §6) and opens at half the window.
 
 - The panel opens automatically the first time a turn creates an artifact (setting) and stays where the user left it afterwards. `Ctrl/Cmd+Shift+A` toggles it.
 - Copy and Download are parent-side: the app holds the content, so the sandbox needs neither clipboard nor download rights. Download goes through `tauri-plugin-dialog` and the Rust side writes the file (`export_artifact`).
