@@ -223,6 +223,10 @@ pub async fn run_turn(ctx: RunContext) {
         s.status = status;
         s.usage = usage_total;
     }
+    // Hand every queued event to the persister now, so its detached writes sit ahead of the
+    // blocking one below on the store's writer: when the turn reads as finished, the
+    // tool_calls and interactions rows are already there.
+    batcher.flush();
     ctx.chats.finish_turn(
         ctx.input.chat_id,
         ctx.input.turn_id,
