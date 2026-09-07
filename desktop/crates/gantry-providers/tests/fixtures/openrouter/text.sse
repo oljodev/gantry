@@ -1,0 +1,16 @@
+: OPENROUTER PROCESSING
+
+data: {"id":"gen-1","provider":"DeepSeek","model":"deepseek/deepseek-v4-flash","object":"chat.completion.chunk","created":1757000000,"choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null}]}
+
+: OPENROUTER PROCESSING
+
+data: {"id":"gen-1","choices":[{"index":0,"delta":{"content":"Hello"},"finish_reason":null}]}
+
+data: {"id":"gen-1","choices":[{"index":0,"delta":{"content":", world"},"finish_reason":null}]}
+
+data: {"id":"gen-1","choices":[{"index":0,"delta":{"content":"."},"finish_reason":"stop"}]}
+
+data: {"id":"gen-1","choices":[{"index":0,"delta":{"content":""},"finish_reason":"stop"}],"usage":{"prompt_tokens":12,"completion_tokens":4,"total_tokens":16,"cost":0.0000018,"prompt_tokens_details":{"cached_tokens":8},"completion_tokens_details":{"reasoning_tokens":0}}}
+
+data: [DONE]
+

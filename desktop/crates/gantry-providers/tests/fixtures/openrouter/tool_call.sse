@@ -1,0 +1,10 @@
+data: {"id":"gen-6","choices":[{"index":0,"delta":{"role":"assistant","content":null,"tool_calls":[{"index":0,"id":"","type":"function","function":{"name":"filesystem__read_file","arguments":""}}]},"finish_reason":null}]}
+
+data: {"id":"gen-6","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"path\":"}}]},"finish_reason":null}]}
+
+data: {"id":"gen-6","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\"src/main.rs\"}"}}]},"finish_reason":"tool_calls"}]}
+
+data: {"id":"gen-6","choices":[{"index":0,"delta":{"content":""},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":40,"completion_tokens":12,"total_tokens":52}}
+
+data: [DONE]
+

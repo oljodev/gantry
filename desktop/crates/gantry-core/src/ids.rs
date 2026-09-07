@@ -52,8 +52,6 @@ id_type!(/// One unit of agent work: a user message and everything until the ass
     TurnId);
 id_type!(/// One message in a transcript.
     MessageId);
-id_type!(/// One tool call within a turn.
-    CallId);
 id_type!(/// An installed, configured connector.
     InstanceId);
 id_type!(/// One timestamped record of something that happened during a turn.
@@ -62,6 +60,46 @@ id_type!(/// A named group of chats with shared instructions, knowledge and defa
     ProjectId);
 id_type!(/// A versioned piece of content shown beside the chat.
     ArtifactId);
+
+/// One tool call within a turn. Provider-assigned (`call_…`, `toolu_…`) and round-tripped
+/// unchanged; synthesized as `gantry_<ulid>` when a provider sends none (02 §3).
+#[derive(
+    Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, specta::Type,
+)]
+#[serde(transparent)]
+#[specta(transparent)]
+pub struct CallId(pub String);
+
+impl CallId {
+    /// A fresh synthesized id.
+    #[must_use]
+    pub fn new() -> Self {
+        Self(format!("gantry_{}", Ulid::new()))
+    }
+
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Default for CallId {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl From<String> for CallId {
+    fn from(s: String) -> Self {
+        Self(s)
+    }
+}
+
+impl fmt::Display for CallId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
 
 #[cfg(test)]
 mod tests {
