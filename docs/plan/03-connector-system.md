@@ -384,11 +384,12 @@ the flow above has to survive:
   `https://bindings.mcp.cloudflare.com` advertises a `registration_endpoint`, `S256`,
   `token_endpoint_auth_method: none` and `authorization_response_iss_parameter_supported: true`,
   which is exactly the path §7 describes.
-- **The legacy handshake is the live path, not the fallback.** `server/discover` on Cloudflare's
-  documentation server answers "Method not found"; `initialize` negotiates `2025-06-18` and works.
-  Sending `MCP-Protocol-Version: 2026-07-28` instead makes it demand the newer revision's `_meta`
-  envelope on every request. Version negotiation is therefore load-bearing from the first
-  connection, and the tested-against-a-real-server rule of §11 is why we know.
+- **Version negotiation is load-bearing from the first connection.** `server/discover` on
+  Cloudflare's documentation server answers "Method not found", and a bare `initialize` settles on
+  `2025-06-18`; send `MCP-Protocol-Version: 2026-07-28` by hand and it demands the newer revision's
+  `_meta` envelope on every request. rmcp's `Auto` lifecycle walks all of that correctly and the
+  live test (`gantry-connectors/tests/live.rs`) observes a negotiated **2026-07-28** against that
+  same server, so both revisions are in play on one host and neither can be assumed.
 - **Not every server needs auth.** `https://docs.mcp.cloudflare.com/mcp` answers an unauthenticated
   `tools/list`. An entry whose `auth.type` is `none` still runs the OAuth flow if a 401 with a
   challenge arrives later, so a server that adds authentication does not become a broken install.

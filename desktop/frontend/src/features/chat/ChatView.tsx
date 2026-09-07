@@ -24,10 +24,16 @@ import type { ActivityItem, ModelRef } from '@/fixtures/types';
 import { copyText, openExternal } from '@/lib/clipboard';
 import { useArtifacts } from '@/lib/ipc/hooks/artifacts';
 import { useChat, useChatMutations } from '@/lib/ipc/hooks/chats';
+import {
+  useChatConnectors,
+  useConnectorMutations,
+  useConnectors,
+} from '@/lib/ipc/hooks/connectors';
 import { modelCapabilities, modelLabel, useModelCatalog } from '@/lib/ipc/hooks/providers';
 import { useSettings } from '@/lib/ipc/hooks/settings';
 import { chatDefaults } from '@/lib/settingsDefaults';
 import { useRunStore } from '@/lib/stores/runStore';
+import { useUiStore } from '@/lib/stores/uiStore';
 import { toTurns } from '@/lib/view/toTurns';
 
 /**
@@ -54,6 +60,21 @@ export function ChatView({
   const { update, rate } = useChatMutations();
   const { providers } = useModelCatalog();
   const settings = useSettings();
+  // Which connectors this chat may use (03 §11); `attach` above belongs to the run store.
+  const installedConnectors = useConnectors();
+  const chatConnectors = useChatConnectors(chatId);
+  const { attach: attachConnector } = useConnectorMutations();
+  const openCustomize = useUiStore((s) => s.openCustomize);
+  const connectorChoices = useMemo(
+    () =>
+      (installedConnectors.data ?? []).map((c) => ({
+        id: c.id,
+        name: c.name,
+        attached: (chatConnectors.data ?? []).includes(c.id),
+        ready: c.enabled && c.auth_state === 'authorized' && c.tools.length > 0,
+      })),
+    [installedConnectors.data, chatConnectors.data],
+  );
   const [detailTabs, setDetailTabs] = useState<PaneTab[]>([]);
   // A deep link (`?artifact=`) starts with that artifact's tab open (13 §9).
   const [activeTab, setActiveTab] = useState<string>(() =>
@@ -310,6 +331,11 @@ export function ChatView({
           webSearch={detail.web_search}
           onWebSearchChange={(on) => patch({ web_search: on })}
           capabilities={capabilities}
+          connectors={connectorChoices}
+          onConnectorChange={(instanceId, attached) =>
+            attachConnector.mutate({ chatId, instanceId, attached })
+          }
+          onBrowseConnectors={() => openCustomize('connectors')}
           onModeChange={(mode) => patch({ mode })}
           onGuardChange={(guard) => patch({ guard })}
           onModelChange={(model: ModelRef) => patch({ model })}

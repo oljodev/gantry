@@ -27,6 +27,11 @@ export function useBackendEvents() {
       events.interactionsChanged.listen(() => {
         void qc.invalidateQueries({ queryKey: keys.pendingInteractions });
       }),
+      events.connectorsChanged.listen(() => {
+        void qc.invalidateQueries({ queryKey: keys.connectors });
+        void qc.invalidateQueries({ queryKey: keys.catalog });
+        void qc.invalidateQueries({ queryKey: ['chat_connectors'] });
+      }),
       events.artifactsChanged.listen((e) => {
         void qc.invalidateQueries({ queryKey: ['artifact', e.payload.artifact_id] });
         void qc.invalidateQueries({ queryKey: ['artifacts'] });

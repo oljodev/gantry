@@ -22,7 +22,9 @@ import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
@@ -72,11 +74,25 @@ export interface ComposerProps {
   prefill?: { text: string; nonce: number };
   /** Attachments to show at first (the gallery). */
   initialAttachments?: PendingAttachment[];
+  /** Installed connectors, and whether this chat has attached each one (03 §11). */
+  connectors?: ConnectorChoice[];
+  onConnectorChange?: (instanceId: string, attached: boolean) => void;
+  /** Opens the Customize dialog, for when there is nothing to attach yet. */
+  onBrowseConnectors?: () => void;
   onModeChange: (m: Mode) => void;
   onGuardChange: (g: boolean) => void;
   onModelChange: (m: ModelRef) => void;
   onSend?: (text: string, attachments: PendingAttachment[]) => void;
   onStop?: () => void;
+}
+
+/** One installed connector as the + menu offers it. */
+export interface ConnectorChoice {
+  id: string;
+  name: string;
+  attached: boolean;
+  /** Connected and enabled; an unauthorized server is listed but cannot be attached. */
+  ready: boolean;
 }
 
 /**
@@ -98,6 +114,9 @@ export function Composer({
   capabilities,
   prefill,
   initialAttachments,
+  connectors,
+  onConnectorChange,
+  onBrowseConnectors,
   onModeChange,
   onGuardChange,
   onModelChange,
@@ -206,10 +225,31 @@ export function Composer({
                 <FolderPlusIcon />
                 Add folder to workspace
               </DropdownMenuItem>
-              <DropdownMenuItem disabled>
-                <PlugIcon />
-                Connectors…
-              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuGroup>
+                <DropdownMenuLabel>Connectors</DropdownMenuLabel>
+                {connectors && connectors.length > 0 ? (
+                  connectors.map((c) => (
+                    <DropdownMenuCheckboxItem
+                      key={c.id}
+                      checked={c.attached}
+                      disabled={!c.ready}
+                      onCheckedChange={(on) => onConnectorChange?.(c.id, on)}
+                    >
+                      <PlugIcon />
+                      {c.name}
+                      {!c.ready && (
+                        <span className="ml-auto text-meta text-fg-3">Not connected</span>
+                      )}
+                    </DropdownMenuCheckboxItem>
+                  ))
+                ) : (
+                  <DropdownMenuItem onClick={onBrowseConnectors} disabled={!onBrowseConnectors}>
+                    <PlugIcon />
+                    Add a connector…
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuGroup>
               <DropdownMenuSeparator />
               <DropdownMenuCheckboxItem
                 checked={canSearch && webSearch}
