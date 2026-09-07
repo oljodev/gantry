@@ -10,4 +10,29 @@ publish.workspace = true
 
 [dependencies]
 gantry-core.workspace = true
+gantry-store.workspace = true
+base64.workspace = true
+chacha20poly1305.workspace = true
+getrandom.workspace = true
+keyring-core.workspace = true
+log.workspace = true
+secrecy.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+specta.workspace = true
+thiserror.workspace = true
+ulid.workspace = true
+zeroize.workspace = true
 
+[target.'cfg(target_os = "macos")'.dependencies]
+apple-native-keyring-store = "1"
+
+[target.'cfg(windows)'.dependencies]
+windows-native-keyring-store = "1"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+zbus-secret-service-keyring-store = { version = "1", default-features = false, features = ["rt-tokio-crypto-rust"] }
+
+[dev-dependencies]
+tempfile.workspace = true
+tokio.workspace = true

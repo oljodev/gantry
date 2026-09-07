@@ -1,9 +1,13 @@
-//! SQLite schema, migrations, repositories and the content-addressed blob store.
-//!
-//! Stub: the crate exists so the workspace shape is fixed from M0. Its design is in
-//! `docs/plan/06-data-model.md`; implementation arrives with the milestone that owns it (`docs/plan/09-roadmap.md`).
+//! SQLite for everything the app owns (docs/plan/06). One writer actor, a small read pool,
+//! forward-only migrations, typed repositories. No SQL lives outside this crate.
 
 #![forbid(unsafe_code)]
+
+mod db;
+pub mod repos;
+
+pub use db::{Store, StoreError};
+pub use rusqlite::Connection;
 
 /// The plan document that specifies this crate.
 pub const PLAN_DOCUMENT: &str = "docs/plan/06-data-model.md";
