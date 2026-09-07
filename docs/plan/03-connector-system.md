@@ -365,6 +365,34 @@ Auth types: `none`, `api_key`, `headers`, `oauth2`. Instance state machine: `unc
 
 rmcp's `auth` module is used for discovery and token exchange where its API fits; the listener, storage and UX are Gantry's. The listener serves a tiny "You can return to Gantry" page and closes.
 
+**Observed on the real servers (2026-09-07),** before writing a line of the client. Three things
+the flow above has to survive:
+
+- **The metadata document is not always where the issuer says.** GitHub's protected-resource
+  document (`https://api.githubcopilot.com/.well-known/oauth-protected-resource/mcp/`, named in
+  the `WWW-Authenticate` challenge) points at the issuer `https://github.com/login/oauth`, whose
+  metadata lives at `https://github.com/.well-known/oauth-authorization-server/login/oauth` — the
+  path-insertion form of RFC 8414. `<issuer>/.well-known/oauth-authorization-server` is a 404
+  there. Discovery tries the path-insertion form, then the suffix form, then OpenID's
+  `.well-known/openid-configuration`, in that order.
+- **GitHub supports neither Dynamic Client Registration nor a Client ID Metadata Document.** Its
+  metadata advertises `code_challenge_methods_supported: ["S256"]` and the device flow, and no
+  `registration_endpoint`. So GitHub is a **pre-registered client**: the manifest carries a client
+  id, or the install dialog asks for one. The entry also offers a **personal access token** as an
+  alternative (the server accepts `Authorization: Bearer <token>`), which is what makes it usable
+  before any OAuth application exists. Cloudflare, by contrast, registers dynamically:
+  `https://bindings.mcp.cloudflare.com` advertises a `registration_endpoint`, `S256`,
+  `token_endpoint_auth_method: none` and `authorization_response_iss_parameter_supported: true`,
+  which is exactly the path §7 describes.
+- **The legacy handshake is the live path, not the fallback.** `server/discover` on Cloudflare's
+  documentation server answers "Method not found"; `initialize` negotiates `2025-06-18` and works.
+  Sending `MCP-Protocol-Version: 2026-07-28` instead makes it demand the newer revision's `_meta`
+  envelope on every request. Version negotiation is therefore load-bearing from the first
+  connection, and the tested-against-a-real-server rule of §11 is why we know.
+- **Not every server needs auth.** `https://docs.mcp.cloudflare.com/mcp` answers an unauthenticated
+  `tools/list`. An entry whose `auth.type` is `none` still runs the OAuth flow if a 401 with a
+  challenge arrives later, so a server that adds authentication does not become a broken install.
+
 **API keys and headers** are stored in the vault and injected at spawn time (`env`) or per request (`header`) from `${user_config.KEY}` templates. They are never logged and never returned to the frontend; the UI sees `{ present: true, hint: "…abcd" }`.
 
 ## 8. Custom MCP servers

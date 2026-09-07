@@ -257,6 +257,22 @@ waiting for a milestone that owned them:
   hands the webview no file), thumbnails in the tray that open full size and remove, and the
   same thumbnails on a sent message, read back from the blob store.
 
+## Order change — M9 before M6 (2026-09-07)
+
+Decided with Olav: **M9 (MCP connectors and the install flow) is built next, and M6 moves after
+it.** His reasons and mine agree. The connector system is what makes the app look like a product
+rather than a chat window, GitHub and Cloudflare are the two he actually works with, and the
+OAuth and MCP machinery is the widest unbuilt subsystem left, so retiring it early is worth more
+than another week of file editing. M6 loses nothing by waiting: document 16 has already moved the
+code editor and the shell out of the catalog and into the Code surface, so M6 was going to be
+rewritten against that decision anyway.
+
+Three decisions taken with it: **GitHub connects over its hosted MCP server with OAuth**, not a
+local process with a pasted token; **Cloudflare arrives as two entries**, the public
+documentation server and the Workers bindings server over OAuth; and **settings become two
+dialogs**, a Settings modal and a Customize modal, in place of the full-page settings of 11 §2.
+What the probes of the real servers found is in 03 §7.
+
 ## M6 — Filesystem and code editor (2–3 weeks)
 
 - `gantry-workspace`: scope, canonicalization, sensitive-path patterns, atomic writes with encoding preservation, edit journal, `similar`-based hunks, `ignore`/`grep-searcher` search.
