@@ -311,7 +311,41 @@ Done when: a coding task can be run in Manual, Auto-edit and Plan with the matri
 
 Done when: a multi-step task completes hands-off in Guarded Auto, with at least one sensible block and one override exercised.
 
-## M9 — MCP connectors and the install flow (3 weeks)
+## M9 — MCP connectors and the install flow (3 weeks) — first half done 2026-09-07
+
+Built in session 8, ahead of M6 (see the order change above). Landed:
+
+- `gantry-connectors`: the **MCP runtime** on rmcp 3.2 (`mcp/session.rs`, `mcp/connector.rs`,
+  `mcp/risk.rs`) — a lazily opened session per instance, idle-stopped after ten minutes, one
+  reconnection before a call is failed, `ClientLifecycleMode::Auto` for version negotiation, and
+  tiers from tool annotations read the cautious way; **OAuth** (`auth/`) — protected-resource and
+  authorization-server discovery across all four documented URLs, dynamic registration, PKCE, a
+  loopback listener on 17321–17325 bound before the URL is built, `state` and `iss` both checked,
+  refresh; the **manifest** and the **catalog** embedded by `build.rs`.
+- `gantry-store`: migration 0006 (`connector_instances`, `oauth_clients`, `chat_connectors`) and
+  its repository. Configuration only; every secret is a vault credential.
+- `desktop/app`: `ConnectorService` (install, connect, authorize, token, remove, rebuild) and
+  twelve commands, plus `connectors:changed`. An OAuth result is stored as one credential with
+  its issuer, refreshed a minute before expiry, and moved to `Expired` when a refresh fails.
+- **Attachment means something**: a turn's tool set is the runtime tools plus the connectors that
+  chat attached, so installing something never changes what an existing conversation can reach.
+- Frontend: the Customize dialog's Connectors section (Discover / Your connectors, tools with
+  their tiers, refresh, enable, remove), the install dialog with its command preview and the
+  choice of credential, "Add a server" by URL, command or pasted JSON (Claude Desktop's
+  `mcpServers`, a bare entry, or a registry `server.json`), and connector attachment in the
+  composer's `+` menu.
+- Three catalog entries: **Cloudflare Docs** (no account), **Cloudflare Workers** (OAuth with
+  dynamic registration) and **GitHub** (OAuth with a client id you supply, or a token).
+- Verified live: `gantry-connectors/tests/live.rs` connects to Cloudflare's documentation server,
+  negotiates MCP 2026-07-28, lists its tools as `read` and calls one.
+
+Not built yet, and what is left of M9: the runtime check step for local servers
+(`detect_runtimes`, per-OS instructions, Check again), MRTR `input_required` as an
+`Interaction::Elicitation` with a form, per-instance `user_config` forms and custom settings
+panels, the stderr log view for stdio servers, tool-list caching against `ttlMs` and
+list-changed notifications, and the `add-connector` skill.
+
+## M9 — the rest (original scope)
 
 - `mcp/` adapter on rmcp: stdio and Streamable HTTP; version negotiation with the `server/discover` probe and legacy handshake fallback; tool listing with `ttlMs` and change notifications; risk mapping from annotations; MRTR `input_required` and legacy elicitation into `Interaction::Elicitation` with a form renderer; process supervision, idle stop, stderr logs.
 - `auth/`: discovery, registration priority (pre-registered / user-supplied → CIMD → DCR), PKCE, loopback listener on the fixed port set, `iss` validation, token storage and refresh, `AuthRequired` interaction; `web/client-metadata/` deployed to its subdomain.

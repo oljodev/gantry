@@ -27,8 +27,9 @@ gantry/
 │   │   ├── icons/                        # generated from desktop/assets/branding/app-icon by `pnpm tauri icon`
 │   │   └── src/
 │   │       ├── main.rs  lib.rs  state.rs  startup.rs  events.rs  menu.rs  artifact_window.rs   # lib.rs holds the specta builder and the gen_bindings drift test; events.rs the global events
-│   │       └── commands/{mod.rs, app.rs, settings.rs, providers.rs, chats.rs, turns.rs (with ChannelSink), interactions.rs, activity.rs, projects.rs,
-│   │                     connectors.rs, artifacts.rs, skills.rs, memory.rs}
+│   │       ├── connectors.rs             # install, connect, authorize, rebuild the registry (03 §7, §11)
+│   │       └── commands/{mod.rs, app.rs, settings.rs, providers.rs, chats.rs, turns.rs (with ChannelSink), interactions.rs, connectors.rs, activity.rs, projects.rs,
+│   │                     artifacts.rs, skills.rs, memory.rs}
 │   │
 │   ├── frontend/                         # package @gantry/frontend: the React app (module map in 01 §5)
 │   │   ├── package.json  index.html  vite.config.ts  tsconfig.json (+ tsconfig.app.json, tsconfig.node.json)  components.json  eslint.config.js
@@ -43,7 +44,8 @@ gantry/
 │   │       │   └── layout/{AppShell.tsx, Sidebar.tsx, TitleStrip.tsx, WindowControls.tsx}   # 15 §7
 │   │       ├── fixtures/{types.ts, chat.ts, connectors.ts, settings.ts}   # fixture data for the gallery and mock screens (15 §11); M1 replaces the types with bindings
 │   │       ├── lib/
-│   │       │   ├── ipc/{client.ts, keys.ts, events.ts, hooks/{useAppInfo.ts, settings.ts, providers.ts, chats.ts}}   # queries per command; events → invalidation
+│   │       │   ├── ipc/{client.ts, keys.ts, events.ts, hooks/{useAppInfo.ts, settings.ts, providers.ts, chats.ts, connectors.ts, …}}   # queries per command; events → invalidation
+│   │       │   ├── connectors/import.ts       # a pasted server configuration → one instance (03 §8)
 │   │       │   ├── stores/{runStore.ts, uiStore.ts}   # runStore: the turn channel, the rAF drain, one LiveTurn per chat
 │   │       │   ├── view/toTurns.ts           # backend chat + live turn → the Turn view model the components render
 │   │       │   ├── view/summarize.ts         # the folded steps line: "Created an artifact, read 3 files" (15 A7)
@@ -62,7 +64,7 @@ gantry/
 │   │       │   ├── skills/{SkillsPage.tsx, SkillEditor.tsx, FrontmatterForm.tsx, ImportReview.tsx, MatchTester.tsx}
 │   │       │   ├── memory/{MemoryPage.tsx, MemoryTable.tsx, RecentlyDeleted.tsx}
 │   │       │   ├── projects/{ProjectPage.tsx, ProjectSettings.tsx, KnowledgeFiles.tsx, ProjectArtifacts.tsx}
-│   │       │   ├── connectors/{ConnectorCard.tsx, ConnectorDetail.tsx, InstallDialog.tsx, RuntimeCheck.tsx, AddCustomServer.tsx,
+│   │       │   ├── connectors/{InstallDialog.tsx, AddCustomServer.tsx; later RuntimeCheck.tsx, ConnectorDetail.tsx,
 │   │       │   │               InstanceSettings.tsx, UserConfigForm.tsx, AuthStatus.tsx, customPanels.ts}   # customPanels: import.meta.glob of ../../connectors/*/ui
 │   │       │   ├── customize/{CustomizeDialog.tsx, ConnectorsSection.tsx, SkillsSection.tsx, MemorySection.tsx}   # the second dialog (15 A18)
 │   │       │   ├── settings/{sections.ts, SettingsDialog.tsx, SettingsBody.tsx, General.tsx, Providers.tsx, Data.tsx, Advanced.tsx, Guard.tsx, Guardrails.tsx, About.tsx}
@@ -86,7 +88,7 @@ gantry/
 │   │   │       ├── blob_store.rs         # content-addressed files under blobs/ab/<sha256>
 │   │   │       └── repos/{chats.rs, turns.rs, messages.rs, events.rs, blobs.rs, search.rs, credentials.rs, providers.rs, models.rs, settings.rs,
 │   │   │                  tool_calls.rs, interactions.rs, projections.rs (events → tool_calls and interactions), recovery.rs (the startup sweep), mod.rs;
-│   │   │                  later file_edits.rs, command_runs.rs, projects.rs, connectors.rs, artifacts.rs, skills.rs, memories.rs}
+│   │   │                  connectors.rs, later file_edits.rs, command_runs.rs, projects.rs, skills.rs, memories.rs}
 │   │   ├── gantry-secrets/
 │   │   │   └── src/{lib.rs, master_key.rs, envelope.rs, vault.rs, platform/{macos.rs, windows.rs, linux.rs, mod.rs}}
 │   │   ├── gantry-providers/
@@ -106,13 +108,12 @@ gantry/
 │   │   ├── gantry-connectors/
 │   │   │   ├── build.rs                  # validates and embeds ../../connectors/*/manifest.json
 │   │   │   └── src/
-│   │   │       ├── lib.rs  connector.rs  # the Connector trait, ToolEventSink, ToolOutcome
-│   │   │       ├── manifest.rs  registry.rs  resources.rs  runtimes.rs
-│   │   │       ├── catalog/{mod.rs, search.rs, overlay.rs}   # embedded catalog, keyword search, the deferred signed overlay (03 §11)
-│   │   │       ├── install.rs            # the install flow state machine per transport (03 §11)
-│   │   │       ├── native/{mod.rs, registry.rs}
-│   │   │       ├── mcp/{mod.rs, session.rs, connector.rs, transport.rs, mrtr.rs, risk.rs, process.rs}   # only these import rmcp
-│   │   │       └── auth/{mod.rs, discovery.rs, registration.rs, pkce.rs, loopback.rs, tokens.rs}
+│   │   │       ├── lib.rs                # the Connector trait, the registry, ToolEventSink, ToolOutcome
+│   │   │       ├── manifest.rs  catalog.rs   # the manifest as Gantry reads it; the embedded catalog and its search
+│   │   │       ├── mcp/{mod.rs, session.rs, connector.rs, risk.rs}   # only these import rmcp
+│   │   │       ├── auth/{mod.rs, discovery.rs, flow.rs}   # metadata, registration; PKCE, loopback, tokens
+│   │   │       ├── tests/live.rs         # ignored: a real MCP server, no account needed
+│   │   │       └── later: native/, runtimes.rs, resources.rs, catalog overlay (03 §11)
 │   │   ├── gantry-workspace/
 │   │   │   └── src/{lib.rs, scope.rs, fs.rs, journal.rs, diff.rs, search.rs, runner.rs, classify.rs, encoding.rs}
 │   │   ├── gantry-agent/
