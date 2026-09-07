@@ -1,5 +1,8 @@
+import { WarningCircleIcon } from '@phosphor-icons/react';
+
 import { TurnSummary } from '@/components/gantry/activity/TurnSummary';
 import { PermissionCard } from '@/components/gantry/chat/InteractionCard';
+import { ThinkingBlock } from '@/components/gantry/chat/ThinkingBlock';
 import { TurnFooter } from '@/components/gantry/chat/TurnFooter';
 import { UserMessage } from '@/components/gantry/chat/UserMessage';
 import { Markdown } from '@/components/gantry/markdown/Markdown';
@@ -16,6 +19,7 @@ export function TurnView({
   turn: Turn;
   onOpenItem?: (item: ActivityItem) => void;
 }) {
+  const hasText = turn.blocks.some((b) => b.kind === 'text');
   return (
     <article className="group/turn flex flex-col gap-3 py-4">
       <UserMessage user={turn.user} />
@@ -24,6 +28,26 @@ export function TurnView({
           switch (block.kind) {
             case 'text':
               return <Markdown key={i}>{block.markdown}</Markdown>;
+            case 'thinking':
+              return (
+                <ThinkingBlock
+                  key={i}
+                  text={block.text}
+                  running={block.running}
+                  durationMs={block.durationMs}
+                />
+              );
+            case 'error':
+              return (
+                <div
+                  key={i}
+                  role="alert"
+                  className="my-2 flex items-start gap-2 rounded-3 border border-bad/30 bg-bad-subtle px-3 py-2 text-ui text-bad"
+                >
+                  <WarningCircleIcon className="mt-0.5 size-4 shrink-0" />
+                  <span className="selectable">{block.message}</span>
+                </div>
+              );
             case 'activity':
               return (
                 <TurnSummary
@@ -38,8 +62,16 @@ export function TurnView({
           }
         })}
         {turn.status === 'running' && (
-          <span className="mt-1 inline-block h-4 w-0.5 bg-accent" aria-hidden />
+          <span
+            className={
+              hasText
+                ? 'mt-1 inline-block h-4 w-0.5 bg-accent'
+                : 'mt-2 inline-block h-4 w-0.5 animate-pulse bg-accent'
+            }
+            aria-hidden
+          />
         )}
+        {turn.status === 'cancelled' && <div className="mt-1 text-meta text-fg-3">Stopped</div>}
         {turn.footer && <TurnFooter footer={turn.footer} />}
       </div>
     </article>

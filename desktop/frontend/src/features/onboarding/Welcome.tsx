@@ -1,37 +1,88 @@
 import { BugIcon, FileTextIcon, MagnifyingGlassIcon } from '@phosphor-icons/react';
+import { useNavigate } from '@tanstack/react-router';
 import { useState } from 'react';
 
 import { Composer } from '@/components/gantry/composer/Composer';
 import { Kbd } from '@/components/ui/kbd';
+import { toast } from '@/components/ui/toast';
 import type { Mode, ModelRef } from '@/fixtures/types';
+import { isTauri } from '@/lib/ipc/client';
+import { useChatMutations } from '@/lib/ipc/hooks/chats';
+import { useSettings } from '@/lib/ipc/hooks/settings';
+import { useRunStore } from '@/lib/stores/runStore';
 
-const PROMPTS: { icon: React.ReactNode; title: string; text: string }[] = [
+const PROMPTS: { icon: React.ReactNode; title: string; text: string; prompt: string }[] = [
   {
     icon: <BugIcon />,
     title: 'Fix a failing test',
     text: 'Add a folder, then ask why a test fails and let the agent fix it.',
+    prompt: 'Why might a test that compares timestamps fail only on the first day of a month?',
   },
   {
     icon: <MagnifyingGlassIcon />,
     title: 'Research a question',
     text: 'Compare options with sources you can check.',
+    prompt: 'Compare SQLite WAL mode with rollback journal mode for a desktop app, in a table.',
   },
   {
     icon: <FileTextIcon />,
     title: 'Draft a document',
     text: 'Turn notes into a page you can edit in the panel.',
+    prompt: 'Draft a short release-notes page for version 0.1.0 of a desktop AI workspace.',
   },
 ];
 
-/** The empty chat (15 A20, §8): the hero line, three prompt cards, the composer, a hint. */
+const DEFAULT_MODEL: ModelRef = { provider: 'openrouter', model: 'deepseek/deepseek-v4-flash' };
+
+/**
+ * The empty chat (15 A20, §8): the hero line, three prompt cards, the composer, a hint. Sending
+ * creates the chat with the composer's choices, starts the turn and opens it.
+ */
 export function Welcome() {
-  const [mode, setMode] = useState<Mode>('auto_edit');
-  const [guard, setGuard] = useState(true);
-  const [model, setModel] = useState<ModelRef>({
-    provider: 'anthropic',
-    id: 'claude-opus-5',
-    label: 'Claude Opus 5',
-  });
+  const navigate = useNavigate();
+  const settings = useSettings();
+  const { create, update } = useChatMutations();
+  const send = useRunStore((s) => s.send);
+  const [mode, setMode] = useState<Mode | null>(null);
+  const [guard, setGuard] = useState<boolean | null>(null);
+  const [model, setModel] = useState<ModelRef | null>(null);
+  const [thinking, setThinking] = useState<boolean | null>(null);
+  const [prefill, setPrefill] = useState<{ text: string; nonce: number } | undefined>();
+  const [busy, setBusy] = useState(false);
+
+  const chatDefaults = settings.data?.chat;
+  const effectiveMode = mode ?? chatDefaults?.default_mode ?? 'auto_edit';
+  const effectiveGuard = guard ?? chatDefaults?.default_guard ?? true;
+  const effectiveModel = model ?? chatDefaults?.default_model ?? DEFAULT_MODEL;
+  const defaultEffort = chatDefaults?.default_effort ?? 'medium';
+  const effectiveThinking = thinking ?? defaultEffort !== 'off';
+
+  const onSend = async (text: string) => {
+    if (!isTauri()) {
+      toast.add({ title: 'No backend', description: 'Run the app to chat.', type: 'error' });
+      return;
+    }
+    setBusy(true);
+    try {
+      const chat = await create.mutateAsync(effectiveModel);
+      const changed =
+        mode !== null || guard !== null || thinking !== null
+          ? {
+              mode: mode ?? undefined,
+              guard: guard ?? undefined,
+              effort: thinking === null ? undefined : effectiveThinking ? defaultEffort : 'off',
+            }
+          : null;
+      if (changed) await update.mutateAsync({ chatId: chat.id, update: changed });
+      await send(chat.id, text);
+      await navigate({ to: '/chat/$chatId', params: { chatId: chat.id } });
+    } catch (err) {
+      toast.add({ title: 'Could not start the chat', description: describe(err), type: 'error' });
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div className="flex h-full flex-col pt-(--title-strip)">
       <div className="flex flex-1 flex-col items-center justify-center px-6">
@@ -44,6 +95,7 @@ export function Welcome() {
               <button
                 key={p.title}
                 type="button"
+                onClick={() => setPrefill({ text: p.prompt, nonce: Date.now() })}
                 className="flex flex-col gap-2 rounded-3 border border-line-subtle bg-raised p-3 text-left transition-colors duration-(--dur-1) hover:border-line-strong hover:bg-hover"
               >
                 <span className="text-fg-2 [&_svg]:size-4">{p.icon}</span>
@@ -55,13 +107,18 @@ export function Welcome() {
         </div>
       </div>
       <Composer
-        mode={mode}
-        guard={guard}
-        model={model}
+        mode={effectiveMode}
+        guard={effectiveGuard}
+        model={effectiveModel}
         roots={[]}
+        running={busy}
+        thinking={effectiveThinking}
+        prefill={prefill}
+        onThinkingChange={setThinking}
         onModeChange={setMode}
         onGuardChange={setGuard}
         onModelChange={setModel}
+        onSend={(text) => void onSend(text)}
       />
       <div className="flex h-8 items-center justify-center gap-1.5 text-meta text-fg-3">
         Add files, folders and connectors with <Kbd>+</Kbd> · search anything with <Kbd>⌘</Kbd>
@@ -69,4 +126,10 @@ export function Welcome() {
       </div>
     </div>
   );
+}
+
+function describe(err: unknown): string {
+  if (err && typeof err === 'object' && 'message' in err)
+    return String((err as { message: unknown }).message);
+  return String(err);
 }

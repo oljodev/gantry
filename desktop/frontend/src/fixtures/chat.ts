@@ -65,15 +65,12 @@ export const authDiff: DiffFile = {
 
 export const projects: Project[] = [{ id: 'p-gantry', name: 'Gantry', pinned: true }];
 
-const today = '2026-09-07T09:42:00Z';
-
 export const chats: ChatSummary[] = [
   {
     id: 'c-auth',
     title: 'Fix the failing auth tests',
     projectId: 'p-gantry',
-    lastMessageAt: today,
-    status: 'needs_decision',
+    lastMessageAt: Date.now(),
     pending: 1,
   },
   {
@@ -81,32 +78,28 @@ export const chats: ChatSummary[] = [
     title: 'Draft the 0.1.0 release notes',
     projectId: 'p-gantry',
     pinned: true,
-    lastMessageAt: '2026-09-07T08:10:00Z',
-    status: 'idle',
+    lastMessageAt: Date.parse('2026-09-07T08:10:00Z'),
   },
   {
     id: 'c-sqlite',
     title: 'WAL checkpointing on Windows',
-    lastMessageAt: '2026-09-06T17:30:00Z',
-    status: 'running',
+    lastMessageAt: Date.parse('2026-09-06T17:30:00Z'),
+    running: true,
   },
   {
     id: 'c-icons',
     title: 'Compare icon rendering at 16 px',
-    lastMessageAt: '2026-09-04T11:00:00Z',
-    status: 'idle',
+    lastMessageAt: Date.parse('2026-09-04T11:00:00Z'),
   },
   {
     id: 'c-cf',
     title: 'Cloudflare Pages build settings',
-    lastMessageAt: '2026-08-29T15:20:00Z',
-    status: 'idle',
+    lastMessageAt: Date.parse('2026-08-29T15:20:00Z'),
   },
   {
     id: 'c-license',
     title: 'FSL vs BSL for a desktop app',
-    lastMessageAt: '2026-07-19T10:05:00Z',
-    status: 'idle',
+    lastMessageAt: Date.parse('2026-07-19T10:05:00Z'),
   },
 ];
 
@@ -114,7 +107,7 @@ export const authChat: ChatDetail = {
   ...chats[0]!,
   mode: 'auto_edit',
   guard: true,
-  model: { provider: 'anthropic', id: 'claude-opus-5', label: 'Claude Opus 5' },
+  model: { provider: 'anthropic', model: 'claude-opus-5' },
   roots: ['~/dev/gantry'],
   connectors: ['filesystem', 'code-editor', 'shell', 'github'],
   turns: [

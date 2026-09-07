@@ -1,23 +1,34 @@
-import type { ComponentProps, ReactNode } from 'react';
+import { type ComponentProps, memo, type ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
 import { CodeBlock } from '@/components/gantry/markdown/CodeBlock';
+import { splitBlocks } from '@/lib/markdown/blocks';
 import { cn } from '@/lib/utils';
 
 /**
  * Assistant markdown at `chat` size. Headings map to `title` and `ui` weights so an answer's
- * headings never outrank the app's own (15 §4). Block-level memoisation arrives with M1.
+ * headings never outrank the app's own (15 §4). The text is split into top-level blocks and
+ * each block is memoised, so a streaming message re-parses only its last block (05 §4).
  */
 export function Markdown({ children, className }: { children: string; className?: string }) {
+  const blocks = splitBlocks(children);
   return (
     <div className={cn('prose-gantry selectable text-chat text-fg', className)}>
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
-        {children}
-      </ReactMarkdown>
+      {blocks.map((block, i) => (
+        <MarkdownBlock key={i} text={block} />
+      ))}
     </div>
   );
 }
+
+const MarkdownBlock = memo(function MarkdownBlock({ text }: { text: string }) {
+  return (
+    <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+      {text}
+    </ReactMarkdown>
+  );
+});
 
 function Pre({ children }: ComponentProps<'pre'>) {
   const child = Array.isArray(children) ? children[0] : children;
@@ -56,7 +67,11 @@ const components: ComponentProps<typeof ReactMarkdown>['components'] = {
   h4: ({ children }) => <h4 className="mt-4 mb-1 text-chat font-medium">{children}</h4>,
   p: ({ children }) => <p className="my-2 leading-6">{children}</p>,
   ul: ({ children }) => <ul className="my-2 list-disc pl-5">{children}</ul>,
-  ol: ({ children }) => <ol className="my-2 list-decimal pl-5">{children}</ol>,
+  ol: ({ children, start }) => (
+    <ol className="my-2 list-decimal pl-5" start={start}>
+      {children}
+    </ol>
+  ),
   li: ({ children }) => <li className="my-0.5">{children}</li>,
   blockquote: ({ children }) => (
     <blockquote className="my-2 border-l-2 border-line-strong pl-3 text-fg-2">

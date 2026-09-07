@@ -21,7 +21,8 @@ import {
   CommandShortcut,
 } from '@/components/ui/command';
 import { Kbd } from '@/components/ui/kbd';
-import { chats, projects } from '@/fixtures/chat';
+import { projects } from '@/fixtures/chat';
+import { useChats } from '@/lib/ipc/hooks/chats';
 import { connectors } from '@/fixtures/connectors';
 import { SECTIONS } from '@/features/settings/sections';
 import { useUiStore } from '@/lib/stores/uiStore';
@@ -33,6 +34,7 @@ import { useUiStore } from '@/lib/stores/uiStore';
 export function CommandPalette() {
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
+  const chats = useChats().data ?? [];
   const toggleSidebar = useUiStore((s) => s.toggleSidebar);
   const setTheme = useUiStore((s) => s.setTheme);
 

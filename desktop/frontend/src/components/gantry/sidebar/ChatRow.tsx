@@ -15,8 +15,16 @@ import { cn } from '@/lib/utils';
  * A chat in the sidebar (15 §7): a small dot, the title, a pending-decision count. The dot is
  * hollow at rest and filled accent while a turn runs. Right-click opens the context menu.
  */
-export function ChatRow({ chat }: { chat: ChatSummary }) {
-  const running = chat.status === 'running';
+export function ChatRow({
+  chat,
+  onPin,
+  onDelete,
+}: {
+  chat: ChatSummary;
+  onPin?: (pinned: boolean) => void;
+  onDelete?: () => void;
+}) {
+  const running = chat.running === true;
   return (
     <ContextMenu>
       <ContextMenuTrigger
@@ -36,19 +44,23 @@ export function ChatRow({ chat }: { chat: ChatSummary }) {
           )}
         />
         <span className="min-w-0 flex-1 truncate">{chat.title}</span>
-        {chat.status === 'needs_decision' && chat.pending && (
+        {chat.pending !== undefined && chat.pending > 0 && (
           <Badge variant="accent" aria-label={`${chat.pending} pending decision`}>
             {chat.pending}
           </Badge>
         )}
       </ContextMenuTrigger>
       <ContextMenuContent>
-        <ContextMenuItem>{chat.pinned ? 'Unpin' : 'Pin'}</ContextMenuItem>
-        <ContextMenuItem>Rename</ContextMenuItem>
-        <ContextMenuItem>Move to project</ContextMenuItem>
+        <ContextMenuItem onClick={() => onPin?.(!chat.pinned)}>
+          {chat.pinned ? 'Unpin' : 'Pin'}
+        </ContextMenuItem>
+        <ContextMenuItem disabled>Rename</ContextMenuItem>
+        <ContextMenuItem disabled>Move to project</ContextMenuItem>
         <ContextMenuSeparator />
-        <ContextMenuItem>Archive</ContextMenuItem>
-        <ContextMenuItem variant="danger">Delete</ContextMenuItem>
+        <ContextMenuItem disabled>Archive</ContextMenuItem>
+        <ContextMenuItem variant="danger" onClick={() => onDelete?.()}>
+          Delete
+        </ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>
   );

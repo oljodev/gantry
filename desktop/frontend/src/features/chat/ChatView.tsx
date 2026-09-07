@@ -1,36 +1,55 @@
-import {
-  ArrowDownIcon,
-  FileTextIcon,
-  GitDiffIcon,
-  SparkleIcon,
-  TerminalIcon,
-} from '@phosphor-icons/react';
+import { ArrowDownIcon, FileTextIcon, GitDiffIcon, TerminalIcon } from '@phosphor-icons/react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { TurnView } from '@/components/gantry/chat/TurnView';
 import { Composer } from '@/components/gantry/composer/Composer';
-import { Markdown } from '@/components/gantry/markdown/Markdown';
 import { CommandOutput } from '@/components/gantry/pane/CommandOutput';
 import { DiffView } from '@/components/gantry/pane/DiffView';
 import { type PaneTab, RightPane } from '@/components/gantry/pane/RightPane';
 import { ToolCallDetail } from '@/components/gantry/pane/ToolCallDetail';
-import { authDiff } from '@/fixtures/chat';
-import type { ActivityItem, ChatDetail, Mode, ModelRef } from '@/fixtures/types';
+import type { ActivityItem, ModelRef } from '@/fixtures/types';
+import { useChat, useChatMutations } from '@/lib/ipc/hooks/chats';
+import { modelLabel, useModelCatalog } from '@/lib/ipc/hooks/providers';
+import { useSettings } from '@/lib/ipc/hooks/settings';
+import { useRunStore } from '@/lib/stores/runStore';
+import { toTurns } from '@/lib/view/toTurns';
 
 /**
- * The chat screen on fixtures: the scrolling column of turns at the measure, the floating
- * composer, and the right pane with an artifact tab plus temporary detail tabs (15 §7).
- * M1 replaces the fixture with the run store and the query cache.
+ * The chat screen (15 §7): the scrolling column of turns at the measure, the floating composer,
+ * and the right pane for detail tabs. Finished turns come from the chat query, the running one
+ * from the run store; the composer's mode, guard, model and thinking write straight to the chat.
  */
-export function ChatView({ chat }: { chat: ChatDetail }) {
-  const [mode, setMode] = useState<Mode>(chat.mode);
-  const [guard, setGuard] = useState(chat.guard);
-  const [model, setModel] = useState<ModelRef>(chat.model);
-  const [tabs, setTabs] = useState<PaneTab[]>(() => artifactTabs(chat));
-  const [activeTab, setActiveTab] = useState<string>(() => artifactTabs(chat)[0]?.id ?? '');
-  const [paneOpen, setPaneOpen] = useState(tabs.length > 0);
+export function ChatView({ chatId }: { chatId: string }) {
+  const chat = useChat(chatId);
+  const live = useRunStore((s) => s.byChat[chatId]);
+  const send = useRunStore((s) => s.send);
+  const stop = useRunStore((s) => s.stop);
+  const attach = useRunStore((s) => s.attach);
+  const clear = useRunStore((s) => s.clear);
+  const { update } = useChatMutations();
+  const { providers } = useModelCatalog();
+  const settings = useSettings();
+  const [tabs, setTabs] = useState<PaneTab[]>([]);
+  const [activeTab, setActiveTab] = useState<string>('');
+  const [paneOpen, setPaneOpen] = useState(false);
   const [released, setReleased] = useState(false);
   const scroller = useRef<HTMLDivElement>(null);
+
+  // A turn that was already running when this view mounted (reload, chat switch) is reattached.
+  const activeTurn = chat.data?.active_turn ?? null;
+  useEffect(() => {
+    if (activeTurn) void attach(chatId, activeTurn);
+  }, [chatId, activeTurn, attach]);
+
+  // Once the chat query holds the finished turn, the live copy is redundant.
+  const liveTurnId = live?.turnId;
+  const liveDone = live !== undefined && live.status !== 'running';
+  const queryHasTurn =
+    liveTurnId !== undefined &&
+    chat.data?.turns.some((t) => t.id === liveTurnId && t.status !== 'running') === true;
+  useEffect(() => {
+    if (liveDone && queryHasTurn) clear(chatId);
+  }, [liveDone, queryHasTurn, chatId, clear]);
 
   const openItem = useCallback((item: ActivityItem) => {
     const tab = detailTab(item);
@@ -39,7 +58,6 @@ export function ChatView({ chat }: { chat: ChatDetail }) {
     setActiveTab(tab.id);
     setPaneOpen(true);
   }, []);
-
   const closeTab = useCallback((id: string) => {
     setTabs((ts) => {
       const next = ts.filter((t) => t.id !== id);
@@ -57,14 +75,37 @@ export function ChatView({ chat }: { chat: ChatDetail }) {
     return () => el.removeEventListener('scroll', onScroll);
   }, []);
 
-  const running = chat.status === 'running';
+  // Follow mode: while the user sits at the bottom, streaming keeps the newest text in view.
+  const liveLength =
+    live?.parts.reduce((n, p) => n + (p && 'text' in p ? p.text.length : 0), 0) ?? 0;
+  const turnCount = chat.data?.turns.length ?? 0;
+  useEffect(() => {
+    const el = scroller.current;
+    if (el && !released) el.scrollTop = el.scrollHeight;
+  }, [liveLength, turnCount, released]);
+
+  if (chat.isPending) return <div className="h-full pt-(--title-strip)" />;
+  if (chat.isError || !chat.data) {
+    return (
+      <div className="flex h-full items-center justify-center pt-(--title-strip) text-body text-fg-2">
+        This chat is not available.
+      </div>
+    );
+  }
+  const detail = chat.data;
+  const running = live?.status === 'running' || detail.active_turn !== null;
+  const turns = toTurns(detail, live, (ref) => modelLabel(providers, ref));
+  const defaultEffort = settings.data?.chat?.default_effort ?? 'medium';
+  const thinking = detail.effort !== 'off';
+  const patch = (u: Parameters<typeof update.mutate>[0]['update']) =>
+    update.mutate({ chatId, update: u });
 
   return (
     <div className="relative flex h-full min-w-0">
       <div className="flex min-w-0 flex-1 flex-col">
         <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto pt-(--title-strip)">
           <div className="mx-auto w-full max-w-(--measure) px-6 pt-2 pb-6">
-            {chat.turns.map((turn) => (
+            {turns.map((turn) => (
               <TurnView key={turn.id} turn={turn} onOpenItem={openItem} />
             ))}
           </div>
@@ -82,17 +123,18 @@ export function ChatView({ chat }: { chat: ChatDetail }) {
           </button>
         )}
         <Composer
-          mode={mode}
-          guard={guard}
-          model={model}
-          roots={chat.roots}
+          mode={detail.mode}
+          guard={detail.guard}
+          model={detail.model}
+          roots={[]}
           running={running}
-          placeholder={
-            chat.roots[0] ? `Ask about or change ${chat.roots[0].split('/').pop()}…` : undefined
-          }
-          onModeChange={setMode}
-          onGuardChange={setGuard}
-          onModelChange={setModel}
+          thinking={thinking}
+          onThinkingChange={(on) => patch({ effort: on ? defaultEffort : 'off' })}
+          onModeChange={(mode) => patch({ mode })}
+          onGuardChange={(guard) => patch({ guard })}
+          onModelChange={(model: ModelRef) => patch({ model })}
+          onSend={(text) => void send(chatId, text)}
+          onStop={() => void stop(chatId)}
         />
       </div>
       {paneOpen && tabs.length > 0 && (
@@ -108,36 +150,6 @@ export function ChatView({ chat }: { chat: ChatDetail }) {
   );
 }
 
-function artifactTabs(chat: ChatDetail): PaneTab[] {
-  const tabs: PaneTab[] = [];
-  for (const turn of chat.turns) {
-    for (const block of turn.blocks) {
-      if (block.kind !== 'activity') continue;
-      for (const item of block.items) {
-        if (item.kind === 'artifact') {
-          tabs.push({
-            id: `artifact-${item.id}`,
-            title: item.title,
-            icon: <SparkleIcon />,
-            content: (
-              <div className="p-5">
-                <Markdown>{ARTIFACT_BODY}</Markdown>
-              </div>
-            ),
-            toolbar: (
-              <>
-                <span className="text-meta text-fg-3 tnum">v{item.version}</span>
-                <span className="ml-auto text-meta text-fg-3">{item.type}</span>
-              </>
-            ),
-          });
-        }
-      }
-    }
-  }
-  return tabs;
-}
-
 function detailTab(item: ActivityItem): PaneTab | null {
   switch (item.kind) {
     case 'edit':
@@ -149,8 +161,8 @@ function detailTab(item: ActivityItem): PaneTab | null {
         content: (
           <DiffView
             file={{
-              ...authDiff,
               path: item.path,
+              language: item.path.split('.').pop() ?? 'text',
               hunks: item.hunks,
               added: item.added,
               removed: item.removed,
@@ -182,9 +194,9 @@ function detailTab(item: ActivityItem): PaneTab | null {
         temporary: true,
         content: (
           <ToolCallDetail
-            title={`filesystem · read_file`}
+            title="filesystem · read_file"
             args={{ path: item.path, range: item.range }}
-            result={{ bytes: 4821, truncated: false }}
+            result={{}}
           />
         ),
       };
@@ -213,25 +225,7 @@ function detailTab(item: ActivityItem): PaneTab | null {
           />
         ),
       };
-    case 'artifact':
-      return null;
     default:
       return null;
   }
 }
-
-const ARTIFACT_BODY = `# Auth expiry fix
-
-## Cause
-
-\`Session::new\` stores \`expires_at\` in **milliseconds** since the session refactor, while \`Session::is_expired\` still compared it against \`as_secs()\`. Every session therefore looked expired roughly a thousand times too early, which is why both boundary tests started failing this morning.
-
-## Change
-
-- \`crates/api/src/auth.rs\`: compare in milliseconds and make the boundary inclusive.
-- \`crates/api/tests/auth_test.rs\`: assert the boundary explicitly.
-
-## Verification
-
-\`cargo test -p api\`: 31 passed, 0 failed.
-`;

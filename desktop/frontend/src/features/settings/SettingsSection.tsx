@@ -4,6 +4,7 @@ import { Providers } from '@/features/settings/Providers';
 import { isSection, SECTIONS, type Section } from '@/features/settings/sections';
 import { isTauri } from '@/lib/ipc/client';
 import { useAppInfo } from '@/lib/ipc/hooks/useAppInfo';
+import { useSettings, useUpdateSettings } from '@/lib/ipc/hooks/settings';
 import { type Density, type ThemePref, useUiStore } from '@/lib/stores/uiStore';
 import { Segmented } from '@/components/ui/radio-group';
 
@@ -36,11 +37,26 @@ export function SettingsSection({ section }: { section: string }) {
   );
 }
 
+/** The UI store applies the change at once; the settings table is the truth it mirrors (11 §3). */
 function Appearance() {
   const theme = useUiStore((s) => s.theme);
   const density = useUiStore((s) => s.density);
-  const setTheme = useUiStore((s) => s.setTheme);
-  const setDensity = useUiStore((s) => s.setDensity);
+  const setThemeLocal = useUiStore((s) => s.setTheme);
+  const setDensityLocal = useUiStore((s) => s.setDensity);
+  const settings = useSettings();
+  const update = useUpdateSettings();
+  const persist = (next: { theme: ThemePref; density: Density }) => {
+    if (!isTauri()) return;
+    update.mutate({ appearance: { ...(settings.data?.appearance ?? {}), ...next } });
+  };
+  const setTheme = (t: ThemePref) => {
+    setThemeLocal(t);
+    persist({ theme: t, density });
+  };
+  const setDensity = (d: Density) => {
+    setDensityLocal(d);
+    persist({ theme, density: d });
+  };
   return (
     <div className="divide-y divide-line-subtle">
       <SettingsRow label="Theme" hint="Follow the system, or pick one.">

@@ -1,12 +1,13 @@
 /**
- * Shapes for the M0b mock screens. They mirror the plan's vocabulary (docs/plan/README.md,
- * 05 §1, 06) closely enough that M1 replaces them with the generated bindings.
+ * View-model shapes the chat components render (docs/plan/README.md, 05 §1). Backend truth is
+ * the generated bindings; `lib/view/toTurns.ts` projects it onto these, and the gallery fills
+ * them straight from the fixtures.
  */
 export type Provider = 'anthropic' | 'openai' | 'gemini' | 'xai' | 'openrouter';
+/** Same shape as the backend's `ModelRef`; the label comes from the model catalog. */
 export interface ModelRef {
-  provider: Provider;
-  id: string;
-  label: string;
+  provider: string;
+  model: string;
 }
 export type Mode = 'manual' | 'auto_edit' | 'plan' | 'auto';
 export type Tier = 'read' | 'write' | 'external_write' | 'execute' | 'destructive' | 'app';
@@ -17,14 +18,15 @@ export interface Project {
   pinned?: boolean;
 }
 
+/** A sidebar row: the backend summary plus what the run store knows. */
 export interface ChatSummary {
   id: string;
   title: string;
   projectId?: string;
   pinned?: boolean;
-  /** ISO timestamp of the last message; drives the day grouping. */
-  lastMessageAt: string;
-  status: 'idle' | 'running' | 'needs_decision';
+  /** Milliseconds since the epoch; the list is sorted by it, newest first. */
+  lastMessageAt: number;
+  running?: boolean;
   pending?: number;
 }
 
@@ -88,6 +90,8 @@ export interface Permission {
 
 export type Block =
   | { kind: 'text'; markdown: string }
+  | { kind: 'thinking'; text: string; running: boolean; durationMs?: number }
+  | { kind: 'error'; message: string; retryable: boolean }
   | { kind: 'activity'; items: ActivityItem[] }
   | { kind: 'permission'; permission: Permission };
 
@@ -96,7 +100,7 @@ export interface Turn {
   user: { text: string; attachments?: { name: string; kind: 'file' | 'image' }[] };
   blocks: Block[];
   footer?: { model: string; durationMs: number; tokensIn: number; tokensOut: number };
-  status: 'done' | 'running' | 'waiting';
+  status: 'done' | 'running' | 'waiting' | 'failed' | 'cancelled';
 }
 
 export interface ChatDetail extends ChatSummary {

@@ -11,24 +11,43 @@ import { type ReactNode, useCallback, useRef } from 'react';
 
 import { Logo } from '@/components/gantry/Logo';
 import { ChatRow } from '@/components/gantry/sidebar/ChatRow';
-import { chats } from '@/fixtures/chat';
+import type { ChatSummary } from '@/fixtures/types';
+import { useChatMutations, useChats } from '@/lib/ipc/hooks/chats';
+import { useRunStore } from '@/lib/stores/runStore';
 import { SIDEBAR_MAX, SIDEBAR_MIN, useUiStore } from '@/lib/stores/uiStore';
 import { cn, isMac } from '@/lib/utils';
 
 /**
- * The single labelled sidebar (docs/plan/15 §7): New chat, Search, Pinned, Projects, Recents,
- * Settings at the bottom. M0 ships the frame and the fixed items; lists arrive with M2.
+ * The single labelled sidebar (docs/plan/15 §7, 01 §5): New chat, Search, Projects, Artifacts,
+ * pinned chats, then every chat most-recent-first, Settings at the bottom. The list is the
+ * chats query; the running dot comes from the run store at channel speed.
  */
 export function Sidebar() {
   const width = useUiStore((s) => s.sidebarWidth);
   const setWidth = useUiStore((s) => s.setSidebarWidth);
   const toggleSidebar = useUiStore((s) => s.toggleSidebar);
   const dragging = useRef(false);
-  const pinned = chats.filter((c) => c.pinned);
+  const chatsQuery = useChats();
+  const live = useRunStore((s) => s.byChat);
+  const { update, remove } = useChatMutations();
+  const rows: ChatSummary[] = (chatsQuery.data ?? []).map((c) => ({
+    id: c.id,
+    title: c.title,
+    pinned: c.pinned,
+    lastMessageAt: c.last_message_at,
+    running: live[c.id]?.status === 'running' || c.active_turn !== null,
+  }));
+  const pinned = rows.filter((c) => c.pinned);
   // Most recently used first; no day groups (session 5 decision, 15 §7).
-  const recents = chats
-    .filter((c) => !c.pinned)
-    .sort((a, b) => b.lastMessageAt.localeCompare(a.lastMessageAt));
+  const recents = rows.filter((c) => !c.pinned).sort((a, b) => b.lastMessageAt - a.lastMessageAt);
+  const row = (c: ChatSummary) => (
+    <ChatRow
+      key={c.id}
+      chat={c}
+      onPin={(p) => update.mutate({ chatId: c.id, update: { pinned: p } })}
+      onDelete={() => remove.mutate(c.id)}
+    />
+  );
 
   const onPointerDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
@@ -93,17 +112,11 @@ export function Sidebar() {
           {pinned.length > 0 && (
             <>
               <SectionLabel>Pinned</SectionLabel>
-              {pinned.map((c) => (
-                <ChatRow key={c.id} chat={c} />
-              ))}
+              {pinned.map(row)}
             </>
           )}
           <SectionLabel>Chats</SectionLabel>
-          {recents.length === 0 ? (
-            <Muted>No chats yet</Muted>
-          ) : (
-            recents.map((c) => <ChatRow key={c.id} chat={c} />)
-          )}
+          {recents.length === 0 ? <Muted>No chats yet</Muted> : recents.map(row)}
         </div>
 
         <div className="mt-auto pb-2">

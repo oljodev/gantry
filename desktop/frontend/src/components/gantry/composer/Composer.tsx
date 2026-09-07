@@ -35,6 +35,11 @@ export interface ComposerProps {
   roots: string[];
   running?: boolean;
   placeholder?: string;
+  /** Controlled thinking toggle; uncontrolled when absent (the gallery). */
+  thinking?: boolean;
+  onThinkingChange?: (on: boolean) => void;
+  /** Text to place in the field; a new `nonce` re-applies the same text. */
+  prefill?: { text: string; nonce: number };
   onModeChange: (m: Mode) => void;
   onGuardChange: (g: boolean) => void;
   onModelChange: (m: ModelRef) => void;
@@ -53,6 +58,9 @@ export function Composer({
   roots,
   running,
   placeholder,
+  thinking: thinkingProp,
+  onThinkingChange,
+  prefill,
   onModeChange,
   onGuardChange,
   onModelChange,
@@ -60,7 +68,18 @@ export function Composer({
   onStop,
 }: ComposerProps) {
   const [text, setText] = useState('');
-  const [thinking, setThinking] = useState(true);
+  const [thinkingLocal, setThinkingLocal] = useState(true);
+  const thinking = thinkingProp ?? thinkingLocal;
+  const setThinking = (on: boolean) => {
+    setThinkingLocal(on);
+    onThinkingChange?.(on);
+  };
+  // A new prefill nonce replaces the draft; adjusting state during render avoids an extra pass.
+  const [appliedNonce, setAppliedNonce] = useState<number | undefined>(undefined);
+  if (prefill && prefill.nonce !== appliedNonce) {
+    setAppliedNonce(prefill.nonce);
+    setText(prefill.text);
+  }
   const canSend = text.trim().length > 0 && !running;
 
   const send = () => {
@@ -136,7 +155,7 @@ export function Composer({
                     size="icon-sm"
                     aria-pressed={thinking}
                     aria-label="Thinking"
-                    onClick={() => setThinking((t) => !t)}
+                    onClick={() => setThinking(!thinking)}
                     className={cn(thinking && 'text-fg')}
                   />
                 }

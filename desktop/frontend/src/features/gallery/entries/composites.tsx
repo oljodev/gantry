@@ -7,6 +7,7 @@ import { Composer } from '@/components/gantry/composer/Composer';
 import { ConnectorMark } from '@/components/gantry/ConnectorMark';
 import { ConnectorTile } from '@/components/gantry/connectors/ConnectorTile';
 import { EmptyState } from '@/components/gantry/EmptyState';
+import { ThinkingBlock } from '@/components/gantry/chat/ThinkingBlock';
 import { Markdown } from '@/components/gantry/markdown/Markdown';
 import { CommandOutput } from '@/components/gantry/pane/CommandOutput';
 import { DiffView } from '@/components/gantry/pane/DiffView';
@@ -18,7 +19,7 @@ import { authChat, authDiff } from '@/fixtures/chat';
 import { connectors } from '@/fixtures/connectors';
 import type { ActivityItem, Tier } from '@/fixtures/types';
 import { PlugIcon } from '@phosphor-icons/react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 const activityBlock = authChat.turns[0]!.blocks.find(
   (b) => b.kind === 'activity' && b.items.length > 2,
@@ -258,8 +259,8 @@ function Misc() {
   return (
     <>
       <State label="Key status">
-        <KeyStatus status={{ present: false }} />
-        <KeyStatus status={{ present: true, hint: 'abcd' }} />
+        <KeyStatus status={{ present: false, hint: null, invalid: false }} />
+        <KeyStatus status={{ present: true, hint: 'abcd', invalid: false }} />
         <KeyStatus status={{ present: true, hint: '9f2e', invalid: true }} />
       </State>
       <State label="Empty state">
@@ -310,6 +311,13 @@ export const compositeEntries: GalleryEntry[] = [
     render: () => <Cards />,
   },
   { id: 'messages', title: 'Messages · Markdown', group: 'Composites', render: () => <Messages /> },
+  { id: 'thinking', title: 'Thinking block', group: 'Composites', render: () => <Thinking /> },
+  {
+    id: 'streaming',
+    title: 'Streaming markdown',
+    group: 'Composites',
+    render: () => <Streaming />,
+  },
   { id: 'composer', title: 'Composer', group: 'Composites', render: () => <ComposerEntry /> },
   {
     id: 'pane',
@@ -325,3 +333,38 @@ export const compositeEntries: GalleryEntry[] = [
   },
   { id: 'misc', title: 'Key status · Empty state', group: 'Composites', render: () => <Misc /> },
 ];
+
+const THINKING_TEXT =
+  'A litre of water weighs about 1 kg. Most cooking oils have a density around 0.91 to 0.93 kg per litre, so the water is heavier by roughly 70 to 90 grams.';
+
+function Thinking() {
+  return (
+    <div className="flex flex-col gap-4">
+      <State label="Streaming">
+        <ThinkingBlock text={THINKING_TEXT.slice(0, 60)} running />
+      </State>
+      <State label="Done · short">
+        <ThinkingBlock text={THINKING_TEXT} running={false} durationMs={3200} />
+      </State>
+      <State label="Done · long">
+        <ThinkingBlock text={THINKING_TEXT} running={false} durationMs={41000} />
+      </State>
+    </div>
+  );
+}
+
+/** Appends a word every 40 ms so the block-level memoisation can be watched. */
+function Streaming() {
+  const [n, setN] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setN((k) => (k >= WORDS.length ? 0 : k + 1)), 40);
+    return () => clearInterval(id);
+  }, []);
+  return (
+    <div className="w-full max-w-(--measure)">
+      <Markdown>{WORDS.slice(0, n).join(' ')}</Markdown>
+    </div>
+  );
+}
+
+const WORDS = MARKDOWN_SAMPLE.split(' ');
