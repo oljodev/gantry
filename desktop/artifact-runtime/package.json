@@ -1,0 +1,31 @@
+{
+  "name": "@gantry/artifact-runtime",
+  "private": true,
+  "version": "0.1.0",
+  "description": "The sandboxed artifact document: React, Babel with the loop guard, Tailwind's browser runtime, Mermaid, the bridge client (docs/plan/13 §5–§6).",
+  "type": "module",
+  "license": "FSL-1.1-ALv2",
+  "scripts": {
+    "build": "vite build && node scripts/inline.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@babel/standalone": "^8.0.4",
+    "@tailwindcss/browser": "^4.3.3",
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.42.0",
+    "mermaid": "^11.17.2",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "recharts": "^3.10.1"
+  },
+  "devDependencies": {
+    "@types/babel__standalone": "^7.1.7",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7",
+    "typescript": "~5.9.3",
+    "vite": "^8.2.2",
+    "vitest": "^5.0.0"
+  }
+}

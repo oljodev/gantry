@@ -9,11 +9,12 @@
     "node": ">=22.12"
   },
   "scripts": {
-    "dev": "pnpm --filter @gantry/frontend dev",
-    "build": "pnpm --filter @gantry/frontend build",
+    "dev": "pnpm runtime:build && pnpm --filter @gantry/frontend dev",
+    "build": "pnpm runtime:build && pnpm --filter @gantry/frontend build",
+    "runtime:build": "pnpm --filter @gantry/artifact-runtime build",
     "typecheck": "pnpm --filter @gantry/frontend typecheck",
     "lint": "pnpm --filter @gantry/frontend lint",
-    "test": "pnpm --filter @gantry/frontend test",
+    "test": "pnpm --filter @gantry/frontend test && pnpm --filter @gantry/artifact-runtime test",
     "fonts": "pnpm --filter @gantry/frontend fonts",
     "design:contrast": "pnpm --filter @gantry/frontend design:contrast",
     "format": "prettier --write .",

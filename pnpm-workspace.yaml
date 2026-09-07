@@ -1,4 +1,5 @@
 packages:
   - desktop/frontend
+  - desktop/artifact-runtime
 onlyBuiltDependencies:
   - esbuild

@@ -1,0 +1,34 @@
+/* The app's theme, mirrored for artifacts (docs/plan/15 §3): the ground and the text colour
+   follow the panel; everything else is the artifact's own. */
+:root {
+  color-scheme: light;
+  --bg: #ffffff;
+  --fg: #1a1a1f;
+  --fg-2: #5b5b66;
+  --line: #e4e4e9;
+}
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: #17171a;
+  --fg: #ececf1;
+  --fg-2: #a2a2ad;
+  --line: #2c2c33;
+}
+html,
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family:
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+}
+#root {
+  min-height: 1px;
+  padding: 16px;
+}
