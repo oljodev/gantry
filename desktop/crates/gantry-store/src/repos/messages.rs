@@ -132,6 +132,15 @@ pub fn list_for_chat(conn: &Connection, chat_id: ChatId) -> Result<Vec<MessageRe
     Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
 }
 
+/// The messages of one turn in order.
+pub fn list_for_turn(conn: &Connection, turn_id: TurnId) -> Result<Vec<MessageRecord>> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {COLUMNS} FROM messages WHERE turn_id = ?1 ORDER BY seq"
+    ))?;
+    let rows = stmt.query_map(params![turn_id.to_string()], from_row)?;
+    Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
+}
+
 pub fn delete_for_turn(conn: &Connection, turn_id: TurnId) -> Result<()> {
     conn.execute(
         "DELETE FROM messages WHERE turn_id = ?1",

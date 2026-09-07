@@ -60,6 +60,8 @@ id_type!(/// A named group of chats with shared instructions, knowledge and defa
     ProjectId);
 id_type!(/// A versioned piece of content shown beside the chat.
     ArtifactId);
+id_type!(/// A decision the turn waits on: a permission prompt, an access request, a proposal.
+    InteractionId);
 
 /// One tool call within a turn. Provider-assigned (`call_…`, `toolu_…`) and round-tripped
 /// unchanged; synthesized as `gantry_<ulid>` when a provider sends none (02 §3).

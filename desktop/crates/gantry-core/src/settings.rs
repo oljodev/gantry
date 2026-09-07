@@ -156,6 +156,8 @@ pub struct AdvancedSettings {
     pub max_output_tokens: u32,
     /// Show the assembled system prompt and log raw provider requests (never the key).
     pub developer_mode: bool,
+    /// How many tool rounds one reply may take before Gantry stops it (01 §3 step 6).
+    pub max_tool_rounds: u32,
 }
 
 impl Default for AdvancedSettings {
@@ -163,6 +165,7 @@ impl Default for AdvancedSettings {
         Self {
             max_output_tokens: 8192,
             developer_mode: false,
+            max_tool_rounds: 50,
         }
     }
 }

@@ -3,16 +3,18 @@
 //!
 //! 64-bit fields are exported to TypeScript as `number`; every value stays far below 2^53.
 //!
-//! M1 carries the text-only subset. Tool, decision and artifact kinds join with their
-//! milestones; adding a variant is additive for every consumer.
+//! M1 carried the text-only subset; M3 adds the tool-call and decision kinds. Artifact and
+//! context kinds join with their milestones; adding a variant is additive for every consumer.
 
 use serde::{Deserialize, Serialize};
 
 use crate::{
     chat::TurnStatus,
-    ids::{ChatId, MessageId, TurnId},
-    message::{ContentPart, Role, StopReason, Usage},
+    ids::{CallId, ChatId, InteractionId, MessageId, TurnId},
+    interaction::{Interaction, InteractionResolution},
+    message::{ContentPart, Message, ResultPart, Role, StopReason, Usage},
     settings::{Mode, ModelRef},
+    tool::{DecisionSource, RiskTier, ToolCallDto, ToolDisplay},
 };
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
@@ -36,6 +38,7 @@ pub enum AgentEventKind {
         guard: bool,
         model: ModelRef,
     },
+    /// One per model round: the first assistant message and every one after a tool round.
     #[serde(rename = "message.started")]
     MessageStarted { message_id: MessageId, role: Role },
     #[serde(rename = "text.delta")]
@@ -57,6 +60,55 @@ pub enum AgentEventKind {
         block: u32,
         part: ContentPart,
     },
+    /// The model started a tool call; arguments may follow as deltas.
+    #[serde(rename = "tool_call.started")]
+    ToolCallStarted {
+        call_id: CallId,
+        message_id: MessageId,
+        /// Namespace prefix: a connector id, or `gantry` for runtime tools.
+        connector: String,
+        connector_name: String,
+        tool: String,
+        model_tool_name: String,
+    },
+    #[serde(rename = "tool_call.args_delta")]
+    ToolCallArgsDelta { call_id: CallId, fragment: String },
+    /// Arguments are complete and the call is classified.
+    #[serde(rename = "tool_call.ready")]
+    ToolCallReady {
+        call_id: CallId,
+        #[specta(type = specta_typescript::Unknown)]
+        args: serde_json::Value,
+        tier: RiskTier,
+        display: ToolDisplay,
+    },
+    /// The turn waits for the user (04 §10).
+    #[serde(rename = "decision.requested")]
+    DecisionRequested { interaction: Interaction },
+    #[serde(rename = "decision.resolved")]
+    DecisionResolved {
+        interaction_id: InteractionId,
+        resolution: InteractionResolution,
+        source: DecisionSource,
+    },
+    /// The call was allowed and is running; `source` says who allowed it.
+    #[serde(rename = "tool_call.executing")]
+    ToolCallExecuting {
+        call_id: CallId,
+        source: DecisionSource,
+    },
+    /// The call ended: with a result, an error result, a denial or a cancellation. The result
+    /// content is what the model receives (capped at the transcript limit).
+    #[serde(rename = "tool_call.completed")]
+    ToolCallCompleted {
+        call_id: CallId,
+        status: crate::tool::ToolCallStatus,
+        is_error: bool,
+        #[specta(type = specta_typescript::Number)]
+        duration_ms: u64,
+        result_preview: String,
+        result: Vec<ResultPart>,
+    },
     #[serde(rename = "provider.notice")]
     ProviderNotice { kind: String, detail: String },
     #[serde(rename = "message.completed")]
@@ -71,6 +123,7 @@ pub enum AgentEventKind {
         usage: Option<Usage>,
         #[specta(type = specta_typescript::Number)]
         duration_ms: u64,
+        tool_calls: u32,
     },
     #[serde(rename = "error")]
     Error {
@@ -83,14 +136,55 @@ pub enum AgentEventKind {
     TurnSnapshot { snapshot: TurnSnapshot },
 }
 
-/// What a late subscriber needs to draw an in-flight turn.
+impl AgentEventKind {
+    /// The dotted tag, e.g. `text.delta`.
+    #[must_use]
+    pub fn name(&self) -> &'static str {
+        match self {
+            AgentEventKind::TurnStarted { .. } => "turn.started",
+            AgentEventKind::MessageStarted { .. } => "message.started",
+            AgentEventKind::TextDelta { .. } => "text.delta",
+            AgentEventKind::ThinkingDelta { .. } => "thinking.delta",
+            AgentEventKind::BlockDone { .. } => "block.done",
+            AgentEventKind::ToolCallStarted { .. } => "tool_call.started",
+            AgentEventKind::ToolCallArgsDelta { .. } => "tool_call.args_delta",
+            AgentEventKind::ToolCallReady { .. } => "tool_call.ready",
+            AgentEventKind::DecisionRequested { .. } => "decision.requested",
+            AgentEventKind::DecisionResolved { .. } => "decision.resolved",
+            AgentEventKind::ToolCallExecuting { .. } => "tool_call.executing",
+            AgentEventKind::ToolCallCompleted { .. } => "tool_call.completed",
+            AgentEventKind::ProviderNotice { .. } => "provider.notice",
+            AgentEventKind::MessageCompleted { .. } => "message.completed",
+            AgentEventKind::TurnCompleted { .. } => "turn.completed",
+            AgentEventKind::Error { .. } => "error",
+            AgentEventKind::TurnSnapshot { .. } => "turn.snapshot",
+        }
+    }
+
+    /// Whether the kind belongs to the append-only activity log (05 §2, "persisted").
+    #[must_use]
+    pub fn is_persisted(&self) -> bool {
+        !matches!(
+            self,
+            AgentEventKind::TextDelta { .. }
+                | AgentEventKind::ThinkingDelta { .. }
+                | AgentEventKind::BlockDone { .. }
+                | AgentEventKind::ToolCallArgsDelta { .. }
+                | AgentEventKind::TurnSnapshot { .. }
+        )
+    }
+}
+
+/// What a late subscriber needs to draw an in-flight turn: every message of the turn so far
+/// (the last one may still be streaming), the tool calls and the pending decisions.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
 pub struct TurnSnapshot {
     pub chat_id: ChatId,
     pub status: TurnStatus,
-    pub message_id: Option<MessageId>,
-    /// The assistant parts accumulated so far, in block order.
-    pub parts: Vec<ContentPart>,
+    /// Assistant and tool messages of the turn in order; parts in block order.
+    pub messages: Vec<Message>,
+    pub tool_calls: Vec<ToolCallDto>,
+    pub pending: Vec<Interaction>,
     pub usage: Option<Usage>,
     #[specta(type = specta_typescript::Number)]
     pub started_at: i64,
@@ -118,5 +212,18 @@ mod tests {
         };
         let json = serde_json::to_value(&e).unwrap();
         assert_eq!(json["type"], "text.delta");
+        assert_eq!(json["type"], e.name());
+        assert!(!e.is_persisted());
+        let ready = AgentEventKind::ToolCallReady {
+            call_id: CallId::new(),
+            args: serde_json::json!({}),
+            tier: RiskTier::Read,
+            display: ToolDisplay {
+                kind: crate::tool::ToolDisplayKind::Connector,
+                summary: String::new(),
+            },
+        };
+        assert_eq!(serde_json::to_value(&ready).unwrap()["type"], ready.name());
+        assert!(ready.is_persisted());
     }
 }

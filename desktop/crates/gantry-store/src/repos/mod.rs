@@ -5,11 +5,15 @@ pub mod blobs;
 pub mod chats;
 pub mod credentials;
 pub mod events;
+pub mod interactions;
 pub mod messages;
 pub mod models;
+pub mod projections;
 pub mod providers;
+pub mod recovery;
 pub mod search;
 pub mod settings;
+pub mod tool_calls;
 pub mod turns;
 
 use std::str::FromStr;

@@ -11,16 +11,24 @@ pub mod chat;
 pub mod error;
 pub mod event;
 pub mod ids;
+pub mod interaction;
 pub mod message;
 pub mod settings;
 pub mod time;
+pub mod tool;
 
 pub use app_info::AppInfo;
 pub use attachment::{AttachmentInput, MAX_IMAGE_BYTES, MAX_TEXT_BYTES};
 pub use chat::{ChatDetail, ChatSummary, Feedback, SearchHit, SearchHitKind, TurnDto, TurnStatus};
 pub use error::{ErrorDto, GantryError, ProviderErrorKind};
 pub use event::{AgentEvent, AgentEventBatch, AgentEventKind, TurnSnapshot};
-pub use ids::{ArtifactId, CallId, ChatId, EventId, InstanceId, MessageId, ProjectId, TurnId};
+pub use ids::{
+    ArtifactId, CallId, ChatId, EventId, InstanceId, InteractionId, MessageId, ProjectId, TurnId,
+};
+pub use interaction::{
+    Interaction, InteractionKind, InteractionPayload, InteractionResolution, InteractionStatus,
+    PermissionDecision, PermissionRequest,
+};
 pub use message::{
     ContentPart, MediaSource, Message, ProviderKind, ResultPart, Role, StopReason, Usage,
 };
@@ -29,3 +37,7 @@ pub use settings::{
     ReasoningEffort, Settings, SettingsPatch, Theme,
 };
 pub use time::now_ms;
+pub use tool::{
+    DecisionSource, PlanModePolicy, RiskTier, ToolCallDto, ToolCallStatus, ToolDef, ToolDisplay,
+    ToolDisplayKind, result_preview,
+};

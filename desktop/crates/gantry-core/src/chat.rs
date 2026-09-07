@@ -7,6 +7,7 @@ use crate::{
     ids::{ChatId, MessageId, ProjectId, TurnId},
     message::{Message, StopReason, Usage},
     settings::{Mode, ModelRef, ReasoningEffort},
+    tool::ToolCallDto,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
@@ -51,15 +52,19 @@ pub struct ChatSummary {
     pub active_turn: Option<TurnId>,
 }
 
-/// One user message and the assistant's reply to it.
+/// One user message and everything the assistant did in reply.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
 pub struct TurnDto {
     pub id: TurnId,
     pub status: TurnStatus,
     pub model: ModelRef,
     pub user: Message,
-    /// Absent while the turn is running; the live parts come through the channel.
-    pub assistant: Option<Message>,
+    /// The assistant and tool messages of the turn in order: one assistant message per model
+    /// round, a tool message after each round that called tools. Empty while the turn runs;
+    /// the live messages come through the channel.
+    pub messages: Vec<Message>,
+    /// Every tool call of the turn, in the order the model made them.
+    pub tool_calls: Vec<ToolCallDto>,
     pub usage: Option<Usage>,
     pub stop_reason: Option<StopReason>,
     pub error: Option<String>,
@@ -68,6 +73,20 @@ pub struct TurnDto {
     pub started_at: i64,
     #[specta(type = Option<specta_typescript::Number>)]
     pub ended_at: Option<i64>,
+}
+
+impl TurnDto {
+    /// The assistant's text across every round, for titles, copy and export.
+    #[must_use]
+    pub fn assistant_text(&self) -> String {
+        self.messages
+            .iter()
+            .filter(|m| m.role == crate::message::Role::Assistant)
+            .map(|m| m.text().trim().to_owned())
+            .filter(|t| !t.is_empty())
+            .collect::<Vec<_>>()
+            .join("\n\n")
+    }
 }
 
 /// Everything the chat view needs.

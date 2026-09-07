@@ -15,6 +15,7 @@ use rusqlite_migration::{M, Migrations, SchemaVersion};
 const MIGRATIONS: &[M<'static>] = &[
     M::up(include_str!("../migrations/0001_init.sql")),
     M::up(include_str!("../migrations/0002_chats.sql")),
+    M::up(include_str!("../migrations/0003_tools.sql")),
 ];
 const READERS: usize = 3;
 
