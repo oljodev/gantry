@@ -1499,16 +1499,21 @@ name = "gantry-agent"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "base64 0.22.1",
  "futures-util",
  "gantry-connectors",
  "gantry-core",
  "gantry-providers",
+ "gantry-store",
  "log",
  "serde",
  "serde_json",
+ "specta",
+ "tempfile",
  "thiserror 2.0.20",
  "tokio",
  "tokio-util",
+ "toml 0.9.12+spec-1.1.0",
 ]
 
 [[package]]

@@ -198,9 +198,7 @@ fn running_turns_are_interrupted_at_startup_and_titles_respect_the_user() {
         })
         .unwrap();
     assert_eq!(
-        store
-            .read(|conn| turns::chats_with_running_turns(conn))
-            .unwrap(),
+        store.read(turns::chats_with_running_turns).unwrap(),
         vec![(c.id, t.id)]
     );
     let n = store

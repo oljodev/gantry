@@ -101,6 +101,25 @@ impl SystemPromptBuilder {
     }
 }
 
+/// The `SystemNote` appended when a chat's permission mode changes (04 §3, 10 §4).
+#[must_use]
+pub fn mode_note(mode: Mode) -> String {
+    format!(
+        "Permission mode is now {}.\n{}",
+        mode_label(mode),
+        mode_text(mode).trim()
+    )
+}
+
+fn mode_label(mode: Mode) -> &'static str {
+    match mode {
+        Mode::Manual => "Manual",
+        Mode::AutoEdit => "Auto-edit",
+        Mode::Plan => "Plan",
+        Mode::Auto => "Auto",
+    }
+}
+
 fn mode_text(mode: Mode) -> &'static str {
     match mode {
         Mode::Manual => MODE_MANUAL,

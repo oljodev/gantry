@@ -1,50 +1,25 @@
-//! The in-memory chat book of M1. M2 moves it behind `gantry-store` without changing the DTOs.
+//! The chat book: chats, turns and the transcript, on the store (docs/plan/06 §3). The DTOs
+//! are the ones M1 defined; only the backing changed.
 
-use std::{
-    collections::HashMap,
-    sync::{Mutex, RwLock},
-};
+use std::sync::Arc;
 
 use gantry_core::{
-    ChatDetail, ChatId, ChatSummary, Feedback, GantryError, Message, Mode, ModelRef,
-    ReasoningEffort, StopReason, TurnDto, TurnId, TurnStatus, Usage, now_ms,
+    ChatDetail, ChatId, ChatSummary, ContentPart, Feedback, GantryError, MediaSource, Message,
+    MessageId, Mode, ModelRef, ReasoningEffort, Role, StopReason, TurnDto, TurnId, TurnStatus,
+    Usage, now_ms,
+};
+use gantry_store::{
+    BlobStore, Store,
+    repos::{
+        blobs,
+        chats::{self, ChatRecord},
+        messages::{self, AttachmentRecord, MessageRecord},
+        turns::{self, TurnRecord},
+    },
 };
 
-#[derive(Debug, Clone)]
-pub struct Chat {
-    pub id: ChatId,
-    pub title: String,
-    pub pinned: bool,
-    pub archived_at: Option<i64>,
-    pub created_at: i64,
-    pub last_message_at: i64,
-    pub model: ModelRef,
-    pub mode: Mode,
-    pub guard: bool,
-    pub effort: ReasoningEffort,
-    /// The frozen system prompt (10 §2).
-    pub system_snapshot: String,
-    pub system_snapshot_version: u32,
-    pub turns: Vec<TurnRecord>,
-}
-
-#[derive(Debug, Clone)]
-pub struct TurnRecord {
-    pub id: TurnId,
-    pub status: TurnStatus,
-    pub model: ModelRef,
-    pub user: Message,
-    pub assistant: Option<Message>,
-    pub usage: Option<Usage>,
-    pub stop_reason: Option<StopReason>,
-    pub error: Option<String>,
-    pub feedback: Option<Feedback>,
-    pub started_at: i64,
-    pub ended_at: Option<i64>,
-}
-
 /// What a runner needs to build a request: the frozen prompt and the transcript so far,
-/// including the new user message.
+/// including the new user message, with media inlined for the provider.
 #[derive(Debug, Clone)]
 pub struct TurnInput {
     pub turn_id: TurnId,
@@ -55,6 +30,8 @@ pub struct TurnInput {
     pub effort: ReasoningEffort,
     pub system: String,
     pub messages: Vec<Message>,
+    /// Whether this is the chat's first turn (the title generator runs after it).
+    pub first_turn: bool,
 }
 
 /// Chat settings the composer and the sidebar can change; `None` leaves a field alone.
@@ -67,6 +44,7 @@ pub struct ChatPatch {
     pub title: Option<String>,
     pub pinned: Option<bool>,
     pub archived: Option<bool>,
+    pub instructions: Option<String>,
 }
 
 /// How a finished turn is recorded.
@@ -79,14 +57,28 @@ pub struct TurnOutcome {
     pub error: Option<String>,
 }
 
-#[derive(Debug, Default)]
-pub struct ChatBook {
-    chats: RwLock<HashMap<ChatId, Chat>>,
-    /// Insertion order, so equal timestamps still list deterministically.
-    order: Mutex<Vec<ChatId>>,
+/// An attachment already written to the blob store, to be recorded with a user message.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NewAttachment {
+    pub name: String,
+    pub mime: String,
+    pub size: i64,
+    pub blob_hash: String,
+    pub extracted_text: Option<String>,
 }
 
-/// "New chat" until the first user message names it (M2 adds the model-written title).
+pub struct ChatBook {
+    store: Arc<Store>,
+    blobs: Arc<BlobStore>,
+}
+
+impl std::fmt::Debug for ChatBook {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ChatBook").finish()
+    }
+}
+
+/// "New chat" until the first user message names it; the title generator replaces that.
 pub fn title_from(text: &str) -> String {
     let words: Vec<&str> = text.split_whitespace().take(6).collect();
     if words.is_empty() {
@@ -99,10 +91,24 @@ pub fn title_from(text: &str) -> String {
     title
 }
 
+fn store_err(e: gantry_store::StoreError) -> GantryError {
+    GantryError::Store(e.to_string())
+}
+
 impl ChatBook {
     #[must_use]
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new(store: Arc<Store>, blobs: Arc<BlobStore>) -> Self {
+        Self { store, blobs }
+    }
+
+    #[must_use]
+    pub fn store(&self) -> &Arc<Store> {
+        &self.store
+    }
+
+    #[must_use]
+    pub fn blobs(&self) -> &Arc<BlobStore> {
+        &self.blobs
     }
 
     pub fn create(
@@ -113,152 +119,327 @@ impl ChatBook {
         effort: ReasoningEffort,
         system_snapshot: String,
         system_snapshot_version: u32,
-    ) -> ChatSummary {
+    ) -> Result<ChatSummary, GantryError> {
         let now = now_ms();
-        let chat = Chat {
+        let chat = ChatRecord {
             id: ChatId::new(),
+            project_id: None,
             title: "New chat".to_owned(),
+            title_source: "auto".into(),
             pinned: false,
-            archived_at: None,
-            created_at: now,
-            last_message_at: now,
-            model,
             mode,
             guard,
+            model,
             effort,
+            web_search: false,
+            instructions: String::new(),
             system_snapshot,
             system_snapshot_version,
-            turns: Vec::new(),
+            created_at: now,
+            updated_at: now,
+            last_message_at: now,
+            archived_at: None,
         };
         let summary = summary(&chat, None);
-        self.order
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .push(chat.id);
-        self.chats
-            .write()
-            .unwrap_or_else(|e| e.into_inner())
-            .insert(chat.id, chat);
-        summary
+        self.store
+            .write_blocking(move |conn| chats::insert(conn, &chat))
+            .map_err(store_err)?;
+        Ok(summary)
     }
 
-    /// Most recent first.
-    #[must_use]
-    pub fn list(&self) -> Vec<ChatSummary> {
-        let chats = self.chats.read().unwrap_or_else(|e| e.into_inner());
-        let mut rows: Vec<ChatSummary> =
-            chats.values().map(|c| summary(c, active_turn(c))).collect();
-        rows.sort_by(|a, b| {
-            b.last_message_at
-                .cmp(&a.last_message_at)
-                .then(b.id.cmp(&a.id))
-        });
-        rows
+    /// Most recent first, archived chats included (the sidebar groups them).
+    pub fn list(&self) -> Result<Vec<ChatSummary>, GantryError> {
+        self.store
+            .read(|conn| {
+                let running: std::collections::HashMap<ChatId, TurnId> =
+                    turns::chats_with_running_turns(conn)?.into_iter().collect();
+                Ok(chats::list(conn)?
+                    .iter()
+                    .map(|c| summary(c, running.get(&c.id).copied()))
+                    .collect())
+            })
+            .map_err(store_err)
     }
 
-    #[must_use]
-    pub fn get(&self, id: ChatId) -> Option<ChatDetail> {
-        let chats = self.chats.read().unwrap_or_else(|e| e.into_inner());
-        chats.get(&id).map(detail)
+    pub fn get(&self, id: ChatId) -> Result<Option<ChatDetail>, GantryError> {
+        self.store
+            .read(|conn| {
+                let Some(chat) = chats::get(conn, id)? else {
+                    return Ok(None);
+                };
+                let turns = turns::list_for_chat(conn, id)?;
+                let messages = messages::list_for_chat(conn, id)?;
+                Ok(Some(detail(&chat, &turns, &messages)))
+            })
+            .map_err(store_err)
     }
 
-    #[must_use]
-    pub fn contains(&self, id: ChatId) -> bool {
-        self.chats
-            .read()
-            .unwrap_or_else(|e| e.into_inner())
-            .contains_key(&id)
+    pub fn contains(&self, id: ChatId) -> Result<bool, GantryError> {
+        self.store
+            .read(|conn| Ok(chats::get(conn, id)?.is_some()))
+            .map_err(store_err)
     }
 
-    /// Records the user message, opens a running turn and returns what the runner needs.
-    /// Fails when the chat is unknown or already has a running turn.
-    pub fn begin_turn(&self, chat_id: ChatId, user: Message) -> Result<TurnInput, GantryError> {
-        let mut chats = self.chats.write().unwrap_or_else(|e| e.into_inner());
-        let chat = chats
-            .get_mut(&chat_id)
-            .ok_or_else(|| GantryError::not_found(format!("chat {chat_id}")))?;
-        if chat.turns.iter().any(|t| t.status == TurnStatus::Running) {
-            return Err(GantryError::invalid("this chat already has a turn running"));
-        }
-        if chat.turns.is_empty() {
-            chat.title = title_from(&user.text());
-        }
-        let now = now_ms();
-        chat.last_message_at = now;
-        let turn = TurnRecord {
-            id: TurnId::new(),
-            status: TurnStatus::Running,
-            model: chat.model.clone(),
-            user: user.clone(),
-            assistant: None,
-            usage: None,
-            stop_reason: None,
-            error: None,
-            feedback: None,
-            started_at: now,
-            ended_at: None,
-        };
-        let turn_id = turn.id;
-        chat.turns.push(turn);
-        let messages = transcript(chat);
-        Ok(TurnInput {
-            turn_id,
-            chat_id,
-            model: chat.model.clone(),
-            mode: chat.mode,
-            guard: chat.guard,
-            effort: chat.effort,
-            system: chat.system_snapshot.clone(),
-            messages,
-        })
+    /// Records the user message and its attachments, opens a running turn and returns what the
+    /// runner needs. Fails when the chat is unknown or already has a running turn.
+    pub fn begin_turn(
+        &self,
+        chat_id: ChatId,
+        user: Message,
+        attachments: Vec<NewAttachment>,
+    ) -> Result<TurnInput, GantryError> {
+        let blobs = self.blobs.clone();
+        self.store
+            .write_blocking(move |conn| {
+                let mut chat = chats::get(conn, chat_id)?.ok_or_else(|| {
+                    gantry_store::StoreError::Other(format!("chat {chat_id} not found"))
+                })?;
+                if turns::running_for_chat(conn, chat_id)?.is_some() {
+                    return Err(gantry_store::StoreError::Other(
+                        "this chat already has a turn running".into(),
+                    ));
+                }
+                let seq = turns::next_seq(conn, chat_id)?;
+                let first_turn = seq == 1;
+                if first_turn && chat.title_source == "auto" {
+                    chat.title = title_from(&user.text());
+                }
+                let now = now_ms();
+                chat.last_message_at = now;
+                chats::update(conn, &chat)?;
+                let turn = TurnRecord {
+                    id: TurnId::new(),
+                    chat_id,
+                    seq,
+                    status: TurnStatus::Running,
+                    model: chat.model.clone(),
+                    started_at: now,
+                    ended_at: None,
+                    usage: None,
+                    stop_reason: None,
+                    error: None,
+                    feedback: None,
+                    tool_call_count: 0,
+                };
+                turns::insert(conn, &turn)?;
+                messages::insert(
+                    conn,
+                    &MessageRecord {
+                        message: user.clone(),
+                        chat_id,
+                        turn_id: Some(turn.id),
+                        seq: messages::next_seq(conn, chat_id)?,
+                        stop_reason: None,
+                        usage: None,
+                    },
+                )?;
+                for a in &attachments {
+                    blobs::add_ref(conn, &a.blob_hash, a.size, Some(&a.mime))?;
+                    messages::insert_attachment(
+                        conn,
+                        &AttachmentRecord {
+                            id: gantry_core::EventId::new().to_string(),
+                            message_id: user.id,
+                            chat_id,
+                            name: a.name.clone(),
+                            mime: a.mime.clone(),
+                            size: a.size,
+                            blob_hash: a.blob_hash.clone(),
+                            extracted_text: a.extracted_text.clone(),
+                            created_at: now,
+                        },
+                    )?;
+                }
+                let transcript = transcript(&messages::list_for_chat(conn, chat_id)?);
+                Ok(TurnInput {
+                    turn_id: turn.id,
+                    chat_id,
+                    model: chat.model.clone(),
+                    mode: chat.mode,
+                    guard: chat.guard,
+                    effort: chat.effort,
+                    system: chat.system_snapshot.clone(),
+                    messages: inline_media(&blobs, transcript),
+                    first_turn,
+                })
+            })
+            .map_err(|e| match e {
+                gantry_store::StoreError::Other(m) if m.contains("not found") => {
+                    GantryError::not_found(m)
+                }
+                gantry_store::StoreError::Other(m) => GantryError::invalid(m),
+                other => store_err(other),
+            })
     }
 
     pub fn finish_turn(&self, chat_id: ChatId, turn_id: TurnId, outcome: TurnOutcome) {
-        let mut chats = self.chats.write().unwrap_or_else(|e| e.into_inner());
-        let Some(chat) = chats.get_mut(&chat_id) else {
-            return;
-        };
-        let Some(turn) = chat.turns.iter_mut().find(|t| t.id == turn_id) else {
-            return;
-        };
-        let now = now_ms();
-        turn.status = outcome.status;
-        turn.assistant = outcome.assistant;
-        turn.usage = outcome.usage;
-        turn.stop_reason = outcome.stop_reason;
-        turn.error = outcome.error;
-        turn.ended_at = Some(now);
-        chat.last_message_at = now;
+        let result = self.store.write_blocking(move |conn| {
+            let Some(mut turn) = turns::get(conn, turn_id)? else {
+                return Ok(());
+            };
+            let now = now_ms();
+            turn.status = outcome.status;
+            turn.usage = outcome.usage;
+            turn.stop_reason = outcome.stop_reason.clone();
+            turn.error = outcome.error;
+            turn.ended_at = Some(now);
+            turns::update(conn, &turn)?;
+            if let Some(assistant) = outcome.assistant {
+                messages::insert(
+                    conn,
+                    &MessageRecord {
+                        message: assistant,
+                        chat_id,
+                        turn_id: Some(turn_id),
+                        seq: messages::next_seq(conn, chat_id)?,
+                        stop_reason: outcome.stop_reason,
+                        usage: outcome.usage,
+                    },
+                )?;
+            }
+            chats::set_last_message_at(conn, chat_id, now)?;
+            Ok(())
+        });
+        if let Err(err) = result {
+            log::error!("could not record turn {turn_id}: {err}");
+        }
     }
 
-    /// Applies a patch between turns.
+    /// Applies a patch between turns. Returns the summary and whether the mode changed on a chat
+    /// that already has turns (the caller appends the mode note, 04 §3).
     pub fn update(&self, chat_id: ChatId, patch: ChatPatch) -> Result<ChatSummary, GantryError> {
-        let mut chats = self.chats.write().unwrap_or_else(|e| e.into_inner());
-        let chat = chats
-            .get_mut(&chat_id)
-            .ok_or_else(|| GantryError::not_found(format!("chat {chat_id}")))?;
-        if let Some(m) = patch.model {
-            chat.model = m;
-        }
-        if let Some(m) = patch.mode {
-            chat.mode = m;
-        }
-        if let Some(g) = patch.guard {
-            chat.guard = g;
-        }
-        if let Some(e) = patch.effort {
-            chat.effort = e;
-        }
-        if let Some(t) = patch.title {
-            chat.title = t;
-        }
-        if let Some(p) = patch.pinned {
-            chat.pinned = p;
-        }
-        if let Some(a) = patch.archived {
-            chat.archived_at = if a { Some(now_ms()) } else { None };
-        }
-        Ok(summary(chat, active_turn(chat)))
+        self.store
+            .write_blocking(move |conn| {
+                let mut chat = chats::get(conn, chat_id)?.ok_or_else(|| {
+                    gantry_store::StoreError::Other(format!("chat {chat_id} not found"))
+                })?;
+                if let Some(m) = patch.model {
+                    chat.model = m;
+                }
+                if let Some(m) = patch.mode {
+                    chat.mode = m;
+                }
+                if let Some(g) = patch.guard {
+                    chat.guard = g;
+                }
+                if let Some(e) = patch.effort {
+                    chat.effort = e;
+                }
+                if let Some(t) = patch.title {
+                    chat.title = t;
+                    chat.title_source = "user".into();
+                }
+                if let Some(p) = patch.pinned {
+                    chat.pinned = p;
+                }
+                if let Some(a) = patch.archived {
+                    chat.archived_at = if a { Some(now_ms()) } else { None };
+                }
+                if let Some(i) = patch.instructions {
+                    chat.instructions = i;
+                }
+                chats::update(conn, &chat)?;
+                let running = turns::running_for_chat(conn, chat_id)?.map(|t| t.id);
+                Ok(summary(&chat, running))
+            })
+            .map_err(not_found_or_store)
+    }
+
+    /// Whether the chat has any turn; new chats get a fresh snapshot instead of a note.
+    pub fn has_turns(&self, chat_id: ChatId) -> Result<bool, GantryError> {
+        self.store
+            .read(|conn| Ok(turns::last_for_chat(conn, chat_id)?.is_some()))
+            .map_err(store_err)
+    }
+
+    /// Appends a `SystemNote` between turns (10 §4).
+    pub fn append_system_note(&self, chat_id: ChatId, text: String) -> Result<(), GantryError> {
+        self.store
+            .write_blocking(move |conn| {
+                let seq = messages::next_seq(conn, chat_id)?;
+                messages::insert(
+                    conn,
+                    &MessageRecord {
+                        message: Message {
+                            id: MessageId::new(),
+                            role: Role::System,
+                            parts: vec![ContentPart::SystemNote { text }],
+                            origin: None,
+                            created_at: now_ms(),
+                        },
+                        chat_id,
+                        turn_id: None,
+                        seq,
+                        stop_reason: None,
+                        usage: None,
+                    },
+                )
+            })
+            .map_err(store_err)
+    }
+
+    /// Replaces the frozen prompt of a chat that has no turns yet.
+    pub fn replace_snapshot(
+        &self,
+        chat_id: ChatId,
+        snapshot: String,
+        version: u32,
+    ) -> Result<(), GantryError> {
+        self.store
+            .write_blocking(move |conn| {
+                if let Some(mut chat) = chats::get(conn, chat_id)? {
+                    chat.system_snapshot = snapshot;
+                    chat.system_snapshot_version = version;
+                    chats::update(conn, &chat)?;
+                }
+                Ok(())
+            })
+            .map_err(store_err)
+    }
+
+    /// Ids of every chat that is not archived.
+    pub fn open_chat_ids(&self) -> Result<Vec<ChatId>, GantryError> {
+        self.store
+            .read(|conn| {
+                Ok(chats::list(conn)?
+                    .into_iter()
+                    .filter(|c| c.archived_at.is_none())
+                    .map(|c| c.id)
+                    .collect())
+            })
+            .map_err(store_err)
+    }
+
+    /// The frozen snapshot and the system notes appended since, for developer mode.
+    pub fn system_prompt(
+        &self,
+        chat_id: ChatId,
+    ) -> Result<Option<(String, Vec<String>)>, GantryError> {
+        self.store
+            .read(|conn| {
+                let Some(chat) = chats::get(conn, chat_id)? else {
+                    return Ok(None);
+                };
+                let notes = messages::list_for_chat(conn, chat_id)?
+                    .into_iter()
+                    .filter(|m| m.message.role == Role::System)
+                    .flat_map(|m| {
+                        m.message.parts.into_iter().filter_map(|p| match p {
+                            ContentPart::SystemNote { text } => Some(text),
+                            _ => None,
+                        })
+                    })
+                    .collect();
+                Ok(Some((chat.system_snapshot, notes)))
+            })
+            .map_err(store_err)
+    }
+
+    /// Sets the generated title unless the user renamed the chat; returns whether it changed.
+    pub fn set_auto_title(&self, chat_id: ChatId, title: String) -> Result<bool, GantryError> {
+        self.store
+            .write_blocking(move |conn| chats::set_auto_title(conn, chat_id, &title))
+            .map_err(store_err)
     }
 
     /// Records the user's verdict on a finished turn; `None` clears it.
@@ -268,134 +449,253 @@ impl ChatBook {
         turn_id: TurnId,
         feedback: Option<Feedback>,
     ) -> Result<(), GantryError> {
-        let mut chats = self.chats.write().unwrap_or_else(|e| e.into_inner());
-        let chat = chats
-            .get_mut(&chat_id)
-            .ok_or_else(|| GantryError::not_found(format!("chat {chat_id}")))?;
-        let turn = chat
-            .turns
-            .iter_mut()
-            .find(|t| t.id == turn_id)
-            .ok_or_else(|| GantryError::not_found(format!("turn {turn_id}")))?;
-        turn.feedback = feedback;
-        Ok(())
+        self.store
+            .write_blocking(move |conn| {
+                let mut turn = turns::get(conn, turn_id)?
+                    .filter(|t| t.chat_id == chat_id)
+                    .ok_or_else(|| {
+                        gantry_store::StoreError::Other(format!("turn {turn_id} not found"))
+                    })?;
+                turn.feedback = feedback;
+                turns::update(conn, &turn)
+            })
+            .map_err(not_found_or_store)
     }
 
-    /// Removes the chat's last turn so it can be re-run, returning its user message. Only the
-    /// last turn can be retried, and not while it runs.
-    pub fn take_last_turn(&self, chat_id: ChatId, turn_id: TurnId) -> Result<Message, GantryError> {
-        let mut chats = self.chats.write().unwrap_or_else(|e| e.into_inner());
-        let chat = chats
-            .get_mut(&chat_id)
-            .ok_or_else(|| GantryError::not_found(format!("chat {chat_id}")))?;
-        match chat.turns.last() {
-            Some(t) if t.id == turn_id && t.status != TurnStatus::Running => {}
-            Some(t) if t.id == turn_id => {
-                return Err(GantryError::invalid("the turn is still running"));
-            }
-            _ => return Err(GantryError::invalid("only the last turn can be retried")),
-        }
-        let turn = chat.turns.pop().expect("checked above");
-        Ok(turn.user)
+    /// Removes the chat's last turn so it can be re-run, returning its user message and
+    /// attachments. Only the last turn can be retried, and not while it runs.
+    pub fn take_last_turn(
+        &self,
+        chat_id: ChatId,
+        turn_id: TurnId,
+    ) -> Result<(Message, Vec<NewAttachment>), GantryError> {
+        self.store
+            .write_blocking(move |conn| {
+                let last = turns::last_for_chat(conn, chat_id)?;
+                match &last {
+                    Some(t) if t.id == turn_id && t.status != TurnStatus::Running => {}
+                    Some(t) if t.id == turn_id => {
+                        return Err(gantry_store::StoreError::Other(
+                            "invalid: the turn is still running".into(),
+                        ));
+                    }
+                    _ => {
+                        return Err(gantry_store::StoreError::Other(
+                            "invalid: only the last turn can be retried".into(),
+                        ));
+                    }
+                }
+                let user = messages::list_for_chat(conn, chat_id)?
+                    .into_iter()
+                    .find(|m| m.turn_id == Some(turn_id) && m.message.role == Role::User)
+                    .map(|m| m.message)
+                    .ok_or_else(|| {
+                        gantry_store::StoreError::Other("the turn has no user message".into())
+                    })?;
+                let attachments: Vec<NewAttachment> = messages::list_attachments(conn, user.id)?
+                    .into_iter()
+                    .map(|a| NewAttachment {
+                        name: a.name,
+                        mime: a.mime,
+                        size: a.size,
+                        blob_hash: a.blob_hash,
+                        extracted_text: a.extracted_text,
+                    })
+                    .collect();
+                for a in &attachments {
+                    blobs::release(conn, &a.blob_hash)?;
+                }
+                turns::delete(conn, turn_id)?;
+                Ok((user, attachments))
+            })
+            .map_err(|e| match e {
+                gantry_store::StoreError::Other(m) => match m.strip_prefix("invalid: ") {
+                    Some(rest) => GantryError::invalid(rest.to_owned()),
+                    None => GantryError::invalid(m),
+                },
+                other => store_err(other),
+            })
     }
 
-    pub fn delete(&self, chat_id: ChatId) -> bool {
-        self.order
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .retain(|id| *id != chat_id);
-        self.chats
-            .write()
-            .unwrap_or_else(|e| e.into_inner())
-            .remove(&chat_id)
-            .is_some()
+    /// Deletes the chat with everything under it and sweeps blobs nobody references any more.
+    pub fn delete(&self, chat_id: ChatId) -> Result<bool, GantryError> {
+        let blobs = self.blobs.clone();
+        self.store
+            .write_blocking(move |conn| {
+                let hashes: Vec<String> = messages::list_for_chat(conn, chat_id)?
+                    .into_iter()
+                    .filter(|m| m.message.role == Role::User)
+                    .flat_map(|m| {
+                        messages::list_attachments(conn, m.message.id).unwrap_or_default()
+                    })
+                    .map(|a| a.blob_hash)
+                    .collect();
+                let existed = chats::delete(conn, chat_id)?;
+                for h in hashes {
+                    if blobs::release(conn, &h)? {
+                        blobs::delete(conn, &h)?;
+                        if let Err(err) = blobs.remove(&h) {
+                            log::warn!("could not remove blob {h}: {err}");
+                        }
+                    }
+                }
+                Ok(existed)
+            })
+            .map_err(store_err)
     }
 }
 
-fn active_turn(chat: &Chat) -> Option<TurnId> {
-    chat.turns
-        .iter()
-        .find(|t| t.status == TurnStatus::Running)
-        .map(|t| t.id)
+fn not_found_or_store(e: gantry_store::StoreError) -> GantryError {
+    match e {
+        gantry_store::StoreError::Other(m) if m.contains("not found") => GantryError::not_found(m),
+        other => store_err(other),
+    }
 }
 
-fn summary(chat: &Chat, active: Option<TurnId>) -> ChatSummary {
+fn summary(chat: &ChatRecord, active: Option<TurnId>) -> ChatSummary {
     ChatSummary {
         id: chat.id,
         title: chat.title.clone(),
         pinned: chat.pinned,
         archived: chat.archived_at.is_some(),
-        project_id: None,
+        project_id: chat.project_id,
         created_at: chat.created_at,
         last_message_at: chat.last_message_at,
         active_turn: active,
     }
 }
 
-fn detail(chat: &Chat) -> ChatDetail {
-    ChatDetail {
-        id: chat.id,
-        title: chat.title.clone(),
-        pinned: chat.pinned,
-        archived: chat.archived_at.is_some(),
-        project_id: None,
-        created_at: chat.created_at,
-        last_message_at: chat.last_message_at,
-        model: chat.model.clone(),
-        mode: chat.mode,
-        guard: chat.guard,
-        effort: chat.effort,
-        active_turn: active_turn(chat),
-        turns: chat
-            .turns
-            .iter()
-            .map(|t| TurnDto {
+fn detail(chat: &ChatRecord, turns: &[TurnRecord], messages: &[MessageRecord]) -> ChatDetail {
+    let turn_dtos = turns
+        .iter()
+        .map(|t| {
+            let user = messages
+                .iter()
+                .find(|m| m.turn_id == Some(t.id) && m.message.role == Role::User)
+                .map(|m| m.message.clone())
+                .unwrap_or_else(|| Message::user_text(""));
+            let assistant = messages
+                .iter()
+                .find(|m| m.turn_id == Some(t.id) && m.message.role == Role::Assistant)
+                .map(|m| m.message.clone());
+            TurnDto {
                 id: t.id,
                 status: t.status,
                 model: t.model.clone(),
-                user: t.user.clone(),
-                assistant: t.assistant.clone(),
+                user,
+                assistant,
                 usage: t.usage,
                 stop_reason: t.stop_reason.clone(),
                 error: t.error.clone(),
                 feedback: t.feedback,
                 started_at: t.started_at,
                 ended_at: t.ended_at,
-            })
-            .collect(),
+            }
+        })
+        .collect();
+    ChatDetail {
+        id: chat.id,
+        title: chat.title.clone(),
+        pinned: chat.pinned,
+        archived: chat.archived_at.is_some(),
+        project_id: chat.project_id,
+        created_at: chat.created_at,
+        last_message_at: chat.last_message_at,
+        model: chat.model.clone(),
+        mode: chat.mode,
+        guard: chat.guard,
+        effort: chat.effort,
+        active_turn: turns
+            .iter()
+            .find(|t| t.status == TurnStatus::Running)
+            .map(|t| t.id),
+        turns: turn_dtos,
     }
 }
 
-/// User and assistant messages of every turn, in order; failed turns contribute their user
-/// message and whatever partial answer they kept.
-fn transcript(chat: &Chat) -> Vec<Message> {
-    let mut out = Vec::with_capacity(chat.turns.len() * 2);
-    for t in &chat.turns {
-        out.push(t.user.clone());
-        if let Some(a) = &t.assistant
-            && !a.parts.is_empty()
-        {
-            out.push(a.clone());
-        }
-    }
-    out
+/// Every message of the chat in order, minus assistant messages that kept nothing.
+fn transcript(messages: &[MessageRecord]) -> Vec<Message> {
+    messages
+        .iter()
+        .filter(|m| !(m.message.role == Role::Assistant && m.message.parts.is_empty()))
+        .map(|m| m.message.clone())
+        .collect()
+}
+
+/// Blob-backed parts become what a provider can consume: images inline as base64, text
+/// documents as tagged text (02 §3).
+fn inline_media(blobs: &BlobStore, messages: Vec<Message>) -> Vec<Message> {
+    messages
+        .into_iter()
+        .map(|mut m| {
+            m.parts = m
+                .parts
+                .into_iter()
+                .map(|p| match p {
+                    ContentPart::Image {
+                        source: MediaSource::Blob { hash },
+                        mime,
+                    } => match blobs.get(&hash) {
+                        Ok(bytes) => ContentPart::Image {
+                            source: MediaSource::Base64 {
+                                data: base64_encode(&bytes),
+                            },
+                            mime,
+                        },
+                        Err(err) => ContentPart::Text {
+                            text: format!("[image unavailable: {err}]"),
+                        },
+                    },
+                    ContentPart::Document {
+                        source: MediaSource::Blob { hash },
+                        name,
+                        ..
+                    } => {
+                        let body = blobs
+                            .get(&hash)
+                            .map(|b| String::from_utf8_lossy(&b).into_owned())
+                            .unwrap_or_else(|err| format!("[file unavailable: {err}]"));
+                        ContentPart::Text {
+                            text: format!("<attachment name=\"{name}\">\n{body}\n</attachment>"),
+                        }
+                    }
+                    other => other,
+                })
+                .collect();
+            m
+        })
+        .collect()
+}
+
+fn base64_encode(bytes: &[u8]) -> String {
+    use base64::Engine;
+    base64::engine::general_purpose::STANDARD.encode(bytes)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn book_with_chat() -> (ChatBook, ChatId) {
-        let book = ChatBook::new();
-        let c = book.create(
-            ModelRef::default_model(),
-            Mode::AutoEdit,
-            true,
-            ReasoningEffort::Off,
-            "sys".into(),
-            1,
-        );
-        (book, c.id)
+    pub(crate) fn temp_book() -> (tempfile::TempDir, ChatBook) {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(Store::open(dir.path().join("t.db")).unwrap());
+        let blobs = Arc::new(BlobStore::open(dir.path().join("blobs")).unwrap());
+        (dir, ChatBook::new(store, blobs))
+    }
+
+    fn book_with_chat() -> (tempfile::TempDir, ChatBook, ChatId) {
+        let (dir, book) = temp_book();
+        let c = book
+            .create(
+                ModelRef::default_model(),
+                Mode::AutoEdit,
+                true,
+                ReasoningEffort::Off,
+                "sys".into(),
+                1,
+            )
+            .unwrap();
+        (dir, book, c.id)
     }
 
     #[test]
@@ -410,18 +710,22 @@ mod tests {
 
     #[test]
     fn one_running_turn_at_a_time_and_the_transcript_grows() {
-        let (book, id) = book_with_chat();
+        let (_d, book, id) = book_with_chat();
         let input = book
-            .begin_turn(id, Message::user_text("Hello there friend"))
+            .begin_turn(id, Message::user_text("Hello there friend"), Vec::new())
             .unwrap();
         assert_eq!(input.messages.len(), 1);
         assert_eq!(input.system, "sys");
-        assert!(book.begin_turn(id, Message::user_text("again")).is_err());
-        assert_eq!(book.get(id).unwrap().title, "Hello there friend");
-        assert_eq!(book.list()[0].active_turn, Some(input.turn_id));
+        assert!(input.first_turn);
+        assert!(
+            book.begin_turn(id, Message::user_text("again"), Vec::new())
+                .is_err()
+        );
+        assert_eq!(book.get(id).unwrap().unwrap().title, "Hello there friend");
+        assert_eq!(book.list().unwrap()[0].active_turn, Some(input.turn_id));
 
         let mut assistant = Message::user_text("Hi!");
-        assistant.role = gantry_core::Role::Assistant;
+        assistant.role = Role::Assistant;
         book.finish_turn(
             id,
             input.turn_id,
@@ -433,15 +737,29 @@ mod tests {
                 error: None,
             },
         );
-        let next = book.begin_turn(id, Message::user_text("more")).unwrap();
-        assert_eq!(next.messages.len(), 3);
-        assert_eq!(book.get(id).unwrap().turns[0].status, TurnStatus::Completed);
+        book.append_system_note(id, "Permission mode is now Plan.".into())
+            .unwrap();
+        let next = book
+            .begin_turn(id, Message::user_text("more"), Vec::new())
+            .unwrap();
+        assert_eq!(next.messages.len(), 4, "user, assistant, note, user");
+        assert_eq!(next.messages[2].role, Role::System);
+        assert!(!next.first_turn);
+        let detail = book.get(id).unwrap().unwrap();
+        assert_eq!(detail.turns.len(), 2);
+        assert_eq!(detail.turns[0].status, TurnStatus::Completed);
+        assert_eq!(detail.turns[0].assistant.as_ref().unwrap().text(), "Hi!");
+        let (snapshot, notes) = book.system_prompt(id).unwrap().unwrap();
+        assert_eq!(snapshot, "sys");
+        assert_eq!(notes, vec!["Permission mode is now Plan.".to_owned()]);
     }
 
     #[test]
     fn only_the_last_finished_turn_can_be_retried() {
-        let (book, id) = book_with_chat();
-        let first = book.begin_turn(id, Message::user_text("one")).unwrap();
+        let (_d, book, id) = book_with_chat();
+        let first = book
+            .begin_turn(id, Message::user_text("one"), Vec::new())
+            .unwrap();
         assert!(book.take_last_turn(id, first.turn_id).is_err(), "running");
         book.finish_turn(
             id,
@@ -456,10 +774,81 @@ mod tests {
         );
         book.rate_turn(id, first.turn_id, Some(Feedback::Bad))
             .unwrap();
-        assert_eq!(book.get(id).unwrap().turns[0].feedback, Some(Feedback::Bad));
-        let user = book.take_last_turn(id, first.turn_id).unwrap();
+        assert_eq!(
+            book.get(id).unwrap().unwrap().turns[0].feedback,
+            Some(Feedback::Bad)
+        );
+        let (user, attachments) = book.take_last_turn(id, first.turn_id).unwrap();
         assert_eq!(user.text(), "one");
-        assert!(book.get(id).unwrap().turns.is_empty());
+        assert!(attachments.is_empty());
+        assert!(book.get(id).unwrap().unwrap().turns.is_empty());
         assert!(book.take_last_turn(id, first.turn_id).is_err(), "gone");
+    }
+
+    #[test]
+    fn a_user_rename_survives_the_first_message_and_delete_cascades() {
+        let (_d, book, id) = book_with_chat();
+        book.update(
+            id,
+            ChatPatch {
+                title: Some("Mine".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        book.begin_turn(id, Message::user_text("hello world"), Vec::new())
+            .unwrap();
+        assert_eq!(book.get(id).unwrap().unwrap().title, "Mine");
+        assert!(!book.set_auto_title(id, "Generated".into()).unwrap());
+        assert!(book.delete(id).unwrap());
+        assert!(!book.delete(id).unwrap());
+        assert!(book.get(id).unwrap().is_none());
+    }
+
+    #[test]
+    fn attachments_are_inlined_for_the_provider_and_kept_as_parts() {
+        let (_d, book, id) = book_with_chat();
+        let hash = book.blobs().put(b"fn main() {}").unwrap();
+        let mut user = Message::user_text("Review this");
+        user.parts.push(ContentPart::Document {
+            source: MediaSource::Blob { hash: hash.clone() },
+            mime: "text/x-rust".into(),
+            name: "main.rs".into(),
+        });
+        let input = book
+            .begin_turn(
+                id,
+                user,
+                vec![NewAttachment {
+                    name: "main.rs".into(),
+                    mime: "text/x-rust".into(),
+                    size: 12,
+                    blob_hash: hash,
+                    extracted_text: Some("fn main() {}".into()),
+                }],
+            )
+            .unwrap();
+        let sent = &input.messages[0];
+        assert!(
+            matches!(&sent.parts[1], ContentPart::Text { text } if text.contains("<attachment name=\"main.rs\">\nfn main() {}"))
+        );
+        let stored = &book.get(id).unwrap().unwrap().turns[0].user;
+        assert!(
+            matches!(&stored.parts[1], ContentPart::Document { name, .. } if name == "main.rs")
+        );
+        book.finish_turn(
+            id,
+            input.turn_id,
+            TurnOutcome {
+                status: TurnStatus::Completed,
+                assistant: None,
+                usage: None,
+                stop_reason: Some(StopReason::EndTurn),
+                error: None,
+            },
+        );
+        let (_, attachments) = book.take_last_turn(id, input.turn_id).unwrap();
+        assert_eq!(attachments.len(), 1);
+        assert_eq!(attachments[0].name, "main.rs");
     }
 }

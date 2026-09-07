@@ -7,19 +7,22 @@ use std::{
 
 use async_trait::async_trait;
 use futures_util::StreamExt;
-use gantry_agent::{ChatBook, EventSink, PromptContext, ProviderSource, TurnManager};
+use gantry_agent::{ChatBook, ChatNotifier, EventSink, PromptContext, ProviderSource, TurnManager};
 use gantry_core::{
-    AgentEventBatch, AgentEventKind, ContentPart, ProviderErrorKind, ProviderId, ProviderKind,
-    Settings, StopReason, TurnStatus, Usage,
+    AgentEventBatch, AgentEventKind, ChatId, ContentPart, ProviderErrorKind, ProviderId,
+    ProviderKind, Settings, StopReason, TurnStatus, Usage,
 };
 use gantry_providers::{
     ChatRequest, ChatStream, KeyInfo, ModelInfo, Provider, ProviderError, StreamEvent,
 };
+use gantry_store::{BlobStore, Store};
 
 struct Scripted {
     id: ProviderId,
     events: Vec<Result<StreamEvent, ProviderError>>,
     delay: Duration,
+    /// Requests seen, newest last (the title generator sends a second one).
+    requests: Mutex<Vec<ChatRequest>>,
 }
 
 #[async_trait]
@@ -39,9 +42,23 @@ impl Provider for Scripted {
     async fn check_key(&self) -> Result<KeyInfo, ProviderError> {
         Ok(KeyInfo::default())
     }
-    async fn stream(&self, _req: ChatRequest) -> Result<ChatStream, ProviderError> {
+    async fn stream(&self, req: ChatRequest) -> Result<ChatStream, ProviderError> {
+        let title_request = req.system.starts_with("You name conversations");
+        self.requests.lock().unwrap().push(req);
         let delay = self.delay;
-        let events = self.events.clone();
+        let events = if title_request {
+            vec![
+                Ok(StreamEvent::TextDelta {
+                    index: 0,
+                    text: "\"A generated title.\"".into(),
+                }),
+                Ok(StreamEvent::MessageEnd {
+                    stop_reason: StopReason::EndTurn,
+                }),
+            ]
+        } else {
+            self.events.clone()
+        };
         let s = futures_util::stream::iter(events).then(move |e| async move {
             tokio::time::sleep(delay).await;
             e
@@ -93,19 +110,59 @@ impl Collect {
     }
 }
 
-fn manager(events: Vec<Result<StreamEvent, ProviderError>>, delay: Duration) -> Arc<TurnManager> {
+#[derive(Default)]
+struct Notes(Mutex<Vec<ChatId>>);
+
+impl ChatNotifier for Notes {
+    fn chats_changed(&self, ids: Vec<ChatId>) {
+        self.0.lock().unwrap().extend(ids);
+    }
+}
+
+fn book() -> (tempfile::TempDir, Arc<ChatBook>) {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Arc::new(Store::open(dir.path().join("t.db")).unwrap());
+    let blobs = Arc::new(BlobStore::open(dir.path().join("blobs")).unwrap());
+    (dir, Arc::new(ChatBook::new(store, blobs)))
+}
+
+struct Harness {
+    _dir: tempfile::TempDir,
+    m: Arc<TurnManager>,
+    provider: Arc<Scripted>,
+    notes: Arc<Notes>,
+}
+
+impl std::ops::Deref for Harness {
+    type Target = Arc<TurnManager>;
+    fn deref(&self) -> &Arc<TurnManager> {
+        &self.m
+    }
+}
+
+fn manager(events: Vec<Result<StreamEvent, ProviderError>>, delay: Duration) -> Harness {
     let provider = Arc::new(Scripted {
         id: ProviderId::openrouter(),
         events,
         delay,
+        requests: Mutex::new(Vec::new()),
     });
-    TurnManager::new(
-        Arc::new(ChatBook::new()),
-        Arc::new(Source(provider)),
+    let (dir, chats) = book();
+    let m = TurnManager::new(
+        chats,
+        Arc::new(Source(provider.clone())),
         Arc::new(RwLock::new(Settings::default())),
         PromptContext::default(),
         tokio::runtime::Handle::current(),
-    )
+    );
+    let notes = Arc::new(Notes::default());
+    m.set_notifier(notes.clone());
+    Harness {
+        _dir: dir,
+        m,
+        provider,
+        notes,
+    }
 }
 
 /// Text lands in block 1; block 0 is where a reasoning model puts its thinking.
@@ -150,15 +207,46 @@ async fn a_text_turn_completes_and_is_recorded() {
         ],
         Duration::ZERO,
     );
-    let chat = m.create_chat(None);
+    let chat = m.create_chat(None).unwrap();
     let sink = Arc::new(Collect::default());
-    let turn = m.start(chat.id, "Hi there".into(), sink.clone()).unwrap();
+    let turn = m
+        .start(chat.id, "Hi there".into(), Vec::new(), sink.clone())
+        .unwrap();
     wait_for(|| sink.completed().is_some()).await;
 
     assert_eq!(sink.completed(), Some(TurnStatus::Completed));
     assert_eq!(sink.text(), "Hello");
-    let detail = m.chats().get(chat.id).unwrap();
-    assert_eq!(detail.title, "Hi there");
+    // The first exchange names the chat with a second, tiny request.
+    wait_for(|| m.provider.requests.lock().unwrap().len() == 2).await;
+    wait_for(|| m.notes.0.lock().unwrap().len() >= 2).await;
+    let detail = m.chats().get(chat.id).unwrap().unwrap();
+    assert_eq!(detail.title, "A generated title");
+    let title_req = m.provider.requests.lock().unwrap()[1].clone();
+    assert_eq!(title_req.model, "deepseek/deepseek-v4-flash");
+    assert!(title_req.messages[0].text().contains("Hi there"));
+    let persisted = m
+        .chats()
+        .store()
+        .read(|c| gantry_store::repos::events::list_for_turn(c, turn))
+        .unwrap();
+    let kinds: Vec<String> = persisted
+        .iter()
+        .map(|e| {
+            serde_json::to_value(&e.event).unwrap()["type"]
+                .as_str()
+                .unwrap()
+                .to_owned()
+        })
+        .collect();
+    assert_eq!(
+        kinds,
+        [
+            "turn.started",
+            "message.started",
+            "message.completed",
+            "turn.completed"
+        ]
+    );
     let t = &detail.turns[0];
     assert_eq!(t.id, turn);
     assert_eq!(t.status, TurnStatus::Completed);
@@ -185,14 +273,16 @@ async fn cancel_keeps_the_partial_text() {
         })])
         .collect();
     let m = manager(events, Duration::from_millis(20));
-    let chat = m.create_chat(None);
+    let chat = m.create_chat(None).unwrap();
     let sink = Arc::new(Collect::default());
-    let turn = m.start(chat.id, "go".into(), sink.clone()).unwrap();
+    let turn = m
+        .start(chat.id, "go".into(), Vec::new(), sink.clone())
+        .unwrap();
     wait_for(|| !sink.text().is_empty()).await;
     assert!(m.cancel(turn));
     wait_for(|| sink.completed().is_some()).await;
     assert_eq!(sink.completed(), Some(TurnStatus::Cancelled));
-    let detail = m.chats().get(chat.id).unwrap();
+    let detail = m.chats().get(chat.id).unwrap().unwrap();
     assert_eq!(detail.turns[0].status, TurnStatus::Cancelled);
     assert_eq!(detail.turns[0].stop_reason, Some(StopReason::Cancelled));
     let kept = detail.turns[0].assistant.as_ref().unwrap().text();
@@ -212,9 +302,10 @@ async fn a_mid_stream_error_fails_the_turn_and_keeps_the_text() {
         ],
         Duration::ZERO,
     );
-    let chat = m.create_chat(None);
+    let chat = m.create_chat(None).unwrap();
     let sink = Arc::new(Collect::default());
-    m.start(chat.id, "go".into(), sink.clone()).unwrap();
+    m.start(chat.id, "go".into(), Vec::new(), sink.clone())
+        .unwrap();
     wait_for(|| sink.completed().is_some()).await;
     assert_eq!(sink.completed(), Some(TurnStatus::Failed));
     let err = sink.kinds().into_iter().find_map(|k| match k {
@@ -224,7 +315,7 @@ async fn a_mid_stream_error_fails_the_turn_and_keeps_the_text() {
         _ => None,
     });
     assert_eq!(err, Some(("upstream reset".to_owned(), true)));
-    let detail = m.chats().get(chat.id).unwrap();
+    let detail = m.chats().get(chat.id).unwrap().unwrap();
     assert_eq!(detail.turns[0].error.as_deref(), Some("upstream reset"));
     assert_eq!(detail.turns[0].assistant.as_ref().unwrap().text(), "Part");
 }
@@ -238,9 +329,11 @@ async fn a_late_subscriber_gets_a_snapshot_then_live_events() {
         })])
         .collect();
     let m = manager(events, Duration::from_millis(15));
-    let chat = m.create_chat(None);
+    let chat = m.create_chat(None).unwrap();
     let first = Arc::new(Collect::default());
-    let turn = m.start(chat.id, "go".into(), first.clone()).unwrap();
+    let turn = m
+        .start(chat.id, "go".into(), Vec::new(), first.clone())
+        .unwrap();
     wait_for(|| first.text().len() > 10).await;
 
     let late = Arc::new(Collect::default());
@@ -286,19 +379,25 @@ async fn without_a_provider_the_turn_fails_cleanly() {
             None
         }
     }
+    let (_dir, chats) = book();
     let m = TurnManager::new(
-        Arc::new(ChatBook::new()),
+        chats,
         Arc::new(NoSource),
         Arc::new(RwLock::new(Settings::default())),
         PromptContext::default(),
         tokio::runtime::Handle::current(),
     );
-    let chat = m.create_chat(None);
+    let chat = m.create_chat(None).unwrap();
     let sink = Arc::new(Collect::default());
-    m.start(chat.id, "go".into(), sink.clone()).unwrap();
+    m.start(chat.id, "go".into(), Vec::new(), sink.clone())
+        .unwrap();
     wait_for(|| sink.completed().is_some()).await;
     assert_eq!(sink.completed(), Some(TurnStatus::Failed));
-    assert!(m.chats().get(chat.id).unwrap().turns[0].assistant.is_none());
+    assert!(
+        m.chats().get(chat.id).unwrap().unwrap().turns[0]
+            .assistant
+            .is_none()
+    );
 }
 
 /// Tauri commands run on the UI thread, outside every runtime; starting a turn there must work.
@@ -313,10 +412,10 @@ async fn a_turn_can_be_started_from_a_plain_thread() {
         ],
         Duration::ZERO,
     );
-    let chat = m.create_chat(None);
+    let chat = m.create_chat(None).unwrap();
     let sink = Arc::new(Collect::default());
     let (m2, sink2) = (m.clone(), sink.clone());
-    std::thread::spawn(move || m2.start(chat.id, "go".into(), sink2).unwrap())
+    std::thread::spawn(move || m2.start(chat.id, "go".into(), Vec::new(), sink2).unwrap())
         .join()
         .unwrap();
     wait_for(|| sink.completed().is_some()).await;
