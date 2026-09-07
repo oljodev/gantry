@@ -3,9 +3,11 @@
 
 #![forbid(unsafe_code)]
 
+mod blob_store;
 mod db;
 pub mod repos;
 
+pub use blob_store::BlobStore;
 pub use db::{Store, StoreError};
 pub use rusqlite::Connection;
 

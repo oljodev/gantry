@@ -4,7 +4,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    ids::{ChatId, ProjectId, TurnId},
+    ids::{ChatId, MessageId, ProjectId, TurnId},
     message::{Message, StopReason, Usage},
     settings::{Mode, ModelRef, ReasoningEffort},
 };
@@ -16,6 +16,8 @@ pub enum TurnStatus {
     Completed,
     Cancelled,
     Failed,
+    /// The app was closed while the turn ran (found at the next start).
+    Interrupted,
 }
 
 impl TurnStatus {
@@ -86,4 +88,25 @@ pub struct ChatDetail {
     pub effort: ReasoningEffort,
     pub active_turn: Option<TurnId>,
     pub turns: Vec<TurnDto>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "snake_case")]
+pub enum SearchHitKind {
+    Chat,
+    Message,
+}
+
+/// One row of the palette's search (docs/plan/06 §3): a chat by title or a message by text.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+pub struct SearchHit {
+    pub kind: SearchHitKind,
+    pub chat_id: ChatId,
+    pub chat_title: String,
+    pub message_id: Option<MessageId>,
+    pub turn_id: Option<TurnId>,
+    /// The matched title, or the matching stretch of the message with `…` around it.
+    pub snippet: String,
+    #[specta(type = specta_typescript::Number)]
+    pub ts: i64,
 }

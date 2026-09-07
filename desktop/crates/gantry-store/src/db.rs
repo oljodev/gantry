@@ -12,7 +12,10 @@ use std::{
 use rusqlite::Connection;
 use rusqlite_migration::{M, Migrations, SchemaVersion};
 
-const MIGRATIONS: &[M<'static>] = &[M::up(include_str!("../migrations/0001_init.sql"))];
+const MIGRATIONS: &[M<'static>] = &[
+    M::up(include_str!("../migrations/0001_init.sql")),
+    M::up(include_str!("../migrations/0002_chats.sql")),
+];
 const READERS: usize = 3;
 
 #[derive(Debug, thiserror::Error)]
@@ -108,6 +111,57 @@ impl Store {
             }))
             .map_err(|_| StoreError::WriterGone)?;
         rx.await.map_err(|_| StoreError::WriterGone)?
+    }
+
+    /// Queues `f` on the writer thread and returns at once. Jobs run in the order they were
+    /// queued, so a detached write lands before any later write; failures are logged.
+    pub fn write_detached<F>(&self, f: F)
+    where
+        F: FnOnce(&mut Connection) -> Result<()> + Send + 'static,
+    {
+        let sent = self.writer.send(Box::new(move |conn| {
+            if let Err(err) = f(conn) {
+                log::error!("detached write failed: {err}");
+            }
+        }));
+        if sent.is_err() {
+            log::error!("detached write dropped: the writer has stopped");
+        }
+    }
+
+    /// Copies the database to `dest` with `VACUUM INTO`, consistent even while the app runs
+    /// (docs/plan/11 §2, Data & privacy). Credentials are excluded by clearing them in the copy.
+    pub fn backup_to(&self, dest: &Path) -> Result<()> {
+        let dest = dest.to_path_buf();
+        if dest.exists() {
+            std::fs::remove_file(&dest)?;
+        }
+        self.write_blocking(move |conn| {
+            conn.execute("VACUUM INTO ?1", [dest.to_string_lossy().as_ref()])?;
+            let copy = Connection::open(&dest)?;
+            copy.execute("UPDATE providers SET credential_id = NULL", [])?;
+            copy.execute("DELETE FROM credentials", [])?;
+            Ok(())
+        })
+    }
+
+    /// `PRAGMA integrity_check`; `Ok(())` when SQLite answers `ok`.
+    pub fn integrity_check(&self) -> Result<()> {
+        let answer: String =
+            self.read(|c| Ok(c.query_row("PRAGMA integrity_check", [], |r| r.get(0))?))?;
+        if answer == "ok" {
+            Ok(())
+        } else {
+            Err(StoreError::Other(answer))
+        }
+    }
+
+    /// Rebuilds the file; never automatic (06 §6).
+    pub fn vacuum(&self) -> Result<()> {
+        self.write_blocking(|conn| {
+            conn.execute("VACUUM", [])?;
+            Ok(())
+        })
     }
 
     /// Runs `f` on the writer thread and blocks the caller until it is done. For startup and
