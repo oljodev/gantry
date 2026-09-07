@@ -13,3 +13,10 @@ pub struct ProvidersChanged;
 
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type, tauri_specta::Event)]
 pub struct SettingsChanged;
+
+/// A chat's count of decisions waiting for the user changed (04 §10: sidebar badges).
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type, tauri_specta::Event)]
+pub struct InteractionsChanged {
+    pub chat_id: ChatId,
+    pub pending: u32,
+}

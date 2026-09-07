@@ -10,7 +10,7 @@ export interface ModelRef {
   model: string;
 }
 export type Mode = 'manual' | 'auto_edit' | 'plan' | 'auto';
-export type Tier = 'read' | 'write' | 'external_write' | 'execute' | 'destructive' | 'app';
+export type Tier = 'read' | 'write' | 'write_external' | 'execute' | 'destructive' | 'app';
 
 export interface Project {
   id: string;
@@ -68,10 +68,18 @@ export type ActivityItem =
       kind: 'connector';
       id: string;
       connector: string;
+      /** Display name when the connector is not in the fixture catalog (runtime tools). */
+      connectorName?: string;
       tool: string;
       summary: string;
-      status: 'done' | 'running' | 'failed' | 'waiting';
+      status: 'done' | 'running' | 'failed' | 'waiting' | 'denied' | 'cancelled' | 'proposed';
       progress?: number;
+      tier?: Tier;
+      /** Raw input and output for the detail pane; absent on fixture rows. */
+      args?: unknown;
+      result?: unknown;
+      isError?: boolean;
+      durationMs?: number;
     }
   | { kind: 'guard'; id: string; ok: boolean; reason?: string }
   | { kind: 'notice'; id: string; text: string }
@@ -81,11 +89,14 @@ export type ActivityItem =
 export interface Permission {
   id: string;
   connector: string;
+  connectorName?: string;
   tool: string;
   tier: Tier;
   title: string;
   args: Record<string, string>;
   note?: string;
+  /** The assistant's last sentence before the call (04 §7). */
+  why?: string;
   scopes: { id: string; label: string }[];
 }
 

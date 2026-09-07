@@ -45,11 +45,15 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::turns::cancel_turn,
             commands::turns::subscribe_turn,
             commands::turns::list_active_turns,
+            commands::interactions::list_pending_interactions,
+            commands::interactions::resolve_interaction,
+            commands::interactions::get_tool_call,
         ])
         .events(tauri_specta::collect_events![
             events::ChatsChanged,
             events::ProvidersChanged,
             events::SettingsChanged,
+            events::InteractionsChanged,
         ])
 }
 

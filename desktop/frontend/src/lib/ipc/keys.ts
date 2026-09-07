@@ -10,4 +10,6 @@ export const keys = {
   chat: (chatId: string) => ['chat', chatId] as const,
   search: (query: string) => ['search', query] as const,
   systemPrompt: (chatId: string) => ['system_prompt', chatId] as const,
+  pendingInteractions: ['pending_interactions'] as const,
+  toolCall: (callId: string) => ['tool_call', callId] as const,
 };

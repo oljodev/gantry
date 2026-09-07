@@ -64,11 +64,21 @@ export const commands = {
 	/**  Reattaches to a running turn: one snapshot, then live batches (05 §3). */
 	subscribeTurn: (turnId: TurnId, sinceSeq: number, onEvent: Channel<AgentEventBatch>) => typedError<null, ErrorDto>(__TAURI_INVOKE("subscribe_turn", { turnId, sinceSeq, onEvent })),
 	listActiveTurns: () => typedError<ActiveTurn[], ErrorDto>(__TAURI_INVOKE("list_active_turns")),
+	/**
+	 *  Interactions waiting for the user, oldest first, for one chat or every chat. Cards render
+	 *  from the run store while a turn streams; this fills a chat view that mounts later.
+	 */
+	listPendingInteractions: (chatId: string | null) => typedError<Interaction[], ErrorDto>(__TAURI_INVOKE("list_pending_interactions", { chatId })),
+	/**  Answers a pending decision; the waiting turn continues. */
+	resolveInteraction: (interactionId: InteractionId, resolution: InteractionResolution) => typedError<Interaction, ErrorDto>(__TAURI_INVOKE("resolve_interaction", { interactionId, resolution })),
+	/**  One tool call with its full result, for the detail pane of a finished turn. */
+	getToolCall: (callId: CallId) => typedError<ToolCallDto, ErrorDto>(__TAURI_INVOKE("get_tool_call", { callId })),
 };
 
 /** Events */
 export const events = {
 	chatsChanged: makeEvent<ChatsChanged>("chats-changed"),
+	interactionsChanged: makeEvent<InteractionsChanged>("interactions-changed"),
 	providersChanged: makeEvent<ProvidersChanged>("providers-changed"),
 	settingsChanged: makeEvent<SettingsChanged>("settings-changed"),
 };
@@ -84,6 +94,8 @@ export type AdvancedSettings = {
 	max_output_tokens?: number,
 	/**  Show the assembled system prompt and log raw provider requests (never the key). */
 	developer_mode?: boolean,
+	/**  How many tool rounds one reply may take before Gantry stops it (01 §3 step 6). */
+	max_tool_rounds?: number,
 };
 
 export type AgentEvent = {
@@ -101,9 +113,26 @@ export type AgentEventBatch = {
 	events: AgentEvent[],
 };
 
-export type AgentEventKind = { type: "turn.started"; chat_id: ChatId; mode: Mode; guard: boolean; model: ModelRef } | { type: "message.started"; message_id: MessageId; role: Role } | { type: "text.delta"; message_id: MessageId; block: number; text: string } | { type: "thinking.delta"; message_id: MessageId; block: number; text: string } | 
+export type AgentEventKind = { type: "turn.started"; chat_id: ChatId; mode: Mode; guard: boolean; model: ModelRef } | 
+/**  One per model round: the first assistant message and every one after a tool round. */
+{ type: "message.started"; message_id: MessageId; role: Role } | { type: "text.delta"; message_id: MessageId; block: number; text: string } | { type: "thinking.delta"; message_id: MessageId; block: number; text: string } | 
 /**  A block is complete; its final part is authoritative. */
-{ type: "block.done"; message_id: MessageId; block: number; part: ContentPart } | { type: "provider.notice"; kind: string; detail: string } | { type: "message.completed"; message_id: MessageId; stop_reason: StopReason; usage: Usage | null } | { type: "turn.completed"; status: TurnStatus; usage: Usage | null; duration_ms: number } | { type: "error"; code: string; message: string; retryable: boolean } | 
+{ type: "block.done"; message_id: MessageId; block: number; part: ContentPart } | 
+/**  The model started a tool call; arguments may follow as deltas. */
+{ type: "tool_call.started"; call_id: CallId; message_id: MessageId; 
+/**  Namespace prefix: a connector id, or `gantry` for runtime tools. */
+connector: string; connector_name: string; tool: string; model_tool_name: string } | { type: "tool_call.args_delta"; call_id: CallId; fragment: string } | 
+/**  Arguments are complete and the call is classified. */
+{ type: "tool_call.ready"; call_id: CallId; args: unknown; tier: RiskTier; display: ToolDisplay } | 
+/**  The turn waits for the user (04 §10). */
+{ type: "decision.requested"; interaction: Interaction } | { type: "decision.resolved"; interaction_id: InteractionId; resolution: InteractionResolution; source: DecisionSource } | 
+/**  The call was allowed and is running; `source` says who allowed it. */
+{ type: "tool_call.executing"; call_id: CallId; source: DecisionSource } | 
+/**
+ *  The call ended: with a result, an error result, a denial or a cancellation. The result
+ *  content is what the model receives (capped at the transcript limit).
+ */
+{ type: "tool_call.completed"; call_id: CallId; status: ToolCallStatus; is_error: boolean; duration_ms: number; result_preview: string; result: ResultPart[] } | { type: "provider.notice"; kind: string; detail: string } | { type: "message.completed"; message_id: MessageId; stop_reason: StopReason; usage: Usage | null } | { type: "turn.completed"; status: TurnStatus; usage: Usage | null; duration_ms: number; tool_calls: number } | { type: "error"; code: string; message: string; retryable: boolean } | 
 /**  The whole current state of an active turn; first on `subscribe_turn`. */
 { type: "turn.snapshot"; snapshot: TurnSnapshot };
 
@@ -229,6 +258,9 @@ export type DataInfo = {
 	chat_count: number,
 };
 
+/**  Who or what allowed or refused a call (04 §11). */
+export type DecisionSource = "mode" | "grant" | "user_once" | "user_chat_grant" | "judge" | "guardrail" | "scope" | "plan_mode";
+
 export type Density = "comfortable" | "compact";
 
 /**
@@ -241,6 +273,44 @@ export type ExportFormat = "markdown" | "json";
 
 /**  The user's verdict on an assistant reply. */
 export type Feedback = "good" | "bad";
+
+export type Interaction = {
+	id: InteractionId,
+	chat_id: ChatId,
+	turn_id: TurnId,
+	kind: InteractionKind,
+	payload: InteractionPayload,
+	status: InteractionStatus,
+	resolution: InteractionResolution | null,
+	created_at: number,
+	resolved_at: number | null,
+};
+
+/**  A decision the turn waits on: a permission prompt, an access request, a proposal. */
+export type InteractionId = string;
+
+export type InteractionKind = "permission" | "access_request" | "connector_suggestion" | "elicitation" | "auth_required" | "skill_proposal" | "memory_proposal";
+
+/**  The kind-specific body of an interaction. */
+export type InteractionPayload = { kind: "permission"; request: PermissionRequest };
+
+/**
+ *  How an interaction ended. Grants ("allow for this chat") arrive with M7 as another
+ *  permission decision.
+ */
+export type InteractionResolution = { kind: "permission"; decision: PermissionDecision; 
+/**  Shown to the model with a denial. */
+message: string | null } | 
+/**  The turn was cancelled or the app restarted while the card waited. */
+{ kind: "cancelled" };
+
+export type InteractionStatus = "pending" | "resolved" | "cancelled" | "expired";
+
+/**  A chat's count of decisions waiting for the user changed (04 §10: sidebar badges). */
+export type InteractionsChanged = {
+	chat_id: ChatId,
+	pending: number,
+};
 
 /**  What a key check returns (OpenRouter's `GET /key`; other providers report less). */
 export type KeyInfo = {
@@ -310,6 +380,24 @@ export type ModelInfo = {
 export type ModelRef = {
 	provider: ProviderId,
 	model: string,
+};
+
+export type PermissionDecision = "allow_once" | "deny";
+
+/**  What a permission card shows (04 §7). */
+export type PermissionRequest = {
+	call_id: CallId,
+	connector: string,
+	connector_name: string,
+	tool: string,
+	model_tool_name: string,
+	tier: RiskTier,
+	args: unknown,
+	display: ToolDisplay,
+	/**  The assistant's last sentence before the call, as "why". */
+	why: string | null,
+	/**  The tool's description, shown on hover. */
+	description: string,
 };
 
 /**  US dollars per million tokens. */
@@ -383,6 +471,21 @@ export type ResultPart = { kind: "text"; text: string } | { kind: "json"; json: 
 /**  A large in-memory object parked by a native connector (01 §7). */
 { kind: "resource"; handle: string; summary: string };
 
+/**  What a tool can do to the world (docs/plan/04 §2). */
+export type RiskTier = 
+/**  Observes; no side effects. */
+"read" | 
+/**  Mutates local state inside the chat's roots in a way Gantry can revert. */
+"write" | 
+/**  Mutates state outside the machine or the roots; not revertible by Gantry. */
+"write_external" | 
+/**  Runs code with unknown blast radius. */
+"execute" | 
+/**  Irreversible deletion or force operations. */
+"destructive" | 
+/**  Acts only on Gantry's own state; never prompts, always logged. */
+"app";
+
 /**  Who wrote a message. */
 export type Role = "user" | "assistant" | "tool" | "system";
 
@@ -434,14 +537,69 @@ export type SystemPromptView = {
 
 export type Theme = "system" | "light" | "dark";
 
-/**  One user message and the assistant's reply to it. */
+/**
+ *  A tool call as the activity feed and the detail pane see it: the `tool_calls` row plus the
+ *  result kept in the transcript.
+ */
+export type ToolCallDto = {
+	id: CallId,
+	chat_id: ChatId,
+	turn_id: TurnId,
+	/**  The assistant message that requested the call. */
+	message_id: MessageId,
+	/**  The namespace prefix the model used: a connector id, or `gantry` for runtime tools. */
+	connector: string,
+	connector_name: string,
+	/**  Un-namespaced tool name. */
+	tool: string,
+	/**  The name the model used, e.g. `gantry__clock`. */
+	model_tool_name: string,
+	args: unknown,
+	tier: RiskTier,
+	status: ToolCallStatus,
+	decision_source: DecisionSource | null,
+	display: ToolDisplay,
+	/**  The first part of the result as text, for the row and the projection. */
+	result_preview: string | null,
+	/**
+	 *  The full result when it is known: from the transcript for a finished turn, from the
+	 *  completion event while the turn runs.
+	 */
+	result: ResultPart[] | null,
+	is_error: boolean,
+	started_at: number | null,
+	ended_at: number | null,
+	duration_ms: number | null,
+};
+
+/**  Where a tool call is in its life (06 §3, `tool_calls.status`). */
+export type ToolCallStatus = 
+/**  The model asked for it; arguments may still be streaming. */
+"proposed" | "awaiting_decision" | "denied" | "running" | "completed" | "failed" | "cancelled";
+
+export type ToolDisplay = {
+	kind: ToolDisplayKind,
+	/**  A one-line argument summary in the row, e.g. `path=src/app.rs` or `$ npm test`. */
+	summary: string,
+};
+
+/**  How the activity row renders a call (05 §2, `tool_call.ready.display`). */
+export type ToolDisplayKind = "edit" | "command" | "connector" | "read";
+
+/**  One user message and everything the assistant did in reply. */
 export type TurnDto = {
 	id: TurnId,
 	status: TurnStatus,
 	model: ModelRef,
 	user: Message,
-	/**  Absent while the turn is running; the live parts come through the channel. */
-	assistant: Message | null,
+	/**
+	 *  The assistant and tool messages of the turn in order: one assistant message per model
+	 *  round, a tool message after each round that called tools. Empty while the turn runs;
+	 *  the live messages come through the channel.
+	 */
+	messages: Message[],
+	/**  Every tool call of the turn, in the order the model made them. */
+	tool_calls: ToolCallDto[],
 	usage: Usage | null,
 	stop_reason: StopReason | null,
 	error: string | null,
@@ -453,13 +611,17 @@ export type TurnDto = {
 /**  One unit of agent work: a user message and everything until the assistant stops. */
 export type TurnId = string;
 
-/**  What a late subscriber needs to draw an in-flight turn. */
+/**
+ *  What a late subscriber needs to draw an in-flight turn: every message of the turn so far
+ *  (the last one may still be streaming), the tool calls and the pending decisions.
+ */
 export type TurnSnapshot = {
 	chat_id: ChatId,
 	status: TurnStatus,
-	message_id: MessageId | null,
-	/**  The assistant parts accumulated so far, in block order. */
-	parts: ContentPart[],
+	/**  Assistant and tool messages of the turn in order; parts in block order. */
+	messages: Message[],
+	tool_calls: ToolCallDto[],
+	pending: Interaction[],
 	usage: Usage | null,
 	started_at: number,
 	/**  The last `seq` this snapshot covers; live events continue from `seq + 1`. */

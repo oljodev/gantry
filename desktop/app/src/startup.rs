@@ -8,7 +8,8 @@ use std::{
     time::Instant,
 };
 
-use gantry_agent::{ChatBook, ChatNotifier, PromptContext, TurnManager};
+use gantry_agent::{ChatBook, ChatNotifier, PromptContext, RuntimeTools, TurnManager};
+use gantry_connectors::ConnectorRegistry;
 use gantry_core::{ChatId, ProviderId, Settings};
 use gantry_providers::{ProviderRegistry, openai_chat::http_client};
 use gantry_secrets::SecretVault;
@@ -17,14 +18,22 @@ use tauri::{App, AppHandle, Manager, plugin::TauriPlugin};
 use tauri_plugin_log::{Target, TargetKind};
 use tauri_specta::Event;
 
-use crate::{AppState, events::ChatsChanged};
+use crate::{
+    AppState,
+    events::{ChatsChanged, InteractionsChanged},
+};
 
-/// Turns that end and titles that arrive reach the frontend as `chats:changed`.
+/// Turns that end and titles that arrive reach the frontend as `chats:changed`; pending
+/// decisions as `interactions:changed`.
 struct Notifier(AppHandle);
 
 impl ChatNotifier for Notifier {
     fn chats_changed(&self, chat_ids: Vec<ChatId>) {
         let _ = ChatsChanged { chat_ids }.emit(&self.0);
+    }
+
+    fn interactions_changed(&self, chat_id: ChatId, pending: u32) {
+        let _ = InteractionsChanged { chat_id, pending }.emit(&self.0);
     }
 }
 
@@ -49,6 +58,7 @@ pub fn log_plugin() -> TauriPlugin<tauri::Wry> {
         "gantry_app_lib",
         "gantry_core",
         "gantry_agent",
+        "gantry_connectors",
         "gantry_providers",
         "gantry_secrets",
         "gantry_store",
@@ -84,11 +94,18 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn Error>> {
 
     let store = Arc::new(Store::open(data_dir.join("gantry.db"))?);
     let blobs = Arc::new(BlobStore::open(data_dir.join("blobs"))?);
-    // Crash recovery (09 M2): a turn left `running` by the previous process is over.
-    let interrupted = store
-        .write_blocking(|conn| repos::turns::interrupt_running(conn, gantry_core::now_ms()))?;
-    if interrupted > 0 {
-        log::warn!("{interrupted} turn(s) were interrupted by the previous shutdown");
+    // Crash recovery (01 §3, 09 M2): whatever the previous process left running is closed and
+    // every transcript is made replayable again.
+    let recovered =
+        store.write_blocking(|conn| repos::recovery::run(conn, gantry_core::now_ms()))?;
+    if !recovered.is_empty() {
+        log::warn!(
+            "recovered from the previous shutdown: {} turn(s) interrupted, {} tool call(s) cancelled, {} prompt(s) cancelled, {} synthetic result(s) written",
+            recovered.turns,
+            recovered.tool_calls,
+            recovered.interactions,
+            recovered.results
+        );
     }
 
     // The OS credential store is touched from a plain thread: its clients bring their own
@@ -121,9 +138,14 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn Error>> {
     ));
     providers.rebuild()?;
 
+    // Runtime tools are always registered; installed connectors join the registry with M9.
+    let connectors = Arc::new(ConnectorRegistry::new());
+    connectors.register(Arc::new(RuntimeTools::new()));
+
     let turns = TurnManager::new(
         Arc::new(ChatBook::new(store.clone(), blobs)),
         providers.clone(),
+        connectors,
         settings.clone(),
         PromptContext {
             platform: std::env::consts::OS.to_owned(),

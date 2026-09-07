@@ -214,7 +214,7 @@ export const authChat: ChatDetail = {
             id: 'perm-1',
             connector: 'github',
             tool: 'create_pull_request',
-            tier: 'external_write',
+            tier: 'write_external',
             title: 'Create a pull request on oljodev/gantry',
             args: {
               title: 'Fix session expiry comparison in auth',

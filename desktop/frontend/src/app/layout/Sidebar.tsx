@@ -15,6 +15,7 @@ import { ChatRow } from '@/components/gantry/sidebar/ChatRow';
 import { toast } from '@/components/ui/toast';
 import type { ChatSummary } from '@/fixtures/types';
 import { useChatMutations, useChats } from '@/lib/ipc/hooks/chats';
+import { usePendingCounts } from '@/lib/ipc/hooks/interactions';
 import { useSettings } from '@/lib/ipc/hooks/settings';
 import { useRunStore } from '@/lib/stores/runStore';
 import { SIDEBAR_MAX, SIDEBAR_MIN, useUiStore } from '@/lib/stores/uiStore';
@@ -32,6 +33,7 @@ export function Sidebar() {
   const dragging = useRef(false);
   const chatsQuery = useChats();
   const live = useRunStore((s) => s.byChat);
+  const pendingCounts = usePendingCounts();
   const { update, remove, exportChat } = useChatMutations();
   const developer = useSettings().data?.advanced?.developer_mode === true;
   const [promptFor, setPromptFor] = useState<string | null>(null);
@@ -64,6 +66,7 @@ export function Sidebar() {
     archived: c.archived,
     lastMessageAt: c.last_message_at,
     running: live[c.id]?.status === 'running' || c.active_turn !== null,
+    pending: live[c.id]?.pending.length || pendingCounts[c.id] || undefined,
   }));
   const byRecent = (a: ChatSummary, b: ChatSummary) => b.lastMessageAt - a.lastMessageAt;
   const pinned = rows.filter((c) => c.pinned && !c.archived);

@@ -102,18 +102,30 @@ export function ActivityRow({ item, onOpen }: ActivityRowProps) {
     case 'connector':
       return (
         <Row
-          icon={<ConnectorMark id={item.connector} size={16} />}
-          title={`Using ${connectorName(item.connector)} · ${item.tool}`}
+          icon={<ConnectorMark id={item.connector} name={item.connectorName} size={16} />}
+          title={`Using ${item.connectorName ?? connectorName(item.connector)} · ${item.tool}`}
           summary={item.summary}
           status={
-            item.status === 'running' ? (
+            item.status === 'running' || item.status === 'proposed' ? (
               <Spinner />
             ) : item.status === 'failed' ? (
               <Failed />
             ) : item.status === 'waiting' ? (
               <span className="text-meta text-accent-text">waiting</span>
+            ) : item.status === 'denied' ? (
+              <span className="flex items-center gap-1 text-meta text-fg-3">
+                <Failed />
+                denied
+              </span>
+            ) : item.status === 'cancelled' ? (
+              <span className="text-meta text-fg-3">cancelled</span>
             ) : (
-              <Done />
+              <span className="flex items-center gap-1.5 text-meta text-fg-3 tnum">
+                <Done />
+                {item.durationMs !== undefined && item.durationMs >= 1000 && (
+                  <span>{(item.durationMs / 1000).toFixed(1)} s</span>
+                )}
+              </span>
             )
           }
           onOpen={open}

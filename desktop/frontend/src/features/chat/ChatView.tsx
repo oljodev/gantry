@@ -1,6 +1,7 @@
 import { ArrowDownIcon, FileTextIcon, GitDiffIcon, TerminalIcon } from '@phosphor-icons/react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import type { PermissionAnswer } from '@/components/gantry/chat/InteractionCard';
 import { TurnView } from '@/components/gantry/chat/TurnView';
 import { Composer } from '@/components/gantry/composer/Composer';
 import { CommandOutput } from '@/components/gantry/pane/CommandOutput';
@@ -29,6 +30,7 @@ export function ChatView({ chatId }: { chatId: string }) {
   const attach = useRunStore((s) => s.attach);
   const clear = useRunStore((s) => s.clear);
   const retry = useRunStore((s) => s.retry);
+  const resolve = useRunStore((s) => s.resolve);
   const { update, rate } = useChatMutations();
   const { providers } = useModelCatalog();
   const settings = useSettings();
@@ -80,12 +82,16 @@ export function ChatView({ chatId }: { chatId: string }) {
 
   // Follow mode: while the user sits at the bottom, streaming keeps the newest text in view.
   const liveLength =
-    live?.parts.reduce((n, p) => n + (p && 'text' in p ? p.text.length : 0), 0) ?? 0;
+    live?.messages.reduce(
+      (n, m) => n + m.parts.reduce((k, p) => k + (p && 'text' in p ? p.text.length : 0), 0),
+      0,
+    ) ?? 0;
+  const liveCalls = live ? live.callOrder.length + live.pending.length : 0;
   const turnCount = chat.data?.turns.length ?? 0;
   useEffect(() => {
     const el = scroller.current;
     if (el && !released) el.scrollTop = el.scrollHeight;
-  }, [liveLength, turnCount, released]);
+  }, [liveLength, liveCalls, turnCount, released]);
 
   if (chat.isPending) return <div className="h-full pt-(--title-strip)" />;
   if (chat.isError || !chat.data) {
@@ -102,6 +108,19 @@ export function ChatView({ chatId }: { chatId: string }) {
   const thinking = detail.effort !== 'off';
   const patch = (u: Parameters<typeof update.mutate>[0]['update']) =>
     update.mutate({ chatId, update: u });
+  const decide = (interactionId: string, answer: PermissionAnswer) => {
+    const resolution =
+      answer.kind === 'allow'
+        ? { kind: 'permission' as const, decision: 'allow_once' as const, message: null }
+        : {
+            kind: 'permission' as const,
+            decision: 'deny' as const,
+            message: answer.message ?? null,
+          };
+    void resolve(chatId, interactionId, resolution).catch((err) =>
+      toast.add({ title: 'Could not answer', description: describe(err), type: 'error' }),
+    );
+  };
 
   return (
     <div className="relative flex h-full min-w-0">
@@ -114,6 +133,7 @@ export function ChatView({ chatId }: { chatId: string }) {
                 turn={turn}
                 isLast={i === turns.length - 1}
                 onOpenItem={openItem}
+                onDecide={decide}
                 onCopy={async (text) => {
                   try {
                     await copyText(text);
@@ -251,18 +271,24 @@ function detailTab(item: ActivityItem): PaneTab | null {
           />
         ),
       };
-    case 'connector':
+    case 'connector': {
+      const name = item.connectorName ?? item.connector;
       return {
         id: `call-${item.id}`,
-        title: `${item.connector} · ${item.tool}`,
+        title: `${name} · ${item.tool}`,
         temporary: true,
         content: (
           <ToolCallDetail
-            title={`${item.connector} · ${item.tool}`}
-            args={{ summary: item.summary }}
+            title={`${name} · ${item.tool}`}
+            args={item.args ?? { summary: item.summary }}
+            result={item.result}
+            isError={item.isError}
+            status={item.status}
+            durationMs={item.durationMs}
           />
         ),
       };
+    }
     default:
       return null;
   }

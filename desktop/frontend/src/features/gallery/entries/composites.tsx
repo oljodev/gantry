@@ -129,7 +129,7 @@ function Cards() {
         </div>
       </State>
       <State label="Tier labels">
-        {(['read', 'write', 'external_write', 'execute', 'destructive', 'app'] as Tier[]).map(
+        {(['read', 'write', 'write_external', 'execute', 'destructive', 'app'] as Tier[]).map(
           (t) => (
             <TierLabel key={t} tier={t} />
           ),

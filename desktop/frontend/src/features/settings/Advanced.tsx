@@ -9,8 +9,8 @@ import { useSecretStoreStatus, useSettings, useUpdateSettings } from '@/lib/ipc/
 import { advancedDefaults } from '@/lib/settingsDefaults';
 
 /**
- * Settings → Advanced (11 §2): output cap, developer mode and where the master key lives. Tool
- * limits and log level join with the tool loop (M3).
+ * Settings → Advanced (11 §2): output cap, the tool round cap, developer mode and where the
+ * master key lives.
  */
 export function Advanced() {
   const settings = useSettings();
@@ -39,6 +39,15 @@ export function Advanced() {
           <TokenInput
             value={advanced.max_output_tokens}
             onCommit={(v) => patch({ max_output_tokens: v })}
+          />
+        </SettingsRow>
+        <SettingsRow
+          label="Tool rounds per reply"
+          hint="How many times one reply may call tools and continue before Gantry stops it."
+        >
+          <TokenInput
+            value={advanced.max_tool_rounds}
+            onCommit={(v) => patch({ max_tool_rounds: v })}
           />
         </SettingsRow>
       </SettingsGroup>

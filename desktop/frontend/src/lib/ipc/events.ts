@@ -24,6 +24,9 @@ export function useBackendEvents() {
       events.settingsChanged.listen(() => {
         void qc.invalidateQueries({ queryKey: keys.settings });
       }),
+      events.interactionsChanged.listen(() => {
+        void qc.invalidateQueries({ queryKey: keys.pendingInteractions });
+      }),
     ];
     return () => {
       for (const p of unlisten) void p.then((f) => f());

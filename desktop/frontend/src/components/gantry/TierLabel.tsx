@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils';
 const LABEL: Record<Tier, string> = {
   read: 'read',
   write: 'write',
-  external_write: 'external write',
+  write_external: 'external write',
   execute: 'execute',
   destructive: 'destructive',
   app: 'app',
@@ -15,7 +15,7 @@ const DOT: Record<Tier, string> = {
   app: 'bg-fg-3',
   write: 'bg-fg-2',
   execute: 'bg-warn',
-  external_write: 'bg-bad',
+  write_external: 'bg-bad',
   destructive: 'bg-bad',
 };
 

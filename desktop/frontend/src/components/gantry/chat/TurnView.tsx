@@ -1,7 +1,7 @@
 import { WarningCircleIcon } from '@phosphor-icons/react';
 
 import { TurnSummary } from '@/components/gantry/activity/TurnSummary';
-import { PermissionCard } from '@/components/gantry/chat/InteractionCard';
+import { type PermissionAnswer, PermissionCard } from '@/components/gantry/chat/InteractionCard';
 import { ThinkingBlock } from '@/components/gantry/chat/ThinkingBlock';
 import { TurnActions, type TurnActionsProps } from '@/components/gantry/chat/TurnActions';
 import { UserMessage } from '@/components/gantry/chat/UserMessage';
@@ -15,6 +15,7 @@ import type { ActivityItem, Turn } from '@/fixtures/types';
 export function TurnView({
   turn,
   onOpenItem,
+  onDecide,
   isLast,
   onCopy,
   onRate,
@@ -22,9 +23,12 @@ export function TurnView({
 }: {
   turn: Turn;
   onOpenItem?: (item: ActivityItem) => void;
+  /** Answers a permission card; absent in the gallery. */
+  onDecide?: (interactionId: string, answer: PermissionAnswer) => void;
   isLast?: boolean;
 } & Pick<TurnActionsProps, 'onCopy' | 'onRate' | 'onRetry'>) {
   const hasText = turn.blocks.some((b) => b.kind === 'text');
+  const firstCard = turn.blocks.findIndex((b) => b.kind === 'permission');
   return (
     <article className="group/turn flex flex-col gap-3 py-4">
       <UserMessage user={turn.user} />
@@ -63,9 +67,21 @@ export function TurnView({
                 />
               );
             case 'permission':
-              return <PermissionCard key={i} permission={block.permission} />;
+              return (
+                <PermissionCard
+                  key={block.permission.id}
+                  permission={block.permission}
+                  hotkeys={isLast === true && i === firstCard}
+                  onDecide={
+                    onDecide ? (answer) => onDecide(block.permission.id, answer) : undefined
+                  }
+                />
+              );
           }
         })}
+        {turn.status === 'waiting' && (
+          <div className="mt-1 text-meta text-fg-3">Waiting for your decision</div>
+        )}
         {turn.status === 'running' && (
           <span
             className={

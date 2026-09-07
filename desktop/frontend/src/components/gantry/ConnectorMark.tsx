@@ -5,6 +5,7 @@ import {
   GlobeIcon,
   type Icon,
   PlugIcon,
+  SparkleIcon,
   TerminalIcon,
 } from '@phosphor-icons/react';
 
@@ -22,6 +23,8 @@ const GLYPHS: Record<string, Icon> = {
   web: GlobeIcon,
   github: GithubLogoIcon,
   mcp: PlugIcon,
+  /** Runtime tools owned by the agent (03 §9). */
+  gantry: SparkleIcon,
 };
 
 export function ConnectorMark({
