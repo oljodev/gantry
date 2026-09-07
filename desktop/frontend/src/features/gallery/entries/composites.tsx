@@ -4,7 +4,7 @@ import { TurnSteps } from '@/components/gantry/activity/TurnSteps';
 import { ArtifactCard } from '@/components/gantry/chat/ArtifactCard';
 import { InteractionCard, PermissionCard } from '@/components/gantry/chat/InteractionCard';
 import { UserMessage } from '@/components/gantry/chat/UserMessage';
-import { Composer } from '@/components/gantry/composer/Composer';
+import { AttachmentTray, Composer } from '@/components/gantry/composer/Composer';
 import { ConnectorMark } from '@/components/gantry/ConnectorMark';
 import { ConnectorTile } from '@/components/gantry/connectors/ConnectorTile';
 import { EmptyState } from '@/components/gantry/EmptyState';
@@ -21,6 +21,7 @@ import { State, type GalleryEntry } from '@/features/gallery/types';
 import { authChat, authDiff } from '@/fixtures/chat';
 import { connectors } from '@/fixtures/connectors';
 import type { ActivityItem, Tier } from '@/fixtures/types';
+import type { PendingAttachment } from '@/lib/attachments';
 import { PlugIcon } from '@phosphor-icons/react';
 import { useEffect, useState } from 'react';
 
@@ -350,6 +351,36 @@ self.expires_at <= now_ms
 > The boundary test asserts that a session expiring *exactly now* counts as expired.
 `;
 
+/** Everything the answer renderer supports beyond plain prose (15 §8). */
+const RICH_MARKDOWN = `Rendered markdown, all of it in one answer.
+
+| Fag | Tidsfrist | Estimat |
+|-----|-----------|---------|
+| Norsk | Fredag | 30–60 min |
+| Matematikk | Torsdag | 30–60 min |
+| Naturfag | Onsdag | 60–90 min |
+
+- [x] A task list
+- [ ] with a second item
+- ~~struck through~~ and a [link](https://oljo.dev)
+
+Inline maths, $e^{i\\pi} + 1 = 0$, and a display block:
+
+$$\\int_0^1 x^2 \\,dx = \\tfrac{1}{3}$$
+
+\`\`\`mermaid
+graph LR
+  A[Question] --> B[Answer]
+  B --> C[Artifact]
+\`\`\`
+
+A footnote[^1] and an image:
+
+![A small drawing](data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMjAgNjAiPjxyZWN0IHdpZHRoPSIxMjAiIGhlaWdodD0iNjAiIGZpbGw9IiM3NDdjODgiLz48Y2lyY2xlIGN4PSI2MCIgY3k9IjMwIiByPSIxOCIgZmlsbD0iI2ZmZiIvPjwvc3ZnPg==)
+
+[^1]: Footnotes render too.
+`;
+
 export const compositeEntries: GalleryEntry[] = [
   {
     id: 'activity',
@@ -364,6 +395,30 @@ export const compositeEntries: GalleryEntry[] = [
     render: () => <Cards />,
   },
   { id: 'messages', title: 'Messages · Markdown', group: 'Composites', render: () => <Messages /> },
+  {
+    id: 'markdown-rich',
+    title: 'Markdown · tables, maths, diagrams',
+    group: 'Composites',
+    render: () => (
+      <State label="Everything the renderer supports">
+        <div className="w-full max-w-(--measure)">
+          <Markdown>{RICH_MARKDOWN}</Markdown>
+        </div>
+      </State>
+    ),
+  },
+  {
+    id: 'attachments',
+    title: 'Composer · attachment tray',
+    group: 'Composites',
+    render: () => (
+      <State label="An image, a file waiting to be read, and a document">
+        <div className="w-full max-w-(--measure)">
+          <AttachmentTray items={TRAY_ITEMS} onRemove={() => undefined} />
+        </div>
+      </State>
+    ),
+  },
   { id: 'thinking', title: 'Thinking block', group: 'Composites', render: () => <Thinking /> },
   {
     id: 'turn-actions',
@@ -427,6 +482,29 @@ function Streaming() {
 }
 
 const WORDS = MARKDOWN_SAMPLE.split(' ');
+
+const TRAY_ITEMS: PendingAttachment[] = [
+  {
+    id: 'a1',
+    name: 'ukeplan.png',
+    kind: 'image',
+    input: { kind: 'path', path: '/home/olav/ukeplan.png' },
+    preview:
+      'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMjAgMTIwIj48cmVjdCB3aWR0aD0iMTIwIiBoZWlnaHQ9IjEyMCIgZmlsbD0iIzc0N2M4OCIvPjxjaXJjbGUgY3g9IjYwIiBjeT0iNjAiIHI9IjMwIiBmaWxsPSIjZmZmIi8+PC9zdmc+',
+  },
+  {
+    id: 'a2',
+    name: 'skjermbilde.png',
+    kind: 'image',
+    input: { kind: 'path', path: '/home/olav/skjermbilde.png' },
+  },
+  {
+    id: 'a3',
+    name: 'notater.md',
+    kind: 'file',
+    input: { kind: 'path', path: '/home/olav/notater.md' },
+  },
+];
 
 function TurnActionsEntry() {
   const turn = authChat.turns[0]!;

@@ -244,6 +244,19 @@ Done when (met on Linux with fixtures and the gallery; the live half is Olav's c
 deliberately broken component reports its error to the model in the same turn and gets fixed,
 and the conformance artifact fails every probe on every platform.
 
+## Landed outside a milestone — rich answers and attachments (2026-09-07)
+
+The answer renderer and the composer's attachments, done when Olav asked for them rather than
+waiting for a milestone that owned them:
+
+- Markdown in an answer: GitHub flavour plus KaTeX maths, `mermaid` fences drawn in the artifact
+  sandbox, images bounded and openable full size, tables with Copy as markdown, links confirmed
+  and handed to the system browser. Core prompt version 3 tells the model that markdown renders
+  and that a table belongs outside a fence.
+- Attachments: paste an image into the composer (with a clipboard fallback for WebKitGTK, which
+  hands the webview no file), thumbnails in the tray that open full size and remove, and the
+  same thumbnails on a sent message, read back from the blob store.
+
 ## M6 — Filesystem and code editor (2–3 weeks)
 
 - `gantry-workspace`: scope, canonicalization, sensitive-path patterns, atomic writes with encoding preservation, edit journal, `similar`-based hunks, `ignore`/`grep-searcher` search.

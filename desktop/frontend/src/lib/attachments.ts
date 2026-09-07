@@ -8,6 +8,8 @@ export interface PendingAttachment {
   /** `image` when the mime says so, otherwise `file`; the backend does the real check. */
   kind: 'file' | 'image';
   input: AttachmentInput;
+  /** A `data:` URL for an image the tray can show right away; a path has none until read. */
+  preview?: string;
 }
 
 let counter = 0;
@@ -36,11 +38,13 @@ export async function fromFiles(files: Iterable<File>): Promise<PendingAttachmen
     const name =
       file.name ||
       (file.type.startsWith('image/') ? `pasted.${file.type.split('/')[1]}` : 'pasted.txt');
+    const isImage = file.type.startsWith('image/');
     out.push({
       id: nextId(),
       name,
-      kind: file.type.startsWith('image/') ? 'image' : 'file',
+      kind: isImage ? 'image' : 'file',
       input: { kind: 'bytes', name, mime: file.type, data_base64 },
+      preview: isImage ? `data:${file.type};base64,${data_base64}` : undefined,
     });
   }
   return out;
@@ -100,6 +104,27 @@ export async function pickFiles(): Promise<PendingAttachment[]> {
   });
   if (!picked) return [];
   return fromPaths(Array.isArray(picked) ? picked : [picked]);
+}
+
+/**
+ * The picture behind a path-based image attachment, read by the backend because the webview
+ * cannot open a file it only knows the path of. Returns nothing for anything that is not a
+ * supported image, or when the file is too large to preview.
+ */
+export async function loadPreviews(
+  items: PendingAttachment[],
+): Promise<Record<string, string | undefined>> {
+  if (!isTauri()) return {};
+  const { commands } = await import('@/lib/ipc/client');
+  const out: Record<string, string | undefined> = {};
+  await Promise.all(
+    items.map(async (item) => {
+      if (item.kind !== 'image' || item.preview || item.input.kind !== 'path') return;
+      const preview = await commands.imagePreview(item.input.path);
+      if (preview) out[item.id] = preview;
+    }),
+  );
+  return out;
 }
 
 /**

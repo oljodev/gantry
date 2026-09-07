@@ -181,3 +181,50 @@ pub fn export_chat(
     std::fs::write(&path, body).map_err(GantryError::Io)?;
     Ok(())
 }
+
+/// A `data:` URL for an image already in the transcript, so a sent message can show the
+/// picture rather than a file name. Only image types, only inside the size cap.
+#[tauri::command]
+#[specta::specta]
+pub fn blob_image(state: State<'_, AppState>, hash: String, mime: String) -> Option<String> {
+    use base64::Engine;
+    if !matches!(
+        mime.as_str(),
+        "image/png" | "image/jpeg" | "image/gif" | "image/webp"
+    ) {
+        return None;
+    }
+    let bytes = state.blobs.get(&hash).ok()?;
+    if bytes.is_empty() || bytes.len() > gantry_core::MAX_IMAGE_BYTES {
+        return None;
+    }
+    let data = base64::engine::general_purpose::STANDARD.encode(&bytes);
+    Some(format!("data:{mime};base64,{data}"))
+}
+
+/// A `data:` URL for an image on disk, so the composer can show what is attached before the
+/// message is sent. Anything that is not a supported image, or is over the image cap, answers
+/// with nothing rather than an error: a preview is a convenience, not a promise.
+#[tauri::command]
+#[specta::specta]
+pub fn image_preview(path: String) -> Option<String> {
+    use base64::Engine;
+    let mime = match std::path::Path::new(&path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(str::to_ascii_lowercase)
+        .as_deref()
+    {
+        Some("png") => "image/png",
+        Some("jpg" | "jpeg") => "image/jpeg",
+        Some("gif") => "image/gif",
+        Some("webp") => "image/webp",
+        _ => return None,
+    };
+    let bytes = std::fs::read(&path).ok()?;
+    if bytes.is_empty() || bytes.len() > gantry_core::MAX_IMAGE_BYTES {
+        return None;
+    }
+    let data = base64::engine::general_purpose::STANDARD.encode(&bytes);
+    Some(format!("data:{mime};base64,{data}"))
+}

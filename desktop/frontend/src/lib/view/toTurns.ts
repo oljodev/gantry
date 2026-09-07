@@ -127,8 +127,14 @@ function userOf(t: TurnDto): Turn['user'] {
   const attachments: NonNullable<Turn['user']['attachments']> = [];
   for (const p of t.user.parts) {
     if (p.kind === 'document') attachments.push({ name: p.name, kind: 'file' });
-    else if (p.kind === 'image')
-      attachments.push({ name: p.mime.replace('image/', '') + ' image', kind: 'image' });
+    else if (p.kind === 'image') {
+      attachments.push({
+        name: `${p.mime.replace('image/', '')} image`,
+        kind: 'image',
+        blob: p.source.kind === 'blob' ? p.source.hash : undefined,
+        mime: p.mime,
+      });
+    }
   }
   return {
     text: partsText(t.user.parts),

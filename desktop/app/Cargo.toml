@@ -17,6 +17,7 @@ tauri-build = { version = "2.6", features = [] }
 
 [dependencies]
 gantry-agent.workspace = true
+base64.workspace = true
 gantry-connectors.workspace = true
 gantry-core.workspace = true
 gantry-providers.workspace = true

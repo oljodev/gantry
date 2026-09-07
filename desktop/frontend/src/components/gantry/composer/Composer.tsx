@@ -14,6 +14,7 @@ import {
 } from '@phosphor-icons/react';
 import { useEffect, useState } from 'react';
 
+import { ImageLightbox } from '@/components/gantry/ImageLightbox';
 import { ModeChip } from '@/components/gantry/composer/ModeChip';
 import { ModelPicker } from '@/components/gantry/composer/ModelPicker';
 import { Button } from '@/components/ui/button';
@@ -31,11 +32,26 @@ import type { Mode, ModelRef } from '@/fixtures/types';
 import {
   fromFiles,
   fromPaths,
+  loadPreviews,
   onDroppedPaths,
   type PendingAttachment,
   pickFiles,
 } from '@/lib/attachments';
+import { readClipboardImage } from '@/lib/clipboard';
 import { cn } from '@/lib/utils';
+
+/**
+ * Files on a paste. `files` is empty on some platforms even when an image is there, so the
+ * clipboard's items are checked as well before the app asks the system clipboard itself.
+ */
+function pastedFiles(data: DataTransfer): File[] {
+  const files = Array.from(data.files);
+  if (files.length > 0) return files;
+  return Array.from(data.items)
+    .filter((i) => i.kind === 'file')
+    .map((i) => i.getAsFile())
+    .filter((f): f is File => f !== null);
+}
 
 export interface ComposerProps {
   mode: Mode;
@@ -107,7 +123,13 @@ export function Composer({
   const canSend = (text.trim().length > 0 || attachments.length > 0) && !running;
 
   const add = (more: PendingAttachment[]) => {
-    if (more.length > 0) setAttachments((a) => [...a, ...more]);
+    if (more.length === 0) return;
+    setAttachments((a) => [...a, ...more]);
+    // An image chosen by path has no picture yet; the backend reads it for the thumbnail.
+    void loadPreviews(more).then((previews) => {
+      if (Object.keys(previews).length === 0) return;
+      setAttachments((a) => a.map((x) => (previews[x.id] ? { ...x, preview: previews[x.id] } : x)));
+    });
   };
 
   useEffect(() => {
@@ -149,10 +171,19 @@ export function Composer({
             }
           }}
           onPaste={(e) => {
-            const files = Array.from(e.clipboardData.files);
-            if (files.length === 0) return;
+            const files = pastedFiles(e.clipboardData);
+            if (files.length > 0) {
+              e.preventDefault();
+              void fromFiles(files).then(add);
+              return;
+            }
+            // WebKitGTK often hands over an empty file list for a screenshot on the clipboard,
+            // so the app asks the clipboard itself before giving up.
+            if (e.clipboardData.getData('text').length > 0) return;
             e.preventDefault();
-            void fromFiles(files).then(add);
+            void readClipboardImage().then((file) => {
+              if (file) void fromFiles([file]).then(add);
+            });
           }}
           placeholder={placeholder ?? 'Message Gantry…'}
           aria-label="Message"
@@ -291,7 +322,10 @@ export function Composer({
   );
 }
 
-/** Chips for the files waiting to go with the next message (15 §8, `AttachmentTray`). */
+/**
+ * What is waiting to go with the next message (15 §8, `AttachmentTray`): an image as a
+ * thumbnail that opens full size on click, everything else as a chip. Both remove with the ×.
+ */
 export function AttachmentTray({
   items,
   onRemove,
@@ -299,31 +333,70 @@ export function AttachmentTray({
   items: PendingAttachment[];
   onRemove: (id: string) => void;
 }) {
+  const [shown, setShown] = useState<PendingAttachment | null>(null);
+  const images = items.filter((a) => a.kind === 'image');
+  const files = items.filter((a) => a.kind !== 'image');
   return (
-    <div className="mb-2 flex flex-wrap gap-1.5" aria-label="Attachments">
-      {items.map((a) => (
-        <span
-          key={a.id}
-          className="inline-flex h-6 max-w-64 items-center gap-1 rounded-2 border border-line bg-surface pr-1 pl-1.5 text-meta text-fg-2"
-        >
-          {a.kind === 'image' ? (
-            <ImageIcon className="size-3.5 shrink-0" />
-          ) : (
-            <FileIcon className="size-3.5 shrink-0" />
-          )}
-          <span className="truncate" title={a.name}>
-            {a.name}
-          </span>
-          <button
-            type="button"
-            aria-label={`Remove ${a.name}`}
-            onClick={() => onRemove(a.id)}
-            className="ml-0.5 flex size-4 items-center justify-center rounded-1 text-fg-3 hover:bg-hover hover:text-fg"
-          >
-            <XIcon className="size-3" />
-          </button>
-        </span>
-      ))}
+    <div className="mb-2 flex flex-col gap-1.5" aria-label="Attachments">
+      {images.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {images.map((a) => (
+            <div key={a.id} className="group/att relative">
+              <button
+                type="button"
+                onClick={() => a.preview && setShown(a)}
+                disabled={!a.preview}
+                title={a.name}
+                aria-label={`Open ${a.name}`}
+                className="flex size-14 items-center justify-center overflow-hidden rounded-2 border border-line bg-surface enabled:cursor-zoom-in"
+              >
+                {a.preview ? (
+                  <img src={a.preview} alt={a.name} className="size-full object-cover" />
+                ) : (
+                  <ImageIcon className="size-4 text-fg-3" />
+                )}
+              </button>
+              <button
+                type="button"
+                aria-label={`Remove ${a.name}`}
+                onClick={() => onRemove(a.id)}
+                className="absolute -top-1 -right-1 flex size-4.5 items-center justify-center rounded-full border border-line bg-overlay text-fg-2 opacity-0 transition-opacity duration-(--dur-1) group-hover/att:opacity-100 hover:text-fg focus-visible:opacity-100"
+              >
+                <XIcon className="size-3" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      {files.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {files.map((a) => (
+            <span
+              key={a.id}
+              className="inline-flex h-6 max-w-64 items-center gap-1 rounded-2 border border-line bg-surface pr-1 pl-1.5 text-meta text-fg-2"
+            >
+              <FileIcon className="size-3.5 shrink-0" />
+              <span className="truncate" title={a.name}>
+                {a.name}
+              </span>
+              <button
+                type="button"
+                aria-label={`Remove ${a.name}`}
+                onClick={() => onRemove(a.id)}
+                className="ml-0.5 flex size-4 items-center justify-center rounded-1 text-fg-3 hover:bg-hover hover:text-fg"
+              >
+                <XIcon className="size-3" />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      <ImageLightbox
+        src={shown?.preview ?? null}
+        alt={shown?.name}
+        open={shown !== null}
+        onClose={() => setShown(null)}
+      />
     </div>
   );
 }

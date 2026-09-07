@@ -47,6 +47,17 @@ export const commands = {
 	provider: ProviderId,
 	model: string,
 } | null) => typedError<ChatSummary, ErrorDto>(__TAURI_INVOKE("create_chat", { model })),
+	/**
+	 *  A `data:` URL for an image on disk, so the composer can show what is attached before the
+	 *  message is sent. Anything that is not a supported image, or is over the image cap, answers
+	 *  with nothing rather than an error: a preview is a convenience, not a promise.
+	 */
+	imagePreview: (path: string) => __TAURI_INVOKE<string | null>("image_preview", { path }),
+	/**
+	 *  A `data:` URL for an image already in the transcript, so a sent message can show the
+	 *  picture rather than a file name. Only image types, only inside the size cap.
+	 */
+	blobImage: (hash: string, mime: string) => __TAURI_INVOKE<string | null>("blob_image", { hash, mime }),
 	listChats: () => typedError<ChatSummary[], ErrorDto>(__TAURI_INVOKE("list_chats")),
 	getChat: (chatId: ChatId) => typedError<ChatDetail_Serialize, ErrorDto>(__TAURI_INVOKE("get_chat", { chatId })),
 	updateChat: (chatId: ChatId, update: ChatUpdate) => typedError<ChatSummary, ErrorDto>(__TAURI_INVOKE("update_chat", { chatId, update })),

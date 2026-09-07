@@ -1,18 +1,51 @@
-import { type ComponentProps, memo, type ReactNode } from 'react';
-import ReactMarkdown from 'react-markdown';
+import { CopyIcon } from '@phosphor-icons/react';
+import {
+  type ComponentProps,
+  createContext,
+  memo,
+  type ReactNode,
+  useContext,
+  useState,
+} from 'react';
+import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
+import rehypeKatex from 'rehype-katex';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
 
 import { CodeBlock } from '@/components/gantry/markdown/CodeBlock';
+import { MarkdownImage } from '@/components/gantry/markdown/MarkdownImage';
+import { MermaidBlock } from '@/components/gantry/markdown/MermaidBlock';
+import { copyText, openExternal } from '@/lib/clipboard';
 import { splitBlocks } from '@/lib/markdown/blocks';
 import { cn } from '@/lib/utils';
 
+import 'katex/dist/katex.min.css';
+
+/** The markdown of the block being rendered, so a table can offer its own source for Copy. */
+const BlockSource = createContext('');
+
+const FOOTNOTE = /^\[\^[^\]]+\]:/m;
+
 /**
- * Assistant markdown at `chat` size. Headings map to `title` and `ui` weights so an answer's
- * headings never outrank the app's own (15 §4). The text is split into top-level blocks and
- * each block is memoised, so a streaming message re-parses only its last block (05 §4).
+ * `data:` images are kept, because an answer may draw its own picture and the app is the only
+ * thing that put it there. Every other URL goes through react-markdown's own filter, which
+ * drops anything but http, https, mailto and tel.
+ */
+function urlTransform(url: string): string {
+  return /^data:image\//i.test(url) ? url : defaultUrlTransform(url);
+}
+
+/**
+ * Assistant markdown at `chat` size (15 §8). GitHub flavour plus maths, so tables, task lists,
+ * footnotes and formulas all render; a ```mermaid fence becomes a drawn diagram. Headings map
+ * to `title` and `ui` weights so an answer's headings never outrank the app's own (15 §4). The
+ * text is split into top-level blocks and each block is memoised, so a streaming message
+ * re-parses only its last block (05 §4).
  */
 export function Markdown({ children, className }: { children: string; className?: string }) {
-  const blocks = splitBlocks(children);
+  // Footnotes are the one construct whose halves sit in different blocks, so a message that
+  // defines one is parsed whole. Everything else keeps the per-block memoisation.
+  const blocks = FOOTNOTE.test(children) ? [children] : splitBlocks(children);
   return (
     <div className={cn('prose-gantry selectable text-chat text-fg', className)}>
       {blocks.map((block, i) => (
@@ -24,9 +57,16 @@ export function Markdown({ children, className }: { children: string; className?
 
 const MarkdownBlock = memo(function MarkdownBlock({ text }: { text: string }) {
   return (
-    <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
-      {text}
-    </ReactMarkdown>
+    <BlockSource.Provider value={text}>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm, remarkMath]}
+        rehypePlugins={[[rehypeKatex, { throwOnError: false, output: 'html' }]]}
+        urlTransform={urlTransform}
+        components={components}
+      >
+        {text}
+      </ReactMarkdown>
+    </BlockSource.Provider>
   );
 });
 
@@ -36,9 +76,45 @@ function Pre({ children }: ComponentProps<'pre'>) {
     const props = (child as { props: { className?: string; children?: ReactNode } }).props;
     const language = /language-([\w-]+)/.exec(props.className ?? '')?.[1];
     const code = String(props.children ?? '').replace(/\n$/, '');
+    if (language === 'mermaid') return <MermaidBlock code={code} />;
     return <CodeBlock code={code} language={language} />;
   }
   return <pre>{children}</pre>;
+}
+
+/**
+ * A table, with the markdown that produced it one click away. The source is the block's own
+ * text, which for a table is the table itself.
+ */
+function Table({ children }: { children?: ReactNode }) {
+  const source = useContext(BlockSource);
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await copyText(source.trim());
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      setCopied(false);
+    }
+  };
+  return (
+    <div className="group/table relative my-3">
+      <button
+        type="button"
+        onClick={() => void copy()}
+        aria-label="Copy table as markdown"
+        title="Copy as markdown"
+        className="absolute -top-1 right-0 z-10 flex h-(--control-sm) items-center gap-1 rounded-2 border border-line bg-raised px-1.5 text-meta text-fg-2 opacity-0 transition-opacity duration-(--dur-1) group-hover/table:opacity-100 focus-visible:opacity-100"
+      >
+        <CopyIcon className="size-3" />
+        {copied ? 'Copied' : 'Copy'}
+      </button>
+      <div className="overflow-x-auto">
+        <table className="w-full border-collapse text-ui">{children}</table>
+      </div>
+    </div>
+  );
 }
 
 const components: ComponentProps<typeof ReactMarkdown>['components'] = {
@@ -51,15 +127,22 @@ const components: ComponentProps<typeof ReactMarkdown>['components'] = {
       {children}
     </code>
   ),
-  a: ({ children, ...props }) => (
+  // A link never navigates the app: the URL is confirmed and handed to the system browser,
+  // because an answer can quote a link that came from a page the model read (04 §2).
+  a: ({ children, href }) => (
     <a
-      className="text-fg underline decoration-line-strong underline-offset-2 hover:decoration-fg"
-      target="_blank"
-      rel="noreferrer"
-      {...props}
+      href={href}
+      onClick={(e) => {
+        e.preventDefault();
+        if (href) void openExternal(href);
+      }}
+      className="cursor-pointer text-fg underline decoration-line-strong underline-offset-2 hover:decoration-fg"
     >
       {children}
     </a>
+  ),
+  img: ({ src, alt, title }) => (
+    <MarkdownImage src={typeof src === 'string' ? src : undefined} alt={alt} title={title} />
   ),
   h1: ({ children }) => <h2 className="mt-5 mb-2 text-title font-medium">{children}</h2>,
   h2: ({ children }) => <h2 className="mt-5 mb-2 text-title font-medium">{children}</h2>,
@@ -79,11 +162,7 @@ const components: ComponentProps<typeof ReactMarkdown>['components'] = {
     </blockquote>
   ),
   hr: () => <hr className="my-4 border-line-subtle" />,
-  table: ({ children }) => (
-    <div className="my-3 overflow-x-auto">
-      <table className="w-full border-collapse text-ui">{children}</table>
-    </div>
-  ),
+  table: Table,
   th: ({ children }) => (
     <th className="border-b border-line px-2 py-1 text-left font-medium">{children}</th>
   ),

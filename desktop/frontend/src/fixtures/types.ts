@@ -126,9 +126,17 @@ export type Block =
     }
   | { kind: 'permission'; permission: Permission };
 
+/** An attachment as a sent message shows it; `blob` and `mime` let an image be fetched. */
+export interface SentAttachment {
+  name: string;
+  kind: 'file' | 'image';
+  blob?: string;
+  mime?: string;
+}
+
 export interface Turn {
   id: string;
-  user: { text: string; attachments?: { name: string; kind: 'file' | 'image' }[] };
+  user: { text: string; attachments?: SentAttachment[] };
   blocks: Block[];
   footer?: { model: string; durationMs: number; tokensIn: number; tokensOut: number };
   status: 'done' | 'running' | 'waiting' | 'failed' | 'cancelled' | 'interrupted';

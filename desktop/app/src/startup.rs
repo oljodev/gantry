@@ -155,7 +155,7 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn Error>> {
     connectors.register(Arc::new(RuntimeTools::with_artifacts(artifacts.clone())));
 
     let turns = TurnManager::new(
-        Arc::new(ChatBook::new(store.clone(), blobs)),
+        Arc::new(ChatBook::new(store.clone(), blobs.clone())),
         providers.clone(),
         connectors,
         settings.clone(),
@@ -174,6 +174,7 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn Error>> {
         log_dir,
         started_at: Instant::now(),
         store,
+        blobs,
         secrets,
         providers,
         settings,
