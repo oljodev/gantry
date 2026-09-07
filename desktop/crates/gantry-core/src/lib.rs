@@ -6,6 +6,7 @@
 #![forbid(unsafe_code)]
 
 mod app_info;
+pub mod artifact;
 pub mod attachment;
 pub mod chat;
 pub mod error;
@@ -18,6 +19,10 @@ pub mod time;
 pub mod tool;
 
 pub use app_info::AppInfo;
+pub use artifact::{
+    ArtifactContent, ArtifactDto, ArtifactVersionDto, RenderError, RenderReport, RenderStatus,
+    VersionSource,
+};
 pub use attachment::{AttachmentInput, MAX_IMAGE_BYTES, MAX_TEXT_BYTES};
 pub use chat::{ChatDetail, ChatSummary, Feedback, SearchHit, SearchHitKind, TurnDto, TurnStatus};
 pub use error::{ErrorDto, GantryError, ProviderErrorKind};

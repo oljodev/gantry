@@ -9,8 +9,9 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    artifact::VersionSource,
     chat::TurnStatus,
-    ids::{CallId, ChatId, InteractionId, MessageId, TurnId},
+    ids::{ArtifactId, CallId, ChatId, InteractionId, MessageId, TurnId},
     interaction::{Interaction, InteractionResolution},
     message::{ContentPart, Message, ResultPart, Role, StopReason, Usage},
     settings::{Mode, ModelRef},
@@ -111,6 +112,22 @@ pub enum AgentEventKind {
     },
     #[serde(rename = "provider.notice")]
     ProviderNotice { kind: String, detail: String },
+    /// A runtime tool created an artifact (13 §10).
+    #[serde(rename = "artifact.created")]
+    ArtifactCreated {
+        artifact_id: ArtifactId,
+        version: u32,
+        artifact_type: String,
+        title: String,
+    },
+    /// A new version of an artifact exists (13 §10).
+    #[serde(rename = "artifact.updated")]
+    ArtifactUpdated {
+        artifact_id: ArtifactId,
+        version: u32,
+        source: VersionSource,
+        title: String,
+    },
     #[serde(rename = "message.completed")]
     MessageCompleted {
         message_id: MessageId,
@@ -154,6 +171,8 @@ impl AgentEventKind {
             AgentEventKind::ToolCallExecuting { .. } => "tool_call.executing",
             AgentEventKind::ToolCallCompleted { .. } => "tool_call.completed",
             AgentEventKind::ProviderNotice { .. } => "provider.notice",
+            AgentEventKind::ArtifactCreated { .. } => "artifact.created",
+            AgentEventKind::ArtifactUpdated { .. } => "artifact.updated",
             AgentEventKind::MessageCompleted { .. } => "message.completed",
             AgentEventKind::TurnCompleted { .. } => "turn.completed",
             AgentEventKind::Error { .. } => "error",

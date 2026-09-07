@@ -11,7 +11,7 @@ use std::{
 };
 
 use async_trait::async_trait;
-use gantry_core::{CallId, ChatId, InstanceId, Mode, ResultPart, ToolDef};
+use gantry_core::{AgentEventKind, CallId, ChatId, InstanceId, Mode, ResultPart, ToolDef};
 use tokio_util::sync::CancellationToken;
 
 /// The plan document that specifies this crate.
@@ -102,6 +102,10 @@ pub trait ToolEventSink: Send + Sync {
     }
     fn progress(&self, call_id: &CallId, fraction: Option<f32>, message: Option<String>) {
         let _ = (call_id, fraction, message);
+    }
+    /// An event of the turn stream a runtime tool produces itself (`artifact.*`, 13 §10).
+    fn event(&self, event: AgentEventKind) {
+        let _ = event;
     }
 }
 

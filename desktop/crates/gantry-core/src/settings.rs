@@ -134,6 +134,8 @@ pub struct ChatSettings {
     /// Settings → General → Custom instructions (docs/plan/10 §2, layer 4). At most 4000 chars.
     pub custom_instructions: String,
     pub suggest_connectors: bool,
+    /// Open the right pane the first time a turn creates an artifact (13 §4).
+    pub open_artifact_panel: bool,
 }
 
 impl Default for ChatSettings {
@@ -145,6 +147,7 @@ impl Default for ChatSettings {
             default_effort: ReasoningEffort::Medium,
             custom_instructions: String::new(),
             suggest_connectors: true,
+            open_artifact_panel: true,
         }
     }
 }
