@@ -14,7 +14,7 @@ import { CommandPalette } from '@/features/palette/CommandPalette';
 /** Last-resort error surface: inline, with the message, never a blank window (15 §9). */
 function RootError({ error }: ErrorComponentProps) {
   return (
-    <div className="flex h-screen items-center justify-center bg-base p-6 text-fg">
+    <div className="flex h-screen items-center justify-center bg-base p-6 pt-(--title-strip) text-fg">
       <div className="max-w-(--measure) rounded-3 border border-line bg-surface p-5">
         <div className="text-title font-medium">Something went wrong</div>
         <pre className="selectable mt-2 whitespace-pre-wrap text-mono text-fg-2">

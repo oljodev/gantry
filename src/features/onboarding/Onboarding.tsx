@@ -22,7 +22,7 @@ export function Onboarding() {
   const current = STEPS[step];
 
   return (
-    <div className="flex h-full flex-col items-center justify-center bg-surface px-6">
+    <div className="flex h-full flex-col items-center justify-center bg-surface px-6 pt-(--title-strip)">
       <div className="flex w-full max-w-md flex-col gap-6">
         {current === 'key' && (
           <>

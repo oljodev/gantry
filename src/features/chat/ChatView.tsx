@@ -62,7 +62,7 @@ export function ChatView({ chat }: { chat: ChatDetail }) {
   return (
     <div className="relative flex h-full min-w-0">
       <div className="flex min-w-0 flex-1 flex-col">
-        <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto">
+        <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto pt-(--title-strip)">
           <div className="mx-auto w-full max-w-(--measure) px-6 pt-2 pb-6">
             {chat.turns.map((turn) => (
               <TurnView key={turn.id} turn={turn} onOpenItem={openItem} />

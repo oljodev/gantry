@@ -33,7 +33,7 @@ export function Welcome() {
     label: 'Claude Opus 5',
   });
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full flex-col pt-(--title-strip)">
       <div className="flex flex-1 flex-col items-center justify-center px-6">
         <div className="w-full max-w-(--measure)">
           <h1 className="text-center text-hero font-semibold tracking-[-0.01em] text-fg">

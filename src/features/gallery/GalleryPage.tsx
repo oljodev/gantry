@@ -20,7 +20,7 @@ export function GalleryPage() {
     <div className="flex h-full">
       <nav
         aria-label="Gallery"
-        className="w-(--settings-list) shrink-0 overflow-y-auto border-r border-line bg-base px-2 py-3"
+        className="w-(--settings-list) shrink-0 overflow-y-auto border-r border-line bg-base px-2 pt-(--title-strip) pb-3"
       >
         {GROUPS.map((group) => {
           const items = entries.filter((e) => e.group === group);
@@ -48,7 +48,7 @@ export function GalleryPage() {
           );
         })}
       </nav>
-      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden pt-(--title-strip)">
         <div className="flex h-(--row) shrink-0 items-center justify-between border-b border-line px-4">
           <div className="text-ui font-medium text-fg">{entry?.title}</div>
           <Segmented

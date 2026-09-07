@@ -10,9 +10,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-base text-fg">
       {!collapsed && <Sidebar />}
-      <div className="flex min-w-0 flex-1 flex-col bg-surface">
-        <TitleStrip />
-        <main className="min-h-0 flex-1 overflow-auto">{children}</main>
+      <div className="relative flex min-w-0 flex-1 flex-col bg-surface">
+        <TitleStrip className="absolute inset-x-0 top-0 z-30" />
+        <main className="min-h-0 flex-1 overflow-hidden">{children}</main>
       </div>
     </div>
   );
@@ -21,8 +21,8 @@ export function AppShell({ children }: { children: ReactNode }) {
 /** Title strip over the whole window, no sidebar: onboarding and other full-window screens. */
 export function BareShell({ children }: { children: ReactNode }) {
   return (
-    <div className="flex h-screen w-screen flex-col overflow-hidden bg-surface text-fg">
-      <TitleStrip />
+    <div className="relative flex h-screen w-screen flex-col overflow-hidden bg-surface text-fg">
+      <TitleStrip className="absolute inset-x-0 top-0 z-30" />
       <main className="min-h-0 flex-1 overflow-auto">{children}</main>
     </div>
   );

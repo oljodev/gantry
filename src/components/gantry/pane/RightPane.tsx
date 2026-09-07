@@ -86,7 +86,7 @@ export function RightPane({
       aria-label="Details"
       style={{ width: Math.min(width, Math.floor(window.innerWidth / 2)), minWidth: PANE_MIN }}
       className={cn(
-        'relative flex h-full shrink-0 flex-col border-l border-line bg-surface',
+        'relative flex h-full shrink-0 flex-col border-l border-line bg-surface pt-(--title-strip)',
         overlay && 'absolute inset-y-0 right-0 z-40 shadow-float',
       )}
     >

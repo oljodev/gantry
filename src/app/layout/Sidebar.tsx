@@ -9,10 +9,12 @@ import {
 } from '@phosphor-icons/react';
 import { type ReactNode, useCallback, useRef } from 'react';
 
+import { Logo } from '@/components/gantry/Logo';
 import { ChatRow } from '@/components/gantry/sidebar/ChatRow';
 import { groupByDay } from '@/components/gantry/sidebar/DayGroup';
 import { chats, projects } from '@/fixtures/chat';
 import { SIDEBAR_MAX, SIDEBAR_MIN, useUiStore } from '@/lib/stores/uiStore';
+import { cn, isMac } from '@/lib/utils';
 
 /**
  * The single labelled sidebar (docs/plan/15 §7): New chat, Search, Pinned, Projects, Recents,
@@ -57,8 +59,12 @@ export function Sidebar() {
       {/* The sidebar's share of the title strip: traffic lights live here on macOS. */}
       <div
         data-tauri-drag-region
-        className="flex h-(--title-strip) shrink-0 items-center justify-end pr-2"
+        className={cn(
+          'flex h-(--title-strip) shrink-0 items-center justify-between pr-2 pl-4',
+          isMac() && 'pl-(--traffic-lights)',
+        )}
       >
+        <Logo />
         <button
           type="button"
           aria-label="Hide sidebar"
