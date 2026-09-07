@@ -206,21 +206,43 @@ chat with tool calls can switch providers mid-way and keep working (with the exp
 "thinking reset" notice), and the streaming-arguments column of 13 §2 is filled with observed
 results. Olav's checklist is in `docs/dev/setup.md`.
 
-## M5 — Artifacts (2–3 weeks)
+## M5 — Artifacts (2–3 weeks) — done 2026-09-07
 
-Placed here because it depends only on the tool loop and on argument streaming, which M3 and M4 just proved, and because it exercises the live-argument UI path that the code editor's preview reuses in M6.
+- Runtime tools `gantry__create_artifact`, `update_artifact`, `edit_artifact`, `read_artifact`
+  (`app` tier; create and update stream their arguments); the type registry
+  (`gantry-agent/src/artifacts/registry.rs`, mirrored by `features/artifacts/registry.ts`) from
+  which the tool's `type` enum is generated; exact-match edits (`artifacts/edits.rs`, reused by
+  the code editor in M6); migration `0004_artifacts.sql` (`artifacts`, `artifact_versions`,
+  `artifacts_fts`) with content in the blob store; `artifact.created` and `artifact.updated`
+  in the turn stream through a new `ToolEventSink::event` hook; the render-verified result
+  (the tool waits up to 3 s for the panel's `report_artifact_render`, then answers `pending`).
+- Commands `list_artifacts`, `get_artifact`, `get_artifact_version`, `save_artifact_version`,
+  `restore_artifact_version` (both append the `SystemNote` of 13 §7), `export_artifact`
+  (save dialog), `report_artifact_render`, `open_artifact_window`; `artifacts:changed`.
+- `desktop/artifact-runtime/`: the sandbox document built into one inlined `runtime.html`
+  (React 19, `@babel/standalone` with the loop-guard and import-rewrite plugins, the module
+  allowlist, Tailwind's browser runtime, Mermaid in strict mode, the bridge client, error
+  capture) and the conformance probe; `html` artifacts get a small bridge prelude injected by
+  the parent instead, since their content is the whole document.
+- The panel: artifact tabs in the right pane (closable), toolbar with Rendered | Source,
+  the version stepper, Copy, Download, Open in window, Edit source, Restore this version and
+  Fix this, the Problems strip, `Ctrl/Cmd+Shift+A`; renderers for `markdown`, `code` and
+  `svg` in the app and `SandboxHost` for `html`, `mermaid` and `react`; streaming into the
+  panel from the argument deltas (`partialStrings`) with the buffered fallback; the setting
+  "Open artifacts automatically"; "Created/Updated artifact" rows that open the tab.
+- The core prompt's artifact paragraph (version 2); the gallery entry with every renderer, a
+  deliberately broken component, and the sandbox conformance run.
 
-- Runtime tools `gantry__create_artifact`, `update`, `edit`, `read`; the type registry; `artifacts`/`artifact_versions` tables and repos; `artifact.*` events.
-- The panel: tabs, toolbar, version stepper, Rendered/Source, Problems tab, Copy/Download; streaming into the panel with the buffered fallback.
-- Parent-rendered types: `markdown`, `code`, `svg`.
-- `desktop/artifact-runtime/`: the inlined sandbox document, the bridge, error capture; `SandboxHost` with `srcdoc` + `sandbox="allow-scripts"` + CSP; `html` and `mermaid`.
-- `react`: Babel with the loop-guard and import-rewrite plugins, the module allowlist, Tailwind's browser runtime, the error boundary, **Fix this**, the render-verified tool result.
-- The sandbox conformance artifact, run by hand on all three platforms; **Open in window**.
-- User edits and restores as versions with the `SystemNote` rule; core prompt guidance for artifacts.
+Trimmed, on purpose: the panel's editor is a plain text area until CodeMirror arrives with the
+diff view in M6; the user-edit note carries the full content up to about 8,000 tokens and
+otherwise points at `gantry__read_artifact` instead of a unified diff (the diff engine is M6's);
+links inside artifacts confirm with a native dialog before opening. The conformance probe
+has been run on Linux only.
 
-Done when: a request for "a React dashboard with a chart" streams into the panel, a deliberately broken component reports its error to the model in the same turn and gets fixed, and the conformance artifact fails every probe on every platform.
-
-Trim option: ship `react` after `html`/`mermaid` if the Babel work runs long; nothing in M6 depends on it.
+Done when (met on Linux with fixtures and the gallery; the live half is Olav's checklist in
+`docs/dev/setup.md`): a request for "a React dashboard with a chart" streams into the panel, a
+deliberately broken component reports its error to the model in the same turn and gets fixed,
+and the conformance artifact fails every probe on every platform.
 
 ## M6 — Filesystem and code editor (2–3 weeks)
 

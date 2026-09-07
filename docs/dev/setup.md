@@ -212,6 +212,39 @@ fixtures until someone with a key runs the conformance test above.
 9. `grep -ci authorization` on the log file still prints 0 (the custom endpoint sends the key
    the same way).
 
+### The M5 checklist (hands-on, under $0.50 on DeepSeek V4 Flash)
+
+Artifacts are runtime tools, so every one costs a tool round; the `react` and `html` ones
+wait up to three seconds for the panel before the model gets its result.
+
+1. Start the app after the update: the log says it migrated to schema 4 (after a backup). The
+   gallery (`/dev/gallery` → "Artifact renderers · Sandbox conformance") shows the six
+   renderers, the broken component reports its runtime error in the frame below it, and "Run
+   sandbox conformance" ends with all 12 probes blocked. Note the platform you ran it on.
+2. New chat: "Write me a short markdown document about gantry cranes as an artifact." The
+   reply gets a "Created artifact · <title>" row, the right pane opens on the artifact while
+   the text streams in (or in one paint, if this model sends its arguments whole; the log
+   line from M4 says which), the document renders. The row's arrow opens the pane again after
+   you close it; `Ctrl+Shift+A` toggles it.
+3. "Make the second heading say 'Types' instead." The reply uses edit_artifact, the tab shows
+   v2 of 2, the stepper goes back to v1 (read-only, "Restore this version") and forward.
+4. Source → Edit source: change a word, Save. The tab shows v3, and the chat's next reply
+   knows the new text (ask "what does the document say now?").
+5. "Now a React dashboard with a bar chart of three months of sales, using recharts." The
+   panel shows the source streaming in, then the rendered chart; the tool result the model
+   received (open the row's detail) says `render.status: "ok"`.
+6. "Change the component so it calls a function that does not exist." The reply's result
+   says `render.status: "error"` with the message, the Problems strip shows it, and the
+   model fixes it in the same turn (the prompt allows two attempts). If it does not, Fix
+   this sends the error as a message.
+7. "Draw a flowchart of a permission decision as a mermaid artifact." Renders in the sandbox;
+   Download saves a `.mmd`; Copy puts the source on the clipboard.
+8. Open in window: the artifact appears in its own window, rendered; close it.
+9. A `html` artifact ("a self-contained page with a button that counts clicks"): works, and a
+   link in it, if any, asks before opening the browser.
+10. Delete the chat: its artifacts are gone (no rows in `artifacts`, nothing to open).
+11. `grep -ci authorization` on the log file still prints 0.
+
 ## Where the app keeps its data
 
 Tauri's app data directory under the identifier `dev.oljo.gantry`:

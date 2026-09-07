@@ -298,7 +298,7 @@ Raw colour or pixel values in components · shadows for hierarchy · page-level 
 - **01 §5 module map.** Adds `components/gantry/` (composites), `features/palette/` (replaces `features/search/`), `features/onboarding/`, `features/gallery/` (dev only), `fixtures/`, and `app/layout/TitleStrip.tsx` with `WindowControls.tsx`.
 - **05 §1.** Unchanged in substance; the detail drawer is the right pane's temporary tab (A17).
 - **11 §2.** Appearance gains nothing; density and theme already exist. The composer placeholder and the onboarding are the only new copy.
-- **13 §4.** The artifact panel is the right pane; its toolbar sits under the pane tabs.
+- **13 §4.** The artifact panel is the right pane; each open artifact is a closable tab, and its toolbar (Rendered | Source, version stepper, Copy, Download, Open in window, Edit, Restore, Fix this) sits at the top of the tab's content with the Problems strip at the bottom.
 - **Website.** The hero mock's side feed stays as marketing; it is not updated to match A7.
 - **What M0b built (2026-09-07).** Everything in §8 except the `⋯` row menu (the context menu covers it), plus the contrast script (`desktop/frontend/scripts/contrast.mjs`) and the ESLint rule. Two library constraints worth knowing: Base UI menu labels must sit inside a group, and floating layers portal to `<body>`, so the gallery's dark frame shows them in the app's theme.
 

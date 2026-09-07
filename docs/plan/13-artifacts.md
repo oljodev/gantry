@@ -61,7 +61,7 @@ For executable types the tool result is not returned until the sandbox reports `
 
 | Type | Rendered by | Execution | Editable in panel | Download as |
 |------|-------------|-----------|-------------------|-------------|
-| `markdown` | parent app, the chat's Markdown pipeline with `rehype-sanitize` (no raw HTML) | none | yes (CodeMirror) | `.md` |
+| `markdown` | parent app, the chat's Markdown pipeline (react-markdown, no raw HTML) | none | yes (a plain editor in M5; CodeMirror with M6) | `.md` |
 | `code` | parent app, shiki with the `language` grammar, line numbers, copy | none | yes | extension from `language` |
 | `svg` | parent app, as an `<img>` from a `data:` URL, which never executes scripts; source view available | none | yes | `.svg` |
 | `html` | sandbox iframe (§5); the content is the whole document | sandboxed | yes | `.html` |
@@ -78,19 +78,20 @@ For executable types the tool result is not returned until the sandbox reports `
 
 ```
 features/artifacts/
-  ArtifactPanel      right-hand panel, resizable, collapsible; tabs per open artifact
-  ArtifactToolbar    Rendered | Source · version stepper "v3 of 5" · Copy · Download · Open in window · Fix this · Restore
-  ProblemsTab        compile/runtime errors and captured console output
+  ArtifactPanel.tsx  the pane tab's content: toolbar (Rendered | Source · version stepper "v3 of 5" · Copy · Download ·
+                     Open in window · Edit · Fix this · Restore), the renderer, the Problems strip
   renderers/         MarkdownRenderer · CodeRenderer · SvgRenderer · SandboxHost (html, mermaid, react)
   registry.ts        type → renderer, mirrors the Rust registry
-  bridge.ts          the parent side of the postMessage protocol (§5)
-  store.ts           open artifacts, streaming buffers, render states (part of the run store)
-desktop/artifact-runtime/    separate Vite package that builds the sandbox document (§6)
+  bridge.ts          the parent side of the postMessage protocol (§5) and the html prelude
+  store.ts           open tabs per chat, streaming buffers, view state, render reports (its own zustand store; the run store feeds it)
+desktop/artifact-runtime/    separate Vite package that builds the sandbox document (§6); the app imports `dist/runtime.html?raw`
 ```
 
+As built in M5: the tabs are the right pane's own tabs (15 A17), one per open artifact, closable; the toolbar and Problems strip live inside the tab's content.
+
 - The panel opens automatically the first time a turn creates an artifact (setting) and stays where the user left it afterwards. `Ctrl/Cmd+Shift+A` toggles it.
-- Copy and Download are parent-side: the app holds the content, so the sandbox needs neither clipboard nor download rights. Download goes through `tauri-plugin-dialog` and the Rust side writes the file.
-- **Open in window** loads the same sandbox document into a separate `WebviewWindow`. This exists for long-running or heavy artifacts (§5, hang risk) and for people who want the artifact on another screen.
+- Copy and Download are parent-side: the app holds the content, so the sandbox needs neither clipboard nor download rights. Download goes through `tauri-plugin-dialog` and the Rust side writes the file (`export_artifact`).
+- **Open in window** opens a second `WebviewWindow` (label `artifact-<id>`) on the app's own `/artifact-window?id=` route, which renders the same panel full-window; the sandbox document inside it is the same. This exists for long-running or heavy artifacts (§5, hang risk) and for people who want the artifact on another screen.
 - Renderers are pure: `(content, theme, props) → view`; the streaming state is a prop. Adding a type never touches the panel.
 
 ## 5. Sandboxing
@@ -100,8 +101,8 @@ desktop/artifact-runtime/    separate Vite package that builds the sandbox docum
 Executable artifacts run in an `<iframe sandbox="allow-scripts" srcdoc="…" referrerpolicy="no-referrer">`:
 
 - `srcdoc` with `sandbox` and **without** `allow-same-origin` gives the document an **opaque origin**. It is not the app's origin on any platform, so it has no access to the app's DOM, storage, cookies or IPC. The advisory that fixed Tauri's iframe IPC bypass (GHSA-57fm-592m-34r7, patched in 2.0.0-beta.20) states the post-fix rule exactly: IPC initialization is disabled in iframes on all platforms, except same-origin iframes on Windows. An opaque origin is never same-origin, and the invoke-key mechanism drops IPC messages from uninitialized frames regardless.
-- A `<meta http-equiv="Content-Security-Policy">` inside the document: `default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' blob:; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; media-src data: blob:; connect-src 'none'; frame-src 'none'; object-src 'none'; form-action 'none'; base-uri 'none'`. `connect-src 'none'` closes fetch, XHR, WebSocket and EventSource, which also closes the `http://ipc.localhost` transport as a second lock on IPC. `'unsafe-eval'` is needed for compiled artifact code; it is confined to the sandbox.
-- The runtime document is fully **inlined**: one HTML string with every library embedded, held by the app as an asset and injected as `srcdoc`. Sandboxed iframes cannot reliably load external files on Windows (Tauri inlines its own isolation iframe for the same reason), and inlining removes any need for a second origin or custom protocol.
+- A `<meta http-equiv="Content-Security-Policy">` inside the document (the runtime's `index.html`, and the prelude for `html` artifacts): `default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' blob:; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; media-src data: blob:; connect-src 'none'; frame-src 'none'; object-src 'none'; form-action 'none'; base-uri 'none'`. `connect-src 'none'` closes fetch, XHR, WebSocket and EventSource, which also closes the `http://ipc.localhost` transport as a second lock on IPC. `'unsafe-eval'` is needed for compiled artifact code; it is confined to the sandbox.
+- The runtime document is fully **inlined**: one HTML string with every library embedded, held by the app as an asset and injected as `srcdoc`. Sandboxed iframes cannot reliably load external files on Windows (Tauri inlines its own isolation iframe for the same reason), and inlining removes any need for a second origin or custom protocol. `html` artifacts are the whole document themselves, so the parent injects the CSP `<meta>` and a small bridge prelude (error and console capture, link interception, resize, the `mount` handshake) at the top of their `<head>` instead of loading the runtime.
 - Sandbox flags deliberately absent: `allow-same-origin`, `allow-top-navigation`, `allow-popups`, `allow-forms`, `allow-modals`, `allow-downloads`, `allow-pointer-lock`. Links inside an artifact are intercepted by the runtime and forwarded as `open_url` (below); nothing navigates.
 
 ### Everything that crosses the boundary
@@ -117,7 +118,7 @@ The only channel is `postMessage`. The parent validates `event.source === iframe
 | artifact → parent | `error { phase: compile \| runtime, message, stack?, componentStack?, line?, column? }` | shown in Problems; feeds the tool result / Fix this | rate-limited |
 | artifact → parent | `console { level, text }` | Problems tab | 16 KB per message, 50 per second, then dropped with a notice |
 | artifact → parent | `resize { height }` | auto-height | clamped to the panel |
-| artifact → parent | `open_url { url }` | an intercepted link click | the parent shows a confirmation with the full URL, then `tauri-plugin-opener`; `https:` only |
+| artifact → parent | `open_url { url }` | an intercepted link click | the parent shows a confirmation with the full URL (a native confirm dialog in M5), then `tauri-plugin-opener`; `https:` only |
 | artifact → parent | `storage.*` | reserved for §8 | v1 replies `{ error: "unsupported" }` |
 | artifact → parent | `tools.*` | reserved for a future MCP route | v1 replies `{ error: "unsupported" }`; any future implementation goes through the permission engine (04) |
 
@@ -125,7 +126,7 @@ Nothing else exists: no filesystem, no shell, no connectors, no network, no clip
 
 ### Conformance test
 
-M5 adds a sandbox conformance artifact that attempts `window.__TAURI_INTERNALS__`, `window.__TAURI__`, `fetch("http://ipc.localhost/")`, `fetch("https://example.com")`, `new WebSocket(...)`, `parent.document`, `top.location = ...`, `localStorage`, `indexedDB`, `navigator.clipboard.writeText`, `window.open`, and reports each outcome through the bridge; the app asserts that every attempt failed. It is run by hand on all three platforms in M5 and automated in M13.
+M5 adds a sandbox conformance artifact (`desktop/artifact-runtime/src/conformance/probe.ts`, run from the gallery's "Artifact renderers · Sandbox conformance" entry) that attempts `window.__TAURI_INTERNALS__`, `window.__TAURI__`, `fetch("http://ipc.localhost/")`, `fetch("https://example.com")`, `new WebSocket(...)`, `parent.document`, `top.location = ...`, `localStorage`, `indexedDB`, `navigator.clipboard.writeText`, `window.open`, and reports each outcome through the bridge; the app asserts that every attempt failed. It is run by hand on all three platforms in M5 (Linux done 2026-09-07; macOS and Windows outstanding) and automated in M13.
 
 ### The hang risk, stated plainly
 
@@ -152,7 +153,7 @@ When Tauri stabilizes multi-webview, a `WebviewHost` implementing the same rende
 
 Component contract: the file's default export is the component (a named `App` export is accepted as a fallback); it is rendered into `#root` with no props; it may use hooks and state freely; it has no network, storage or tool access, and the core prompt says so. Errors show in the Problems tab with the line and column mapped back to the artifact source. **Fix this** sends a visible user message quoting the error; the render-verified tool result (§2) handles the common case where the error is immediate.
 
-The bundle is roughly 4–6 MB of JavaScript, loaded once per mounted artifact; mount time on a mid-range laptop is well under a second. Adding a library is a registry change in `desktop/artifact-runtime/src/modules.ts` plus a line in the core prompt.
+The bundle is about 7 MB of JavaScript (Mermaid and Recharts are the bulk), loaded once per mounted artifact; mount time on a mid-range laptop is well under a second. Adding a library is a registry change in `desktop/artifact-runtime/src/modules.ts` plus a line in the core prompt.
 
 ## 7. Versioning
 
@@ -173,7 +174,7 @@ artifacts_fts      FTS5 over title, summary and the current version's text
 
 Model-made versions need no extra bookkeeping: the tool calls that produced them are in the transcript, so the model knows the content it wrote. The two cases where the model's knowledge would drift are handled with appended `SystemNote`s, never with edits to earlier messages (02 §6, T5):
 
-- **User edit or restore.** Before the next user message, a `SystemNote` states "The user edited artifact `art_…` (now v4)" followed by the full content when it is under about 8,000 tokens, otherwise a unified diff against the last version the model produced.
+- **User edit or restore.** Right after the save, a `SystemNote` states "The user edited artifact `…` (now v4)" followed by the full content when it is under about 8,000 tokens (32 KB), otherwise a sentence pointing at `gantry__read_artifact` (a unified diff replaces that sentence once M6's diff engine exists).
 - **Compaction.** The compaction prompt (02 §6) is instructed to list the ids, titles and types of artifacts in the summarized span, so the model can `gantry__read_artifact` when it needs one.
 
 The model can always call `gantry__read_artifact` to refresh its view; the core prompt tells it to do so before editing an artifact it did not write in the current turn.
@@ -200,8 +201,8 @@ Why not project-scoped ownership: the transcript that explains an artifact belon
 ## 10. Activity, events and commands
 
 - Activity rows: "Created artifact · Title (React)" and "Updated artifact · Title (v3)", opening the panel on click (05 §1).
-- Events: `artifact.created { artifact_id, version, type, title }` and `artifact.updated { artifact_id, version, source }` in the turn stream and the `events` table; `artifacts:changed` as the global invalidation event for user edits.
-- Commands: `list_artifacts { chat_id | project_id }`, `get_artifact`, `get_artifact_version`, `save_artifact_version` (user edit), `restore_artifact_version`, `export_artifact`, `open_artifact_window` (01 §4).
+- Events: `artifact.created { artifact_id, version, artifact_type, title }` and `artifact.updated { artifact_id, version, source, title }` in the turn stream and the `events` table, emitted by the runtime tool itself through `ToolEventSink::event`; `artifacts:changed { chat_id, artifact_id }` as the global invalidation event for user edits.
+- Commands: `list_artifacts { chat_id | project_id }`, `get_artifact`, `get_artifact_version`, `save_artifact_version` (user edit), `restore_artifact_version`, `export_artifact`, `open_artifact_window`, `report_artifact_render` (the panel's half of §2's handshake) (01 §4).
 
 ## 11. What the core prompt says about artifacts
 

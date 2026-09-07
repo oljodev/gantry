@@ -10,7 +10,7 @@
 
 | Section | Contents | Notes |
 |---------|----------|-------|
-| **General** | Default permission mode and Guard for new chats; "Confirm before switching a chat to Unguarded Auto" (arrives with Auto mode, M8); "Suggest connectors" toggle (03 §9); global **Custom instructions** editor (10 §2) with a character and token count | Project defaults override these for chats inside the project. Built in M2 |
+| **General** | Default permission mode and Guard for new chats; "Confirm before switching a chat to Unguarded Auto" (arrives with Auto mode, M8); "Suggest connectors" toggle (03 §9); "Open artifacts automatically" (13 §4, `chat.open_artifact_panel`); global **Custom instructions** editor (10 §2) with a character and token count | Project defaults override these for chats inside the project. Built in M2 |
 | **Appearance** | Theme: Light / Dark / System; density: Comfortable / Compact | Font size follows the OS; accent colour is fixed in v1 |
 | **Providers & models** | The five providers plus custom endpoints: key status, Add/Replace/Remove key, Test, base URL where applicable, default model, model list refresh, pricing from the models cache; default model for new chats | Builds on 06 §5; keys are write-only |
 | **Guard & guardrails** | Judge model per provider (overrides `judge_defaults.toml`), judge timeout, recent decisions with feedback, the guardrail lists (hard-deny, always-confirm, sensitive paths) | 04 §5–§6 |

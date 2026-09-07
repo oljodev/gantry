@@ -79,6 +79,7 @@ The transcript is `messages` ordered by `seq`. It is append-only; edits to histo
 
 - **artifacts** — `id, chat_id, project_id NULL` (denormalized from the chat), `type, title, language NULL, summary NULL, current_version, created_by_message_id, created_at, updated_at, archived_at` (13 §7)
 - **artifact_versions** — `id, artifact_id, version, content_blob_hash, data_blob_hash NULL` (reserved for data types), `source (model_create|model_update|model_edit|user_edit|user_restore), tool_call_id NULL, message_id NULL, note NULL, size, created_at` · index `(artifact_id, version)`
+- **artifacts_fts** (FTS5 over title, summary and the current version's text; `artifact_id` and `chat_id` unindexed) — replaced by the repository on every version, not by triggers, because the text lives in the blob store.
 - **artifact_kv** — reserved, not created in v1: `scope_kind (artifact|project), scope_id, key, value, size, updated_at` (13 §8)
 - **skills** — `id` (= name), `source (bundled|user|imported), path, name, description, triggers_json, always_include, enabled, content_hash, size, version, installed_at, updated_at, last_used_at, use_count` (12 §A3)
 - **skill_versions** — `id, skill_id, version, content, source (user_edit|import|ai_proposal|external_change|bundled), created_at`
