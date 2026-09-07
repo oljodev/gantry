@@ -33,6 +33,8 @@ Assignment: native manifests declare a tier per tool; the shell connector classi
 
 ¹ unless a standing grant for this chat matches (see §8). ² the tool is not even offered to the model in Plan mode (see §5). ³ `always_confirm` tools and guardrail patterns still ask (see §6). ⁴ never prompts, always logged; see T13 in 01 §8 for why Manual mode's "no exceptions" does not extend to tools whose only effect is Gantry's own UI or a card the user decides on.
 
+Status after M3: the table's mode column is implemented (`gantry-agent/src/permissions.rs`) and Manual mode prompts with **Allow once** and **Deny** (optionally with a message the model sees as `{ "error": "denied_by_user", "message", "hint" }`). Grants (¹) arrive with M7, scope and guardrails with M6 and M7. The judge column is not built until M8; until then a call that would go to the judge asks the user, per the fail-closed rule of §1. `gantry__clock` is `read` tier rather than `app` so that Manual mode has a call to ask about before any connector exists.
+
 **Manual** asks before every call, reads included, exactly as the brief says. It stays usable because every prompt offers "Allow for this chat" with a scope, and that grant is the user's explicit decision.
 
 **Auto-edit** is defined by tier, not by file edits: everything Gantry can undo locally (`write`) is automatic; everything else that changes state asks. So a Supabase write, a GitHub issue or an MCP filesystem server's write all prompt, while a code-editor edit inside the workspace does not. That is the generalization the brief asked for: "auto-edit" means "auto for reversible, local changes".

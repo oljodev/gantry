@@ -117,14 +117,44 @@ Done when: you can close the app during a stream and reopen to a consistent chat
 "interrupted", with your instructions and theme intact. Olav's checklist is in
 `docs/dev/setup.md`.
 
-## M3 — Tool loop and Manual mode (1 week)
+## M3 — Tool loop and Manual mode (1 week) — done 2026-09-07
 
-- `ToolSpec`, namespacing, `ToolSchemaSanitizer`, the tool round loop in `TurnRunner` (parallel calls, synthetic error results on cancel), iteration cap.
-- Risk tiers including `app`; a built-in test tool (`gantry__clock`) to exercise the loop before any connector exists.
-- The **Interaction** primitive and `PermissionCard`; **Manual** mode (every non-`app` call asks; Allow once / Deny with message). Grants come in M7.
-- Activity feed skeleton: tool-call rows and the detail drawer with raw input/output; `tool_calls` projection; `events` persisted.
+Built in session 7. Landed:
 
-Done when: the model calls the test tool, the user approves in the card, the result returns and the row expands to show both sides.
+- `gantry-core`: `RiskTier` (with `app`), `ToolDef` with its flags, `ToolCallDto`, decision
+  sources, the `Interaction` primitive with the permission payload and resolution, the
+  tool-call and decision event kinds, `TurnDto.messages` (one assistant message per model
+  round plus the tool messages) and `TurnDto.tool_calls`; `advanced.max_tool_rounds` (50).
+- `gantry-store`: migration 0003 with `tool_calls` and `interactions`; the persister updates
+  both projections in the same write as the events; the startup sweep (`repos::recovery`)
+  interrupts running turns, cancels open calls and pending prompts, and appends a synthetic
+  error result for every call that never got one, so every transcript stays replayable.
+- `gantry-providers`: `model_tool_name` / `ToolNameMap` (`<connector>__<tool>`, 64 chars with
+  a hash suffix) and `ToolSchemaSanitizer::for_provider` (`$ref` inlining, dropped keywords,
+  `type: object` at the root, strict closing), applied in the Chat Completions body.
+- `gantry-connectors`: the `Connector` trait (M3 subset: descriptor, `tools`, `call`), the
+  call types, `ToolEventSink` and `ConnectorRegistry`.
+- `gantry-agent`: `ToolSet` per turn (Plan mode hides tools it would deny); the permission
+  engine (the 04 §3 mode table; the judge slot asks the user until M8); `Interactions` (one
+  `oneshot` per pending decision); the tool round loop in the runner: decide every call of a
+  batch first so prompts stack, run allowed calls in parallel when each is parallel-safe,
+  append the results as a `Tool` message, go round again, stop at the round cap with a
+  notice; synthetic error results on cancel, cap and stream failure; `gantry__clock` as the
+  first runtime tool (tier `read` on purpose, so Manual mode has something to ask about).
+- App: `list_pending_interactions`, `resolve_interaction`, `get_tool_call`;
+  `interactions:changed`; the runtime tools registered at startup.
+- Frontend: the run store keeps every message, tool call and pending decision of the live
+  turn; activity rows for tool calls inline in the reply, in order; the permission card with
+  Allow once, Deny, Deny with a message, and `Y` / `N` on the first pending card; the detail
+  pane with raw arguments and result; the sidebar's pending-decision badge; Settings →
+  Advanced → Tool rounds per reply.
+
+Not in M3, on purpose: grants and "Allow for this chat" (M7), the guardrail floor (M7), scope
+checks (M6), the judge (M8), streamed argument previews (M6 with the code editor), output
+streaming and blobs (M7 with the shell).
+
+Done when: the model calls the test tool, the user approves in the card, the result returns
+and the row expands to show both sides. Olav's checklist is in `docs/dev/setup.md`.
 
 Rationale for placing this before the other providers: the tool loop is the harness that validates each provider client; building three more clients first would validate them against nothing.
 

@@ -265,6 +265,8 @@ pub struct ConnectorContext {
 
 Tool namespacing is `<id>__<tool>` (see 02 §3). The agent resolves the prefix to an instance through the chat's attachments.
 
+Status after M3: the trait exists with `descriptor`, `tools` and `call` (`ToolOutcome::Complete` only; `InputRequired`, `start`, `stop` and `health` join with the MCP runtime), and `ConnectorRegistry` holds connectors by namespace id. The runtime tools of `gantry-agent` (§9, 04 §9) implement the same trait under the id `gantry` so the turn loop has one call path; they are still not catalog entries. Until `chat_connectors` lands (M9), every registered connector is offered to every chat.
+
 ## 5. Native runtime: the first-party connectors
 
 All three local connectors use `gantry-workspace`, so the following holds once and for all:

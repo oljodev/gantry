@@ -18,7 +18,7 @@
 | **Skills** | Installed skills, enabled toggles, New / Import / Export | The full page is `/skills` (12 §A6); Settings shows the list and links |
 | **Memory** | Global on/off, per-project on/off, "Auto-save assistant memories" opt-in, link to the Memory page | The Memory page itself is `/memory` (12 §B5) |
 | **Data & privacy** | Data directory path with Open; database size and chat count; export a chat (Markdown/JSON, also from a chat's menu); back up the database (`VACUUM INTO`, credentials excluded); check and compact the database; a plain statement of what Gantry sends where (only to the providers and servers you configured; no telemetry) | Built in M2. "Clear all data" is post-MVP; deleting chats one by one covers v1 |
-| **Advanced** | Maximum reply length (M2); tool rounds cap, tool result cap, iteration timeouts, log level (M3); developer mode (adds "View system prompt" to a chat's menu: the frozen snapshot and the notes appended since; log raw provider requests from M3), secret store status (which OS store, fallback warning on Linux; M2), reset settings (M13) | 04, 06 §5 |
+| **Advanced** | Maximum reply length (M2); tool rounds per reply (M3); tool result cap, iteration timeouts, log level (later); developer mode (adds "View system prompt" to a chat's menu: the frozen snapshot and the notes appended since; log raw provider requests from M3), secret store status (which OS store, fallback warning on Linux; M2), reset settings (M13) | 04, 06 §5 |
 | **About** | Version, update check (updater from M13), license notice, third-party notices | |
 
 ## 3. Theme

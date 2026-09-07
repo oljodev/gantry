@@ -131,6 +131,42 @@ Every title now costs one extra tiny request (a few hundred tokens) after a chat
 11. Pin, rename and archive a chat: the sidebar changes at once, nothing flickers.
 12. `grep -ci authorization` on the log file still prints 0.
 
+### The M3 checklist (hands-on, under $0.25 on DeepSeek V4 Flash)
+
+Every tool call costs one extra request (the model continues after the result), so a turn
+with one call is two requests. The only tool so far is `gantry__clock`, which reads the
+computer's date and time; it is `read` tier on purpose so Manual mode has something to ask.
+
+1. Start the app after the update: the log says it migrated to schema 3 (after a backup), and
+   nothing else changed.
+2. New chat in Auto-edit (the default) and ask "What day is it today, and what time is it
+   where I am?": a row "Using Gantry · clock" appears in the reply with a spinner, then a
+   check mark, and the answer names today's date and weekday. No card, because Auto-edit
+   allows reads. Click the row: the right pane shows the raw arguments and the JSON result.
+3. Switch the mode chip to Manual and ask "And what ISO week is it?": the row shows
+   "waiting", a permission card appears under it ("Gantry wants to run clock", tier read,
+   the model's sentence as "Why"), and the sidebar shows a 1 badge on the chat. Press `Y` or
+   click Allow once: the card leaves, the row turns to a check mark, the answer arrives.
+4. Same question again, but Deny with a message ("use the previous answer"): the row says
+   denied, and the model's reply reflects your message rather than the time.
+5. Ask again and, while the card waits, switch to another chat: the badge stays; come back
+   and the card is still there; answer it. Then ask once more and press Stop while the card
+   waits: the turn ends as Stopped, the card is gone, a follow-up message works.
+6. Reload the webview (Ctrl+R in dev) while a card waits: after the reload the card is back
+   and answering it continues the turn.
+7. Quit the app while a card waits. Reopen: the turn is "Interrupted", no card, a follow-up
+   message works (the log line says one prompt was cancelled and one synthetic result was
+   written).
+8. Switch to Plan mode and ask for the time: a card still appears (Plan mode asks for reads);
+   the reply is a plan-shaped answer that includes the time after you allow it.
+9. Settings → Advanced → Tool rounds per reply: set it to 1, then in Auto-edit ask "Call the
+   clock twice, once now and once after telling me the first result." The second call is
+   stopped with a notice that the cap was reached, and the turn still ends cleanly. Set it
+   back to 50.
+10. Export the chat as Markdown: the tool calls appear as "Called `gantry__clock` with `{}`"
+    lines between the text.
+11. `grep -ci authorization` on the log file still prints 0.
+
 ## Where the app keeps its data
 
 Tauri's app data directory under the identifier `dev.oljo.gantry`:

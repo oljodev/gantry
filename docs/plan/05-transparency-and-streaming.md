@@ -40,7 +40,7 @@ Every event carries `seq` (monotonic within a turn), `ts` (ms) and `turn_id`. `t
 | `tool_call.output` | call_id, stream (stdout\|stderr\|log), chunk | as a blob when the call completes; checkpointed every 1 MB / 5 s |
 | `tool_call.progress` | call_id, fraction?, message? | no |
 | `file_edit.applied` | edit_id, call_id, path, op, stats, hunks | yes |
-| `tool_call.completed` | call_id, is_error, duration_ms, result_preview, result_blob? | yes |
+| `tool_call.completed` | call_id, status, is_error, duration_ms, result_preview, result (the content the model receives, capped at the transcript limit; a blob reference joins with the shell's output streams) | yes |
 | `provider.notice` | kind (thinking_dropped, compacted, refusal, retry), detail | yes |
 | `message.completed` | message_id, stop_reason, usage | yes |
 | `turn.completed` | status, usage, counts, duration_ms | yes |
@@ -65,7 +65,7 @@ TurnRunner ──► EventSink (trait) ──► Batcher ──┬──► Chan
 - `EventSink::emit(AgentEvent)` is synchronous and cheap (an `mpsc` send).
 - `Batcher` flushes when 16 ms have passed since the first queued event, or 64 events, or 64 KB, whichever comes first. Text deltas for the same block inside one batch are merged into one delta. Output chunks are capped at 16 KB per event.
 - `Persister` writes the persisted subset in one transaction per flush on the store's writer actor, so the UI path never waits on SQLite. Decisions and tool-call state changes are written in the same flush they were emitted, which is at most 16 ms later; that is the durability bound.
-- `TurnManager` keeps, per active turn, the current in-memory state (partial assistant parts, tool calls with their status, pending interactions, output tails of 400 lines per call). `subscribe_turn(turn_id, since_seq)` sends one `turn.snapshot` built from that state, then persisted events with `seq > since_seq` that the snapshot does not already cover, then live batches. Reattaching after a webview reload or a chat switch therefore costs one message, not a replay of every delta. (Until tools arrive, nothing persisted has a transient counterpart, so the replay step is empty; M3 fills it.)
+- `TurnManager` keeps, per active turn, the current in-memory state (partial assistant parts, tool calls with their status, pending interactions, output tails of 400 lines per call). `subscribe_turn(turn_id, since_seq)` sends one `turn.snapshot` built from that state, then persisted events with `seq > since_seq` that the snapshot does not already cover, then live batches. Reattaching after a webview reload or a chat switch therefore costs one message, not a replay of every delta. (The snapshot carries every message of the turn, one per model round, the tool calls with their status and result, and the pending interactions, so the replay step stays empty in M3; it is needed once output streams have persisted checkpoints.)
 - Multiple subscribers per turn are allowed (a future second window); the channel list is per turn.
 
 ## 4. Frontend pipeline

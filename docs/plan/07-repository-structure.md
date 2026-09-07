@@ -84,8 +84,9 @@ gantry/
 │   │   │   └── src/
 │   │   │       ├── lib.rs  db.rs         # writer actor + read pool, detached writes, pragmas, backup before migration, newer-schema refusal, VACUUM INTO backups
 │   │   │       ├── blob_store.rs         # content-addressed files under blobs/ab/<sha256>
-│   │   │       └── repos/{chats.rs, turns.rs, messages.rs, events.rs, blobs.rs, search.rs, credentials.rs, providers.rs, models.rs, settings.rs, mod.rs;
-│   │   │                  later tool_calls.rs, file_edits.rs, command_runs.rs, interactions.rs, projects.rs, connectors.rs, artifacts.rs, skills.rs, memories.rs}
+│   │   │       └── repos/{chats.rs, turns.rs, messages.rs, events.rs, blobs.rs, search.rs, credentials.rs, providers.rs, models.rs, settings.rs,
+│   │   │                  tool_calls.rs, interactions.rs, projections.rs (events → tool_calls and interactions), recovery.rs (the startup sweep), mod.rs;
+│   │   │                  later file_edits.rs, command_runs.rs, projects.rs, connectors.rs, artifacts.rs, skills.rs, memories.rs}
 │   │   ├── gantry-secrets/
 │   │   │   └── src/{lib.rs, master_key.rs, envelope.rs, vault.rs, platform/{macos.rs, windows.rs, linux.rs, mod.rs}}
 │   │   ├── gantry-providers/
@@ -120,8 +121,9 @@ gantry/
 │   │   │       ├── lib.rs  chats.rs  events.rs  turn_manager.rs  runner.rs   # chats.rs: the ChatBook on the store; events.rs: EventSink, FanoutSink, Batcher
 │   │   │       ├── persist.rs  title.rs  attachments.rs  export.rs   # the persister (05 §3), the title generator, attachment ingest, chat export
 │   │   │       ├── transcript.rs  projection.rs  context.rs  system_prompt.rs   # system_prompt assembles the layers of 10 §2 and the mode note
-│   │   │       ├── permissions/{mod.rs, engine.rs, tiers.rs, grants.rs, guardrails.rs, judge.rs}
-│   │   │       ├── runtime_tools/{mod.rs, access.rs, catalog.rs, artifacts.rs, skills.rs, memory.rs}
+│   │   │       ├── tools.rs                  # the ToolSet of one turn: namespaced specs, mode filter, name map
+│   │   │       ├── permissions.rs            # the mode table (M3); grows into permissions/{engine, grants, guardrails, judge} with M7 and M8
+│   │   │       ├── runtime_tools/{mod.rs, clock.rs; later access.rs, catalog.rs, artifacts.rs, skills.rs, memory.rs}
 │   │   │       ├── skills/{mod.rs, index.rs, matcher.rs, import.rs, export.rs}
 │   │   │       ├── memory/{mod.rs, selector.rs, proposals.rs}
 │   │   │       ├── artifacts/{mod.rs, versions.rs, registry.rs}   # type registry mirrored by the frontend
@@ -226,7 +228,7 @@ gantry/
 | A bundled skill | `desktop/skills/<name>/SKILL.md` (+ `references/*.md`) | `cargo xtask validate-skills`; `gantry-agent`'s `build.rs` embeds it |
 | A new artifact type | a renderer in `desktop/frontend/src/features/artifacts/renderers/` and an entry in both registries (`gantry-agent/src/artifacts/registry.rs`, `features/artifacts/registry.ts`) | if executable, a mount in `desktop/artifact-runtime/src/`; a line in `desktop/assets/prompts/core.md` |
 | A library artifacts may import | `desktop/artifact-runtime/src/react/modules.ts` | the allowlist line in `desktop/assets/prompts/core.md` and `desktop/skills/artifact-authoring/references/react-runtime.md` |
-| A runtime tool (`gantry__…`) | `desktop/crates/gantry-agent/src/runtime_tools/` | tier `app`; its card in `desktop/frontend/src/features/interactions/` if it needs a decision |
+| A runtime tool (`gantry__…`) | `desktop/crates/gantry-agent/src/runtime_tools/` | tier `app` unless it observes the outside world (`gantry__clock` is `read`); its card in `desktop/frontend/src/features/interactions/` if it needs a decision |
 | A colour, size, radius or duration in the app | `desktop/frontend/src/styles/tokens.css` and the table in 15 §3–§6, §10, in the same commit | the contrast script must still pass |
 | A new UI component | a primitive in `desktop/frontend/src/components/ui/` or a composite in `desktop/frontend/src/components/gantry/` | its gallery entry under `features/gallery/entries/` |
 | A settings key | `gantry-core/src/settings.rs` with a default | its section component under `desktop/frontend/src/features/settings/` |
