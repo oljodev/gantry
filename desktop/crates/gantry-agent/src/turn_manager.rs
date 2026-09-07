@@ -57,6 +57,8 @@ pub struct TurnManager {
     providers: Arc<dyn ProviderSource>,
     settings: Arc<RwLock<Settings>>,
     context: PromptContext,
+    /// Turns run here whatever thread starts them; commands arrive on the UI thread.
+    runtime: tokio::runtime::Handle,
     active: Mutex<HashMap<TurnId, Arc<ActiveTurn>>>,
 }
 
@@ -67,12 +69,14 @@ impl TurnManager {
         providers: Arc<dyn ProviderSource>,
         settings: Arc<RwLock<Settings>>,
         context: PromptContext,
+        runtime: tokio::runtime::Handle,
     ) -> Arc<Self> {
         Arc::new(Self {
             chats,
             providers,
             settings,
             context,
+            runtime,
             active: Mutex::new(HashMap::new()),
         })
     }
@@ -125,7 +129,7 @@ impl TurnManager {
 
         let fanout = Arc::new(FanoutSink::new());
         fanout.add(sink);
-        let batcher = Batcher::start(input.turn_id, fanout.clone());
+        let batcher = Batcher::start(input.turn_id, fanout.clone(), &self.runtime);
         let active = Arc::new(ActiveTurn {
             id: input.turn_id,
             chat_id,
@@ -148,7 +152,7 @@ impl TurnManager {
 
         let manager = Arc::clone(self);
         let chats = self.chats.clone();
-        tokio::spawn(async move {
+        self.runtime.spawn(async move {
             runner::run_turn(input, provider, max_output_tokens, active.clone(), chats).await;
             manager
                 .active

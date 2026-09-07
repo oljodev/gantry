@@ -104,6 +104,7 @@ fn manager(events: Vec<Result<StreamEvent, ProviderError>>, delay: Duration) -> 
         Arc::new(Source(provider)),
         Arc::new(RwLock::new(Settings::default())),
         PromptContext::default(),
+        tokio::runtime::Handle::current(),
     )
 }
 
@@ -290,6 +291,7 @@ async fn without_a_provider_the_turn_fails_cleanly() {
         Arc::new(NoSource),
         Arc::new(RwLock::new(Settings::default())),
         PromptContext::default(),
+        tokio::runtime::Handle::current(),
     );
     let chat = m.create_chat(None);
     let sink = Arc::new(Collect::default());
@@ -297,4 +299,26 @@ async fn without_a_provider_the_turn_fails_cleanly() {
     wait_for(|| sink.completed().is_some()).await;
     assert_eq!(sink.completed(), Some(TurnStatus::Failed));
     assert!(m.chats().get(chat.id).unwrap().turns[0].assistant.is_none());
+}
+
+/// Tauri commands run on the UI thread, outside every runtime; starting a turn there must work.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_turn_can_be_started_from_a_plain_thread() {
+    let m = manager(
+        vec![
+            text("ok"),
+            Ok(StreamEvent::MessageEnd {
+                stop_reason: StopReason::EndTurn,
+            }),
+        ],
+        Duration::ZERO,
+    );
+    let chat = m.create_chat(None);
+    let sink = Arc::new(Collect::default());
+    let (m2, sink2) = (m.clone(), sink.clone());
+    std::thread::spawn(move || m2.start(chat.id, "go".into(), sink2).unwrap())
+        .join()
+        .unwrap();
+    wait_for(|| sink.completed().is_some()).await;
+    assert_eq!(sink.completed(), Some(TurnStatus::Completed));
 }

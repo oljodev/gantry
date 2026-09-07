@@ -57,9 +57,14 @@ pub struct Batcher {
 }
 
 impl Batcher {
-    /// Starts the flush timer on the current runtime.
+    /// Starts the flush timer on `runtime`. The caller may be any thread: commands run on the
+    /// UI thread, outside every runtime.
     #[must_use]
-    pub fn start(turn_id: TurnId, sink: Arc<dyn EventSink>) -> Arc<Batcher> {
+    pub fn start(
+        turn_id: TurnId,
+        sink: Arc<dyn EventSink>,
+        runtime: &tokio::runtime::Handle,
+    ) -> Arc<Batcher> {
         let batcher = Arc::new(Batcher {
             turn_id,
             sink,
@@ -68,7 +73,7 @@ impl Batcher {
             closed: AtomicBool::new(false),
         });
         let weak = Arc::downgrade(&batcher);
-        tokio::spawn(async move {
+        runtime.spawn(async move {
             loop {
                 tokio::time::sleep(FLUSH_INTERVAL).await;
                 match weak.upgrade() {
@@ -198,7 +203,11 @@ mod tests {
     #[tokio::test]
     async fn merges_adjacent_deltas_and_flushes_on_close() {
         let sink = Arc::new(Collect::default());
-        let b = Batcher::start(TurnId::new(), sink.clone());
+        let b = Batcher::start(
+            TurnId::new(),
+            sink.clone(),
+            &tokio::runtime::Handle::current(),
+        );
         let m = MessageId::new();
         for word in ["a", "b", "c"] {
             b.push(AgentEventKind::TextDelta {
@@ -227,7 +236,11 @@ mod tests {
     #[tokio::test]
     async fn flushes_at_the_event_cap() {
         let sink = Arc::new(Collect::default());
-        let b = Batcher::start(TurnId::new(), sink.clone());
+        let b = Batcher::start(
+            TurnId::new(),
+            sink.clone(),
+            &tokio::runtime::Handle::current(),
+        );
         for i in 0..FLUSH_EVENTS {
             b.push(AgentEventKind::ProviderNotice {
                 kind: "n".into(),

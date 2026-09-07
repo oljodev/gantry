@@ -114,6 +114,7 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn Error>> {
             workspace_roots: Vec::new(),
             project_name: None,
         },
+        tauri::async_runtime::handle().inner().clone(),
     );
 
     app.manage(AppState {
