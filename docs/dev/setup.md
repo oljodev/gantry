@@ -215,7 +215,15 @@ fixtures until someone with a key runs the conformance test above.
 ### The M5 checklist (hands-on, under $0.50 on DeepSeek V4 Flash)
 
 Artifacts are runtime tools, so every one costs a tool round; the `react` and `html` ones
-wait up to three seconds for the panel before the model gets its result.
+wait up to three seconds for the panel before the model gets its result. Before the app, the
+sandbox itself can be checked in the engine Linux uses:
+
+```sh
+pnpm runtime:build
+host-spawn python3 desktop/artifact-runtime/scripts/webkit-check.py --png /tmp/check.png
+```
+
+Every case must report `ready` and no `error`; the screenshot shows what actually drew.
 
 1. Start the app after the update: the log says it migrated to schema 4 (after a backup). The
    gallery (`/dev/gallery` → "Artifact renderers · Sandbox conformance") shows the six

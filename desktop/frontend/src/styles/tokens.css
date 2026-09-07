@@ -21,6 +21,10 @@
   --bg-active: rgb(0 0 0 / 0.07);
   --bg-selected: rgb(0 0 0 / 0.08);
   --bg-backdrop: rgb(0 0 0 / 0.3);
+  /* The ground an `html` artifact gets when it styles none of its own (13 §5). A page written
+     for a browser tab expects a light page, so this pair is the same in both themes. */
+  --bg-artifact-page: #ffffff;
+  --fg-artifact-page: #111114;
 
   /* Lines */
   --line-subtle: rgb(0 0 0 / 0.06);

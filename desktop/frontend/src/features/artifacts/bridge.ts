@@ -68,7 +68,8 @@ export function loadRuntime(): Promise<string> {
 /**
  * The bridge for `html` artifacts, whose content is the whole document: injected at the top
  * of `<head>` so error capture and link interception are in place before the page's own
- * scripts run. Kept dependency-free and small.
+ * scripts run, and so the page's own rules override the ground the prelude sets. Kept
+ * dependency-free and small.
  */
 const HTML_PRELUDE = `<meta http-equiv="Content-Security-Policy" content="${CSP}">
 <script>
@@ -101,17 +102,30 @@ const HTML_PRELUDE = `<meta http-equiv="Content-Security-Policy" content="${CSP}
 </script>
 `;
 
+/**
+ * The ground for a page that styles none of its own: the sandbox document is transparent by
+ * default, so an unstyled page would inherit dark text on the panel's dark card. The colours
+ * come from the app's tokens (15 §3) and the page's own rules override them.
+ */
+function pageStyle(): string {
+  const root = getComputedStyle(document.documentElement);
+  const bg = root.getPropertyValue('--bg-artifact-page').trim();
+  const fg = root.getPropertyValue('--fg-artifact-page').trim();
+  return bg && fg ? `<style>html{color-scheme:light;background:${bg};color:${fg}}</style>` : '';
+}
+
 /** The document for an `html` artifact: the prelude first, then the content as written. */
 export function htmlDocument(content: string): string {
+  const prelude = pageStyle() + HTML_PRELUDE;
   const headOpen = /<head[^>]*>/i.exec(content);
   if (headOpen) {
     const at = headOpen.index + headOpen[0].length;
-    return content.slice(0, at) + HTML_PRELUDE + content.slice(at);
+    return content.slice(0, at) + prelude + content.slice(at);
   }
   const htmlOpen = /<html[^>]*>/i.exec(content);
   if (htmlOpen) {
     const at = htmlOpen.index + htmlOpen[0].length;
-    return `${content.slice(0, at)}<head>${HTML_PRELUDE}</head>${content.slice(at)}`;
+    return `${content.slice(0, at)}<head>${prelude}</head>${content.slice(at)}`;
   }
-  return `<!doctype html><html><head>${HTML_PRELUDE}</head><body>${content}</body></html>`;
+  return `<!doctype html><html><head>${prelude}</head><body>${content}</body></html>`;
 }

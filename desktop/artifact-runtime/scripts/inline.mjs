@@ -11,12 +11,15 @@ const css = existsSync(cssPath) ? readFileSync(cssPath, 'utf8') : '';
 
 // A closing script tag inside the bundle would end the inline script early.
 const safeJs = js.replace(/<\/script/gi, '<\\/script');
+// The bundle is ESM and uses `import.meta`, so the inline script must stay a module: a
+// classic script fails to parse outright in WebKitGTK ("import.meta is only valid inside
+// modules") and the whole sandbox document then does nothing.
 html = html.replace(
   /<script[^>]*src="[^"]*runtime\.js"[^>]*><\/script>/,
-  () => `<script>${safeJs}</script>`,
+  () => `<script type="module">${safeJs}</script>`,
 );
 html = html.replace(/<link[^>]*href="[^"]*runtime\.css"[^>]*>/, () => `<style>${css}</style>`);
-const head = html.slice(0, html.indexOf('<script>'));
+const head = html.slice(0, html.indexOf('<script type="module">'));
 if (/\s(src|href)="/.test(head.replace(/<meta[^>]*>/g, ''))) {
   console.warn('inline.mjs: an external reference survived; check dist/runtime.html');
 }
