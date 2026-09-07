@@ -20,7 +20,7 @@ function block(selector) {
   return vars;
 }
 
-const light = block(':root {');
+const light = block("[data-theme='light'] {");
 const dark = block(":root[data-theme='dark']");
 
 /** Parses `#rrggbb` or `rgb(r g b / a)` into [r, g, b, a] with 0–1 channels. */

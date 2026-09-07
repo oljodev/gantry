@@ -1,9 +1,15 @@
-import { createRootRoute, type ErrorComponentProps, Outlet } from '@tanstack/react-router';
+import {
+  createRootRoute,
+  type ErrorComponentProps,
+  Outlet,
+  useRouterState,
+} from '@tanstack/react-router';
 
-import { AppShell } from '@/app/layout/AppShell';
+import { AppShell, BareShell } from '@/app/layout/AppShell';
 import { Providers } from '@/app/providers';
 import { Toaster } from '@/components/ui/toast';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { CommandPalette } from '@/features/palette/CommandPalette';
 
 /** Last-resort error surface: inline, with the message, never a blank window (15 §9). */
 function RootError({ error }: ErrorComponentProps) {
@@ -19,17 +25,30 @@ function RootError({ error }: ErrorComponentProps) {
   );
 }
 
-export const Route = createRootRoute({
-  errorComponent: RootError,
-  component: () => (
+/** Onboarding fills the window on its own (15 A20); everything else lives in the shell. */
+function Root() {
+  const bare = useRouterState({ select: (s) => s.location.pathname.startsWith('/onboarding') });
+  return (
     <Providers>
       <TooltipProvider>
         <Toaster>
-          <AppShell>
-            <Outlet />
-          </AppShell>
+          {bare ? (
+            <BareShell>
+              <Outlet />
+            </BareShell>
+          ) : (
+            <AppShell>
+              <Outlet />
+            </AppShell>
+          )}
+          <CommandPalette />
         </Toaster>
       </TooltipProvider>
     </Providers>
-  ),
+  );
+}
+
+export const Route = createRootRoute({
+  errorComponent: RootError,
+  component: Root,
 });

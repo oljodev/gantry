@@ -1,6 +1,6 @@
 # 15 — Application design system
 
-**Status:** layer 1 of three, decided in session 5 (2026-09-06). This document is the design table: every visual and interaction decision for the desktop app, with its reason. Layer 2 turns it into tokens in code (`src/styles/tokens.css` and the Tailwind theme); layer 3 is the component library (reshaped shadcn primitives plus Gantry composites, each shown in a dev-only gallery route). Nothing in a feature may contradict this document; when it must, the document changes in the same commit.
+**Status:** all three layers, decided and built in session 5 (2026-09-06/07); M0b landed the tokens, primitives, composites, gallery and mock screens. This document is the design table: every visual and interaction decision for the desktop app, with its reason. Layer 2 turns it into tokens in code (`src/styles/tokens.css` and the Tailwind theme); layer 3 is the component library (reshaped shadcn primitives plus Gantry composites, each shown in a dev-only gallery route). Nothing in a feature may contradict this document; when it must, the document changes in the same commit.
 
 The website (14) is designed on its own terms and is not a reference for the app. The two share the wordmark and the portal-frame mark and nothing else.
 
@@ -300,6 +300,7 @@ Raw colour or pixel values in components · shadows for hierarchy · page-level 
 - **11 §2.** Appearance gains nothing; density and theme already exist. The composer placeholder and the onboarding are the only new copy.
 - **13 §4.** The artifact panel is the right pane; its toolbar sits under the pane tabs.
 - **Website.** The hero mock's side feed stays as marketing; it is not updated to match A7.
+- **What M0b built (2026-09-07).** Everything in §8 except the `⋯` row menu (the context menu covers it), plus `src/scripts/contrast.mjs`-style enforcement as `scripts/contrast.mjs` and the ESLint rule. Two library constraints worth knowing: Base UI menu labels must sit inside a group, and floating layers portal to `<body>`, so the gallery's dark frame shows them in the app's theme.
 
 ## 16. Left out, on purpose
 

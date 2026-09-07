@@ -36,7 +36,10 @@ Built in session 5 (commits "M0: …"). Deviations from the list below: the desi
 
 Done when: the app opens on all three OSes from CI artifacts, in both themes, and the typed command round-trips.
 
-## M0b — Design system and mock screens (1 week)
+## M0b — Design system and mock screens (1 week) — done 2026-09-07
+
+Built in session 5. Landed: the contrast script and the raw-value lint rule in CI; every primitive reshaped on Base UI (the Button, Input, Textarea, Checkbox, Switch, Radio and Segmented, Select, Tabs, Dialog, Popover, Tooltip, Dropdown and Context menus, Toast, ScrollArea, Separator, Badge, Kbd, Skeleton, Command); the composites for the chat (user message, markdown with shiki code blocks, activity rows in every kind, turn summary, hunk preview, interaction and permission cards, turn footer), the composer with mode chip and model picker, the right pane with diff, command and tool-call tabs, sidebar chat rows with day groups and context menus, connector tiles, provider rows with the add-key dialog, the command palette, empty state, onboarding and welcome; `/dev/gallery`; and the mock screens `/chat/c-auth`, `/connectors`, `/settings/providers`, `/onboarding` on `src/fixtures/`. Not landed: the sidebar's `⋯` menu (the context menu covers it), the `+` menu's actions, CodeMirror (M6), Simple Icons marks in the app (monograms until cleared, M9). Contrast forced four light values and one dark value to change (15 §3).
+
 
 Layers 2 and 3 of the design document (15), built before a single backend call is wired so that M1 fills an approved screen instead of designing under pressure.
 

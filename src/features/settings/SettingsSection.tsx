@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 
+import { Providers } from '@/features/settings/Providers';
 import { isSection, SECTIONS, type Section } from '@/features/settings/sections';
 import { isTauri } from '@/lib/ipc/client';
 import { useAppInfo } from '@/lib/ipc/hooks/useAppInfo';
@@ -8,7 +9,6 @@ import { Segmented } from '@/components/ui/radio-group';
 
 const ARRIVES: Partial<Record<Section, string>> = {
   general: 'M2',
-  providers: 'M1',
   guard: 'M7',
   connectors: 'M9',
   skills: 'M12',
@@ -26,6 +26,7 @@ export function SettingsSection({ section }: { section: string }) {
       <h1 className="text-page font-semibold text-fg">{label}</h1>
       <div className="mt-6">
         {id === 'appearance' && <Appearance />}
+        {id === 'providers' && <Providers />}
         {id === 'about' && <About />}
         {ARRIVES[id] && (
           <p className="text-body text-fg-2">This section arrives with milestone {ARRIVES[id]}.</p>

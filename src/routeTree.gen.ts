@@ -11,8 +11,10 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ConnectorsRouteImport } from './routes/connectors'
+import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as ChatIndexRouteImport } from './routes/chat.index'
+import { Route as ChatChatIdRouteImport } from './routes/chat.$chatId'
 import { Route as DevGalleryRouteImport } from './routes/dev.gallery'
 import { Route as SettingsIndexRouteImport } from './routes/settings.index'
 import { Route as SettingsSectionRouteImport } from './routes/settings.$section'
@@ -27,6 +29,11 @@ const ConnectorsRoute = ConnectorsRouteImport.update({
   path: '/connectors',
   getParentRoute: () => rootRouteImport,
 } as any)
+const OnboardingRoute = OnboardingRouteImport.update({
+  id: '/onboarding',
+  path: '/onboarding',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
@@ -35,6 +42,11 @@ const SettingsRoute = SettingsRouteImport.update({
 const ChatIndexRoute = ChatIndexRouteImport.update({
   id: '/chat/',
   path: '/chat/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ChatChatIdRoute = ChatChatIdRouteImport.update({
+  id: '/chat/$chatId',
+  path: '/chat/$chatId',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DevGalleryRoute = DevGalleryRouteImport.update({
@@ -56,7 +68,9 @@ const SettingsSectionRoute = SettingsSectionRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/connectors': typeof ConnectorsRoute
+  '/onboarding': typeof OnboardingRoute
   '/settings': typeof SettingsRouteWithChildren
+  '/chat/$chatId': typeof ChatChatIdRoute
   '/dev/gallery': typeof DevGalleryRoute
   '/settings/$section': typeof SettingsSectionRoute
   '/chat/': typeof ChatIndexRoute
@@ -65,6 +79,8 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/connectors': typeof ConnectorsRoute
+  '/onboarding': typeof OnboardingRoute
+  '/chat/$chatId': typeof ChatChatIdRoute
   '/dev/gallery': typeof DevGalleryRoute
   '/settings/$section': typeof SettingsSectionRoute
   '/chat': typeof ChatIndexRoute
@@ -74,7 +90,9 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/connectors': typeof ConnectorsRoute
+  '/onboarding': typeof OnboardingRoute
   '/settings': typeof SettingsRouteWithChildren
+  '/chat/$chatId': typeof ChatChatIdRoute
   '/dev/gallery': typeof DevGalleryRoute
   '/settings/$section': typeof SettingsSectionRoute
   '/chat/': typeof ChatIndexRoute
@@ -85,7 +103,9 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/connectors'
+    | '/onboarding'
     | '/settings'
+    | '/chat/$chatId'
     | '/dev/gallery'
     | '/settings/$section'
     | '/chat/'
@@ -94,6 +114,8 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/connectors'
+    | '/onboarding'
+    | '/chat/$chatId'
     | '/dev/gallery'
     | '/settings/$section'
     | '/chat'
@@ -102,7 +124,9 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/connectors'
+    | '/onboarding'
     | '/settings'
+    | '/chat/$chatId'
     | '/dev/gallery'
     | '/settings/$section'
     | '/chat/'
@@ -112,7 +136,9 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ConnectorsRoute: typeof ConnectorsRoute
+  OnboardingRoute: typeof OnboardingRoute
   SettingsRoute: typeof SettingsRouteWithChildren
+  ChatChatIdRoute: typeof ChatChatIdRoute
   DevGalleryRoute: typeof DevGalleryRoute
   ChatIndexRoute: typeof ChatIndexRoute
 }
@@ -133,6 +159,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ConnectorsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/onboarding': {
+      id: '/onboarding'
+      path: '/onboarding'
+      fullPath: '/onboarding'
+      preLoaderRoute: typeof OnboardingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/settings': {
       id: '/settings'
       path: '/settings'
@@ -145,6 +178,13 @@ declare module '@tanstack/react-router' {
       path: '/chat'
       fullPath: '/chat/'
       preLoaderRoute: typeof ChatIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/chat/$chatId': {
+      id: '/chat/$chatId'
+      path: '/chat/$chatId'
+      fullPath: '/chat/$chatId'
+      preLoaderRoute: typeof ChatChatIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/dev/gallery': {
@@ -188,7 +228,9 @@ const SettingsRouteWithChildren = SettingsRoute._addFileChildren(
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ConnectorsRoute: ConnectorsRoute,
+  OnboardingRoute: OnboardingRoute,
   SettingsRoute: SettingsRouteWithChildren,
+  ChatChatIdRoute: ChatChatIdRoute,
   DevGalleryRoute: DevGalleryRoute,
   ChatIndexRoute: ChatIndexRoute,
 }

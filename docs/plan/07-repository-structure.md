@@ -180,7 +180,7 @@ gantry/
 │   ├── app/
 │   │   ├── router.tsx  providers.tsx  shortcuts.ts  theme.ts   # theme.ts: data-theme stamping + window.setTheme (11 §3)
 │   │   └── layout/{AppShell.tsx, Sidebar.tsx, TitleStrip.tsx, WindowControls.tsx, RightPane.tsx}   # 15 §7
-│   ├── fixtures/                         # fixture data for the gallery and mock screens (15 §11)
+│   ├── fixtures/{types.ts, chat.ts, connectors.ts, settings.ts}   # fixture data for the gallery and mock screens (15 §11); M1 replaces the types with bindings
 │   ├── lib/
 │   │   ├── ipc/{client.ts, keys.ts, hooks/…, events.ts}
 │   │   ├── stores/{runStore.ts, uiStore.ts}
@@ -204,11 +204,13 @@ gantry/
 │   │   │               InstanceSettings.tsx, UserConfigForm.tsx, AuthStatus.tsx, customPanels.ts}   # customPanels: import.meta.glob of connectors/*/ui
 │   │   ├── settings/{sections.ts, SettingsLayout.tsx, SettingsSection.tsx, General.tsx, Appearance.tsx, Providers.tsx, Guard.tsx, Guardrails.tsx, Connectors.tsx,
 │   │   │             Skills.tsx, Memory.tsx, Data.tsx, Advanced.tsx, About.tsx}
-│   │   ├── palette/{CommandPalette.tsx, actions.ts}
+│   │   ├── palette/CommandPalette.tsx
 │   │   ├── onboarding/{Onboarding.tsx, Welcome.tsx}
-│   │   └── gallery/{GalleryPage.tsx, entries/…}   # development builds only (15 §11)
+│   │   └── gallery/{GalleryPage.tsx, types.tsx, entries/{primitives,composites}.tsx}   # development builds only (15 §11)
 │   ├── components/ui/                    # shadcn/ui (Base UI) primitives, reshaped to the tokens (15 §8)
-│   ├── components/gantry/                # composites: ActivityRow, InteractionCard, SettingsRow, EmptyState… (15 §8)
+│   ├── components/gantry/                # composites (15 §8): activity/{ActivityRow, HunkPreview, TurnSummary}, chat/{UserMessage, TurnView, TurnFooter, InteractionCard},
+│   │                                     #   composer/{Composer, ModeChip, ModelPicker}, pane/{RightPane, DiffView, CommandOutput, ToolCallDetail},
+│   │                                     #   markdown/{Markdown, CodeBlock}, sidebar/{ChatRow, DayGroup}, connectors/ConnectorTile, ConnectorMark, TierLabel, EmptyState
 │   ├── styles/{globals.css, tokens.css, fonts.css}  # tokens.css is the only place a colour, size or duration is written (15)
 │   └── assets/fonts/                     # Inter Variable, JetBrains Mono Variable (woff2), copied by scripts/sync-fonts.mjs
 │
