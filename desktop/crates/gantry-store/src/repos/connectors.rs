@@ -4,7 +4,7 @@
 
 use gantry_core::{
     AuthState, AuthType, ChatId, ConnectorConfig, ConnectorInstanceDto, ConnectorKind, InstanceId,
-    ServerInfo, ToolInfo, now_ms,
+    ServerInfo, ToolDef, ToolInfo, now_ms,
 };
 use rusqlite::{Connection, OptionalExtension, Row, params};
 
@@ -122,27 +122,49 @@ pub fn set_config(conn: &Connection, id: InstanceId, config: &ConnectorConfig) -
     Ok(())
 }
 
-/// What the last connection discovered: the tool list, who the server said it was, and the
-/// error if it failed. One write, so a half-connected instance is never shown.
+/// What the last connection discovered: the tool list as the UI shows it, the same tools with
+/// their argument schemas as the model needs them, who the server said it was, and the error if
+/// it failed. One write, so a half-connected instance is never shown.
 pub fn record_connection(
     conn: &Connection,
     id: InstanceId,
     tools: &[ToolInfo],
+    defs: &[ToolDef],
     server: Option<&ServerInfo>,
     error: Option<&str>,
 ) -> Result<()> {
     conn.execute(
-        "UPDATE connector_instances SET tools_cache_json = ?2, server_info_json = ?3, \
-         last_connected_at = ?4, last_error = ?5, updated_at = ?4 WHERE id = ?1",
+        "UPDATE connector_instances SET tools_cache_json = ?2, tool_defs_json = ?3, \
+         server_info_json = ?4, last_connected_at = ?5, last_error = ?6, updated_at = ?5 \
+         WHERE id = ?1",
         params![
             id.to_string(),
             json(&tools)?,
+            json(&defs)?,
             server.map(json).transpose()?,
             now_ms(),
             error,
         ],
     )?;
     Ok(())
+}
+
+/// The full tool definitions of one instance, schemas and all, for rebuilding the registry
+/// without waking the server. `None` when the instance has never connected, or connected
+/// before 0007: the connector then lists its tools on its next connection.
+pub fn tool_defs(conn: &Connection, id: InstanceId) -> Result<Option<Vec<ToolDef>>> {
+    let json: Option<String> = conn
+        .query_row(
+            "SELECT tool_defs_json FROM connector_instances WHERE id = ?1",
+            params![id.to_string()],
+            |row| row.get(0),
+        )
+        .optional()?
+        .flatten();
+    let Some(json) = json else { return Ok(None) };
+    let defs: Vec<ToolDef> =
+        serde_json::from_str(&json).map_err(|e| StoreError::Other(e.to_string()))?;
+    Ok((!defs.is_empty()).then_some(defs))
 }
 
 /// Removes the instance and everything that hangs off it. Credentials are the caller's to

@@ -61,10 +61,39 @@ impl McpConnector {
     /// Connects if necessary and returns the tools the server offers, refreshing the cache.
     pub async fn refresh(&self) -> Result<Vec<ToolDef>, McpError> {
         let mut guard = self.session.lock().await;
-        let live = ensure(&mut guard, &self.endpoint).await?;
+        let live = self.ensure(&mut guard).await?;
         let tools = live.session.tools(self.remote).await?;
-        *self.cached_tools.lock().unwrap_or_else(|e| e.into_inner()) = Some(tools.clone());
+        self.remember(tools.clone());
         Ok(tools)
+    }
+
+    fn remember(&self, tools: Vec<ToolDef>) {
+        *self.cached_tools.lock().unwrap_or_else(|e| e.into_inner()) = Some(tools);
+    }
+
+    /// Opens the session if there is none, and lists the tools over it once.
+    ///
+    /// The listing is not for us — we have the tools cached. It is for the connection: a
+    /// server may declare that some arguments travel as `Mcp-Param-*` headers rather than in
+    /// the body (SEP-2243, which GitHub's server enforces), and the client learns which ones
+    /// from a `tools/list` it has seen on that connection. A session that goes straight to a
+    /// call sends none of them and is refused with "header mismatch". Best effort: a server
+    /// that cannot list is still worth calling, and its error will say so.
+    async fn ensure<'a>(&self, guard: &'a mut Option<Live>) -> Result<&'a mut Live, McpError> {
+        if guard.is_none() {
+            let session = McpSession::connect(&self.endpoint).await?;
+            match session.tools(self.remote).await {
+                Ok(tools) => self.remember(tools),
+                Err(err) => log::warn!("{} listed no tools on connect: {err}", self.descriptor.id),
+            }
+            *guard = Some(Live {
+                session,
+                last_used: Instant::now(),
+            });
+        }
+        let live = guard.as_mut().expect("just connected");
+        live.last_used = Instant::now();
+        Ok(live)
     }
 
     /// Drops the connection: called on uninstall, on disable, and by the idle sweep.
@@ -85,24 +114,6 @@ impl McpConnector {
         }
         idle
     }
-}
-
-/// Opens the session if there is none. Kept outside the impl so both callers borrow the same
-/// guard rather than locking twice.
-async fn ensure<'a>(
-    guard: &'a mut Option<Live>,
-    endpoint: &Endpoint,
-) -> Result<&'a mut Live, McpError> {
-    if guard.is_none() {
-        let session = McpSession::connect(endpoint).await?;
-        *guard = Some(Live {
-            session,
-            last_used: Instant::now(),
-        });
-    }
-    let live = guard.as_mut().expect("just connected");
-    live.last_used = Instant::now();
-    Ok(live)
 }
 
 #[async_trait]
@@ -136,7 +147,8 @@ impl Connector for McpConnector {
     ) -> Result<ToolOutcome, ConnectorError> {
         let call = async {
             let mut guard = self.session.lock().await;
-            let live = ensure(&mut guard, &self.endpoint)
+            let live = self
+                .ensure(&mut guard)
                 .await
                 .map_err(|e| ConnectorError::Failed(e.to_string()))?;
             match live.session.call(&req.tool, &req.args).await {
@@ -148,7 +160,8 @@ impl Connector for McpConnector {
                     if let Some(live) = guard.take() {
                         live.session.close().await;
                     }
-                    let live = ensure(&mut guard, &self.endpoint)
+                    let live = self
+                        .ensure(&mut guard)
                         .await
                         .map_err(|e| ConnectorError::Failed(e.to_string()))?;
                     live.session

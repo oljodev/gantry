@@ -223,9 +223,15 @@ impl ConnectorService {
                 let tools = tool_infos(&defs, manifest.as_deref());
                 let server = session.server().clone();
                 session.close().await;
-                let (t, s) = (tools.clone(), server);
+                let (t, d, s) = (
+                    tools.clone(),
+                    with_overrides(&defs, manifest.as_deref()),
+                    server,
+                );
                 self.store
-                    .write(move |c| repos::connectors::record_connection(c, id, &t, Some(&s), None))
+                    .write(move |c| {
+                        repos::connectors::record_connection(c, id, &t, &d, Some(&s), None)
+                    })
                     .await?;
                 self.rebuild().await?;
                 Ok(tools)
@@ -245,7 +251,7 @@ impl ConnectorService {
                 let recorded = message.clone();
                 self.store
                     .write(move |c| {
-                        repos::connectors::record_connection(c, id, &[], None, Some(&recorded))
+                        repos::connectors::record_connection(c, id, &[], &[], None, Some(&recorded))
                     })
                     .await?;
                 Err(GantryError::internal(message))
@@ -576,7 +582,18 @@ impl ConnectorService {
                 .catalog_id
                 .as_deref()
                 .and_then(|c| self.catalog.get(c));
-            let tools = tool_defs(&instance, manifest.as_deref());
+            // The stored definitions, schemas and all. An instance that has none — never
+            // connected, or last connected before the schemas were kept — starts with no cache,
+            // so its first use lists the tools rather than declaring them without arguments.
+            let id = instance.id;
+            let tools = self
+                .store
+                .read(move |c| repos::connectors::tool_defs(c, id))
+                .unwrap_or_else(|err| {
+                    log::warn!("{} has no usable tool cache: {err}", instance.name);
+                    None
+                })
+                .map(|defs| with_overrides(&defs, manifest.as_deref()));
             self.registry.register(Arc::new(McpConnector::new(
                 namespace,
                 instance.name.clone(),
@@ -625,44 +642,29 @@ fn scopes_for(
     server.scopes_supported.clone()
 }
 
-/// The cached tool list as `ToolDef`s, with the manifest's overrides applied.
-fn tool_defs(
-    instance: &ConnectorInstanceDto,
+/// The tools with the manifest's tier and confirmation overrides applied (03 §3).
+fn with_overrides(
+    defs: &[gantry_core::ToolDef],
     manifest: Option<&Manifest>,
-) -> Option<Vec<gantry_core::ToolDef>> {
-    if instance.tools.is_empty() {
-        return None;
-    }
-    Some(
-        instance
-            .tools
-            .iter()
-            .map(|t| {
-                let mut def = gantry_core::ToolDef::new(
-                    t.name.clone(),
-                    t.description.clone(),
-                    serde_json::json!({"type": "object"}),
-                    t.tier,
-                );
-                apply_override(&mut def, manifest);
-                def
-            })
-            .collect(),
-    )
-}
-
-/// The discovered tools as the UI lists them, with the manifest's tier overrides applied.
-fn tool_infos(defs: &[gantry_core::ToolDef], manifest: Option<&Manifest>) -> Vec<ToolInfo> {
+) -> Vec<gantry_core::ToolDef> {
     defs.iter()
         .map(|def| {
             let mut def = def.clone();
             apply_override(&mut def, manifest);
-            ToolInfo {
-                name: def.name.clone(),
-                title: None,
-                description: def.description.clone(),
-                tier: def.tier,
-            }
+            def
+        })
+        .collect()
+}
+
+/// The discovered tools as the UI lists them, with the manifest's tier overrides applied.
+fn tool_infos(defs: &[gantry_core::ToolDef], manifest: Option<&Manifest>) -> Vec<ToolInfo> {
+    with_overrides(defs, manifest)
+        .into_iter()
+        .map(|def| ToolInfo {
+            name: def.name,
+            title: None,
+            description: def.description,
+            tier: def.tier,
         })
         .collect()
 }
