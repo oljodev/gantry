@@ -64,7 +64,7 @@ gantry/
 │   │       │   ├── skills/{SkillsPage.tsx, SkillEditor.tsx, FrontmatterForm.tsx, ImportReview.tsx, MatchTester.tsx}
 │   │       │   ├── memory/{MemoryPage.tsx, MemoryTable.tsx, RecentlyDeleted.tsx}
 │   │       │   ├── projects/{ProjectPage.tsx, ProjectSettings.tsx, KnowledgeFiles.tsx, ProjectArtifacts.tsx}
-│   │       │   ├── connectors/{InstallDialog.tsx, AddCustomServer.tsx; later RuntimeCheck.tsx, ConnectorDetail.tsx,
+│   │       │   ├── connectors/{InstallDialog.tsx, AddCustomServer.tsx, DeviceCodeDialog.tsx, install.ts; later RuntimeCheck.tsx, ConnectorDetail.tsx,
 │   │       │   │               InstanceSettings.tsx, UserConfigForm.tsx, AuthStatus.tsx, customPanels.ts}   # customPanels: import.meta.glob of ../../connectors/*/ui
 │   │       │   ├── customize/{CustomizeDialog.tsx, ConnectorsSection.tsx, SkillsSection.tsx, MemorySection.tsx}   # the second dialog (15 A18)
 │   │       │   ├── settings/{sections.ts, SettingsDialog.tsx, SettingsBody.tsx, General.tsx, Providers.tsx, Data.tsx, Advanced.tsx, Guard.tsx, Guardrails.tsx, About.tsx}
@@ -125,7 +125,7 @@ gantry/
 │   │   │       ├── transcript.rs  projection.rs  context.rs  system_prompt.rs   # system_prompt assembles the layers of 10 §2 and the mode note
 │   │   │       ├── tools.rs                  # the ToolSet of one turn: namespaced specs, mode filter, name map
 │   │   │       ├── permissions.rs            # the mode table (M3); grows into permissions/{engine, grants, guardrails, judge} with M7 and M8
-│   │   │       ├── runtime_tools/{mod.rs, clock.rs, artifacts.rs; later access.rs, catalog.rs, skills.rs, memory.rs}
+│   │   │       ├── runtime_tools/{mod.rs, clock.rs, artifacts.rs, catalog.rs; later skills.rs, memory.rs}
 │   │   │       ├── skills/{mod.rs, index.rs, matcher.rs, import.rs, export.rs}
 │   │   │       ├── memory/{mod.rs, selector.rs, proposals.rs}
 │   │   │       ├── artifacts/{mod.rs, registry.rs, edits.rs}   # the service (versions, the render handshake), the type registry mirrored by the frontend, exact-match edits

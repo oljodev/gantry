@@ -138,10 +138,13 @@ Matching: same chat and instance; tool matches or is wildcard; tier at or under 
 
 This is for connectors that are **installed but not attached** to the chat (the connector suggestion tools in 03 §9 handle connectors that are not installed).
 
-- The system prompt carries an inventory: "Attached: filesystem, code-editor, shell. Installed, not attached: github (repositories, issues, pull requests), supabase (database). Call `gantry__request_access` to use one."
-- `gantry__request_access { connector, tools?, reason }` is a runtime tool owned by `gantry-agent`, present whenever at least one installed instance is unattached.
-- The call becomes `Interaction::AccessRequest`, rendered as `AccessRequestCard`: connector, the tools it wants, its reason; actions **Attach for this chat** · **Attach and allow these tools** · **Deny**.
-- On approval: a `chat_connectors` row (and optionally a grant), a `ToolSetChange` system message, and the tool result `{ attached: true, tools: [...] }`; the model's next call sees the tools. Per-call permission still follows the mode, so in Manual mode attaching GitHub does not silently authorize creating issues.
+As built (M10, 2026-09-08):
+
+- The prompt carries a `<gantry_connectors>` inventory: "attached to this chat: filesystem (12 tools) · installed, not attached: github (44 tools) — call gantry__request_access to use one; the user decides." It is assembled per turn rather than frozen with the chat's snapshot, because installing and attaching happen outside the chat and a frozen list would go on lying about them (10 §2).
+- `gantry__request_access { connector, tools?, reason }` is a runtime tool owned by `gantry-agent`, offered whenever at least one instance is installed. `reason` is required and is shown to the user in the model's own words.
+- The call becomes `Interaction::AccessRequest`, rendered as `AccessRequestCard`: connector, the tools it wants, its reason; actions **Attach for this chat** · **Attach and allow these tools** · **Not now**.
+- On approval: a `chat_connectors` row with source `access_request`, one grant per named tool when the second action was chosen, and the tool result `{ attached: true, tools: [...] }`. The runner re-reads the chat's connectors between tool rounds, rebuilds the tool set and appends a `ToolSetChange` message, so the model's next call has the tools and knows it. Per-call permission still follows the mode, so in Manual mode attaching GitHub does not silently authorize creating issues.
+- The same re-read covers the user attaching or detaching something in the `+` menu while a turn runs, which is the other way the tool set can change under a turn.
 
 ## 10. The Interaction primitive
 

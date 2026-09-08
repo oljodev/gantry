@@ -267,6 +267,13 @@ than another week of file editing. M6 loses nothing by waiting: document 16 has 
 code editor and the shell out of the catalog and into the Code surface, so M6 was going to be
 rewritten against that decision anyway.
 
+**And M10 straight after M9 (2026-09-08).** The half of M9 that shipped left connectors that
+work but that a chat cannot reach unless the user knows to tick them in the `+` menu. The first
+thing Olav asked a chat after GitHub and Cloudflare connected was what it could use, and the
+answer was "none". M10 is what closes that: the model can look at what exists and ask for it.
+The rest of M9 (the runtime check, elicitation, `user_config` forms, stderr logs, tool-list
+caching, the `add-connector` skill) follows.
+
 Three decisions taken with it: **GitHub connects over its hosted MCP server with OAuth**, not a
 local process with a pasted token; **Cloudflare arrives as two entries**, the public
 documentation server and the Workers bindings server over OAuth; and **settings become two
@@ -358,11 +365,33 @@ Done when: GitHub connects through OAuth and creates an issue after a permission
 
 Trim option: ship M9 without DCR if every target server supports CIMD or user-supplied clients; add DCR when a needed server lacks CIMD.
 
-## M10 — Connector suggestions and access requests (1 week)
+## M10 — Connector suggestions and access requests (1 week) — done 2026-09-08
 
-- `runtime_tools/catalog.rs`: `gantry__search_connectors`, `gantry__suggest_connector` with `ConnectorSuggestionCard` and the inline install flow; the **Suggest connectors** setting.
-- `gantry__request_access`, the connector inventory in the frozen context block, `AccessRequestCard`.
-- `ToolSetChange` projection, including the Anthropic `defer_loading` + `tool_addition` path and the `drop_block` fallback with a `provider.notice`.
+Brought forward the moment M9 landed, because a connector nobody can reach from a chat is a
+connector that does not exist: the first thing tried after GitHub and Cloudflare connected was
+asking a chat about them, and the answer was "no MCPs available". Built:
+
+- `runtime_tools/catalog.rs`: `gantry__search_connectors` (installed instances first, then the
+  catalog, prefix-matched so "issues" finds `create_issue`), `gantry__request_access` and
+  `gantry__suggest_connector`, all `app` tier, so the permission engine never prompts for the
+  asking itself — the card the user answers *is* the decision. The **Suggest connectors** setting
+  removes the third tool from the array altogether; `request_access` appears only when something
+  is installed to ask for.
+- `Interaction::AccessRequest` and `Interaction::ConnectorSuggestion` with their payloads and
+  resolutions, `AccessRequestCard` and `ConnectorSuggestionCard` in the chat, and the inline
+  install: one click through `useInstallFlow`, the install dialog as the fallback, the instance
+  handed back to the waiting turn.
+- **The tool set changes mid-turn.** The runner re-reads the chat's connectors between rounds
+  and rebuilds the set whenever they changed — by a card, or by the `+` menu while the turn ran
+  — and appends a `ToolSetChange` message, projected as a sentence for all four providers.
+- The connector inventory in the prompt, assembled per turn rather than frozen with the
+  snapshot (10 §2), plus the paragraph in `core.md` that tells the model to look before it says
+  it has no access. `CORE_VERSION` 4.
+
+Left for later, and not needed by any provider Gantry ships on today: the Anthropic
+`defer_loading` + `tool_addition` path for adding tools inside one streaming response, and its
+`drop_block` fallback with a `provider.notice`. Chat Completions re-sends the tool array each
+round, which is what the mid-turn rebuild uses.
 
 Done when: "what's in my Google Drive?" in a chat without Drive leads to a suggestion, an install, an OAuth connect and an answer, without leaving the chat.
 

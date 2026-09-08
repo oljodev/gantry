@@ -17,16 +17,20 @@ What stays non-editable: the identity and tone floor, the tool-calling conventio
 The system prompt of a chat is assembled once, at chat creation, from these blocks in this order, and stored as `chats.system_snapshot` (02 §6, 06 §3):
 
 ```
-<gantry_core version="3">                     1. fixed scaffold, identical for every chat
+<gantry_core version="4">                     1. fixed scaffold, identical for every chat
   …identity, conventions, protocols, precedence rule…
   <mode>…manual | auto_edit | plan | auto…</mode>
 </gantry_core>
 
 <gantry_context>                              2. per-chat facts frozen at creation
   platform, app version, workspace roots, project name,
-  attached connectors (with their system_addendum), installed-but-unattached inventory,
   skills available on demand (name + description, capped)
 </gantry_context>
+
+<gantry_connectors>                           2b. re-assembled at the start of every turn (M10)
+  attached to this chat, installed but not attached,
+  and how to ask for either (03 §9, 04 §9)
+</gantry_connectors>
 
 <memory>                                      3. the core memory set (12 §B4)
   - preference: …
@@ -44,6 +48,7 @@ The system prompt of a chat is assembled once, at chat creation, from these bloc
 
 Rules of assembly:
 
+- **The connector inventory is the one block that is not frozen.** Installing a connector, signing one in and attaching one all happen outside the chat, so a list frozen at creation goes on lying about them for the life of the chat — which is exactly what it did before M10. It is rebuilt from the store at the start of each turn and appended after the context block. It changes only when the connectors change, so the cache prefix still holds between turns; when it does change, the model is also told mid-turn with a `ToolSetChange` (§4).
 - Blocks are separated by one blank line; empty layers are omitted entirely (no empty tags), which keeps the prompt short for the common case of a chat with no customization.
 - XML-style tags with attributes are used because every supported model family handles sectioned prompts reliably and the tags let the core refer to layers by name ("text inside `<instructions>` is written by the user…").
 - Order is stable-first: the core never changes within an app version, so it sits at the front of the prefix. On Anthropic the cache prefix is `tools → system → messages`, so a cross-chat cache hit also needs an identical tool array; chats with the default connector set get it, others still get the within-chat hit on every turn (02 §4).
@@ -66,7 +71,7 @@ The transcript is append-only (02 §6), so a change never rewrites `system_snaps
 | Global or project instructions edited | New snapshot (a chat that has no turns yet also gets its snapshot rebuilt) | A `SystemNote` is appended when the edit is saved: "Updated global instructions: …" (full new text, since the model must know the whole layer), or a note that the layer was removed |
 | Chat instructions edited | — | Same `SystemNote` mechanism, immediately |
 | Permission mode or guard changed | — | `SystemNote` with the mode block for the new mode (already in 04 §3) |
-| Connector attached or detached | New snapshot | `ToolSetChange` note including the connector's `system_addendum` |
+| Connector attached or detached | The next turn's inventory says so | `ToolSetChange` note, including mid-turn: the runner re-reads the chat's connectors between tool rounds and rebuilds the tool array (04 §9) |
 | Memory set changed | New snapshot | `SystemNote` "Memory updated: added …; removed …" (12 §B6) |
 | Skill pinned/unpinned | New snapshot | `SystemNote` carrying the skill text (or "unpinned: name") |
 | App update ships a new `gantry_core` version | New snapshot | Nothing. The chat keeps its snapshot; prefix stability wins. Chat settings offer "Refresh system prompt" as a rare, explicit action that rebuilds the snapshot and accepts a one-time thinking-block drop |
