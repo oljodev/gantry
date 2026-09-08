@@ -44,6 +44,14 @@ Four manual tests remain for the whole catalogue, each on a service Olav already
 connector after the first of its shape is data on a proven path, and the probe is what says the
 data is right.
 
+**What the probe cannot do for an OAuth server.** A `401` ends the exchange, so `tools/list` is
+never reached and no tool list is recorded — which means the tier review of §6 is done against the
+vendor's documentation rather than the server's own answer for every connector in B2, B3, B4, B8
+and B9. That is most of the catalogue. Two things keep it honest: the probe takes `--with-secrets`
+and records the tool list for any instance already connected in the app, so a service Olav does
+sign in to gets its fixture the same day; and until then the README says which parts were checked
+mechanically.
+
 Where a connector's tool list cannot be recorded because nobody here has an account, its README
 says so in the "Verified" line, in the form `github/README.md` already uses ("checked against the
 live server on 2026-09-07"). Shipping an unexercised manifest is acceptable; pretending it was
@@ -65,8 +73,8 @@ expects (03 §7).
 |---|---|---|---|
 | Airtable | `https://mcp.airtable.com/mcp` | 401 | bearer / OAuth |
 | Apify | `https://mcp.apify.com` (root, not `/mcp`) | 401 | OAuth |
-| Asana | `https://mcp.asana.com/sse` | 401 + PRM | OAuth |
-| Atlassian (Jira, Confluence) | `https://mcp.atlassian.com/v1/sse` | 401 | OAuth |
+| Asana | `https://mcp.asana.com/mcp` | 401 + PRM | OAuth |
+| Atlassian (Jira, Confluence) | `https://mcp.atlassian.com/v1/mcp` | 401 | OAuth |
 | Axiom | `https://mcp.axiom.co/mcp` | 401 + PRM | OAuth |
 | Browserbase (Stagehand) | `https://mcp.browserbase.com/mcp` | 200 | key in header |
 | Cal.com | `https://mcp.cal.com/mcp` | 401 + PRM | OAuth |
@@ -100,7 +108,7 @@ expects (03 §7).
 | Notion | `https://mcp.notion.com/mcp` | 401 + PRM | OAuth |
 | PayPal | `https://mcp.paypal.com/mcp` | 401 + PRM | OAuth |
 | Perplexity | `https://api.perplexity.ai/mcp` | 401 + PRM | OAuth |
-| Plaid | `https://api.dashboard.plaid.com/mcp/sse` | 401 | OAuth |
+| Plaid | `https://api.dashboard.plaid.com/mcp` | 401 | OAuth (see the transport note) |
 | PostHog | `https://mcp.posthog.com/mcp` | 401 + PRM | OAuth |
 | Postman | `https://mcp.postman.com/mcp` | 401 + PRM | OAuth |
 | Railway | `https://mcp.railway.com/mcp` | 401 + PRM | OAuth |
@@ -110,7 +118,7 @@ expects (03 §7).
 | Sentry | `https://mcp.sentry.dev/mcp` | 401 + PRM | OAuth |
 | Slack | `https://mcp.slack.com/mcp` | 401 + PRM | OAuth, admin-approved (GA Feb 2026) |
 | Socket | `https://mcp.socket.dev/` | 200 | none for reads |
-| Square | `https://mcp.squareup.com/sse` | 401 + PRM | OAuth |
+| Square | `https://mcp.squareup.com/mcp` | 401 + PRM | OAuth |
 | Stripe | `https://mcp.stripe.com` | 401 + PRM | OAuth or key |
 | Supabase | `https://mcp.supabase.com/mcp` | 401 | OAuth |
 | Tally | `https://mcp.tally.so/mcp` | 401 + PRM (`api.tally.so`) | OAuth |
@@ -120,6 +128,16 @@ expects (03 §7).
 | Windsor.ai | `https://mcp.windsor.ai/` | 401 | bearer |
 | Xero | `https://mcp.xero.com/mcp` | 401 | OAuth |
 | Zapier | `https://mcp.zapier.com/api/mcp/mcp` | 401 | per-user URL and key from their dashboard |
+
+**Transport** (corrected 2026-09-08, after this table was first written from the probe). Gantry
+speaks **streamable HTTP only**: the manifest schema allows no other `transport`, and rmcp is built
+with `transport-streamable-http-client-reqwest` and nothing else. Four rows were first recorded at
+the vendor's `/sse` path — Asana, Atlassian, Square, Plaid — which Gantry cannot connect to at all.
+Each answers `401` identically at `/mcp`, so that is what the table and the manifests use. Two
+consequences worth stating plainly: **a `401` proves the path is served and asks for OAuth; it
+proves nothing about the transport**, because the challenge comes before any negotiation. Legacy
+HTTP+SSE support is not planned; a vendor that only ever offers `/sse` is out of the catalogue
+until they ship streamable HTTP.
 
 ### B. Official local servers — a child process on a runtime you have
 
@@ -194,7 +212,7 @@ day and one sign-in from Olav.
 | **B0** | — | none | The probe harness, tier rules and the folder template (§5, §6) |
 | **B1** | Remote, no auth | Microsoft Learn, Hugging Face, Socket, Context7, DeepWiki | none — proven by `cloudflare-docs` |
 | **B2** | Remote, OAuth (DCR) | Linear, Notion, Sentry, Netlify, Vercel | none — proven by `cloudflare-bindings` |
-| **B3** | Remote, OAuth | Slack, Atlassian, Asana, Figma, Canva | Slack's admin-approval step |
+| **B3** | Remote, OAuth | Slack, Atlassian, Asana, Figma, Canva | Slack's admin-approval step; Atlassian and Asana are the first two `/mcp` paths taken from a vendor who also publishes `/sse`, so the first sign-in confirms the transport as well as the auth |
 | **B4** | Remote, OAuth | GitLab, Supabase, Neon, PostHog, Railway | none |
 | **B5** | Remote, key in a header or query | Stripe, Tavily, Firecrawl, Tinybird, Exa | **first key-in-header connector — one setup from Olav** |
 | **B6** | Local, Node | Playwright, Shopify Dev, Azure, Salesforce, BrowserStack | **the runtime check and command preview (03 §11) — one install from Olav** |
@@ -248,9 +266,15 @@ Three ways it runs:
   retired endpoint, a new destructive tool with no override, an auth mode that changed. Vendors
   move; this is how we find out before a user does.
 
-`validate-connectors` keeps its job (schema, icon, README, id equals folder) and gains: the id is
-unique across the catalogue, `catalog.sort_weight` does not collide inside a category, and every
-`suggest_for` term is lowercase.
+`validate-connectors` is today a stub that prints "not implemented yet" and exits zero
+(`desktop/crates/xtask/src/main.rs`), so B0 **writes** it rather than extending it: schema, icon,
+README, id equals folder, the id unique across the catalogue, `catalog.sort_weight` free of
+collisions inside a category, and every `suggest_for` term lowercase.
+
+It also takes the one invariant §7 states and nothing enforces: every `available` row in
+`web/site/src/data/connectors.ts` has a folder in `desktop/connectors/`, and every folder has a
+row. That check costs ten lines and is the only thing standing between the site and a promise the
+app cannot keep.
 
 ## 6. Tier rules
 

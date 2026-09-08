@@ -459,6 +459,14 @@ list-changed notifications, and the `add-connector` skill.
 - Bundled manifests: `github`, `google-drive` (with its helper panel), `playwright`.
 - **The `add-connector` Claude skill** (`.claude/skills/add-connector/SKILL.md`, decided 2026-09-07): the repeatable recipe for a new catalog entry, so the catalog can grow from the first 10–30 bundled connectors to well past 100 without hand-holding. It researches the server (transport, auth, tools, runtime), writes `desktop/connectors/<id>/{manifest.json, icon.svg, README.md}` with tiers per tool, adds the website entry in `web/site/src/data/connectors.ts`, runs `cargo xtask validate-connectors` and the schema test, and ends with a checklist for Olav to try the install. Batches of connectors land as one commit each.
 
+- **The catalogue itself** now has its own document: **17**, written 2026-09-08 from a live probe
+  of ninety-odd services. It groups the catalogue into batches of five *by auth shape*, because the
+  shape is where the work is, and it puts B0 — `cargo xtask probe-connectors`, plus the
+  `validate-connectors` that is still a stub today — inside M9's remaining scope, with B1 and B2
+  behind it. B3–B5 land with M10's follow-on work, B6–B7 wait for the runtime check above, and
+  B8–B11 are release-cadence work of five per release. The `add-connector` skill above is how one
+  entry is written; 17 is which entries, in what order, and how they stay true.
+
 Done when: GitHub connects through OAuth and creates an issue after a permission prompt; Playwright is refused until Node 20 is present, then installs and drives a page; a custom stdio server pasted from a Claude Desktop config works; removing a connector leaves its history readable.
 
 Trim option: ship M9 without DCR if every target server supports CIMD or user-supplied clients; add DCR when a needed server lacks CIMD.
