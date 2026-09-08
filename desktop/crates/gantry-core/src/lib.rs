@@ -59,5 +59,5 @@ pub use settings::{
 pub use time::now_ms;
 pub use tool::{
     DecisionSource, PlanModePolicy, RiskTier, ToolCallDto, ToolCallStatus, ToolDef, ToolDisplay,
-    ToolDisplayKind, result_preview,
+    ToolDisplayKind, ToolStream, result_preview,
 };

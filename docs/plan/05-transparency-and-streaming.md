@@ -37,7 +37,7 @@ Every event carries `seq` (monotonic within a turn), `ts` (ms) and `turn_id`. `t
 | `decision.resolved` | interaction_id, resolution, source | yes |
 | `judge.decision` | call_id, decision, confidence, reason, flags, latency_ms | yes |
 | `tool_call.executing` | call_id | yes |
-| `tool_call.output` | call_id, stream (stdout\|stderr\|log), chunk | as a blob when the call completes; checkpointed every 1 MB / 5 s |
+| `tool_call.output` | call_id, stream (stdout\|stderr\|log), chunk | **built 2026-09-08** as the transient half: the batcher merges consecutive chunks of the same call and stream, and the run store keeps the 400-line window. The blob and its checkpoints arrive with the result-capping work; until then a command's full log is whatever its result carries, and a view that reattaches mid-command sees the row without its output until the call completes |
 | `tool_call.progress` | call_id, fraction?, message? | no |
 | `file_edit.applied` | edit_id, call_id, path, op, stats, hunks | yes |
 | `tool_call.completed` | call_id, status, is_error, duration_ms, result_preview, result (the content the model receives, capped at the transcript limit; a blob reference joins with the shell's output streams) | yes |

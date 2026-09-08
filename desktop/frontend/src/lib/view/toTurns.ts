@@ -90,6 +90,7 @@ function liveTurn(t: TurnDto, live: LiveTurn, modelLabel: Label, titles: Artifac
     live.status === 'running',
     thinkingMs,
     titles,
+    live.output,
   );
   pushNotices(blocks, live.notices);
   if (live.error)
@@ -162,6 +163,8 @@ function messagesToBlocks(
   running: boolean,
   thinkingMs: number | undefined,
   titles: ArtifactIndex,
+  /** What running calls have printed so far; empty for a finished turn, whose result has it. */
+  output: Record<string, string[]> = {},
 ): Block[] {
   const blocks: Block[] = [];
   const pushItem = (item: ActivityItem) => {
@@ -204,7 +207,7 @@ function messagesToBlocks(
           alt: 'Picture from the model',
         });
       } else if (part.kind === 'tool_call') {
-        pushItem(callItem(part, calls[part.id], titles));
+        pushItem(callItem(part, calls[part.id], titles, output[part.id]));
       }
     }
   }
@@ -214,7 +217,7 @@ function messagesToBlocks(
   );
   for (const c of Object.values(calls)) {
     if (!shown.has(c.id) && c.message_id === lastMessage?.id)
-      pushItem(callItem(undefined, c, titles));
+      pushItem(callItem(undefined, c, titles, output[c.id]));
   }
   blocks.push(...artifactCards(blocks, titles));
   for (const p of pending) {
@@ -255,6 +258,7 @@ function callItem(
   part: Extract<ContentPart, { kind: 'tool_call' }> | undefined,
   call: ToolCallDto | undefined,
   titles: ArtifactIndex,
+  output?: string[],
 ): ActivityItem {
   const id = call?.id ?? part?.id ?? '';
   const [connector, tool] = call ? [call.connector, call.tool] : splitName(part?.name ?? '');
@@ -262,7 +266,7 @@ function callItem(
   if (isArtifactTool(modelName)) return artifactItem(id, tool, call, part, titles);
   // The file connectors have richer rows than "used a tool": a read with its line range, a
   // search with its count, an edit with its diff (16 §6).
-  const file = call ? fileItem(call) : undefined;
+  const file = call ? fileItem(call, output) : undefined;
   if (file) return file;
   return {
     kind: 'connector',

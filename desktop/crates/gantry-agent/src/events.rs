@@ -171,6 +171,23 @@ fn merge_text_delta(queue: &mut [AgentEvent], event: &AgentEventKind) -> bool {
             text.push_str(more);
             true
         }
+        // A command spewing output produces one event per read; the interface wants the text,
+        // not the reads (05 §8).
+        (
+            AgentEventKind::ToolCallOutput {
+                call_id: a,
+                stream: sa,
+                chunk,
+            },
+            AgentEventKind::ToolCallOutput {
+                call_id: b,
+                stream: sb,
+                chunk: more,
+            },
+        ) if a == b && sa == sb => {
+            chunk.push_str(more);
+            true
+        }
         _ => false,
     }
 }
@@ -231,6 +248,42 @@ mod tests {
         );
         assert_eq!(events[0].seq, 3, "a merged delta carries the latest seq");
         assert_eq!(events[1].seq, 4);
+    }
+
+    #[tokio::test]
+    async fn merges_a_command_spewing_output_into_one_event_per_stream() {
+        let sink = Arc::new(Collect::default());
+        let b = Batcher::start(
+            TurnId::new(),
+            sink.clone(),
+            &tokio::runtime::Handle::current(),
+        );
+        let call = gantry_core::CallId::new();
+        for line in ["one\n", "two\n", "three\n"] {
+            b.push(AgentEventKind::ToolCallOutput {
+                call_id: call.clone(),
+                stream: gantry_core::ToolStream::Stdout,
+                chunk: line.into(),
+            });
+        }
+        // A different stream is a different event: stdout and stderr must stay distinguishable.
+        b.push(AgentEventKind::ToolCallOutput {
+            call_id: call.clone(),
+            stream: gantry_core::ToolStream::Stderr,
+            chunk: "warning\n".into(),
+        });
+        b.close();
+        let batches = sink.0.lock().unwrap();
+        let events = &batches[0].events;
+        assert_eq!(events.len(), 2);
+        assert!(
+            matches!(&events[0].event, AgentEventKind::ToolCallOutput { chunk, .. }
+                if chunk == "one\ntwo\nthree\n")
+        );
+        assert!(
+            matches!(&events[1].event, AgentEventKind::ToolCallOutput { stream, .. }
+                if *stream == gantry_core::ToolStream::Stderr)
+        );
     }
 
     #[tokio::test]

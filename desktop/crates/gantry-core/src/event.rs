@@ -15,7 +15,7 @@ use crate::{
     interaction::{Interaction, InteractionResolution},
     message::{ContentPart, Message, ResultPart, Role, StopReason, Usage},
     settings::{Mode, ModelRef},
-    tool::{DecisionSource, RiskTier, ToolCallDto, ToolDisplay},
+    tool::{DecisionSource, RiskTier, ToolCallDto, ToolDisplay, ToolStream},
 };
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
@@ -100,6 +100,15 @@ pub enum AgentEventKind {
         call_id: CallId,
         source: DecisionSource,
     },
+    /// A running call produced output. Transient: the end state is the call's result and, for
+    /// a command, its stored log. This is what makes a long build visibly alive rather than a
+    /// spinner (05 §3, `docs/connectors/shell.md` §10).
+    #[serde(rename = "tool_call.output")]
+    ToolCallOutput {
+        call_id: CallId,
+        stream: ToolStream,
+        chunk: String,
+    },
     /// The call ended: with a result, an error result, a denial or a cancellation. The result
     /// content is what the model receives (capped at the transcript limit).
     #[serde(rename = "tool_call.completed")]
@@ -171,6 +180,7 @@ impl AgentEventKind {
             AgentEventKind::DecisionRequested { .. } => "decision.requested",
             AgentEventKind::DecisionResolved { .. } => "decision.resolved",
             AgentEventKind::ToolCallExecuting { .. } => "tool_call.executing",
+            AgentEventKind::ToolCallOutput { .. } => "tool_call.output",
             AgentEventKind::ToolCallCompleted { .. } => "tool_call.completed",
             AgentEventKind::ProviderNotice { .. } => "provider.notice",
             AgentEventKind::ArtifactCreated { .. } => "artifact.created",
@@ -191,6 +201,7 @@ impl AgentEventKind {
                 | AgentEventKind::ThinkingDelta { .. }
                 | AgentEventKind::BlockDone { .. }
                 | AgentEventKind::ToolCallArgsDelta { .. }
+                | AgentEventKind::ToolCallOutput { .. }
                 | AgentEventKind::TurnSnapshot { .. }
         )
     }

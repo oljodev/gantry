@@ -123,6 +123,16 @@ impl ToolDef {
     }
 }
 
+/// Which stream a chunk of a running call's output came from. `Log` is the connector's own
+/// commentary, which is neither the command's stdout nor its stderr.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "snake_case")]
+pub enum ToolStream {
+    Stdout,
+    Stderr,
+    Log,
+}
+
 /// Where a tool call is in its life (06 §3, `tool_calls.status`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "snake_case")]

@@ -408,7 +408,14 @@ which is a real gap and the reason M7 follows M6 immediately rather than M8.
   is gone. Building it on a fish machine forced one correction the plan had wrong: commands run in
   bash, not the login shell (shell.md §3). The no-window flag is written for Windows and stays on
   the release checklist, because no test here can assert it.
-- Command rows and the command drawer with ANSI rendering.
+- ~~Command rows and the command drawer with ANSI rendering.~~ **Mostly done** 2026-09-08: a
+  shell call draws as the command row the design system has had since M0b — command, working
+  directory, exit code, duration, the last lines scrolling as it runs — and opens to the drawer,
+  which already renders ANSI. What made the row live is `tool_call.output` (05 §3), which had
+  never been built: the connector streamed into a sink that dropped everything. The batcher merges
+  consecutive chunks per call and stream, and the run store keeps the 400-line window. Still
+  missing: the output tail in `turn.snapshot`, so a view that reattaches mid-command sees the row
+  without its output until the call completes, and the full log as a blob.
 - **Plan** mode: filtered tool set, read prompts with "Allow all reads", the "Switch to Auto-edit and execute" action.
 - Argument-scoped grants: path prefix and command prefix, which now have arguments to scope to.
 - Guardrails from `desktop/assets/guardrails/defaults.toml` (hard-deny, always-confirm, sensitive paths, secret patterns) and the **Guardrails** settings page.

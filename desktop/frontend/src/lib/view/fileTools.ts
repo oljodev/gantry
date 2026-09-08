@@ -11,7 +11,7 @@ import type { ActivityItem, Hunk, HunkLine } from '@/fixtures/types';
  * Projecting into them is what turns the code surface from a list of calls into a record of what
  * happened to the files and what was run.
  */
-export function fileItem(call: ToolCallDto): ActivityItem | undefined {
+export function fileItem(call: ToolCallDto, liveOutput?: string[]): ActivityItem | undefined {
   const result = json(call.result);
   const args = (call.args ?? {}) as Record<string, unknown>;
   const done = call.status === 'completed' && !call.is_error;
@@ -54,7 +54,9 @@ export function fileItem(call: ToolCallDto): ActivityItem | undefined {
       if (!command) return undefined;
       const cwd = str(result?.cwd) ?? str(args.cwd) ?? '';
       if (!done) {
-        return { kind: 'command', id, command, cwd, output: [], status: 'running' };
+        // The lines that have arrived so far, so a long build is visibly alive rather than a
+        // spinner (05 §7, `docs/connectors/shell.md` §10).
+        return { kind: 'command', id, command, cwd, output: liveOutput ?? [], status: 'running' };
       }
       const exitCode = num(result?.exit_code);
       const streams = [str(result?.stdout), str(result?.stderr)]

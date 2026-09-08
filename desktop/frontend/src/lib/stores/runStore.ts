@@ -41,6 +41,9 @@ export interface LiveArtifact {
 }
 
 /** The streaming state of one chat's current turn (docs/plan/05 §4). */
+/** The live window the interface keeps per running call (05 §7). The full log is the result. */
+export const LIVE_OUTPUT_LINES = 400;
+
 export interface LiveTurn {
   turnId: TurnId;
   status: TurnStatus;
@@ -58,6 +61,11 @@ export interface LiveTurn {
   notices: string[];
   /** Raw argument text of artifact calls while it streams (13 §2); other calls are not kept. */
   argsText: Record<string, string>;
+  /**
+   * The last lines a running call has printed, by call id (05 §7: a 400-line live window).
+   * Transient — when the call completes its result carries the output, and this is dropped.
+   */
+  output: Record<string, string[]>;
   /** Artifacts this turn created or changed, in order. */
   artifacts: LiveArtifact[];
   startedAt: number;
@@ -155,6 +163,7 @@ export function applyBatch(live: LiveTurn, batch: AgentEventBatch, chatId?: Chat
     pending: [...live.pending],
     notices: [...live.notices],
     argsText: { ...live.argsText },
+    output: { ...live.output },
     artifacts: [...live.artifacts],
   };
   const artifacts = chatId ? useArtifactStore.getState() : undefined;
@@ -330,6 +339,14 @@ export function applyBatch(live: LiveTurn, batch: AgentEventBatch, chatId?: Chat
         }
         break;
       }
+      case 'tool_call.output': {
+        // Both streams in one list, in the order they arrived: that is what a terminal shows,
+        // and separating them here would reorder a command's own interleaving.
+        const seen = next.output[ev.call_id] ?? [];
+        const lines = (seen.join('\n') + ev.chunk).split('\n');
+        next.output[ev.call_id] = lines.slice(-LIVE_OUTPUT_LINES);
+        break;
+      }
       case 'tool_call.completed': {
         const c = next.calls[ev.call_id];
         if (c) {
@@ -344,6 +361,7 @@ export function applyBatch(live: LiveTurn, batch: AgentEventBatch, chatId?: Chat
           };
           if (artifacts && isArtifactTool(c.model_tool_name)) artifacts.dropStreaming(ev.call_id);
           delete next.argsText[ev.call_id];
+          delete next.output[ev.call_id];
         }
         break;
       }
@@ -401,6 +419,7 @@ export function fresh(turnId: TurnId): LiveTurn {
     pending: [],
     notices: [],
     argsText: {},
+    output: {},
     artifacts: [],
     startedAt: Date.now(),
     seq: 0,

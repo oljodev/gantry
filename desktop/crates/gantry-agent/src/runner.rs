@@ -11,7 +11,7 @@ use std::{
 
 use futures_util::StreamExt;
 use gantry_connectors::{
-    ChatScope, ConnectorRegistry, ToolCallRequest, ToolEventSink, ToolOutcome,
+    ChatScope, ConnectorRegistry, OutputStream, ToolCallRequest, ToolEventSink, ToolOutcome,
 };
 use gantry_core::{
     AgentEventKind, CallId, ContentPart, DecisionSource, GrantScope, GrantSource, Interaction,
@@ -1027,6 +1027,19 @@ impl TurnToolEvents {
 }
 
 impl ToolEventSink for TurnToolEvents {
+    /// A running call's output, on its way to the feed. Transient by design (05 §2): the end
+    /// state is the call's result, so nothing here is persisted or replayed.
+    fn output(&self, call_id: &gantry_core::CallId, stream: OutputStream, chunk: &[u8]) {
+        if chunk.is_empty() {
+            return;
+        }
+        self.batcher.push(AgentEventKind::ToolCallOutput {
+            call_id: call_id.clone(),
+            stream,
+            chunk: String::from_utf8_lossy(chunk).into_owned(),
+        });
+    }
+
     fn event(&self, event: AgentEventKind) {
         // A tool that asks the user itself (03 §9, 04 §9) raises its card through this sink.
         // The turn's own pending list and the sidebar badge follow it, so a reattached view

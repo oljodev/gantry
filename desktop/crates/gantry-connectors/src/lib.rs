@@ -95,12 +95,9 @@ impl ToolOutcome {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum OutputStream {
-    Stdout,
-    Stderr,
-    Log,
-}
+/// Which stream a chunk came from. Defined in `gantry-core` because the event that carries it
+/// to the interface is defined there too, and two enums for one fact drift.
+pub use gantry_core::ToolStream as OutputStream;
 
 /// Where a running call reports output and progress (05 §3). Every method has a no-op
 /// default so a connector implements only what it produces.

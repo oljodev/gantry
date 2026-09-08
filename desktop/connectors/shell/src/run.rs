@@ -356,3 +356,69 @@ mod tests {
         assert!(captured.for_model().contains("12 further bytes"));
     }
 }
+
+#[cfg(test)]
+mod scratch_small {
+    use super::*;
+    use crate::env::ShellEnv;
+
+    async fn cat(content: &str, name: &str) -> Captured {
+        let dir = std::env::temp_dir().join("gantry-utf8-scratch");
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join(name);
+        std::fs::write(&file, content).unwrap();
+        let env = ShellEnv::inherited();
+        run(
+            Job {
+                env: &env,
+                command: &format!("cat {}", file.display()),
+                cwd: &dir,
+                extra_env: &[],
+                timeout: Duration::from_secs(20),
+            },
+            &CallId::new(),
+            Arc::new(gantry_connectors::NoopToolEvents),
+            CancellationToken::new(),
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap()
+        .stdout
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn under_the_model_cap_is_silent() {
+        // 12 KB: one 8192 boundary, output well under MODEL_CAP.
+        let mut content = String::from("a");
+        content.push_str(&"\u{e9}".repeat(6_000));
+        let c = cat(&content, "small.txt").await;
+        eprintln!(
+            "12KB: len={} replacements={} dropped={} truncated={} for_model_has_fffd={}",
+            c.text.len(),
+            c.text.matches('\u{FFFD}').count(),
+            c.dropped,
+            c.truncated(),
+            c.for_model().contains('\u{FFFD}')
+        );
+
+        // A realistic build log: mostly ASCII with a sprinkling of non-ASCII punctuation.
+        let mut log = String::new();
+        let mut i = 0usize;
+        while log.len() < 400_000 {
+            log.push_str(&format!(
+                "warning: unused variable `x` in module number {i}, consider \u{2018}_x\u{2019} \u{2192} see note \u{2713}\n"
+            ));
+            i += 1;
+        }
+        let c2 = cat(&log, "log.txt").await;
+        eprintln!(
+            "build-log-ish: bytes={} nonascii_chars={} boundaries={} replacements={} dropped={}",
+            log.len(),
+            log.chars().filter(|c| !c.is_ascii()).count(),
+            log.len() / 8192,
+            c2.text.matches('\u{FFFD}').count(),
+            c2.dropped
+        );
+        assert!(false, "print results");
+    }
+}

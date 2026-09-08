@@ -234,3 +234,101 @@ describe('the run store follows a tool call through a permission prompt', () => 
     expect(live.messages[0]?.parts[0]).toEqual({ kind: 'text', text: 'so far and more' });
   });
 });
+
+describe('a running command shows what it has printed', () => {
+  it('keeps the live window while it runs and drops it when the result arrives', () => {
+    const CMD = 'call_cmd';
+    let live = fresh(TURN);
+    live = applyBatch(live, {
+      turn_id: TURN,
+      events: [
+        ev({ type: 'message.started', message_id: MSG, role: 'assistant' }),
+        ev({
+          type: 'tool_call.started',
+          call_id: CMD,
+          message_id: MSG,
+          connector: 'shell',
+          connector_name: 'Shell',
+          tool: 'run_command',
+          model_tool_name: 'shell__run_command',
+        }),
+        ev({
+          type: 'tool_call.ready',
+          call_id: CMD,
+          args: { command: 'cargo test' },
+          tier: 'execute',
+          display: { kind: 'command', summary: 'cargo test' },
+        }),
+        ev({ type: 'tool_call.executing', call_id: CMD, source: 'mode' }),
+        // Chunks are not lines: one read can carry half a line, and the next its other half.
+        ev({ type: 'tool_call.output', call_id: CMD, stream: 'stdout', chunk: 'running 3 te' }),
+        ev({ type: 'tool_call.output', call_id: CMD, stream: 'stdout', chunk: 'sts\nok 1\n' }),
+        ev({ type: 'tool_call.output', call_id: CMD, stream: 'stderr', chunk: 'warning: x\n' }),
+      ],
+    });
+    expect(live.output[CMD]).toEqual(['running 3 tests', 'ok 1', 'warning: x', '']);
+
+    const row = toTurns(
+      {
+        id: 'c1',
+        turns: [
+          {
+            id: TURN,
+            status: 'running',
+            model: { provider: 'openrouter', model: 'm' },
+            user: { id: 'u', role: 'user', parts: [], origin: 'user', created_at: 1 },
+            messages: [],
+            usage: null,
+            stop_reason: null,
+            error: null,
+            started_at: 1,
+            ended_at: null,
+            feedback: null,
+            attachments: [],
+          },
+        ],
+      } as never,
+      live,
+      () => 'M',
+    )[0];
+    const activity = row?.blocks.find((b) => b.kind === 'activity');
+    const item = activity?.kind === 'activity' ? activity.items[0] : undefined;
+    expect(item?.kind).toBe('command');
+    expect(item?.kind === 'command' && item.status).toBe('running');
+    expect(item?.kind === 'command' && item.output).toEqual([
+      'running 3 tests',
+      'ok 1',
+      'warning: x',
+      '',
+    ]);
+
+    live = applyBatch(live, {
+      turn_id: TURN,
+      events: [
+        ev({
+          type: 'tool_call.completed',
+          call_id: CMD,
+          status: 'completed',
+          is_error: false,
+          duration_ms: 900,
+          result_preview: '{}',
+          result: [
+            {
+              kind: 'json',
+              json: {
+                command: 'cargo test',
+                cwd: '/repo',
+                exit_code: 0,
+                stdout: 'running 3 tests\nok 1\n',
+                stderr: '',
+                duration_ms: 900,
+              },
+            },
+          ],
+        }),
+      ],
+    });
+    // The result carries the output now; keeping the window as well would double it.
+    expect(live.output[CMD]).toBeUndefined();
+  });
+});
