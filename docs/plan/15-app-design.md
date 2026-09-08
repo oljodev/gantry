@@ -217,9 +217,14 @@ A 1 px inner top highlight (`rgb(255 255 255 / 0.04)`) is allowed on level 2 and
   (level 3, `--prefs-width` × `--prefs-height`), with a search box and the sort control in a
   header, the facets down a `--settings-list` rail on `bg-base` (**Makes**: text · image · audio ·
   video, counted; **Can**: reads images, reads files, calls tools, thinks first, caches prompts;
-  **Price**: free only; **Creator**: the makers present, most models first, the tail behind "Show
-  all"), and the rows beside it. A row is the model's name with its creator, its id in mono
-  underneath, capability glyphs, the context window and the price — dollars per million tokens in
+  **Price**: free only; **Released**: last month · 3 months · 6 months · year · any age, one at a
+  time, since those are the same question asked at different distances; **Creator**: the makers
+  present, most models first, the tail behind "Show all"), and the rows beside it. The list is
+  **newest first** by default — it grows every week, and the model somebody is looking for is far
+  more often this month's than one from two years ago — with name, price and context as the other
+  sorts. A model the provider never dated drops out of an age filter and sorts to the end rather
+  than to 1970: the filter is asked precisely when the old ones are in the way. A row is the model's name with its creator, its id in mono
+  underneath with its age, capability glyphs, the context window and the price — dollars per million tokens in
   and out, or dollars per picture for a model that draws, since token prices say nothing there.
   Starring a model pins it to a **Favourites** section at the top (a settings field, so it
   follows the user); **Recent** sits under it (the UI store, so it stays with the machine).

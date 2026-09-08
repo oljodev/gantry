@@ -18,6 +18,8 @@ struct List<T> {
 #[derive(Debug, Deserialize)]
 struct PlainModel {
     id: String,
+    /// Unix seconds where the endpoint follows OpenAI's shape; absent on many that do not.
+    created: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -31,6 +33,7 @@ struct XaiList {
 #[derive(Debug, Deserialize)]
 struct XaiModel {
     id: String,
+    created: Option<i64>,
     #[serde(default)]
     input_modalities: Vec<String>,
     prompt_text_token_price: Option<f64>,
@@ -42,6 +45,8 @@ struct XaiModel {
 struct OrModel {
     id: String,
     name: Option<String>,
+    /// When OpenRouter first listed the model, in Unix seconds.
+    created: Option<i64>,
     context_length: Option<u64>,
     pricing: Option<OrPricing>,
     top_provider: Option<OrTopProvider>,
@@ -87,6 +92,7 @@ pub fn parse(
                 .into_iter()
                 .map(|m| ModelInfo {
                     display_name: m.id.clone(),
+                    created_at: m.created,
                     id: m.id,
                     context_window: None,
                     max_output: None,
@@ -149,6 +155,7 @@ fn from_xai(m: XaiModel) -> ModelInfo {
     };
     ModelInfo {
         display_name: m.id.clone(),
+        created_at: m.created,
         context_window: None,
         max_output: None,
         pricing,
@@ -235,6 +242,7 @@ fn from_openrouter(m: OrModel) -> ModelInfo {
     };
     ModelInfo {
         display_name: m.name.clone().unwrap_or_else(|| m.id.clone()),
+        created_at: m.created,
         id: m.id,
         context_window: m.context_length.and_then(|c| u32::try_from(c).ok()),
         max_output: m
@@ -255,6 +263,7 @@ mod tests {
         let json = serde_json::json!({ "data": [{
             "id": "deepseek/deepseek-v4-flash",
             "name": "DeepSeek: DeepSeek V4 Flash 0423",
+            "created": 1745366400,
             "context_length": 1048576,
             "architecture": { "input_modalities": ["text"] },
             "pricing": { "prompt": "0.000000088606", "completion": "0.000000177212" },
@@ -272,6 +281,11 @@ mod tests {
         assert_eq!(m.capabilities.reasoning, ReasoningSupport::Effort);
         assert!(!m.capabilities.vision);
         assert!(m.capabilities.structured_output);
+        assert_eq!(
+            m.created_at,
+            Some(1_745_366_400),
+            "the release date the age filter reads"
+        );
         assert_eq!(m.capabilities.input, vec![Modality::Text]);
         assert_eq!(m.capabilities.output, vec![Modality::Text]);
     }
@@ -315,6 +329,7 @@ mod tests {
         }]});
         let models = parse(ModelsParser::OpenRouter, &json).unwrap();
         assert_eq!(models[0].capabilities.output, vec![Modality::Text]);
+        assert_eq!(models[0].created_at, None, "a row without a date has none");
     }
 
     #[test]

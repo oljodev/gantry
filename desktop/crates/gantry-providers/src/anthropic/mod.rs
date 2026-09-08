@@ -109,6 +109,9 @@ fn parse_models(json: &serde_json::Value) -> Result<Vec<ModelInfo>, ProviderErro
         .into_iter()
         .map(|m| ModelInfo {
             display_name: m.display_name.unwrap_or_else(|| m.id.clone()),
+            // Anthropic dates its models as ISO strings; parsing them needs a date crate this
+            // layer does not carry, so the age filter simply does not apply to them.
+            created_at: None,
             context_window: m.max_input_tokens,
             max_output: m.max_output_tokens,
             pricing: None,

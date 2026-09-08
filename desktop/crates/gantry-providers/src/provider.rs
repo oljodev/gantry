@@ -219,6 +219,11 @@ pub struct Pricing {
 pub struct ModelInfo {
     pub id: String,
     pub display_name: String,
+    /// When the model was released, in Unix seconds, where the provider says. A year-old model
+    /// and a week-old one are different tools, and the list gives no other way to tell them apart.
+    #[serde(default)]
+    #[specta(type = Option<specta_typescript::Number>)]
+    pub created_at: Option<i64>,
     pub context_window: Option<u32>,
     pub max_output: Option<u32>,
     pub pricing: Option<Pricing>,

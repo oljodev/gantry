@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { ModelCapabilities, ModelInfo } from '@/bindings';
 import {
+  ageLabel,
   contextLabel,
   creatorOf,
   creatorsOf,
@@ -13,6 +14,7 @@ import {
   priceLabel,
   sortModels,
   toCatalog,
+  withinAge,
   type CatalogModel,
   type Filters,
 } from './catalog';
@@ -59,7 +61,18 @@ function model(over: Partial<ModelInfo> & { id: string }): CatalogModel {
   ])[0]!;
 }
 
-const ALL: Filters = { query: '', kinds: [], creators: [], needs: [], freeOnly: false };
+const ALL: Filters = {
+  query: '',
+  kinds: [],
+  creators: [],
+  needs: [],
+  freeOnly: false,
+  maxAgeDays: null,
+};
+
+/** A fixed clock, so "three months old" means the same thing every day the suite runs. */
+const NOW = Date.UTC(2026, 8, 8);
+const daysAgo = (days: number) => Math.floor((NOW - days * 86_400_000) / 1000);
 
 describe('creator and name', () => {
   it('takes both from the name when it carries the creator', () => {
@@ -209,5 +222,38 @@ describe('labels', () => {
     });
     expect(priceLabel(image)).toBe('$0.030 / image');
     expect(priceLabel(model({ id: 'x/y' }))).toBe('—');
+  });
+});
+
+describe('age', () => {
+  it('keeps a model released inside the window and drops one outside it', () => {
+    const fresh = info({ id: 'a/new', created_at: daysAgo(20) });
+    const old = info({ id: 'a/old', created_at: daysAgo(400) });
+    expect(withinAge(fresh, 30, NOW)).toBe(true);
+    expect(withinAge(old, 30, NOW)).toBe(false);
+    expect(withinAge(old, 365, NOW)).toBe(false);
+    expect(withinAge(old, null, NOW)).toBe(true);
+  });
+
+  it('drops an undated model from an age filter rather than assuming it is recent', () => {
+    const undated = info({ id: 'a/undated' });
+    expect(withinAge(undated, 365, NOW)).toBe(false);
+    expect(withinAge(undated, null, NOW)).toBe(true);
+  });
+
+  it('reads the age in the unit that suits it', () => {
+    expect(ageLabel(info({ id: 'a/b', created_at: daysAgo(3) }), NOW)).toBe('3 d');
+    expect(ageLabel(info({ id: 'a/b', created_at: daysAgo(95) }), NOW)).toBe('3 mo');
+    expect(ageLabel(info({ id: 'a/b', created_at: daysAgo(800) }), NOW)).toBe('2.2 y');
+    expect(ageLabel(info({ id: 'a/b' }), NOW)).toBe('');
+  });
+
+  it('sorts the newest first and the undated last', () => {
+    const models = [
+      model({ id: 'a/old', display_name: 'A: Old', created_at: daysAgo(400) }),
+      model({ id: 'b/undated', display_name: 'B: Undated' }),
+      model({ id: 'c/new', display_name: 'C: New', created_at: daysAgo(10) }),
+    ];
+    expect(sortModels(models, 'newest').map((m) => m.id)).toEqual(['c/new', 'a/old', 'b/undated']);
   });
 });

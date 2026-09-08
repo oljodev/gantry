@@ -21,9 +21,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Switch } from '@/components/ui/switch';
 import type { ModelRef } from '@/bindings';
 import {
+  ageLabel,
+  AGES,
   contextLabel,
   creatorsOf,
   isFiltered,
@@ -37,8 +40,10 @@ import {
   SORT_LABEL,
   sortModels,
   toCatalog,
+  withinAge,
   type CatalogModel,
   type Filters,
+  type MaxAge,
   type ModelKind,
   type Need,
   type Sort,
@@ -51,7 +56,7 @@ import { cn } from '@/lib/utils';
 
 const KINDS: ModelKind[] = ['text', 'image', 'audio', 'video'];
 const NEEDS: Need[] = ['vision', 'files', 'tools', 'reasoning', 'caching'];
-const SORTS: Sort[] = ['name', 'price', 'context'];
+const SORTS: Sort[] = ['newest', 'name', 'price', 'context'];
 /** Creators past this are behind "Show all": the tail is a long list of one-model names. */
 const CREATORS_SHOWN = 8;
 
@@ -83,7 +88,9 @@ export function ModelDialog({
   const remember = useUiStore((s) => s.rememberModel);
 
   const [filters, setFilters] = useState<Filters>(NO_FILTERS);
-  const [sort, setSort] = useState<Sort>('name');
+  // Newest first by default: the list grows every week, and the model somebody is looking for
+  // is far more often this month's than one from two years ago.
+  const [sort, setSort] = useState<Sort>('newest');
   const [allCreators, setAllCreators] = useState(false);
 
   const chat = chatDefaults(settings.data);
@@ -237,6 +244,32 @@ export function ModelDialog({
                 </label>
               </Group>
 
+              <Group title="Released">
+                {/* One age at a time: "last 3 months" and "last year" are the same question
+                    asked twice, so these are radios where the others are checkboxes. */}
+                <RadioGroup
+                  className="gap-0"
+                  value={String(filters.maxAgeDays)}
+                  onValueChange={(v) =>
+                    set({ maxAgeDays: v === 'null' ? null : (Number(v) as MaxAge) })
+                  }
+                  aria-label="Released within"
+                >
+                  {AGES.map(({ days, label }) => (
+                    <label
+                      key={label}
+                      className="flex h-(--row) items-center gap-2 rounded-2 px-1 text-ui text-fg transition-colors duration-(--dur-1) hover:bg-hover"
+                    >
+                      <RadioGroupItem value={String(days)} />
+                      <span className="min-w-0 flex-1 truncate">{label}</span>
+                      <span className="shrink-0 text-meta text-fg-3 tnum">
+                        {models.filter((m) => withinAge(m.info, days)).length}
+                      </span>
+                    </label>
+                  ))}
+                </RadioGroup>
+              </Group>
+
               <Group title="Creator">
                 {(allCreators ? creators : creators.slice(0, CREATORS_SHOWN)).map((c) => (
                   <FilterRow
@@ -369,6 +402,7 @@ function ModelRow({
   onStar: () => void;
 }) {
   const caps = model.info.capabilities;
+  const age = ageLabel(model.info);
   return (
     <div
       className={cn(
@@ -405,6 +439,7 @@ function ModelRow({
           </span>
           <span className="flex items-center gap-2">
             <span className="truncate font-mono text-micro text-fg-3">{model.id}</span>
+            {age && <span className="shrink-0 text-micro text-fg-3">{age} old</span>}
             {showProvider && (
               <span className="shrink-0 text-micro text-fg-3">{model.providerLabel}</span>
             )}

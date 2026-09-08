@@ -118,6 +118,8 @@ fn parse_models(json: &serde_json::Value) -> Result<Vec<ModelInfo>, ProviderErro
             let id = m.name.strip_prefix("models/").unwrap_or(&m.name).to_owned();
             ModelInfo {
                 display_name: m.display_name.unwrap_or_else(|| id.clone()),
+                // Gemini's list carries no release date.
+                created_at: None,
                 context_window: m.input_token_limit,
                 max_output: m.output_token_limit,
                 pricing: None,

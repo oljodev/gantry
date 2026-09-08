@@ -865,6 +865,11 @@ export type ModelCapabilities = {
 export type ModelInfo = {
 	id: string,
 	display_name: string,
+	/**
+	 *  When the model was released, in Unix seconds, where the provider says. A year-old model
+	 *  and a week-old one are different tools, and the list gives no other way to tell them apart.
+	 */
+	created_at?: number | null,
 	context_window: number | null,
 	max_output: number | null,
 	pricing: Pricing | null,

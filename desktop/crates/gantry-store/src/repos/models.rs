@@ -13,6 +13,8 @@ pub struct ModelRecord {
     pub context_window: Option<u32>,
     pub max_output: Option<u32>,
     pub pricing_json: Option<String>,
+    /// When the provider says the model was released, in Unix seconds; `None` when it never said.
+    pub created_at: Option<i64>,
     pub fetched_at: i64,
 }
 
@@ -25,13 +27,14 @@ fn from_row(r: &Row<'_>) -> rusqlite::Result<ModelRecord> {
         context_window: r.get(4)?,
         max_output: r.get(5)?,
         pricing_json: r.get(6)?,
-        fetched_at: r.get(7)?,
+        created_at: r.get(7)?,
+        fetched_at: r.get(8)?,
     })
 }
 
 pub fn list_for(conn: &Connection, provider_id: &str) -> Result<Vec<ModelRecord>> {
     let mut stmt = conn.prepare(
-        "SELECT provider_id, model_id, display_name, capabilities_json, context_window, max_output, pricing_json, fetched_at
+        "SELECT provider_id, model_id, display_name, capabilities_json, context_window, max_output, pricing_json, created_at, fetched_at
          FROM models WHERE provider_id = ?1 ORDER BY model_id",
     )?;
     let rows = stmt.query_map(params![provider_id], from_row)?;
@@ -59,8 +62,8 @@ pub fn replace_for(conn: &mut Connection, provider_id: &str, models: &[ModelReco
     )?;
     {
         let mut stmt = tx.prepare(
-            "INSERT INTO models (provider_id, model_id, display_name, capabilities_json, context_window, max_output, pricing_json, fetched_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            "INSERT INTO models (provider_id, model_id, display_name, capabilities_json, context_window, max_output, pricing_json, created_at, fetched_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
         )?;
         for m in models {
             stmt.execute(params![
@@ -71,6 +74,7 @@ pub fn replace_for(conn: &mut Connection, provider_id: &str, models: &[ModelReco
                 m.context_window,
                 m.max_output,
                 m.pricing_json,
+                m.created_at,
                 m.fetched_at
             ])?;
         }

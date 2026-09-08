@@ -370,9 +370,13 @@ in the composer that is used on every single chat.
   (`chat.favourite_models`) so they follow the user; recents live in the UI store, where a trace
   of one machine's use belongs. Which upstream OpenRouter routes to gets one quiet footer line
   and no facet, which is all it is worth.
-- **The catalog learned modalities and per-unit prices** (02 §2): `ModelCapabilities.input` /
-  `.output`, and `image_input_usd` / `image_output_usd` / `request_usd` on `Pricing`. Both ride
-  in the JSON columns the `models` cache already had, so no migration.
+- **The catalog learned modalities, per-unit prices and release dates** (02 §2):
+  `ModelCapabilities.input` / `.output`, and `image_input_usd` / `image_output_usd` /
+  `request_usd` on `Pricing`, both riding in the JSON columns the `models` cache already had;
+  `ModelInfo.created_at` needed migration **0011**, because a release date is not a capability
+  and does not belong inside `capabilities_json`. OpenRouter, OpenAI and xAI date their rows;
+  Anthropic dates its own in ISO strings this layer has no parser for, and Gemini not at all, so
+  the age filter simply does not apply to those two.
 - **Image models answer with pictures** (02 §5): the request asks for them, the stream turns the
   data URLs into image parts, and the answer shows them where the model produced them. Sending
   straight to an image model works; the connector that lets a *text* model call an image, video

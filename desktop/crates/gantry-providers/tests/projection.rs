@@ -142,6 +142,7 @@ fn info(reasoning: ReasoningSupport) -> ModelInfo {
     ModelInfo {
         id: "m".into(),
         display_name: "m".into(),
+        created_at: None,
         context_window: None,
         max_output: Some(2048),
         pricing: None,

@@ -79,7 +79,13 @@ export function TurnView({
               return <Markdown key={i}>{block.markdown}</Markdown>;
             case 'image':
               return (
-                <AnswerImage key={i} src={block.src} blob={block.blob} mime={block.mime} alt={block.alt} />
+                <AnswerImage
+                  key={i}
+                  src={block.src}
+                  blob={block.blob}
+                  mime={block.mime}
+                  alt={block.alt}
+                />
               );
             case 'steps':
               return (

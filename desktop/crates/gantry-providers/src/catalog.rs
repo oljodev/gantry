@@ -74,6 +74,7 @@ fn to_record(provider_id: &str, m: &ModelInfo, fetched_at: i64) -> models::Model
         context_window: m.context_window,
         max_output: m.max_output,
         pricing_json: m.pricing.and_then(|p| serde_json::to_string(&p).ok()),
+        created_at: m.created_at,
         fetched_at,
     }
 }
@@ -82,6 +83,7 @@ fn from_record(kind: ProviderKind, provider_id: &str, r: models::ModelRecord) ->
     let mut m = ModelInfo {
         id: r.model_id,
         display_name: r.display_name,
+        created_at: r.created_at,
         context_window: r.context_window,
         max_output: r.max_output,
         pricing: r

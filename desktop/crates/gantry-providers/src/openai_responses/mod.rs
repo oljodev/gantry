@@ -95,6 +95,8 @@ struct ModelList {
 #[derive(Debug, Deserialize)]
 struct ModelRow {
     id: String,
+    /// OpenAI dates every row in Unix seconds.
+    created: Option<i64>,
 }
 
 /// Ids that are not chat models; the list mixes everything the account can reach.
@@ -125,6 +127,7 @@ fn parse_models(json: &serde_json::Value) -> Result<Vec<ModelInfo>, ProviderErro
         .filter(|m| !NOT_CHAT.iter().any(|n| m.id.contains(n)))
         .map(|m| ModelInfo {
             display_name: m.id.clone(),
+            created_at: m.created,
             context_window: None,
             max_output: None,
             pricing: None,

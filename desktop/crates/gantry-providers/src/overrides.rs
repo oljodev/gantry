@@ -185,6 +185,7 @@ mod tests {
         ModelInfo {
             id: id.into(),
             display_name: id.into(),
+            created_at: None,
             context_window: None,
             max_output: None,
             pricing: None,

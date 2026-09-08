@@ -125,6 +125,17 @@ export function meets(caps: ModelCapabilities | undefined, need: Need): boolean 
   }
 }
 
+/** How far back a model may have been released, in days; `null` is any age. */
+export type MaxAge = 30 | 90 | 180 | 365 | null;
+
+export const AGES: { days: MaxAge; label: string }[] = [
+  { days: 30, label: 'Last month' },
+  { days: 90, label: 'Last 3 months' },
+  { days: 180, label: 'Last 6 months' },
+  { days: 365, label: 'Last year' },
+  { days: null, label: 'Any age' },
+];
+
 export interface Filters {
   query: string;
   /** Empty means every kind; likewise for creators and providers. */
@@ -132,6 +143,29 @@ export interface Filters {
   creators: string[];
   needs: Need[];
   freeOnly: boolean;
+  maxAgeDays: MaxAge;
+}
+
+/**
+ * Whether a model is new enough. A model whose provider never dated it cannot answer the
+ * question, so it drops out of an age filter rather than being assumed recent — the filter is
+ * asked precisely when the old ones are in the way.
+ */
+export function withinAge(info: ModelInfo, days: MaxAge, now = Date.now()): boolean {
+  if (days === null) return true;
+  if (!info.created_at) return false;
+  return now - info.created_at * 1000 <= days * 24 * 60 * 60 * 1000;
+}
+
+/** `3 mo`, `2 y`, or nothing when the provider never dated the model. */
+export function ageLabel(info: ModelInfo, now = Date.now()): string {
+  if (!info.created_at) return '';
+  const days = Math.floor((now - info.created_at * 1000) / (24 * 60 * 60 * 1000));
+  if (days < 1) return 'today';
+  if (days < 31) return `${days} d`;
+  if (days < 365) return `${Math.round(days / 30)} mo`;
+  const years = days / 365;
+  return `${years < 10 ? years.toFixed(1) : Math.round(years)} y`;
 }
 
 export const NO_FILTERS: Filters = {
@@ -140,6 +174,7 @@ export const NO_FILTERS: Filters = {
   creators: [],
   needs: [],
   freeOnly: false,
+  maxAgeDays: null,
 };
 
 export function isFiltered(f: Filters): boolean {
@@ -148,7 +183,8 @@ export function isFiltered(f: Filters): boolean {
     f.kinds.length > 0 ||
     f.creators.length > 0 ||
     f.needs.length > 0 ||
-    f.freeOnly
+    f.freeOnly ||
+    f.maxAgeDays !== null
   );
 }
 
@@ -170,12 +206,14 @@ export function matches(m: CatalogModel, f: Filters): boolean {
   if (f.creators.length > 0 && !f.creators.includes(m.creator)) return false;
   if (f.needs.some((need) => !meets(m.info.capabilities, need))) return false;
   if (f.freeOnly && !isFree(m.info)) return false;
+  if (!withinAge(m.info, f.maxAgeDays)) return false;
   return true;
 }
 
-export type Sort = 'name' | 'price' | 'context';
+export type Sort = 'newest' | 'name' | 'price' | 'context';
 
 export const SORT_LABEL: Record<Sort, string> = {
+  newest: 'Newest first',
   name: 'Name',
   price: 'Cheapest first',
   context: 'Largest context',
@@ -194,6 +232,10 @@ export function sortModels(models: CatalogModel[], sort: Sort): CatalogModel[] {
   const byName = (a: CatalogModel, b: CatalogModel) =>
     a.creator.localeCompare(b.creator) || a.name.localeCompare(b.name);
   return [...models].sort((a, b) => {
+    // Newest first, and an undated model sorts to the end rather than to 1970.
+    if (sort === 'newest') {
+      return (b.info.created_at ?? 0) - (a.info.created_at ?? 0) || byName(a, b);
+    }
     if (sort === 'price') return priceOf(a.info) - priceOf(b.info) || byName(a, b);
     if (sort === 'context')
       return (b.info.context_window ?? 0) - (a.info.context_window ?? 0) || byName(a, b);
