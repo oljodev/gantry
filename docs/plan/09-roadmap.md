@@ -318,13 +318,17 @@ tools, and the feed.
   `file_edits` journal with both versions in the blob store; `diffy` hunks and patch application;
   and the read-hash table that makes the freshness rule of `docs/connectors/code-editor.md` §5
   work across both connectors.
-- Still to come here: `ignore`/`grep-searcher` search, and the command runner with M7.
+- Search is done too, on `ignore` + `globset` + `regex`. Still to come here: the command runner,
+  with M7.
 
 **The connectors** (16 §8, C6 as revised)
 
-- `desktop/connectors/filesystem` complete, per its document: read, write, list, glob, search,
-  move, document text extraction. **`read_file` is done**; it shipped with the code editor,
-  because the freshness rule has nothing to open its gate with otherwise.
+- ~~`desktop/connectors/filesystem` complete, per its document: read, write, list, glob, search,
+  move, document text extraction.~~ **Done**, all ten tools, apart from document text extraction,
+  which stays open with §17's second question. Two deviations are recorded in that document as
+  built: sensitive files are refused on write rather than confirmed (§6), and the folder access
+  request of §8 is a refusal that names the folder until the Code surface adds the one-click
+  version.
 - `desktop/connectors/code-editor` complete, per the document written with this plan: `replace`,
   `insert`, `apply_patch`, `undo`, each journaled. **Done**, with one deviation recorded in that
   document §8: a credential file is refused rather than confirmed until M7 can raise the ask.

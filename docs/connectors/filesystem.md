@@ -8,13 +8,14 @@ undone by closing a window. This one cannot. So the design is organised around a
 boundary, stated once and enforced in one place, and around never doing anything surprising to a
 file the user did not mean to change.
 
-Status: **`read_file` built 2026-09-08** with the code editor, whose freshness rule (§11) needs
-something to open its gate with. The containment algorithm of §4, the encoding and line-ending
-handling of §5 and the session's record of what it has read all shipped with it, in
-`gantry-workspace`, so each remaining tool is a small addition to a boundary that already exists.
-Everything below is otherwise planning, specified to the depth the security boundary needs and no
-further; the remaining choices are marked **at build time** and are the kind that are better made
-with a compiler in front of you. `docs/plan/03-connector-system.md` §5 holds the one-paragraph
+Status: **built 2026-09-08**, all ten tools of §5. What is not built is named where it belongs:
+document text extraction (§5), the one-click folder access request (§8), the guardrail
+confirmation for sensitive files (§6), bulk operations and archives (§15). Choices this document
+left to build time are recorded in §13, and the two places where the shipped behaviour differs
+from what is written above them are marked **as built** in §6 and §7.
+
+It is specified to the depth the security boundary needs and no further; the remaining choices are
+marked **at build time** and are the kind that are better made with a compiler in front of you. `docs/plan/03-connector-system.md` §5 holds the one-paragraph
 summary this replaces.
 
 ---
@@ -312,6 +313,15 @@ Three details make this work rather than merely exist:
 - The list is visible and editable in Settings → Guardrails, and lives with the other guardrails
   in `desktop/assets/guardrails/defaults.toml` rather than being compiled in.
 
+**As built (2026-09-08).** Reading a sensitive file is allowed; writing, moving or deleting one is
+**refused**, and the refusal names what kind of file it is. The reasoning is in
+`code-editor.md` §8 and applies identically here: the per-call confirmation D3 asks for needs the
+guardrail floor of M7, and a static always-confirm on the tool would prompt for every write in the
+session, which is the opposite of what D3 wants. Refusing the writes is fail-closed and costs only
+the rare case; allowing the reads is the case D3 was written to protect. The pattern list is in
+`gantry-workspace/src/guard.rs` until M7 moves it into `defaults.toml` with the Settings page that
+edits it.
+
 ## 7. Ignored files
 
 Per D4, `glob`, `grep` and `list_directory` apply the project's own ignore rules, including
@@ -324,6 +334,23 @@ visible rather than mysterious.
 Hidden files, meaning dotfiles, follow the same rule: absent from listings unless asked for,
 readable by name.
 
+**As built (2026-09-08),** with one distinction this document implies but does not spell out. The
+folder's own ignore rules apply to listing as well as to search, so a `build/` the project ignores
+is absent from both. The **floor** — `node_modules`, `target`, `.git` — applies to search only:
+those are directories that are never interesting to *search*, which is not the same as directories
+a person should be told do not exist. A listing that hides `node_modules` from a user who can see
+it in their file manager is exactly the failure D4 was written against. Both are lifted by `all`.
+
+Ignore rules also apply outside a git checkout. `ignore` respects `.gitignore` only inside a
+repository by default, and a folder the user attached is not necessarily one; a `.gitignore` means
+what it says either way.
+
+Only ignore files **inside** the attached folder count. Reading the ones above it, or the user's
+global gitignore, would mean what is visible inside the boundary is decided by files outside it:
+impossible to predict from the folder alone, awkward to explain, and a small leak of what is out
+there. This one showed itself as a test that passed in a sandbox and failed on the machine whose
+global gitignore lists `node_modules`, which is a fair description of the whole class of bug.
+
 ## 8. Outside the workspace
 
 Per D5, a path outside every root does not simply fail. The model receives a refusal that names
@@ -333,6 +360,11 @@ action. On approval the folder becomes a root for that chat and the call can be 
 This is deliberately not a permission prompt for the individual file. Widening the boundary is a
 different decision from allowing an operation inside it, and conflating them is how a boundary
 stops meaning anything.
+
+**As built (2026-09-08):** the refusal is there and names the attached folders, and tells the model
+to ask the user rather than work around it. The one-click access request is not — the interaction
+kind exists for connectors (04 §9) but not yet for folders, and it lands with the Code surface's
+folder handling (16 §7). Until then the user attaches the folder from the composer.
 
 ## 9. Permissions
 
@@ -404,8 +436,8 @@ Changes from the placeholder in `desktop/connectors/filesystem/manifest.json`:
 | `risk.local_system` | `write` |
 | `risk.default_tool_tier` | `read` |
 | `risk.notes` | That it works only inside attached folders, that writes are journaled and revertible, and that deletion prefers the trash |
-| `tools` | The ten of §5, with `delete_path` carrying `always_confirm` and the read tools carrying `parallel_safe` |
-| `prompt.system_addendum` | Paths are absolute and inside the chat's folders; prefer `grep` and `glob` over listing large trees; ignored files are hidden from search but readable by name; ask to add a folder rather than working around a refusal |
+| `tools` | The ten of §5, with `delete_path` carrying `always_confirm` and the read tools carrying `parallel_safe`. **As built** these come from the connector's own code (`tools_generated: true`), not from the manifest: they are Rust functions with JSON schemas, and writing the schemas twice is how the two copies drift |
+| `prompt.system_addendum` | Paths are absolute and inside the chat's folders; prefer `grep` and `glob` over listing large trees; ignored files are hidden from search but readable by name; ask to add a folder rather than working around a refusal. **Not built:** nothing reads this manifest field yet, so the same guidance is in the tool descriptions, where the model does read it |
 | `catalog.suggest_for` | Files, folders, directories, and the phrasings people actually use |
 
 ## 13. Libraries
@@ -435,6 +467,17 @@ The rest of the crate selection is left to **build time**: directory walking wit
 glob matching, content search, binary and encoding detection, atomic writes, diffing, trash and
 document text extraction. These are ordinary, reversible choices with obvious candidates, and
 picking them on paper ahead of a compiler buys nothing.
+
+**Chosen 2026-09-08**, every one satisfying `deny.toml` through at least one arm of its licence:
+`cap-std` for containment (Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT), `ignore` and
+`globset` for walking and matching (Unlicense OR MIT), `regex` for content search, `diffy` for
+hunks and patch application (MIT OR Apache-2.0), and `trash` for recoverable deletion (MIT). None
+needs a C toolchain. Encoding detection is deliberately not a crate yet: UTF-8 with and without a
+byte-order mark is decoded, anything else is refused honestly as not-text, and a legacy-encoding
+fallback can be added behind the same `TextFile` without changing a single caller. Content search
+is `regex` over the walker rather than `grep-searcher`: fewer dependencies for the same answer at
+this scale, and the seam is one function wide if that stops being true. Document text extraction
+is not built, so §17's second question stays open.
 
 Two constraints are fixed. Every dependency must be permissively licensed, because Gantry ships
 under a commercial licence; an audit during the web connector's planning caught a crate that
@@ -482,7 +525,7 @@ confirmation and one journal entry, is the right shape. Not in the first version
 | `03-connector-system.md` §5 | The `filesystem` paragraph is replaced by a pointer here. The tool table gains `copy_path`, and `search_files` and `grep` are renamed `glob` and `grep` |
 | `03-connector-system.md` §5 | The shared rules paragraph is superseded by §4, which is a specification rather than a summary |
 | `04-permissions.md` §2 | The examples for `write` should include `move_path`, since the reversible-and-local reading of Auto-edit is easy to misread |
-| `06-data-model.md` | Nothing, which is the point: `file_edits` already carries what the journal needs |
+| `06-data-model.md` | Almost nothing, and that was the point — but `file_edits` had no room for the *other* end of a move or a copy, so migration 0010 adds `from_path`. Revert cannot undo a rename without it, and §10's "both ends in one line" cannot render one |
 | `01-architecture-overview.md` §2 | The `gantry-workspace` row describes `Scope` as roots, canonicalization and sensitive-path patterns. §4 replaces that with a capability-based design, which is a different thing and worth saying so |
 | Tauri configuration | Its filesystem scope stays configured tightly as an independent second layer for the webview, but it is explicitly not the boundary (D13), and `gantry-workspace` must not depend on Tauri at all so it stays headless-testable and shared |
 | `deny.toml` | Must fail the build on copyleft licences including build dependencies, and run in CI. The containment library's one historical vulnerability was fixed in a patch release, which only helps if patch releases are actually taken |
@@ -494,7 +537,11 @@ confirmation and one journal entry, is the right shape. Not in the first version
 2. **Document extraction.** Which formats are realistically supported in pure Rust with a
    permissive licence, and whether PDF is one of them.
 3. **Trash on every platform.** Whether a usable recoverable delete exists on Linux without a
-   desktop session, and what `delete_path` promises when it does not.
+   desktop session, and what `delete_path` promises when it does not. **Answered in shape, not in
+   fact (2026-09-08):** the result carries `trashed`, so the promise is never assumed — a delete
+   that could not reach the trash says so, and the row can say "deleted" rather than "moved to the
+   trash". Whether the trash is reachable on a headless Linux session still has to be tried on
+   one.
 4. **Bulk operations.** Whether the first version can really live without them, given that
    organising files is one of the two jobs in §1.
 5. **macOS firmlinks.** Whether resolving a path under the user's home returns the familiar form
