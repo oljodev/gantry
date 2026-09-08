@@ -21,6 +21,7 @@ base64.workspace = true
 gantry-connectors.workspace = true
 gantry-connector-code-editor.workspace = true
 gantry-connector-filesystem.workspace = true
+gantry-connector-shell.workspace = true
 gantry-core.workspace = true
 gantry-providers.workspace = true
 gantry-secrets.workspace = true

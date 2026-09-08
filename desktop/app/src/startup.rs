@@ -162,11 +162,15 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn Error>> {
         blobs.clone(),
         data_dir.clone(),
     ));
+    // The login shell answers once, at startup: a GUI app otherwise runs commands with a
+    // nearly empty PATH on macOS (`docs/connectors/shell.md` D2).
+    let shell_env = Arc::new(gantry_connector_shell::ShellEnv::capture());
     let connectors = Arc::new(ConnectorService::new(
         store.clone(),
         secrets.clone(),
         tools.clone(),
         workspace.clone(),
+        shell_env,
     ));
 
     let turns = TurnManager::new(

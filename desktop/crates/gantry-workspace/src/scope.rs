@@ -94,6 +94,13 @@ impl Roots {
         self.roots.is_empty()
     }
 
+    /// The first folder attached, which is where a command runs when it does not say otherwise
+    /// (`docs/connectors/shell.md` §2).
+    #[must_use]
+    pub fn primary(&self) -> Option<&std::path::Path> {
+        self.roots.first().map(|r| r.path.as_path())
+    }
+
     #[must_use]
     pub fn paths(&self) -> Vec<String> {
         self.roots

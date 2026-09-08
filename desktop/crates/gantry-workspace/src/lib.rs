@@ -62,7 +62,9 @@ pub enum WorkspaceError {
     Occupied { path: String },
     #[error("{path} is a folder, not a file: {why}")]
     Directory { path: String, why: String },
-    #[error("this chat has no folder attached, so there is nothing to edit")]
+    /// Worded for every caller: the editor has nothing to edit, the shell nowhere to run, and
+    /// each adds its own next step after this sentence.
+    #[error("this chat has no folder attached")]
     NoRoots,
     #[error("{0}")]
     Store(String),

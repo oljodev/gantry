@@ -6,9 +6,13 @@ It is the most capable and the most dangerous thing in Gantry. A command runs as
 the user's privileges, and once it is running Gantry cannot constrain what it does. Everything
 below follows from taking that seriously rather than pretending otherwise.
 
-Status: planning, nothing built. Specified to the depth a builder needs and no further; the
-security boundary in `docs/connectors/filesystem.md` §4 does the heavy lifting for paths, and
-this document does not repeat it. Replaces the paragraph in `docs/plan/03-connector-system.md` §5.
+Status: **built 2026-09-08** — both tools, the classifier, the environment capture, the caps,
+the deadline and the process-tree kill, with the permission matrix of §8 holding through the
+engine. What is not built is the interface half (§10: the command row, the drawer with colour and
+the decision trail) and the guardrail floor of §8, which arrive with the rest of M7. Three
+decisions changed while building; each is marked **revised** where it stands. The security
+boundary in `docs/connectors/filesystem.md` §4 does the heavy lifting for paths, and this
+document does not repeat it. Replaces the paragraph in `docs/plan/03-connector-system.md` §5.
 
 ---
 
@@ -79,11 +83,20 @@ Nothing stops `open`, `xdg-open` or a browser being invoked. That is the user's 
 what it says, not Gantry opening a terminal, and it is not worth crippling the connector to
 prevent.
 
-**Which shell.** On macOS and Linux, the user's login shell, invoked non-interactively and
-without reading startup files (D2). On Windows, PowerShell 7 when present, falling back to
-Windows PowerShell, with the classic command interpreter available as an explicit choice. The
-resolved shell is reported in the result, because "it worked in my terminal" and "it worked in
-Gantry" differing by shell is otherwise a mystery.
+**Which shell** (**revised 2026-09-08**; this said the login shell, and building it on a machine
+whose login shell is fish showed why that is wrong). Which shell *has the environment* and which
+shell *runs the command* are two questions, and D2 only answers the first.
+
+Models write POSIX command lines — `a && b`, `2>&1`, `VAR=x cmd` — and every one of those is a
+syntax error in fish. A user whose login shell is fish, nushell or xonsh would watch almost every
+command fail on grammar rather than on merit, and the failures would look like the model's fault.
+So: the login shell is asked for its environment (D2, unchanged), and commands run in **bash where
+it exists, `/bin/sh` otherwise**. On Windows, PowerShell 7 when present, falling back to Windows
+PowerShell, both with `-NoProfile -NonInteractive`.
+
+The shell that ran is reported in the result, and so is the login shell that supplied the
+environment, because "it worked in my terminal" and "it worked in Gantry" differing by shell is
+otherwise a mystery — and now they can differ by two shells.
 
 **The environment.** Resolved once at startup by asking the login shell what it has, because a
 graphical application on macOS otherwise inherits a nearly empty `PATH` and cannot find anything
@@ -147,8 +160,19 @@ than papering over.
 The interface says this in plain words. "Gantry checked that this command only reads" is a
 defensible claim. "This command cannot change anything" is not, and should never appear.
 
-The allowlist lives in the guardrails file with everything else, so it can be inspected and
-extended without a release.
+The allowlist lives in `gantry-core/src/command.rs` today, next to the parsing that uses it, and
+moves to the guardrails file with the rest of M7 so it can be inspected and extended without a
+release. It also parts company with `docs/plan/03-connector-system.md` §5 in one place: that
+paragraph allows a bare "version flag" on anything, and `./deploy.sh --version` runs `deploy.sh`.
+Version flags are allowed only for a listed set of toolchain programs, and a program named by
+path is never proven at all.
+
+**The wrapper hole, closed rather than noted.** A program that runs another program — `env`,
+`nice`, `xargs`, `timeout`, `nohup`, `time` — cannot be on the allowlist as itself, or
+`env rm -rf /` would pass by naming `env`. Each is unwrapped, its own options and any `VAR=value`
+prefixes skipped, and whatever it was going to run is classified instead. `sudo`, `doas`, `su`,
+`chroot` and `setsid` are refused outright rather than unwrapped: what follows them is not the
+user's own privileges.
 
 ## 7. Scope, honestly
 
@@ -242,7 +266,7 @@ from both, since it is the one case where the output is incomplete.
 | `risk.local_system` | `execute` |
 | `risk.default_tool_tier` | `execute` |
 | `risk.notes` | That commands run as the user with the user's privileges, that the working directory is constrained but the command's behaviour is not, and that no terminal window is ever opened |
-| `tools` | `run_command` and `kill_command`, neither `parallel_safe`, `run_command` with `plan_mode: classify` |
+| `tools` | `tools_generated: true`, as the other native connectors do (**revised**): the code defines `run_command` and `kill_command`, neither `parallel_safe`, `run_command` with `plan_mode: classify`, and the card reads them from there so it cannot describe a tool that does not exist |
 | `prompt.system_addendum` | Prefer the filesystem and editor tools over shell equivalents, because their results are structured and their changes are revertible; standard input is closed, so do not run interactive commands; long-running processes are not supported |
 
 ## 13. Testing
@@ -254,6 +278,7 @@ from both, since it is the one case where the output is incomplete.
 | Timeout and kill | A script that spawns a child and ignores termination, asserting the whole tree is gone afterwards. This is the test that catches the D4 mistake |
 | Output caps | A script that prints far more than the cap, asserting the head and tail survive and the elision is counted correctly |
 | No window | Cannot be asserted from a test. It goes on the manual release checklist for Windows, where it is the one platform that gets it wrong by default |
+| The shell that runs commands | That it is bash or `sh` whatever the developer's login shell is — the test that would have caught the fish mistake before a user did |
 | Scope | That a working directory outside the attached folders is refused, reusing the filesystem corpus |
 
 ## 14. Changes this forces elsewhere
@@ -270,5 +295,8 @@ from both, since it is the one case where the output is incomplete.
    M7 or waits, because the answer changes how the runner is structured.
 2. **The read-only allowlist's contents.** Short and conservative to begin with, extended from
    real use rather than guessed at now.
-3. **Whether `cwd` should default to the chat's primary folder or be required.** Defaulting is
-   friendlier; requiring it makes the model state its intent, which is easier to audit.
+3. ~~**Whether `cwd` should default to the chat's primary folder or be required.**~~ *Answered
+   2026-09-08: it defaults to the chat's first folder.* A model made to name the folder every
+   time names it wrongly — and an audit trail of a folder the model guessed is worth less than
+   one of the folder the user attached. The resolved directory is in the result either way, so
+   nothing is hidden by defaulting.

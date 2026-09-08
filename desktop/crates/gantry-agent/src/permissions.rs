@@ -4,7 +4,7 @@
 //! judge exists, Guarded Auto asks the user for anything it would have sent to the judge,
 //! which is the "fail closed" rule of 04 §1.
 
-use gantry_core::{ChatGrant, DecisionSource, Mode, RiskTier, ToolDef};
+use gantry_core::{ChatGrant, CommandClass, DecisionSource, Mode, RiskTier, ToolDef, classify};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Decision {
@@ -30,7 +30,24 @@ pub struct Call<'a> {
 /// every mode keep asking.
 #[must_use]
 pub fn decide(mode: Mode, guard: bool, call: &Call<'_>, grants: &[ChatGrant]) -> Decision {
-    let policy = mode_policy(mode, guard, call.def);
+    let policy = match classified(call) {
+        // A command the classifier proved read-only is decided as a read: that single fact is
+        // what lets Plan mode allow `git status` while refusing everything else, and what stops
+        // Auto-edit asking about `ls` (`docs/connectors/shell.md` §8).
+        Some(CommandClass::ReadOnly) => {
+            let mut as_read = call.def.clone();
+            as_read.tier = RiskTier::Read;
+            mode_policy(mode, guard, &as_read)
+        }
+        Some(CommandClass::Effectful(reason)) if mode == Mode::Plan => Decision::Deny {
+            source: DecisionSource::PlanMode,
+            reason: format!(
+                "Plan mode only runs commands that are provably read-only, and {reason}. \
+                 Propose the command instead, or switch to Auto-edit to run it."
+            ),
+        },
+        _ => mode_policy(mode, guard, call.def),
+    };
     if policy == Decision::Ask
         && !call.def.always_confirm
         && grants
@@ -40,6 +57,15 @@ pub fn decide(mode: Mode, guard: bool, call: &Call<'_>, grants: &[ChatGrant]) ->
         return Decision::Allow(DecisionSource::UserChatGrant);
     }
     policy
+}
+
+/// The verdict on a call that carries a command line, and nothing for every other tool.
+fn classified(call: &Call<'_>) -> Option<CommandClass> {
+    if call.def.plan_mode != gantry_core::PlanModePolicy::Classify {
+        return None;
+    }
+    let command = call.args.get("command")?.as_str()?;
+    Some(classify(command))
 }
 
 /// The 04 §3 table for one call, before grants.
@@ -54,6 +80,8 @@ pub fn mode_policy(mode: Mode, guard: bool, def: &ToolDef) -> Decision {
         (Mode::AutoEdit, Read | Write) => Decision::Allow(DecisionSource::Mode),
         (Mode::AutoEdit, _) => Decision::Ask,
         (Mode::Plan, Read) => Decision::Ask,
+        // A classifiable tool reaches this arm only when no command was given to classify —
+        // the verdict itself is applied in `decide`, above.
         (Mode::Plan, Execute) if def.plan_mode == gantry_core::PlanModePolicy::Classify => {
             Decision::Ask
         }
@@ -189,6 +217,82 @@ mod tests {
         assert_eq!(
             super::decide(Mode::Manual, true, &call(&write, &args), &grants),
             Decision::Ask
+        );
+    }
+
+    /// The matrix of `docs/connectors/shell.md` §8, through the engine the runner calls.
+    #[test]
+    fn a_command_is_decided_by_what_the_classifier_could_prove() {
+        use gantry_core::PlanModePolicy;
+        let mut run = ToolDef::new("run_command", "d", serde_json::json!({}), RiskTier::Execute);
+        run.plan_mode = PlanModePolicy::Classify;
+        let call = |args: &'static str| serde_json::json!({ "command": args });
+
+        let reads = call("git status");
+        let writes = call("rm -rf build");
+        let decide_with = |mode: Mode, guard: bool, args: &serde_json::Value| {
+            super::decide(
+                mode,
+                guard,
+                &Call {
+                    def: &run,
+                    instance_id: "shell",
+                    args,
+                },
+                &[],
+            )
+        };
+
+        // Read-only: allowed where a read is allowed, asked where a read is asked.
+        assert_eq!(decide_with(Mode::Manual, true, &reads), Decision::Ask);
+        assert_eq!(
+            decide_with(Mode::AutoEdit, true, &reads),
+            Decision::Allow(DecisionSource::Mode)
+        );
+        assert_eq!(decide_with(Mode::Plan, true, &reads), Decision::Ask);
+        assert_eq!(
+            decide_with(Mode::Auto, true, &reads),
+            Decision::Allow(DecisionSource::Mode)
+        );
+
+        // Everything else: asked in Manual and Auto-edit, refused outright in Plan.
+        assert_eq!(decide_with(Mode::Manual, true, &writes), Decision::Ask);
+        assert_eq!(decide_with(Mode::AutoEdit, true, &writes), Decision::Ask);
+        let Decision::Deny { source, reason } = decide_with(Mode::Plan, true, &writes) else {
+            panic!("Plan mode must refuse a command it cannot prove read-only");
+        };
+        assert_eq!(source, DecisionSource::PlanMode);
+        assert!(
+            reason.contains("`rm` is not on the read-only list"),
+            "{reason}"
+        );
+        assert_eq!(
+            decide_with(Mode::Auto, false, &writes),
+            Decision::Allow(DecisionSource::Mode),
+            "unguarded Auto runs it"
+        );
+        assert_eq!(
+            decide_with(Mode::Auto, true, &writes),
+            Decision::Ask,
+            "guarded Auto asks until the judge exists"
+        );
+    }
+
+    #[test]
+    fn a_tool_without_a_command_is_untouched_by_the_classifier() {
+        let def = ToolDef::new("write_file", "d", serde_json::json!({}), RiskTier::Write);
+        assert_eq!(
+            super::decide(
+                Mode::AutoEdit,
+                true,
+                &Call {
+                    def: &def,
+                    instance_id: "filesystem",
+                    args: &serde_json::json!({ "path": "/tmp/x" })
+                },
+                &[]
+            ),
+            Decision::Allow(DecisionSource::Mode)
         );
     }
 }

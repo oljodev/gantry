@@ -306,10 +306,9 @@ tools, and the feed.
   with net line counts, the selected file's unified diff, per-file **Revert** and session-level
   **Revert all**, all through the journal.
 - ~~The two empty states, including the one-time disclosure of §8 naming the connectors the
-  surface just turned on.~~ **Done**: the Code home picks the folder, names the two connectors it
-  turns on, and lists recent sessions. It says "Filesystem and Code editor" rather than three,
-  because the shell has no code behind it until M7 and naming a connector that does nothing would
-  be the disclosure lying in the other direction.
+  surface just turned on.~~ **Done**: the Code home picks the folder, names the connectors it
+  turns on, and lists recent sessions. It named two until the shell was built on 2026-09-08 and
+  now names all three, which is what §8 asks for.
 - Per-surface defaults in Settings → General (16 §9). Both ship at Auto-edit, for the reason
   16 §9 now records; the two settings stay separate.
 
@@ -398,7 +397,17 @@ The shell stays a catalog connector (16 C6 as revised) and joins the set the Cod
 installs and attaches. Until this milestone lands, a code session can edit but not build or test,
 which is a real gap and the reason M7 follows M6 immediately rather than M8.
 
-- `desktop/connectors/shell`: run with streaming output, caps, timeouts, kill, process-group termination, PowerShell/cmd on Windows, login-shell `PATH` on macOS; `CommandClassifier` with its fixture corpus, and the `env`/`nice`/`xargs` prefix problem fixed rather than documented.
+- ~~`desktop/connectors/shell`: run with streaming output, caps, timeouts, kill, process-group
+  termination, PowerShell/cmd on Windows, login-shell `PATH` on macOS; `CommandClassifier` with its
+  fixture corpus, and the `env`/`nice`/`xargs` prefix problem fixed rather than documented.~~
+  **Done** 2026-09-08, ahead of the rest of M7 because a code session that can edit but not build
+  is half a product. Both tools, the classifier in `gantry-core` (shared with the permission
+  engine, which now refuses in Plan mode what it cannot prove read-only), the environment captured
+  once from the login shell, 2 MB capture caps with the elision counted, the deadline, and a kill
+  that takes the process group — with a test that lets a child outlive its parent and asserts it
+  is gone. Building it on a fish machine forced one correction the plan had wrong: commands run in
+  bash, not the login shell (shell.md §3). The no-window flag is written for Windows and stays on
+  the release checklist, because no test here can assert it.
 - Command rows and the command drawer with ANSI rendering.
 - **Plan** mode: filtered tool set, read prompts with "Allow all reads", the "Switch to Auto-edit and execute" action.
 - Argument-scoped grants: path prefix and command prefix, which now have arguments to scope to.

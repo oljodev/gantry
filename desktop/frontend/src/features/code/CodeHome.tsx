@@ -44,7 +44,7 @@ export function CodeHome() {
           </Button>
           <p className="mt-4 flex items-center gap-1.5 text-meta text-fg-3">
             <PlugIcon className="size-3.5" />
-            Opening a session turns on the Filesystem and Code editor connectors for it.
+            Opening a session turns on the Filesystem, Code editor and Shell connectors for it.
           </p>
         </div>
 

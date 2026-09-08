@@ -6,6 +6,7 @@
 
 use std::{collections::HashMap, sync::Arc};
 
+use gantry_connector_shell::ShellEnv;
 use gantry_connectors::{
     ConnectorRegistry,
     auth::{self, AuthError, ClientSource, DeviceStart, discovery, flow},
@@ -59,6 +60,8 @@ pub struct ConnectorService {
     registry: Arc<ConnectorRegistry>,
     /// Roots, file IO and the journal, which every native connector shares (03 §5).
     workspace: Arc<Workspace>,
+    /// The login shell and its environment, captured once (`docs/connectors/shell.md` D2).
+    shell_env: Arc<ShellEnv>,
     http: reqwest::Client,
 }
 
@@ -69,6 +72,7 @@ impl ConnectorService {
         secrets: Arc<SecretVault>,
         registry: Arc<ConnectorRegistry>,
         workspace: Arc<Workspace>,
+        shell_env: Arc<ShellEnv>,
     ) -> Self {
         Self {
             catalog: Catalog::embedded(),
@@ -76,6 +80,7 @@ impl ConnectorService {
             secrets,
             registry,
             workspace,
+            shell_env,
             http: reqwest::Client::builder()
                 .user_agent(concat!("Gantry/", env!("CARGO_PKG_VERSION")))
                 .build()
@@ -606,6 +611,7 @@ impl ConnectorService {
                         instance.namespace.clone(),
                         instance.id,
                         &self.workspace,
+                        &self.shell_env,
                     )
                 }) {
                     Some(connector) => self.registry.register(connector),

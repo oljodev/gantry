@@ -3,18 +3,29 @@
   "id": "shell",
   "name": "Shell",
   "description": "Run commands in an attached folder with streaming output, timeouts and kill.",
+  "long_description": "Builds, tests, git, scripts and package managers, run in a folder you attached to the chat.\n\nA command runs as you, with your privileges. Gantry decides **where** it starts — the working directory must be inside an attached folder — and nothing more: once a command is running it can reach anything you can reach, on disk and over the network. What protects you is the permission mode, the guardrails, and seeing every command before it runs.\n\nBefore a command is proposed, Gantry checks whether its text is provably read-only, so `git status` and `ls` can be treated differently from `rm`. That check is about the command as written; it is not a promise about what running it does.\n\nNo terminal window ever opens. Standard input is closed, so a command that asks a question ends instead of waiting, and long-running processes such as development servers are not supported yet.",
   "version": "0.1.0",
   "icon": "icon.svg",
   "category": "developer",
-  "keywords": [],
+  "keywords": ["shell", "command", "terminal", "build", "test", "git"],
   "publisher": { "name": "Gantry", "url": "https://oljo.dev" },
   "first_party": true,
   "homepage": "https://oljo.dev/connectors/shell/",
   "license": "FSL-1.1-ALv2",
   "runtime": { "kind": "native", "crate": "gantry-connector-shell", "singleton": true },
   "auth": { "type": "none" },
-  "risk": { "network": "none", "local_system": "execute", "default_tool_tier": "execute" },
-  "tools": [],
-  "tools_generated": false,
+  "risk": {
+    "network": "internet",
+    "local_system": "execute",
+    "default_tool_tier": "execute",
+    "notes": "Commands run as you, with your privileges. The working directory must be inside a folder attached to the chat; what the command then does is not constrained, on disk or over the network. No terminal window is ever opened, and Gantry's own keys and credentials are never placed in a command's environment."
+  },
+  "tools_generated": true,
+  "prompt": {
+    "system_addendum": "Prefer the filesystem and code editor tools over shell equivalents: their results are structured and their changes can be reverted. Standard input is closed, so never run an interactive command. Long-running processes such as development servers and file watchers are not supported and will be stopped at the timeout."
+  },
+  "catalog": {
+    "suggest_for": ["run", "build", "test", "command", "terminal", "compile", "install"]
+  },
   "compatibility": { "platforms": ["darwin", "win32", "linux"], "gantry": ">=0.1.0" }
 }

@@ -8,6 +8,7 @@
 
 use std::sync::Arc;
 
+use gantry_connector_shell::ShellEnv;
 use gantry_connectors::Connector;
 use gantry_core::{InstanceId, ToolDef};
 use gantry_workspace::Workspace;
@@ -19,6 +20,7 @@ pub fn build(
     namespace: String,
     instance_id: InstanceId,
     workspace: &Arc<Workspace>,
+    shell_env: &Arc<ShellEnv>,
 ) -> Option<Arc<dyn Connector>> {
     match catalog_id {
         gantry_connector_filesystem::ID => Some(Arc::new(
@@ -31,6 +33,12 @@ pub fn build(
                 workspace.clone(),
             )))
         }
+        gantry_connector_shell::ID => Some(Arc::new(gantry_connector_shell::Shell::new(
+            namespace,
+            instance_id,
+            workspace.clone(),
+            shell_env.clone(),
+        ))),
         _ => None,
     }
 }
@@ -42,6 +50,7 @@ pub fn definitions(catalog_id: &str) -> Option<Vec<ToolDef>> {
     match catalog_id {
         gantry_connector_filesystem::ID => Some(gantry_connector_filesystem::definitions()),
         gantry_connector_code_editor::ID => Some(gantry_connector_code_editor::definitions()),
+        gantry_connector_shell::ID => Some(gantry_connector_shell::definitions()),
         _ => None,
     }
 }

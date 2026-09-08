@@ -9,7 +9,7 @@ import { useChatMutations } from '@/lib/ipc/hooks/chats';
 import { useConnectorMutations, useConnectors } from '@/lib/ipc/hooks/connectors';
 
 /** The connectors a code session cannot work without (docs/plan/16 §8, 03 §11's one exception). */
-export const CODE_CONNECTORS = ['filesystem', 'code-editor'] as const;
+export const CODE_CONNECTORS = ['filesystem', 'code-editor', 'shell'] as const;
 
 /**
  * Starting a code session: pick a folder, make the session, turn on the file tools.

@@ -9,6 +9,7 @@ mod app_info;
 pub mod artifact;
 pub mod attachment;
 pub mod chat;
+pub mod command;
 pub mod connector;
 pub mod error;
 pub mod event;
@@ -30,6 +31,7 @@ pub use attachment::{AttachmentInput, MAX_IMAGE_BYTES, MAX_TEXT_BYTES};
 pub use chat::{
     ChatDetail, ChatSummary, Feedback, SearchHit, SearchHitKind, Surface, TurnDto, TurnStatus,
 };
+pub use command::{CommandClass, classify};
 pub use connector::{
     AuthState, AuthType, CatalogEntryDto, ConnectorConfig, ConnectorInstanceDto, ConnectorKind,
     RuntimeRequirement, ServerInfo, ToolInfo,

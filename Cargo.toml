@@ -67,6 +67,7 @@ globset = "0.4"
 regex = "1"
 trash = "5"
 toml = "0.9"
+shell-words = "1"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 
 [profile.release]
