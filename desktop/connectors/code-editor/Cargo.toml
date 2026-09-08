@@ -10,7 +10,15 @@ publish.workspace = true
 
 [dependencies]
 gantry-core.workspace = true
+gantry-connectors.workspace = true
 gantry-workspace.workspace = true
+async-trait.workspace = true
+log.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio-util.workspace = true
 
 [dev-dependencies]
-serde_json.workspace = true
+gantry-store.workspace = true
+tempfile.workspace = true
+tokio = { workspace = true, features = ["rt", "macros"] }

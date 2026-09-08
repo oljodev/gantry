@@ -6,15 +6,20 @@
   "version": "0.1.0",
   "icon": "icon.svg",
   "category": "developer",
-  "keywords": [],
+  "keywords": ["edit", "refactor", "patch", "diff", "code"],
   "publisher": { "name": "Gantry", "url": "https://oljo.dev" },
   "first_party": true,
   "homepage": "https://oljo.dev/connectors/code-editor/",
   "license": "FSL-1.1-ALv2",
   "runtime": { "kind": "native", "crate": "gantry-connector-code-editor", "singleton": true },
   "auth": { "type": "none" },
-  "risk": { "network": "none", "local_system": "write", "default_tool_tier": "write" },
-  "tools": [],
-  "tools_generated": false,
+  "risk": {
+    "network": "none",
+    "local_system": "write",
+    "default_tool_tier": "write",
+    "notes": "Changes only files inside the folders attached to a chat. Every change is recorded and can be reverted, and it never runs anything."
+  },
+  "tools_generated": true,
+  "catalog": { "suggest_for": ["edit", "refactor", "fix", "patch", "source file"] },
   "compatibility": { "platforms": ["darwin", "win32", "linux"], "gantry": ">=0.1.0" }
 }

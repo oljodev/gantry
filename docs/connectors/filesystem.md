@@ -8,7 +8,11 @@ undone by closing a window. This one cannot. So the design is organised around a
 boundary, stated once and enforced in one place, and around never doing anything surprising to a
 file the user did not mean to change.
 
-Status: planning, nothing built. It is specified to the depth the security boundary needs and no
+Status: **`read_file` built 2026-09-08** with the code editor, whose freshness rule (§11) needs
+something to open its gate with. The containment algorithm of §4, the encoding and line-ending
+handling of §5 and the session's record of what it has read all shipped with it, in
+`gantry-workspace`, so each remaining tool is a small addition to a boundary that already exists.
+Everything below is otherwise planning, specified to the depth the security boundary needs and no
 further; the remaining choices are marked **at build time** and are the kind that are better made
 with a compiler in front of you. `docs/plan/03-connector-system.md` §5 holds the one-paragraph
 summary this replaces.

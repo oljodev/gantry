@@ -12,6 +12,11 @@ journal. Nothing here re-implements any of that.
 Written 2026-09-08, when 16 §8 settled who owns what. Before that this file was empty and the
 boundary was an open question in `filesystem.md` §19.
 
+**Built 2026-09-08**, all four tools, on `gantry-workspace`. Two things this specification did
+not foresee are recorded where they belong: credential files are refused rather than confirmed
+(§6, §8), and `filesystem__read_file` shipped alongside, because the freshness rule below has
+nothing to open its gate with otherwise.
+
 ---
 
 ## 1. What it is for
@@ -34,8 +39,9 @@ atomic (temp file in the same directory, then rename), original encoding and lin
 preserved, permissions and ownership carried over.
 
 This connector adds one rule of its own: **a file must have been read in this session before it
-is changed.** The read may come from either connector — the journal records reads, not tool
-names — and it must still be current, in the sense of §5.
+is changed.** The read may come from either connector — `gantry-workspace` records reads, not
+tool names — and it must still be current, in the sense of §5. In the shipped build the only
+reader is `filesystem__read_file`, which is what the refusal names.
 
 ## 3. The tools
 
@@ -133,6 +139,8 @@ updates it. Before a change, the file on disk is hashed again:
 | File changed since it was read | What changed near the edit, and to read it again |
 | A patch hunk did not apply | Which hunk, and the text found where its context was expected |
 | `undo` with nothing to undo | That this session has not edited that file |
+| `undo` after something else wrote the file | That undoing would discard that change, and to edit instead |
+| A credential file | What kind it is, and that Gantry does not let a model edit it (§8) |
 | Path outside the attached folders | Which folder would need adding, and that it can ask |
 | Gantry's own configuration | That this path is never writable |
 | A file that is not text | The detected type, and that this connector only edits text |
@@ -156,6 +164,15 @@ near-miss produces a second row immediately and the pair should read as one stor
 every change is journaled and revertible, which is exactly what the tier means (04 §2). Plan mode
 hides all four rather than denying them, so the model does not spend rounds on calls it cannot
 make.
+
+**Credential files are refused, not confirmed** (decided while building, 2026-09-08).
+`filesystem.md` D3 says sensitive files always ask, in every mode. That ask needs a per-call
+confirmation the permission engine cannot yet raise from inside a connector, and a static
+`always_confirm` on the tool would instead prompt for every edit in the session, which is the
+opposite of what D3 wants. Until the guardrail floor of M7 can raise it, these four tools refuse
+a path in the sensitive set and say which rule refused. Fail closed, and it costs only the rare
+case of a model editing a `.env` — the case D3 was written about. Reading one is unaffected: D3's
+argument for allowing that was an argument about reading.
 
 ## 9. Manifest
 

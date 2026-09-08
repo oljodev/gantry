@@ -10,7 +10,11 @@ publish.workspace = true
 
 [dependencies]
 gantry-core.workspace = true
+gantry-connectors.workspace = true
 gantry-workspace.workspace = true
+async-trait.workspace = true
+serde_json.workspace = true
+tokio-util.workspace = true
 
 [dev-dependencies]
-serde_json.workspace = true
+tempfile.workspace = true
