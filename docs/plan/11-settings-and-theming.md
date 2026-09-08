@@ -65,7 +65,7 @@ Exactly the credential design of 06 §5, surfaced. The five accounts (OpenRouter
 
 ## 5. Default permission mode
 
-`chat.default_mode` and `chat.default_guard` apply to sessions created outside a project, and each surface has its own pair (16 §9): `chat` defaults to Manual, `code` to Auto-edit, both with the judge as guard. A session created before the code surface existed keeps whatever it had; the defaults only decide where a new one starts. Projects override both (`projects.default_mode`, `default_guard`, 06 §3). Precedence: project > global; the chat's own mode chip overrides both at any time and appends the mode `SystemNote` (04 §3). Switching a chat to Unguarded Auto asks for confirmation once per chat unless the General setting turns that off.
+`chat.default_mode` and `chat.default_guard` apply to sessions created outside a project, and each surface has its own pair, `chat.default_mode` and `chat.code_default_mode` with their guards (16 §9). Both ship at Auto-edit with the judge as guard, for the reason recorded there. A session created before the code surface existed keeps whatever it had; the defaults only decide where a new one starts. Projects override both (`projects.default_mode`, `default_guard`, 06 §3). Precedence: project > global; the chat's own mode chip overrides both at any time and appends the mode `SystemNote` (04 §3). Switching a chat to Unguarded Auto asks for confirmation once per chat unless the General setting turns that off.
 
 ## 6. Connector management
 

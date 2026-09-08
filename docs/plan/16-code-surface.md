@@ -237,9 +237,18 @@ Connectors list is never out of step with what happened.
 
 | Setting | Chat default | Code default |
 |---------|-------------|--------------|
-| Permission mode | Manual | Auto-edit |
+| Permission mode | Auto-edit | Auto-edit |
 | Guard, when in Auto | Judge | Judge |
 | Suggest connectors | On | On |
+
+The chat column said Manual when this was written, on the reasoning that Auto-edit is wrong for
+a conversation about a spreadsheet. As built (2026-09-08) both start at Auto-edit, because that
+reasoning does not survive contact with what Auto-edit actually allows: it applies `write` calls
+inside the session's own folders and asks for everything else, and a chat has no folders. Manual
+there would buy no safety and would prompt for every connector read — every GitHub search, every
+documentation lookup. The two settings still exist separately, so a user who wants Manual in one
+place and not the other has it, and the moment a chat can attach a folder the question is worth
+reopening.
 
 Both are per-surface settings in General, both overridable per project and per session. The mode
 chip works identically on both surfaces, so a user who wants Manual in code has it one click
@@ -311,7 +320,7 @@ Nothing else changes. `messages`, `turns`, `events`, `tool_calls`, `file_edits`,
 | `06-data-model.md` §3 | The `chats` row gains `surface` |
 | `07-repository-structure.md` | The three connector folders stay; the frontend gains `features/code` |
 | `09-roadmap.md` | §16 below |
-| `11-settings-and-theming.md` | General gains per-surface defaults |
+| `11-settings-and-theming.md` | General gains per-surface defaults (`chat.default_mode` / `chat.code_default_mode` and their guards) |
 | `15-app-design.md` §7 | The layout section gains the toggle and the code surface's sidebar and pane contents. A19 on diffs now also covers the Changes tab |
 | `docs/connectors/filesystem.md` §19 | Answered: `read_file` and `write_file` stay with `filesystem`. The freshness rule that made the editor want its own read is enforced by the shared journal in `gantry-workspace`, under both connectors |
 | `docs/connectors/code-editor.md` | Was an empty file. Written: the four editing tools, the journal they write, and what they refuse |
