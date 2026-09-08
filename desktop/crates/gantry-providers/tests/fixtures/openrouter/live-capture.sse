@@ -2,41 +2,61 @@
 
 : OPENROUTER PROCESSING
 
-data: {"id":"gen-1788813300-V80khBNx3oYCPryrPIEi","object":"chat.completion.chunk","created":1788813300,"model":"deepseek/deepseek-v4-flash","provider":"SiliconFlow","choices":[{"index":0,"delta":{"content":"","role":"assistant","reasoning":"We","reasoning_details":[{"type":"reasoning.text","text":"We","format":"unknown","index":0}]},"finish_reason":null,"native_finish_reason":null}]}
+: OPENROUTER PROCESSING
 
 : OPENROUTER PROCESSING
 
-data: {"id":"gen-1788813300-V80khBNx3oYCPryrPIEi","object":"chat.completion.chunk","created":1788813300,"model":"deepseek/deepseek-v4-flash","provider":"SiliconFlow","choices":[{"index":0,"delta":{"content":"","role":"assistant","reasoning":" need answer. Need concise","reasoning_details":[{"type":"reasoning.text","text":" need answer. Need concise","format":"unknown","index":0}]},"finish_reason":null,"native_finish_reason":null}]}
+data: {"id":"gen-1788848622-4zlrSKZYBUliVri7TZzv","object":"chat.completion.chunk","created":1788848622,"model":"deepseek/deepseek-v4-flash","provider":"GMICloud","choices":[{"index":0,"delta":{"content":"","role":"assistant","reasoning":"We","reasoning_details":[{"type":"reasoning.text","text":"We","format":"unknown","index":0}]},"finish_reason":null,"native_finish_reason":null}]}
 
-data: {"id":"gen-1788813300-V80khBNx3oYCPryrPIEi","object":"chat.completion.chunk","created":1788813300,"model":"deepseek/deepseek-v4-flash","provider":"SiliconFlow","choices":[{"index":0,"delta":{"content":"","role":"assistant","reasoning":" two sentences. Define g","reasoning_details":[{"type":"reasoning.text","text":" two sentences. Define g","format":"unknown","index":0}]},"finish_reason":null,"native_finish_reason":null}]}
+data: {"id":"gen-1788848622-4zlrSKZYBUliVri7TZzv","object":"chat.completion.chunk","created":1788848622,"model":"deepseek/deepseek-v4-flash","provider":"GMICloud","choices":[{"index":0,"delta":{"content":"","role":"assistant","reasoning":" need to answer:","reasoning_details":[{"type":"reasoning.text","text":" need to answer:","format":"unknown","index":0}]},"finish_reason":null,"native_finish_reason":null}]}
 
-data: {"id":"gen-1788813300-V80khBNx3oYCPryrPIEi","object":"chat.completion.chunk","created":1788813300,"model":"deepseek/deepseek-v4-flash","provider":"SiliconFlow","choices":[{"index":0,"delta":{"content":"","role":"assistant","reasoning":"antry crane.","reasoning_details":[{"type":"reasoning.text","text":"antry crane.","format":"unknown","index":0}]},"finish_reason":null,"native_finish_reason":null}]}
+data: {"id":"gen-1788848622-4zlrSKZYBUliVri7TZzv","object":"chat.completion.chunk","created":1788848622,"model":"deepseek/deepseek-v4-flash","provider":"GMICloud","choices":[{"index":0,"delta":{"content":"","role":"assistant","reasoning":" \"In two sentences","reasoning_details":[{"type":"reasoning.text","text":" \"In two sentences","format":"unknown","index":0}]},"finish_reason":null,"native_finish_reason":null}]}
 
-data: {"id":"gen-1788813300-V80khBNx3oYCPryrPIEi","object":"chat.completion.chunk","created":1788813300,"model":"deepseek/deepseek-v4-flash","provider":"SiliconFlow","choices":[{"index":0,"delta":{"content":"A gantry crane is","role":"assistant"},"finish_reason":null,"native_finish_reason":null}]}
+data: {"id":"gen-1788848622-4zlrSKZYBUliVri7TZzv","object":"chat.completion.chunk","created":1788848622,"model":"deepseek/deepseek-v4-flash","provider":"GMICloud","choices":[{"index":0,"delta":{"content":"","role":"assistant","reasoning":", what is a","reasoning_details":[{"type":"reasoning.text","text":", what is a","format":"unknown","index":0}]},"finish_reason":null,"native_finish_reason":null}]}
 
-data: {"id":"gen-1788813300-V80khBNx3oYCPryrPIEi","object":"chat.completion.chunk","created":1788813300,"model":"deepseek/deepseek-v4-flash","provider":"SiliconFlow","choices":[{"index":0,"delta":{"content":" a type of overhead crane that is","role":"assistant"},"finish_reason":null,"native_finish_reason":null}]}
+data: {"id":"gen-1788848622-4zlrSKZYBUliVri7TZzv","object":"chat.completion.chunk","created":1788848622,"model":"deepseek/deepseek-v4-flash","provider":"GMICloud","choices":[{"index":0,"delta":{"content":"","role":"assistant","reasoning":" gantry crane?\" The user","reasoning_details":[{"type":"reasoning.text","text":" gantry crane?\" The user","format":"unknown","index":0}]},"finish_reason":null,"native_finish_reason":null}]}
 
-data: {"id":"gen-1788813300-V80khBNx3oYCPryrPIEi","object":"chat.completion.chunk","created":1788813300,"model":"deepseek/deepseek-v4-flash","provider":"SiliconFlow","choices":[{"index":0,"delta":{"content":" supported by upright legs mounted","role":"assistant"},"finish_reason":null,"native_finish_reason":null}]}
+data: {"id":"gen-1788848622-4zlrSKZYBUliVri7TZzv","object":"chat.completion.chunk","created":1788848622,"model":"deepseek/deepseek-v4-flash","provider":"GMICloud","choices":[{"index":0,"delta":{"content":"","role":"assistant","reasoning":" wants a concise explanation in","reasoning_details":[{"type":"reasoning.text","text":" wants a concise explanation in","format":"unknown","index":0}]},"finish_reason":null,"native_finish_reason":null}]}
 
-data: {"id":"gen-1788813300-V80khBNx3oYCPryrPIEi","object":"chat.completion.chunk","created":1788813300,"model":"deepseek/deepseek-v4-flash","provider":"SiliconFlow","choices":[{"index":0,"delta":{"content":" on rails or wheels, allowing","role":"assistant"},"finish_reason":null,"native_finish_reason":null}]}
+data: {"id":"gen-1788848622-4zlrSKZYBUliVri7TZzv","object":"chat.completion.chunk","created":1788848622,"model":"deepseek/deepseek-v4-flash","provider":"GMICloud","choices":[{"index":0,"delta":{"content":"","role":"assistant","reasoning":" exactly two sentences.","reasoning_details":[{"type":"reasoning.text","text":" exactly two sentences.","format":"unknown","index":0}]},"finish_reason":null,"native_finish_reason":null}]}
 
-: OPENROUTER PROCESSING
+data: {"id":"gen-1788848622-4zlrSKZYBUliVri7TZzv","object":"chat.completion.chunk","created":1788848622,"model":"deepseek/deepseek-v4-flash","provider":"GMICloud","choices":[{"index":0,"delta":{"content":"","role":"assistant","reasoning":" We should define a g","reasoning_details":[{"type":"reasoning.text","text":" We should define a g","format":"unknown","index":0}]},"finish_reason":null,"native_finish_reason":null}]}
 
-data: {"id":"gen-1788813300-V80khBNx3oYCPryrPIEi","object":"chat.completion.chunk","created":1788813300,"model":"deepseek/deepseek-v4-flash","provider":"SiliconFlow","choices":[{"index":0,"delta":{"content":" it to move along the","role":"assistant"},"finish_reason":null,"native_finish_reason":null}]}
+data: {"id":"gen-1788848622-4zlrSKZYBUliVri7TZzv","object":"chat.completion.chunk","created":1788848622,"model":"deepseek/deepseek-v4-flash","provider":"GMICloud","choices":[{"index":0,"delta":{"content":"","role":"assistant","reasoning":"antry crane, its","reasoning_details":[{"type":"reasoning.text","text":"antry crane, its","format":"unknown","index":0}]},"finish_reason":null,"native_finish_reason":null}]}
 
-data: {"id":"gen-1788813300-V80khBNx3oYCPryrPIEi","object":"chat.completion.chunk","created":1788813300,"model":"deepseek/deepseek-v4-flash","provider":"SiliconFlow","choices":[{"index":0,"delta":{"content":" ground while its bridge spans across","role":"assistant"},"finish_reason":null,"native_finish_reason":null}]}
+data: {"id":"gen-1788848622-4zlrSKZYBUliVri7TZzv","object":"chat.completion.chunk","created":1788848622,"model":"deepseek/deepseek-v4-flash","provider":"GMICloud","choices":[{"index":0,"delta":{"content":"","role":"assistant","reasoning":" structure, and typical","reasoning_details":[{"type":"reasoning.text","text":" structure, and typical","format":"unknown","index":0}]},"finish_reason":null,"native_finish_reason":null}]}
 
-data: {"id":"gen-1788813300-V80khBNx3oYCPryrPIEi","object":"chat.completion.chunk","created":1788813300,"model":"deepseek/deepseek-v4-flash","provider":"SiliconFlow","choices":[{"index":0,"delta":{"content":" the load. It is used","role":"assistant"},"finish_reason":null,"native_finish_reason":null}]}
+data: {"id":"gen-1788848622-4zlrSKZYBUliVri7TZzv","object":"chat.completion.chunk","created":1788848622,"model":"deepseek/deepseek-v4-flash","provider":"GMICloud","choices":[{"index":0,"delta":{"content":"","role":"assistant","reasoning":" use. Keep it simple.","reasoning_details":[{"type":"reasoning.text","text":" use. Keep it simple.","format":"unknown","index":0}]},"finish_reason":null,"native_finish_reason":null}]}
 
-data: {"id":"gen-1788813300-V80khBNx3oYCPryrPIEi","object":"chat.completion.chunk","created":1788813300,"model":"deepseek/deepseek-v4-flash","provider":"SiliconFlow","choices":[{"index":0,"delta":{"content":" for lifting and moving heavy objects","role":"assistant"},"finish_reason":null,"native_finish_reason":null}]}
+data: {"id":"gen-1788848622-4zlrSKZYBUliVri7TZzv","object":"chat.completion.chunk","created":1788848622,"model":"deepseek/deepseek-v4-flash","provider":"GMICloud","choices":[{"index":0,"delta":{"content":"A gantry crane is","role":"assistant"},"finish_reason":null,"native_finish_reason":null}]}
 
-data: {"id":"gen-1788813300-V80khBNx3oYCPryrPIEi","object":"chat.completion.chunk","created":1788813300,"model":"deepseek/deepseek-v4-flash","provider":"SiliconFlow","choices":[{"index":0,"delta":{"content":" in industrial yards, shipping ports","role":"assistant"},"finish_reason":null,"native_finish_reason":null}]}
+data: {"id":"gen-1788848622-4zlrSKZYBUliVri7TZzv","object":"chat.completion.chunk","created":1788848622,"model":"deepseek/deepseek-v4-flash","provider":"GMICloud","choices":[{"index":0,"delta":{"content":" a type of overhead","role":"assistant"},"finish_reason":null,"native_finish_reason":null}]}
 
-data: {"id":"gen-1788813300-V80khBNx3oYCPryrPIEi","object":"chat.completion.chunk","created":1788813300,"model":"deepseek/deepseek-v4-flash","provider":"SiliconFlow","choices":[{"index":0,"delta":{"content":", and construction sites.","role":"assistant"},"finish_reason":null,"native_finish_reason":null}]}
+data: {"id":"gen-1788848622-4zlrSKZYBUliVri7TZzv","object":"chat.completion.chunk","created":1788848622,"model":"deepseek/deepseek-v4-flash","provider":"GMICloud","choices":[{"index":0,"delta":{"content":" crane with a ho","role":"assistant"},"finish_reason":null,"native_finish_reason":null}]}
 
-data: {"id":"gen-1788813300-V80khBNx3oYCPryrPIEi","object":"chat.completion.chunk","created":1788813300,"model":"deepseek/deepseek-v4-flash","provider":"SiliconFlow","choices":[{"index":0,"delta":{"content":"","role":"assistant","reasoning":null},"finish_reason":"stop","native_finish_reason":"stop"}]}
+data: {"id":"gen-1788848622-4zlrSKZYBUliVri7TZzv","object":"chat.completion.chunk","created":1788848622,"model":"deepseek/deepseek-v4-flash","provider":"GMICloud","choices":[{"index":0,"delta":{"content":"ist mounted on a beam","role":"assistant"},"finish_reason":null,"native_finish_reason":null}]}
 
-data: {"id":"gen-1788813300-V80khBNx3oYCPryrPIEi","object":"chat.completion.chunk","created":1788813300,"model":"deepseek/deepseek-v4-flash","provider":"SiliconFlow","service_tier":null,"choices":[{"index":0,"delta":{"content":"","role":"assistant"},"finish_reason":"stop","native_finish_reason":"stop"}],"usage":{"prompt_tokens":94,"completion_tokens":73,"total_tokens":167,"cost":0.00003266,"is_byok":false,"prompt_tokens_details":{"cached_tokens":0,"cache_write_tokens":0,"audio_tokens":0,"video_tokens":0},"cost_details":{"upstream_inference_cost":0.00003266,"upstream_inference_prompt_cost":0.00001222,"upstream_inference_completions_cost":0.00002044},"completion_tokens_details":{"reasoning_tokens":14,"image_tokens":0,"audio_tokens":0}}}
+data: {"id":"gen-1788848622-4zlrSKZYBUliVri7TZzv","object":"chat.completion.chunk","created":1788848622,"model":"deepseek/deepseek-v4-flash","provider":"GMICloud","choices":[{"index":0,"delta":{"content":" that is supported by two or","role":"assistant"},"finish_reason":null,"native_finish_reason":null}]}
+
+data: {"id":"gen-1788848622-4zlrSKZYBUliVri7TZzv","object":"chat.completion.chunk","created":1788848622,"model":"deepseek/deepseek-v4-flash","provider":"GMICloud","choices":[{"index":0,"delta":{"content":" more legs, allowing","role":"assistant"},"finish_reason":null,"native_finish_reason":null}]}
+
+data: {"id":"gen-1788848622-4zlrSKZYBUliVri7TZzv","object":"chat.completion.chunk","created":1788848622,"model":"deepseek/deepseek-v4-flash","provider":"GMICloud","choices":[{"index":0,"delta":{"content":" it to move along rails","role":"assistant"},"finish_reason":null,"native_finish_reason":null}]}
+
+data: {"id":"gen-1788848622-4zlrSKZYBUliVri7TZzv","object":"chat.completion.chunk","created":1788848622,"model":"deepseek/deepseek-v4-flash","provider":"GMICloud","choices":[{"index":0,"delta":{"content":" or wheels on the ground.","role":"assistant"},"finish_reason":null,"native_finish_reason":null}]}
+
+data: {"id":"gen-1788848622-4zlrSKZYBUliVri7TZzv","object":"chat.completion.chunk","created":1788848622,"model":"deepseek/deepseek-v4-flash","provider":"GMICloud","choices":[{"index":0,"delta":{"content":" It is commonly used in","role":"assistant"},"finish_reason":null,"native_finish_reason":null}]}
+
+data: {"id":"gen-1788848622-4zlrSKZYBUliVri7TZzv","object":"chat.completion.chunk","created":1788848622,"model":"deepseek/deepseek-v4-flash","provider":"GMICloud","choices":[{"index":0,"delta":{"content":" shipyards, warehouses","role":"assistant"},"finish_reason":null,"native_finish_reason":null}]}
+
+data: {"id":"gen-1788848622-4zlrSKZYBUliVri7TZzv","object":"chat.completion.chunk","created":1788848622,"model":"deepseek/deepseek-v4-flash","provider":"GMICloud","choices":[{"index":0,"delta":{"content":", and construction sites to lift","role":"assistant"},"finish_reason":null,"native_finish_reason":null}]}
+
+data: {"id":"gen-1788848622-4zlrSKZYBUliVri7TZzv","object":"chat.completion.chunk","created":1788848622,"model":"deepseek/deepseek-v4-flash","provider":"GMICloud","choices":[{"index":0,"delta":{"content":" and move heavy loads","role":"assistant"},"finish_reason":null,"native_finish_reason":null}]}
+
+data: {"id":"gen-1788848622-4zlrSKZYBUliVri7TZzv","object":"chat.completion.chunk","created":1788848622,"model":"deepseek/deepseek-v4-flash","provider":"GMICloud","choices":[{"index":0,"delta":{"content":" horizontally.","role":"assistant"},"finish_reason":null,"native_finish_reason":null}]}
+
+data: {"id":"gen-1788848622-4zlrSKZYBUliVri7TZzv","object":"chat.completion.chunk","created":1788848622,"model":"deepseek/deepseek-v4-flash","provider":"GMICloud","choices":[{"index":0,"delta":{"content":"","role":"assistant","reasoning":null},"finish_reason":"stop","native_finish_reason":"stop"}]}
+
+data: {"id":"gen-1788848622-4zlrSKZYBUliVri7TZzv","object":"chat.completion.chunk","created":1788848622,"model":"deepseek/deepseek-v4-flash","provider":"GMICloud","service_tier":null,"choices":[{"index":0,"delta":{"content":"","role":"assistant"},"finish_reason":"stop","native_finish_reason":"stop"}],"usage":{"prompt_tokens":15,"completion_tokens":108,"total_tokens":123,"cost":0.000021021,"is_byok":false,"prompt_tokens_details":{"cached_tokens":0,"cache_write_tokens":0,"audio_tokens":0,"video_tokens":0},"cost_details":{"upstream_inference_cost":0.000021021,"upstream_inference_prompt_cost":0.000001365,"upstream_inference_completions_cost":0.000019656},"completion_tokens_details":{"reasoning_tokens":47,"image_tokens":0,"audio_tokens":0}}}
 
 data: [DONE]
 
