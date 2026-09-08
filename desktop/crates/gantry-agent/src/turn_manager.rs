@@ -311,7 +311,12 @@ impl TurnManager {
         });
         input.system = format!(
             "{}\n\n{}\n",
-            input.system.trim_end(),
+            // Chats created before M10 froze the line "connectors: none attached" into their
+            // snapshot; leaving it in would contradict the block that follows.
+            input
+                .system
+                .replace("\nconnectors: none attached", "")
+                .trim_end(),
             connector_inventory(
                 &installed,
                 &input.connectors,
