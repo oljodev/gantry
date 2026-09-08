@@ -10,7 +10,7 @@ use tauri_specta::Event;
 
 use crate::{
     AppState,
-    events::{ChatsChanged, InteractionsChanged},
+    events::{ChatsChanged, ConnectorsChanged, InteractionsChanged},
 };
 
 /// Interactions waiting for the user, oldest first, for one chat or every chat. Cards render
@@ -33,9 +33,15 @@ pub fn resolve_interaction(
     interaction_id: InteractionId,
     resolution: InteractionResolution,
 ) -> Result<Interaction, ErrorDto> {
+    // An answered access request or suggestion attaches a connector inside the waiting turn,
+    // so the chat's connector list is stale the moment this returns (03 §9, 04 §9).
+    let widens = !matches!(resolution, InteractionResolution::Permission { .. });
     let resolved = state
         .turns
         .resolve_interaction(interaction_id, resolution)?;
+    if widens {
+        let _ = ConnectorsChanged.emit(&app);
+    }
     let _ = InteractionsChanged {
         chat_id: resolved.chat_id,
         pending: state.turns.interactions().pending_count(resolved.chat_id),

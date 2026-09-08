@@ -231,9 +231,9 @@ fn user_blocks(parts: &[ContentPart]) -> Vec<Value> {
 fn system_blocks(parts: &[ContentPart]) -> Vec<Value> {
     parts
         .iter()
-        .filter_map(|p| match p {
-            ContentPart::SystemNote { text } => Some(json!({ "type": "text", "text": text })),
-            _ => None,
+        .filter_map(|p| {
+            p.system_text()
+                .map(|text| json!({ "type": "text", "text": text }))
         })
         .collect()
 }

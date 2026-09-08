@@ -98,13 +98,10 @@ fn input_items(transcript: &[Message]) -> Vec<Value> {
                 }
             }
             Role::System => {
-                let text: Vec<&str> = m
+                let text: Vec<String> = m
                     .parts
                     .iter()
-                    .filter_map(|p| match p {
-                        ContentPart::SystemNote { text } => Some(text.as_str()),
-                        _ => None,
-                    })
+                    .filter_map(ContentPart::system_text)
                     .collect();
                 if !text.is_empty() {
                     items.push(json!({

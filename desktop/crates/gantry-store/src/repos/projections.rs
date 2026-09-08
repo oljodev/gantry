@@ -73,8 +73,11 @@ pub fn apply(conn: &Connection, chat_id: ChatId, e: &AgentEvent) -> Result<()> {
             if interactions::get(conn, interaction.id)?.is_none() {
                 interactions::insert(conn, interaction)?;
             }
-            let InteractionPayload::Permission { request } = &interaction.payload;
-            if let Some(mut c) = tool_calls::get(conn, &request.call_id)? {
+            // Only a permission card belongs to one call; an access request or a suggestion
+            // comes from a tool that is itself running (03 §9, 04 §9).
+            if let InteractionPayload::Permission { request } = &interaction.payload
+                && let Some(mut c) = tool_calls::get(conn, &request.call_id)?
+            {
                 c.status = ToolCallStatus::AwaitingDecision;
                 tool_calls::update(conn, &c)?;
             }

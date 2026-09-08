@@ -8,7 +8,9 @@ use std::{
     time::Instant,
 };
 
-use gantry_agent::{Artifacts, ChatBook, ChatNotifier, PromptContext, RuntimeTools, TurnManager};
+use gantry_agent::{
+    Artifacts, ChatBook, ChatNotifier, ConnectorAccess, PromptContext, RuntimeTools, TurnManager,
+};
 use gantry_connectors::ConnectorRegistry;
 use gantry_core::{ChatId, ProviderId, Settings};
 use gantry_providers::{ProviderRegistry, http_client};
@@ -153,7 +155,6 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn Error>> {
     // Runtime tools are always registered; installed connectors join them below.
     let artifacts = Arc::new(Artifacts::new(store.clone(), blobs.clone()));
     let tools = Arc::new(ConnectorRegistry::new());
-    tools.register(Arc::new(RuntimeTools::with_artifacts(artifacts.clone())));
     let connectors = Arc::new(ConnectorService::new(
         store.clone(),
         secrets.clone(),
@@ -174,6 +175,16 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn Error>> {
         tauri::async_runtime::handle().inner().clone(),
     );
     turns.set_notifier(Arc::new(Notifier(app.handle().clone())));
+    // The connector tools ask the user through the same interaction registry the permission
+    // cards use (03 §9, 04 §9), so they are registered once the turn manager owns it.
+    tools.register(Arc::new(
+        RuntimeTools::with_artifacts(artifacts.clone()).with_connectors(ConnectorAccess::new(
+            store.clone(),
+            tools.clone(),
+            turns.interactions().clone(),
+            settings.clone(),
+        )),
+    ));
 
     app.manage(AppState {
         data_dir,

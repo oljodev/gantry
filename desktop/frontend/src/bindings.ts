@@ -161,6 +161,30 @@ export const events = {
 };
 
 /* Types */
+/**
+ *  The answer to an access request (04 §9). Attaching widens what this chat can reach; it
+ *  does not decide any single call, which still follows the mode.
+ */
+export type AccessDecision = { kind: "attach"; 
+/**  Also grant the tools the model named for the rest of the chat. */
+allow_tools: boolean } | { kind: "deny" };
+
+/**
+ *  What an access-request card shows (04 §9): a connector that is installed but that this
+ *  chat has not attached, and the reason the model wants it.
+ */
+export type AccessRequest = {
+	instance_id: InstanceId,
+	/**  The tool namespace, which is the name the model uses. */
+	connector: string,
+	connector_name: string,
+	/**  The tools it named; empty means it asked for the connector as a whole. */
+	tools: string[],
+	/**  How many tools the connector offers altogether. */
+	tool_count: number,
+	reason: string,
+};
+
 export type ActiveTurn = {
 	chat_id: ChatId,
 	turn_id: TurnId,
@@ -552,6 +576,21 @@ export type ConnectorKind =
 /**  An HTTP server speaking MCP. */
 "mcp-remote";
 
+/**
+ *  What a connector-suggestion card shows (03 §9): a catalog entry that is not installed at
+ *  all. Nothing is installed until the user presses the card's button.
+ */
+export type ConnectorSuggestion = {
+	catalog_id: string,
+	name: string,
+	description: string,
+	category: string,
+	auth: AuthType,
+	/**  Runtimes the entry needs before it can be installed (03 §11). */
+	requires: RuntimeRequirement[],
+	reason: string,
+};
+
 /**  The installed connectors, their auth state or their attachment to a chat changed (03 §10). */
 export type ConnectorsChanged = null;
 
@@ -687,12 +726,14 @@ export type InteractionId = string;
 export type InteractionKind = "permission" | "access_request" | "connector_suggestion" | "elicitation" | "auth_required" | "skill_proposal" | "memory_proposal";
 
 /**  The kind-specific body of an interaction. */
-export type InteractionPayload = { kind: "permission"; request: PermissionRequest };
+export type InteractionPayload = { kind: "permission"; request: PermissionRequest } | { kind: "access_request"; request: AccessRequest } | { kind: "connector_suggestion"; suggestion: ConnectorSuggestion };
 
 /**  How an interaction ended. */
 export type InteractionResolution = { kind: "permission"; decision: PermissionDecision; 
 /**  Shown to the model with a denial. */
-message: string | null } | 
+message: string | null } | { kind: "access_request"; decision: AccessDecision; 
+/**  Shown to the model with a refusal. */
+message: string | null } | { kind: "connector_suggestion"; outcome: SuggestionOutcome } | 
 /**  The turn was cancelled or the app restarted while the card waited. */
 { kind: "cancelled" };
 
@@ -977,6 +1018,12 @@ export type SettingsPatch = {
 
 /**  Why the model stopped. */
 export type StopReason = { kind: "end_turn" } | { kind: "tool_use" } | { kind: "max_tokens" } | { kind: "refusal"; category: string | null } | { kind: "content_filter" } | { kind: "pause_turn" } | { kind: "cancelled" } | { kind: "other"; reason: string };
+
+/**
+ *  How a connector suggestion ended (03 §9). The install itself happens in the UI, through the
+ *  ordinary install flow, and hands back the instance it made.
+ */
+export type SuggestionOutcome = { kind: "installed"; instance_id: InstanceId } | { kind: "declined" };
 
 /**  What developer mode shows: the frozen prompt and the notes appended since (10 §4). */
 export type SystemPromptView = {

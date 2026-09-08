@@ -31,11 +31,11 @@ pub fn build_body(req: &ChatRequest, info: Option<&ModelInfo>) -> Value {
     let mut system = req.system.clone();
     for m in req.messages.iter().filter(|m| m.role == Role::System) {
         for p in &m.parts {
-            if let ContentPart::SystemNote { text } = p {
+            if let Some(text) = p.system_text() {
                 if !system.is_empty() {
                     system.push_str("\n\n");
                 }
-                system.push_str(text);
+                system.push_str(&text);
             }
         }
     }

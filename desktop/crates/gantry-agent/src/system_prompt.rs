@@ -1,10 +1,10 @@
 //! Assembling a chat's system prompt from the fixed core and the additive layers, in the order
 //! of docs/plan/10 §2. Built once per chat and frozen as its `system_snapshot`.
 
-use gantry_core::Mode;
+use gantry_core::{AuthState, ConnectorInstanceDto, Mode};
 
 /// Bumped whenever `assets/prompts/core.md` or a mode fragment changes meaning.
-pub const CORE_VERSION: u32 = 3;
+pub const CORE_VERSION: u32 = 4;
 
 const CORE: &str = include_str!("../../../assets/prompts/core.md");
 const MODE_MANUAL: &str = include_str!("../../../assets/prompts/modes/manual.md");
@@ -95,10 +95,63 @@ impl SystemPromptBuilder {
         } else {
             lines.push(format!("workspace: {}", c.workspace_roots.join(", ")));
         }
-        lines.push("connectors: none attached".to_owned());
         lines.push("</gantry_context>".to_owned());
         lines.join("\n")
     }
+}
+
+/// The connector inventory (03 §9, 04 §9, 10 §2): what this chat can reach, what is installed
+/// but not attached, and how to ask for either.
+///
+/// It is assembled per turn rather than frozen with the snapshot, because installing or
+/// attaching a connector happens outside the chat and a frozen list would go on lying about it.
+/// It changes only when the connectors change, so the prefix still caches between turns.
+#[must_use]
+pub fn connector_inventory(
+    installed: &[ConnectorInstanceDto],
+    attached: &[String],
+    can_suggest: bool,
+) -> String {
+    let is_attached = |i: &ConnectorInstanceDto| attached.iter().any(|n| n == &i.namespace);
+    let usable: Vec<&ConnectorInstanceDto> = installed.iter().filter(|i| i.enabled).collect();
+    let mut lines = vec!["<gantry_connectors>".to_owned()];
+    lines.push(
+        match describe(usable.iter().copied().filter(|i| is_attached(i))) {
+            Some(list) => format!("attached to this chat: {list}"),
+            None => "attached to this chat: none".to_owned(),
+        },
+    );
+    if let Some(list) = describe(usable.iter().copied().filter(|i| !is_attached(i))) {
+        lines.push(format!(
+            "installed, not attached: {list} — call gantry__request_access to use one; the \
+             user decides."
+        ));
+    }
+    lines.push(if can_suggest {
+        "not installed: the catalog holds more. gantry__search_connectors finds them and \
+         gantry__suggest_connector offers one to the user, who installs it or does not."
+            .to_owned()
+    } else {
+        "not installed: gantry__search_connectors lists the catalog; the user has turned \
+         suggestions off, so tell them what to install instead of offering it."
+            .to_owned()
+    });
+    lines.push("</gantry_connectors>".to_owned());
+    lines.join("\n")
+}
+
+/// `github (44 tools), supabase (needs sign-in)`, or nothing when the list is empty.
+fn describe<'a>(instances: impl Iterator<Item = &'a ConnectorInstanceDto>) -> Option<String> {
+    let parts: Vec<String> = instances
+        .map(|i| {
+            if i.auth_state == AuthState::Authorized {
+                format!("{} ({} tools)", i.namespace, i.tools.len())
+            } else {
+                format!("{} (needs sign-in)", i.namespace)
+            }
+        })
+        .collect();
+    (!parts.is_empty()).then(|| parts.join(", "))
 }
 
 /// The `SystemNote` appended when a chat's permission mode changes (04 §3, 10 §4).
@@ -147,7 +200,7 @@ mod tests {
         .global_instructions("  Answer in Norwegian.  ")
         .build();
         assert!(!prompt.contains("{{"));
-        assert!(prompt.starts_with("<gantry_core version=\"3\">"));
+        assert!(prompt.starts_with("<gantry_core version=\"4\">"));
         let core = prompt.find("</gantry_core>").unwrap();
         let ctx = prompt.find("<gantry_context>").unwrap();
         let instr = prompt.find("<instructions scope=\"global\">").unwrap();

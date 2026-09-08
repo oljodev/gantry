@@ -4,8 +4,9 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    connector::{AuthType, RuntimeRequirement},
     grant::GrantScope,
-    ids::{CallId, ChatId, InteractionId, TurnId},
+    ids::{CallId, ChatId, InstanceId, InteractionId, TurnId},
     tool::{RiskTier, ToolDisplay},
 };
 
@@ -50,11 +51,42 @@ pub struct PermissionRequest {
     pub scopes: Vec<GrantScope>,
 }
 
+/// What an access-request card shows (04 §9): a connector that is installed but that this
+/// chat has not attached, and the reason the model wants it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+pub struct AccessRequest {
+    pub instance_id: InstanceId,
+    /// The tool namespace, which is the name the model uses.
+    pub connector: String,
+    pub connector_name: String,
+    /// The tools it named; empty means it asked for the connector as a whole.
+    pub tools: Vec<String>,
+    /// How many tools the connector offers altogether.
+    pub tool_count: u32,
+    pub reason: String,
+}
+
+/// What a connector-suggestion card shows (03 §9): a catalog entry that is not installed at
+/// all. Nothing is installed until the user presses the card's button.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+pub struct ConnectorSuggestion {
+    pub catalog_id: String,
+    pub name: String,
+    pub description: String,
+    pub category: String,
+    pub auth: AuthType,
+    /// Runtimes the entry needs before it can be installed (03 §11).
+    pub requires: Vec<RuntimeRequirement>,
+    pub reason: String,
+}
+
 /// The kind-specific body of an interaction.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum InteractionPayload {
     Permission { request: PermissionRequest },
+    AccessRequest { request: AccessRequest },
+    ConnectorSuggestion { suggestion: ConnectorSuggestion },
 }
 
 impl InteractionPayload {
@@ -62,6 +94,8 @@ impl InteractionPayload {
     pub fn kind(&self) -> InteractionKind {
         match self {
             InteractionPayload::Permission { .. } => InteractionKind::Permission,
+            InteractionPayload::AccessRequest { .. } => InteractionKind::AccessRequest,
+            InteractionPayload::ConnectorSuggestion { .. } => InteractionKind::ConnectorSuggestion,
         }
     }
 }
@@ -87,6 +121,27 @@ impl PermissionDecision {
     }
 }
 
+/// The answer to an access request (04 §9). Attaching widens what this chat can reach; it
+/// does not decide any single call, which still follows the mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, specta::Type)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum AccessDecision {
+    Attach {
+        /// Also grant the tools the model named for the rest of the chat.
+        allow_tools: bool,
+    },
+    Deny,
+}
+
+/// How a connector suggestion ended (03 §9). The install itself happens in the UI, through the
+/// ordinary install flow, and hands back the instance it made.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, specta::Type)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum SuggestionOutcome {
+    Installed { instance_id: InstanceId },
+    Declined,
+}
+
 /// How an interaction ended.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -95,6 +150,14 @@ pub enum InteractionResolution {
         decision: PermissionDecision,
         /// Shown to the model with a denial.
         message: Option<String>,
+    },
+    AccessRequest {
+        decision: AccessDecision,
+        /// Shown to the model with a refusal.
+        message: Option<String>,
+    },
+    ConnectorSuggestion {
+        outcome: SuggestionOutcome,
     },
     /// The turn was cancelled or the app restarted while the card waited.
     Cancelled,

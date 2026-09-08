@@ -226,37 +226,38 @@ impl Harness {
     }
 }
 
-/// Installs the fake connector as an instance and attaches it to one chat.
-fn attach_fake(store: &Arc<gantry_store::Store>, chat_id: gantry_core::ChatId) {
+/// Installs the fake connector as an instance, without attaching it to anything.
+fn install_fake(store: &Arc<gantry_store::Store>) -> gantry_core::InstanceId {
     use gantry_store::repos::connectors::{self, NewInstance};
     let id = gantry_core::InstanceId::new();
     store
         .write_blocking(move |c| {
-            if connectors::get(c, id)?.is_none()
-                && !connectors::namespaces(c)?.iter().any(|n| n == "fake")
-            {
-                connectors::insert(
-                    c,
-                    &NewInstance {
-                        id,
-                        catalog_id: None,
-                        namespace: "fake".into(),
-                        display_name: "Fake".into(),
-                        config: gantry_core::ConnectorConfig::Native,
-                        auth: gantry_core::AuthType::None,
-                        auth_state: gantry_core::AuthState::Authorized,
-                    },
-                )?;
-                connectors::attach(c, chat_id, id, "user")?;
-                return Ok(());
+            if let Some(existing) = connectors::list(c)?.iter().find(|i| i.namespace == "fake") {
+                return Ok(existing.id);
             }
-            let existing = connectors::list(c)?;
-            let instance = existing
-                .iter()
-                .find(|i| i.namespace == "fake")
-                .expect("the fake instance");
-            connectors::attach(c, chat_id, instance.id, "user")
+            connectors::insert(
+                c,
+                &NewInstance {
+                    id,
+                    catalog_id: None,
+                    namespace: "fake".into(),
+                    display_name: "Fake".into(),
+                    config: gantry_core::ConnectorConfig::Native,
+                    auth: gantry_core::AuthType::None,
+                    auth_state: gantry_core::AuthState::Authorized,
+                },
+            )?;
+            Ok(id)
         })
+        .unwrap()
+}
+
+/// Installs the fake connector as an instance and attaches it to one chat.
+fn attach_fake(store: &Arc<gantry_store::Store>, chat_id: gantry_core::ChatId) {
+    use gantry_store::repos::connectors;
+    let id = install_fake(store);
+    store
+        .write_blocking(move |c| connectors::attach(c, chat_id, id, "user"))
         .unwrap();
 }
 
@@ -278,16 +279,26 @@ fn manager_with(rounds: Vec<Script>, delay: Duration, settings: Settings) -> Har
     });
     let registry = Arc::new(ConnectorRegistry::new());
     registry.register(fake.clone());
-    registry.register(Arc::new(gantry_agent::RuntimeTools::new()));
     let (dir, chats) = book();
+    let settings = Arc::new(RwLock::new(settings));
     let m = TurnManager::new(
         chats,
         Arc::new(Source(provider.clone())),
-        registry,
-        Arc::new(RwLock::new(settings)),
+        registry.clone(),
+        settings.clone(),
         PromptContext::default(),
         tokio::runtime::Handle::current(),
     );
+    // As the app does (startup.rs): the connector tools ask through the turn manager's own
+    // interaction registry, so they are registered once it exists.
+    registry.register(Arc::new(gantry_agent::RuntimeTools::new().with_connectors(
+        gantry_agent::ConnectorAccess::new(
+            m.chats().store().clone(),
+            registry.clone(),
+            m.interactions().clone(),
+            settings,
+        ),
+    )));
     let notes = Arc::new(Notes::default());
     m.set_notifier(notes.clone());
     Harness {
@@ -394,7 +405,15 @@ async fn a_text_turn_completes_and_is_recorded() {
     let names: Vec<String> = first.tools.iter().map(|t| t.name.clone()).collect();
     assert_eq!(
         names,
-        ["fake__echo", "fake__write", "fake__boom", "gantry__clock"]
+        [
+            "fake__echo",
+            "fake__write",
+            "fake__boom",
+            "gantry__clock",
+            "gantry__search_connectors",
+            "gantry__request_access",
+            "gantry__suggest_connector",
+        ]
     );
     // The first exchange names the chat with a second, tiny request.
     wait_for(|| m.requests().len() == 2).await;
@@ -672,7 +691,9 @@ async fn manual_mode_asks_and_allow_once_runs_the_call() {
 
     let pending = m.interactions().list_pending(Some(chat.id));
     assert_eq!(pending.len(), 1);
-    let gantry_core::InteractionPayload::Permission { request } = &pending[0].payload;
+    let gantry_core::InteractionPayload::Permission { request } = &pending[0].payload else {
+        panic!("the pending interaction is not a permission prompt");
+    };
     assert_eq!(request.model_tool_name, "gantry__clock");
     assert_eq!(request.tier, RiskTier::Read);
     assert_eq!(request.why.as_deref(), Some("Let me check"));
@@ -937,7 +958,152 @@ async fn plan_mode_offers_only_tools_it_would_allow() {
         .iter()
         .map(|t| t.name.clone())
         .collect();
-    assert_eq!(names, ["fake__echo", "fake__boom", "gantry__clock"]);
+    assert_eq!(
+        names,
+        [
+            "fake__echo",
+            "fake__boom",
+            "gantry__clock",
+            "gantry__search_connectors",
+            "gantry__request_access",
+            "gantry__suggest_connector",
+        ],
+        "the connector tools are `app` tier, so Plan mode keeps them"
+    );
+}
+
+/// The model finds a connector it does not have, asks for it, and uses it in the same reply
+/// (03 §9, 04 §9). Nothing is attached without the user's answer, and once it is attached the
+/// tool set is rebuilt mid-turn so the next round can call it.
+#[tokio::test]
+async fn an_access_request_attaches_a_connector_and_its_tools_arrive_in_the_same_turn() {
+    let m = manager_with(
+        vec![
+            tool_round(
+                "c0",
+                "gantry__search_connectors",
+                serde_json::json!({ "query": "echo" }),
+            ),
+            tool_round(
+                "c1",
+                "gantry__request_access",
+                serde_json::json!({
+                    "connector": "fake",
+                    "tools": ["echo"],
+                    "reason": "to echo the text you asked about"
+                }),
+            ),
+            tool_round("c2", "fake__echo", serde_json::json!({ "text": "hi" })),
+            vec![text("done"), end()],
+        ],
+        Duration::ZERO,
+        Settings::default(),
+    );
+    install_fake(m.chats().store());
+    let chat = m.create_chat(None).unwrap();
+    // Manual mode, to prove the `app` tier never prompts for the asking itself.
+    manual(&m, chat.id);
+    let sink = Arc::new(Collect::default());
+    m.start(chat.id, "echo hi".into(), Vec::new(), sink.clone())
+        .unwrap();
+
+    // The search answered without a card; the request raised one.
+    wait_for(|| !m.interactions().list_pending(Some(chat.id)).is_empty()).await;
+    let pending = m.interactions().list_pending(Some(chat.id));
+    assert_eq!(pending.len(), 1);
+    let gantry_core::InteractionPayload::AccessRequest { request } = &pending[0].payload else {
+        panic!(
+            "the card is not an access request: {:?}",
+            pending[0].payload
+        );
+    };
+    assert_eq!(request.connector, "fake");
+    assert_eq!(request.tools, ["echo"]);
+    assert!(request.reason.contains("echo the text"));
+    assert_eq!(
+        m.notes.pending.lock().unwrap().last().map(|(_, n)| *n),
+        Some(1),
+        "the sidebar badge is told about a card a tool raised"
+    );
+
+    m.resolve_interaction(
+        pending[0].id,
+        InteractionResolution::AccessRequest {
+            decision: gantry_core::AccessDecision::Attach { allow_tools: true },
+            message: None,
+        },
+    )
+    .unwrap();
+    wait_for(|| sink.completed().is_some()).await;
+    assert_eq!(sink.completed(), Some(TurnStatus::Completed));
+
+    // The round after the answer was given the connector's tools…
+    let requests = m.requests();
+    let after = &requests[2];
+    let names: Vec<&str> = after.tools.iter().map(|t| t.name.as_str()).collect();
+    assert!(names.contains(&"fake__echo"), "{names:?}");
+    // …and a note saying so, so the model is not guessing.
+    let note = after.messages.iter().find(|msg| msg.role == Role::System);
+    assert!(
+        matches!(
+            note.map(|msg| msg.parts.as_slice()),
+            Some([ContentPart::ToolSetChange { added, .. }]) if added == &["fake".to_owned()]
+        ),
+        "no tool-set change reached the model: {note:?}"
+    );
+    // The call ran without a second prompt, because "attach and allow these tools" granted it.
+    assert!(
+        m.fake
+            .calls
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|c| c.tool == "echo")
+    );
+    let grants = m.chats().grants(chat.id).unwrap();
+    assert_eq!(grants.len(), 1);
+    assert_eq!(grants[0].tool_name.as_deref(), Some("echo"));
+    assert_eq!(grants[0].source, gantry_core::GrantSource::AccessRequest);
+    // The attachment outlives the turn: the chat keeps it.
+    assert_eq!(m.chats().attached_connectors(chat.id).unwrap(), ["fake"]);
+}
+
+/// The card is the only way in: a refusal leaves the chat exactly as it was.
+#[tokio::test]
+async fn a_refused_access_request_attaches_nothing() {
+    let m = manager_with(
+        vec![
+            tool_round(
+                "c1",
+                "gantry__request_access",
+                serde_json::json!({ "connector": "fake", "reason": "to echo" }),
+            ),
+            vec![text("I cannot do that without it."), end()],
+        ],
+        Duration::ZERO,
+        Settings::default(),
+    );
+    install_fake(m.chats().store());
+    let chat = m.create_chat(None).unwrap();
+    let sink = Arc::new(Collect::default());
+    m.start(chat.id, "echo hi".into(), Vec::new(), sink.clone())
+        .unwrap();
+    wait_for(|| !m.interactions().list_pending(Some(chat.id)).is_empty()).await;
+    let pending = m.interactions().list_pending(Some(chat.id));
+    m.resolve_interaction(
+        pending[0].id,
+        InteractionResolution::AccessRequest {
+            decision: gantry_core::AccessDecision::Deny,
+            message: Some("Not this time".into()),
+        },
+    )
+    .unwrap();
+    wait_for(|| sink.completed().is_some()).await;
+    assert!(m.chats().attached_connectors(chat.id).unwrap().is_empty());
+    assert!(m.fake.calls.lock().unwrap().is_empty());
+    let requests = m.requests();
+    let names: Vec<&str> = requests[1].tools.iter().map(|t| t.name.as_str()).collect();
+    assert!(!names.contains(&"fake__echo"), "{names:?}");
 }
 
 /// Installing a connector does not give it to every conversation: a chat sees a connector only
@@ -945,6 +1111,7 @@ async fn plan_mode_offers_only_tools_it_would_allow() {
 #[tokio::test]
 async fn a_chat_sees_only_the_connectors_it_attached() {
     let m = manager(vec![text("hi"), end()], Duration::ZERO);
+    install_fake(m.chats().store());
     let bare = m.create_chat(None).unwrap();
     let sink = Arc::new(Collect::default());
     m.start(bare.id, "go".into(), Vec::new(), sink.clone())
@@ -957,7 +1124,19 @@ async fn a_chat_sees_only_the_connectors_it_attached() {
         .collect();
     assert_eq!(
         names,
-        ["gantry__clock"],
-        "the fake connector is installed but not attached"
+        [
+            "gantry__clock",
+            "gantry__search_connectors",
+            "gantry__request_access",
+            "gantry__suggest_connector",
+        ],
+        "the fake connector is installed but not attached, so only the way to ask for it is here"
+    );
+    // And the model is told, in words, what it may ask for (04 §9).
+    let system = &m.requests()[0].system;
+    assert!(system.contains("attached to this chat: none"), "{system}");
+    assert!(
+        system.contains("installed, not attached: fake (0 tools)"),
+        "{system}"
     );
 }

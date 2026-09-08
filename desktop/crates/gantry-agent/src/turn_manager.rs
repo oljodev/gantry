@@ -23,7 +23,9 @@ use crate::{
     interactions::Interactions,
     persist::PersistSink,
     runner::{self, RunContext},
-    system_prompt::{CORE_VERSION, PromptContext, SystemPromptBuilder, mode_note},
+    system_prompt::{
+        CORE_VERSION, PromptContext, SystemPromptBuilder, connector_inventory, mode_note,
+    },
     title,
     tools::ToolSet,
 };
@@ -297,10 +299,25 @@ impl TurnManager {
         attachments: Vec<NewAttachment>,
         sink: Arc<dyn EventSink>,
     ) -> Result<TurnId, GantryError> {
-        let input = self.chats.begin_turn(chat_id, user, attachments)?;
+        let mut input = self.chats.begin_turn(chat_id, user, attachments)?;
         let turn_id = input.turn_id;
         let provider = self.providers.provider(&input.model.provider);
         let settings = self.settings();
+        // The inventory rides with the turn, not with the frozen snapshot: what is installed
+        // and attached changes outside the chat (03 §9, 04 §9, 10 §2).
+        let installed = self.chats.installed_connectors().unwrap_or_else(|err| {
+            log::warn!("could not read the installed connectors: {err}");
+            Vec::new()
+        });
+        input.system = format!(
+            "{}\n\n{}\n",
+            input.system.trim_end(),
+            connector_inventory(
+                &installed,
+                &input.connectors,
+                settings.chat.suggest_connectors
+            )
+        );
 
         let fanout = Arc::new(FanoutSink::new());
         fanout.add(Arc::new(PersistSink::new(
@@ -349,7 +366,8 @@ impl TurnManager {
                 max_tool_rounds: settings.advanced.max_tool_rounds,
                 active: active.clone(),
                 chats: chats.clone(),
-                tools,
+                tools: std::sync::RwLock::new(tools),
+                connectors: connectors.clone(),
                 interactions,
                 notifier,
             })

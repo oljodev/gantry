@@ -39,8 +39,9 @@ pub use ids::{
     TurnId,
 };
 pub use interaction::{
-    Interaction, InteractionKind, InteractionPayload, InteractionResolution, InteractionStatus,
-    PermissionDecision, PermissionRequest,
+    AccessDecision, AccessRequest, ConnectorSuggestion, Interaction, InteractionKind,
+    InteractionPayload, InteractionResolution, InteractionStatus, PermissionDecision,
+    PermissionRequest, SuggestionOutcome,
 };
 pub use message::{
     ContentPart, MediaSource, Message, ProviderKind, ResultPart, Role, StopReason, Usage,

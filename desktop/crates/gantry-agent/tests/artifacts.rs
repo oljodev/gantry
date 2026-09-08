@@ -12,7 +12,7 @@ use gantry_connectors::{
 };
 use gantry_core::{
     AgentEventKind, CallId, ChatId, Mode, ModelRef, ReasoningEffort, RenderReport, RenderStatus,
-    VersionSource,
+    TurnId, VersionSource,
 };
 use gantry_store::{BlobStore, Store};
 use tokio_util::sync::CancellationToken;
@@ -239,6 +239,7 @@ async fn the_runtime_tools_create_read_and_edit_with_events() {
         args,
         scope: ChatScope {
             chat_id,
+            turn_id: TurnId::new(),
             mode: Mode::AutoEdit,
         },
     };

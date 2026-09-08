@@ -50,13 +50,19 @@ impl Interactions {
         let entry = pending.get(&id).ok_or_else(|| {
             GantryError::not_found(format!("interaction {id} is not waiting for a decision"))
         })?;
-        let matches = match (&entry.interaction.payload, &resolution) {
+        let matches = matches!(
+            (&entry.interaction.payload, &resolution),
             (
                 gantry_core::InteractionPayload::Permission { .. },
                 InteractionResolution::Permission { .. },
-            ) => true,
-            (_, InteractionResolution::Cancelled) => true,
-        };
+            ) | (
+                gantry_core::InteractionPayload::AccessRequest { .. },
+                InteractionResolution::AccessRequest { .. },
+            ) | (
+                gantry_core::InteractionPayload::ConnectorSuggestion { .. },
+                InteractionResolution::ConnectorSuggestion { .. },
+            ) | (_, InteractionResolution::Cancelled)
+        );
         if !matches {
             return Err(GantryError::invalid(
                 "the resolution does not match the interaction's kind",

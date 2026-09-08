@@ -381,6 +381,21 @@ impl ChatBook {
     }
 
     /// The chat's standing permissions (04 §8), oldest first.
+    /// Every installed connector, for the inventory the system prompt carries (04 §9).
+    pub fn installed_connectors(
+        &self,
+    ) -> Result<Vec<gantry_core::ConnectorInstanceDto>, GantryError> {
+        self.store.read(connectors::list).map_err(store_err)
+    }
+
+    /// The connector namespaces the chat may use right now (03 §11). Read again between tool
+    /// rounds, because an access request or the user's own menu can change it mid-turn.
+    pub fn attached_connectors(&self, chat_id: ChatId) -> Result<Vec<String>, GantryError> {
+        self.store
+            .read(move |conn| connectors::attached_namespaces(conn, chat_id))
+            .map_err(store_err)
+    }
+
     pub fn grants(&self, chat_id: ChatId) -> Result<Vec<ChatGrant>, GantryError> {
         self.store
             .read(move |conn| grants::active(conn, chat_id))

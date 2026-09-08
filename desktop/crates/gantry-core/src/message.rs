@@ -138,6 +138,36 @@ pub enum ContentPart {
     },
 }
 
+impl ContentPart {
+    /// What a part of a `System` message says to the model (10 §4). A tool-set change is the
+    /// one part that is structured rather than prose, so the sentence is written here once
+    /// instead of in each provider's projection.
+    #[must_use]
+    pub fn system_text(&self) -> Option<String> {
+        match self {
+            ContentPart::SystemNote { text } => Some(text.clone()),
+            ContentPart::ToolSetChange { added, removed } => {
+                let mut lines = Vec::new();
+                if !added.is_empty() {
+                    lines.push(format!(
+                        "Connectors now available in this chat: {}. Their tools are in your tool \
+                         list from your next call.",
+                        added.join(", ")
+                    ));
+                }
+                if !removed.is_empty() {
+                    lines.push(format!(
+                        "No longer available in this chat: {}.",
+                        removed.join(", ")
+                    ));
+                }
+                (!lines.is_empty()).then(|| lines.join(" "))
+            }
+            _ => None,
+        }
+    }
+}
+
 /// One piece of a tool result.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
 #[serde(tag = "kind", rename_all = "snake_case")]

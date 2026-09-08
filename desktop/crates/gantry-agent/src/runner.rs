@@ -3,10 +3,16 @@
 //! results and go round again until it stops without calls, the round cap hits, the user
 //! cancels, or an error occurs.
 
-use std::{collections::BTreeMap, sync::Arc, time::Instant};
+use std::{
+    collections::BTreeMap,
+    sync::{Arc, RwLock},
+    time::Instant,
+};
 
 use futures_util::StreamExt;
-use gantry_connectors::{ChatScope, ToolCallRequest, ToolEventSink, ToolOutcome};
+use gantry_connectors::{
+    ChatScope, ConnectorRegistry, ToolCallRequest, ToolEventSink, ToolOutcome,
+};
 use gantry_core::{
     AgentEventKind, CallId, ContentPart, DecisionSource, GrantScope, GrantSource, Interaction,
     InteractionPayload, InteractionResolution, Message, MessageId, PermissionDecision,
@@ -36,7 +42,10 @@ pub struct RunContext {
     pub max_tool_rounds: u32,
     pub active: Arc<ActiveTurn>,
     pub chats: Arc<ChatBook>,
-    pub tools: ToolSet,
+    /// The tools of this turn. Behind a lock because attaching a connector mid-turn (04 §9)
+    /// rebuilds it between rounds.
+    pub tools: RwLock<ToolSet>,
+    pub connectors: Arc<ConnectorRegistry>,
     pub interactions: Arc<Interactions>,
     pub notifier: Option<Arc<dyn ChatNotifier>>,
 }
@@ -71,6 +80,7 @@ pub async fn run_turn(ctx: RunContext) {
     });
 
     let mut transcript = ctx.input.messages.clone();
+    let mut attached = ctx.input.connectors.clone();
     if let Some(detail) = thinking_reset_notice(&ctx.input) {
         batcher.push(AgentEventKind::ProviderNotice {
             kind: "thinking_dropped".into(),
@@ -201,6 +211,20 @@ pub async fn run_turn(ctx: RunContext) {
                     s.messages.push(LiveMessage::finished(&tool_message));
                 }
                 transcript.push(tool_message);
+                if let Some(change) = refresh_tools(&ctx, &mut attached).await {
+                    ctx.chats.append_turn_message(
+                        ctx.input.chat_id,
+                        ctx.input.turn_id,
+                        change.clone(),
+                        None,
+                        None,
+                    );
+                    {
+                        let mut s = ctx.active.state.lock().unwrap_or_else(|e| e.into_inner());
+                        s.messages.push(LiveMessage::finished(&change));
+                    }
+                    transcript.push(change);
+                }
                 if cancelled {
                     break (TurnStatus::Cancelled, Some(StopReason::Cancelled), None);
                 }
@@ -289,7 +313,7 @@ async fn stream_round(ctx: &RunContext, transcript: &[Message]) -> Round {
     );
     req.max_output_tokens = ctx.max_output_tokens;
     req.reasoning = ctx.input.effort;
-    req.tools = ctx.tools.specs();
+    req.tools = ctx.tools.read().unwrap_or_else(|e| e.into_inner()).specs();
     if ctx.input.web_search {
         req.server_tools = vec![ServerTool::WebSearch { max_uses: None }];
     }
@@ -407,12 +431,18 @@ fn apply(
                     args: serde_json::Value::Null,
                 },
             );
-            let entry = ctx.tools.resolve(&name);
-            let (connector, tool) = match entry {
+            let entry = ctx
+                .tools
+                .read()
+                .unwrap_or_else(|e| e.into_inner())
+                .resolve(&name)
+                .cloned();
+            let (connector, tool) = match &entry {
                 Some(e) => (e.connector_id().to_owned(), e.def.name.clone()),
                 None => ToolSet::split_name(&name),
             };
             let connector_name = entry
+                .as_ref()
                 .map(|e| e.connector_name().to_owned())
                 .unwrap_or_else(|| connector.clone());
             let dto = ToolCallDto {
@@ -425,10 +455,10 @@ fn apply(
                 tool: tool.clone(),
                 model_tool_name: name.clone(),
                 args: serde_json::Value::Null,
-                tier: entry.map(|e| e.def.tier).unwrap_or(RiskTier::Read),
+                tier: entry.as_ref().map_or(RiskTier::Read, |e| e.def.tier),
                 status: ToolCallStatus::Proposed,
                 decision_source: None,
-                display: display_for(entry.map(|e| &e.def), &serde_json::Value::Null),
+                display: display_for(entry.as_ref().map(|e| &e.def), &serde_json::Value::Null),
                 result_preview: None,
                 result: None,
                 is_error: false,
@@ -483,9 +513,14 @@ fn apply(
             }) = round.parts.get_mut(&index)
             {
                 *slot = args.clone();
-                let entry = ctx.tools.resolve(name);
-                let tier = entry.map(|e| e.def.tier).unwrap_or(RiskTier::Read);
-                let display = display_for(entry.map(|e| &e.def), &args);
+                let entry = ctx
+                    .tools
+                    .read()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .resolve(name)
+                    .cloned();
+                let tier = entry.as_ref().map_or(RiskTier::Read, |e| e.def.tier);
+                let display = display_for(entry.as_ref().map(|e| &e.def), &args);
                 update_call(ctx, id, |c| {
                     c.args = args.clone();
                     c.tier = tier;
@@ -647,7 +682,13 @@ async fn run_calls(
     });
 
     for (i, call) in calls.iter().enumerate() {
-        let Some(entry) = ctx.tools.resolve(&call.name).cloned() else {
+        let Some(entry) = ctx
+            .tools
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .resolve(&call.name)
+            .cloned()
+        else {
             results[i] = Some(complete_call(
                 ctx,
                 &call.id,
@@ -772,8 +813,32 @@ async fn run_calls(
                 });
                 allowed.push((i, entry, source));
             }
-            // Everything the guard above did not take is a denial.
-            InteractionResolution::Permission { message, .. } => {
+            InteractionResolution::Cancelled => {
+                cancelled = true;
+                ctx.interactions.cancel_turn(ctx.input.turn_id);
+                batcher.push(AgentEventKind::DecisionResolved {
+                    interaction_id: interaction.id,
+                    resolution: InteractionResolution::Cancelled,
+                    source: DecisionSource::UserOnce,
+                });
+                results[i] = Some(complete_call(
+                    ctx,
+                    &call.id,
+                    ToolCallStatus::Cancelled,
+                    true,
+                    0,
+                    vec![ResultPart::Text {
+                        text: CANCELLED_RESULT.to_owned(),
+                    }],
+                ));
+            }
+            // Everything the guard above did not take is a denial. A resolution of another
+            // kind cannot reach a permission card, and is refused the same way if it does.
+            other => {
+                let message = match other {
+                    InteractionResolution::Permission { message, .. } => message,
+                    _ => None,
+                };
                 batcher.push(AgentEventKind::DecisionResolved {
                     interaction_id: interaction.id,
                     resolution: InteractionResolution::Permission {
@@ -792,25 +857,6 @@ async fn run_calls(
                     true,
                     0,
                     denied_result(message),
-                ));
-            }
-            InteractionResolution::Cancelled => {
-                cancelled = true;
-                ctx.interactions.cancel_turn(ctx.input.turn_id);
-                batcher.push(AgentEventKind::DecisionResolved {
-                    interaction_id: interaction.id,
-                    resolution: InteractionResolution::Cancelled,
-                    source: DecisionSource::UserOnce,
-                });
-                results[i] = Some(complete_call(
-                    ctx,
-                    &call.id,
-                    ToolCallStatus::Cancelled,
-                    true,
-                    0,
-                    vec![ResultPart::Text {
-                        text: CANCELLED_RESULT.to_owned(),
-                    }],
                 ));
             }
         }
@@ -886,12 +932,17 @@ async fn execute(ctx: &RunContext, call: &Call, entry: ToolEntry) -> ContentPart
         args: call.args.clone(),
         scope: ChatScope {
             chat_id: ctx.input.chat_id,
+            turn_id: ctx.input.turn_id,
             mode: ctx.input.mode,
         },
     };
     let cancel = ctx.active.cancel.child_token();
     let sink = Arc::new(TurnToolEvents {
         batcher: ctx.active.batcher.clone(),
+        active: ctx.active.clone(),
+        interactions: ctx.interactions.clone(),
+        notifier: ctx.notifier.clone(),
+        chat_id: ctx.input.chat_id,
     });
     let outcome = tokio::select! {
         _ = ctx.active.cancel.cancelled() => None,
@@ -920,14 +971,85 @@ async fn execute(ctx: &RunContext, call: &Call, entry: ToolEntry) -> ContentPart
     complete_call(ctx, &call.id, status, is_error, elapsed, content)
 }
 
+/// Rebuilds the tool set when the chat's connectors changed while the turn was running: an
+/// access request the user granted (04 §9), a suggestion they installed (03 §9), or the `+`
+/// menu. Returns the `System` message that tells the model, so it never calls a tool it has
+/// just lost or misses one it has just been given.
+async fn refresh_tools(ctx: &RunContext, attached: &mut Vec<String>) -> Option<Message> {
+    let now = match ctx.chats.attached_connectors(ctx.input.chat_id) {
+        Ok(list) => list,
+        Err(err) => {
+            log::warn!("could not re-read the chat's connectors: {err}");
+            return None;
+        }
+    };
+    if now == *attached {
+        return None;
+    }
+    let added: Vec<String> = now
+        .iter()
+        .filter(|n| !attached.contains(n))
+        .cloned()
+        .collect();
+    let removed: Vec<String> = attached
+        .iter()
+        .filter(|n| !now.contains(n))
+        .cloned()
+        .collect();
+    *attached = now.clone();
+    let set = ToolSet::assemble(&ctx.connectors, ctx.input.mode, &now).await;
+    *ctx.tools.write().unwrap_or_else(|e| e.into_inner()) = set;
+    Some(Message {
+        id: MessageId::new(),
+        role: Role::System,
+        parts: vec![ContentPart::ToolSetChange { added, removed }],
+        origin: None,
+        created_at: now_ms(),
+    })
+}
+
 /// The sink a running call reports through: events a runtime tool produces itself
 /// (`artifact.*`) join the turn stream; output and progress arrive with the shell (M7).
 struct TurnToolEvents {
     batcher: Arc<crate::events::Batcher>,
+    active: Arc<ActiveTurn>,
+    interactions: Arc<Interactions>,
+    notifier: Option<Arc<dyn ChatNotifier>>,
+    chat_id: gantry_core::ChatId,
+}
+
+impl TurnToolEvents {
+    fn pending_changed(&self) {
+        if let Some(n) = &self.notifier {
+            n.interactions_changed(self.chat_id, self.interactions.pending_count(self.chat_id));
+        }
+    }
 }
 
 impl ToolEventSink for TurnToolEvents {
     fn event(&self, event: AgentEventKind) {
+        // A tool that asks the user itself (03 §9, 04 §9) raises its card through this sink.
+        // The turn's own pending list and the sidebar badge follow it, so a reattached view
+        // and the chat list see it exactly as they see a permission prompt.
+        match &event {
+            AgentEventKind::DecisionRequested { interaction } => {
+                {
+                    let mut s = self.active.state.lock().unwrap_or_else(|e| e.into_inner());
+                    if !s.pending.iter().any(|p| p.id == interaction.id) {
+                        s.pending.push((**interaction).clone());
+                    }
+                }
+                self.pending_changed();
+            }
+            AgentEventKind::DecisionResolved { interaction_id, .. } => {
+                {
+                    let mut s = self.active.state.lock().unwrap_or_else(|e| e.into_inner());
+                    s.pending.retain(|p| p.id != *interaction_id);
+                }
+                self.pending_changed();
+            }
+            _ => {}
+        }
         self.batcher.push(event);
     }
 }

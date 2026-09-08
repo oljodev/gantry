@@ -24,8 +24,8 @@ pub use chats::{ChatBook, ChatPatch, NewAttachment};
 pub use events::{Batcher, EventSink, FanoutSink};
 pub use export::ExportFormat;
 pub use interactions::Interactions;
-pub use runtime_tools::RuntimeTools;
-pub use system_prompt::{CORE_VERSION, PromptContext, SystemPromptBuilder};
+pub use runtime_tools::{RuntimeTools, catalog::ConnectorAccess};
+pub use system_prompt::{CORE_VERSION, PromptContext, SystemPromptBuilder, connector_inventory};
 pub use tools::ToolSet;
 pub use turn_manager::{ChatNotifier, ProviderSource, TurnManager};
 

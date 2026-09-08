@@ -128,17 +128,10 @@ fn project(
     match m.role {
         Role::User => vec![json!({ "role": "user", "content": user_content(&m.parts) })],
         Role::System => {
-            let text: Vec<&str> = m
+            let text: Vec<String> = m
                 .parts
                 .iter()
-                .filter_map(|p| match p {
-                    ContentPart::SystemNote { text } => Some(text.as_str()),
-                    ContentPart::ToolSetChange { added, removed } => {
-                        let _ = (added, removed);
-                        None
-                    }
-                    _ => None,
-                })
+                .filter_map(ContentPart::system_text)
                 .collect();
             if text.is_empty() {
                 Vec::new()

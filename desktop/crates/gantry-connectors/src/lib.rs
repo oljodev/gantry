@@ -16,7 +16,7 @@ use std::{
 };
 
 use async_trait::async_trait;
-use gantry_core::{AgentEventKind, CallId, ChatId, InstanceId, Mode, ResultPart, ToolDef};
+use gantry_core::{AgentEventKind, CallId, ChatId, InstanceId, Mode, ResultPart, ToolDef, TurnId};
 use tokio_util::sync::CancellationToken;
 
 /// The plan document that specifies this crate.
@@ -37,6 +37,9 @@ pub struct ConnectorDescriptor {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChatScope {
     pub chat_id: ChatId,
+    /// The turn the call belongs to, so a tool that has to ask the user (03 §9, 04 §9) can
+    /// raise an interaction against it.
+    pub turn_id: TurnId,
     pub mode: Mode,
 }
 
