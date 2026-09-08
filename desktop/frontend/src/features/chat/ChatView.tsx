@@ -22,6 +22,7 @@ import { ArtifactPanel } from '@/features/artifacts/ArtifactPanel';
 import { useArtifactStore } from '@/features/artifacts/store';
 import type { ActivityItem, ModelRef } from '@/fixtures/types';
 import { copyText, openExternal } from '@/lib/clipboard';
+import { useFollowBottom } from '@/lib/followBottom';
 import { pickFolder } from '@/lib/folders';
 import { useArtifacts } from '@/lib/ipc/hooks/artifacts';
 import { useChat, useChatMutations } from '@/lib/ipc/hooks/chats';
@@ -112,8 +113,7 @@ export function ChatView({
       ),
     [artifactList.data],
   );
-  const [released, setReleased] = useState(false);
-  const scroller = useRef<HTMLDivElement>(null);
+  const { attach: feedRef, following, stick, follow } = useFollowBottom<HTMLDivElement>();
 
   // A turn that was already running when this view mounted (reload, chat switch) is reattached.
   const activeTurn = chat.data?.active_turn ?? null;
@@ -221,14 +221,6 @@ export function ChatView({
   }));
   const tabs = [...artifactTabs, ...detailTabs];
 
-  useEffect(() => {
-    const el = scroller.current;
-    if (!el) return;
-    const onScroll = () => setReleased(el.scrollHeight - el.scrollTop - el.clientHeight > 80);
-    el.addEventListener('scroll', onScroll);
-    return () => el.removeEventListener('scroll', onScroll);
-  }, []);
-
   // Follow mode: while the user sits at the bottom, streaming keeps the newest text in view.
   const liveLength =
     live?.messages.reduce(
@@ -238,10 +230,7 @@ export function ChatView({
     ) ?? 0;
   const liveCalls = live ? live.callOrder.length + live.pending.length : 0;
   const turnCount = chat.data?.turns.length ?? 0;
-  useEffect(() => {
-    const el = scroller.current;
-    if (el && !released) el.scrollTop = el.scrollHeight;
-  }, [liveLength, liveCalls, turnCount, released]);
+  useEffect(() => stick(), [liveLength, liveCalls, turnCount, stick]);
 
   if (chat.isPending) return <div className="h-full pt-(--title-strip)" />;
   if (chat.isError || !chat.data) {
@@ -345,7 +334,7 @@ export function ChatView({
   return (
     <div className="relative flex h-full min-w-0">
       <div className="flex min-w-0 flex-1 flex-col">
-        <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto pt-(--title-strip)">
+        <div ref={feedRef} className="min-h-0 flex-1 overflow-y-auto pt-(--title-strip)">
           <div className="mx-auto w-full max-w-(--measure) px-6 pt-2 pb-6">
             {turns.map((turn, i) => (
               <TurnView
@@ -388,12 +377,10 @@ export function ChatView({
             )}
           </div>
         </div>
-        {released && (
+        {!following && (
           <button
             type="button"
-            onClick={() =>
-              scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: 'smooth' })
-            }
+            onClick={() => follow()}
             className="float pop-anim absolute bottom-28 left-1/2 z-10 flex h-(--control-md) -translate-x-1/2 items-center gap-1 rounded-full px-3 text-meta text-fg"
           >
             <ArrowDownIcon className="size-3.5" />
@@ -425,15 +412,18 @@ export function ChatView({
           onModeChange={(mode) => patch({ mode })}
           onGuardChange={(guard) => patch({ guard })}
           onModelChange={(model: ModelRef) => patch({ model })}
-          onSend={(text, attachments) =>
+          onSend={(text, attachments) => {
+            // Sending is the one moment where jumping is what the user meant: their own message
+            // is about to appear at the bottom, so follow the feed again wherever they were.
+            follow('auto');
             void send(
               chatId,
               text,
               attachments.map((a) => a.input),
             ).catch((err) =>
               toast.add({ title: 'Could not send', description: describe(err), type: 'error' }),
-            )
-          }
+            );
+          }}
           onStop={() => void stop(chatId)}
         />
       </div>
