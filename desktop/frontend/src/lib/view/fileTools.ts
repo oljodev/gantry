@@ -2,13 +2,14 @@ import type { ResultPart, ToolCallDto } from '@/bindings';
 import type { ActivityItem, Hunk, HunkLine } from '@/fixtures/types';
 
 /**
- * The file connectors' calls as the rows the feed already knows how to draw (15 §8, 16 §6).
+ * The first-party tools' calls as the rows the feed already knows how to draw (15 §8, 16 §6).
  *
  * Every tool call could be shown as "Using Filesystem · read_file", and for a server Gantry
- * knows nothing about that is the honest thing to do. But the file tools are the ones a user
- * most wants to audit, and the feed already has richer rows for exactly this: a read with its
- * line range, a search with its count, an edit with its diff. Projecting into them is what
- * turns the code surface from a list of calls into a record of what happened to the files.
+ * knows nothing about that is the honest thing to do. But these are the tools a user most wants
+ * to audit, and the feed already has richer rows for exactly this: a read with its line range, a
+ * search with its count, an edit with its diff, a command with its exit code and its output.
+ * Projecting into them is what turns the code surface from a list of calls into a record of what
+ * happened to the files and what was run.
  */
 export function fileItem(call: ToolCallDto): ActivityItem | undefined {
   const result = json(call.result);
@@ -46,6 +47,30 @@ export function fileItem(call: ToolCallDto): ActivityItem | undefined {
         query: str(result?.pattern) ?? str(args.pattern) ?? '',
         glob: str(args.files) ?? str(args.path) ?? 'every attached folder',
         matches: matches ?? 0,
+      };
+    }
+    case 'shell__run_command': {
+      const command = str(result?.command) ?? str(args.command);
+      if (!command) return undefined;
+      const cwd = str(result?.cwd) ?? str(args.cwd) ?? '';
+      if (!done) {
+        return { kind: 'command', id, command, cwd, output: [], status: 'running' };
+      }
+      const exitCode = num(result?.exit_code);
+      const streams = [str(result?.stdout), str(result?.stderr)]
+        .filter((s): s is string => s !== undefined && s.length > 0)
+        .join('\n');
+      return {
+        kind: 'command',
+        id,
+        command,
+        cwd,
+        exitCode: exitCode ?? undefined,
+        durationMs: num(result?.duration_ms),
+        output: streams.length > 0 ? streams.split('\n') : [],
+        // A non-zero exit is a result, not a malfunction (shell.md D5), but a command that was
+        // killed or never ran did fail, and the row should look different.
+        status: call.is_error || exitCode === undefined ? 'failed' : 'done',
       };
     }
     case 'filesystem__write_file':
