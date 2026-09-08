@@ -5,11 +5,11 @@ import type { Connector } from '@/data/connectors';
 interface Props { connector: Connector; compact?: boolean }
 const { connector: c, compact = false } = Astro.props;
 ---
-<a class:list={['tile card card-hover', compact && 'is-compact']} href={`/connectors/${c.slug}/`} data-category={c.category} data-name={`${c.name} ${c.does}`.toLowerCase()}>
+<a class:list={['tile card card-hover', compact && 'is-compact']} href={`/connectors/${c.slug}/`} data-category={c.category} data-status={c.status} data-name={`${c.name} ${c.does}`.toLowerCase()}>
   <span class="tile-mark"><Mark connector={c} size={compact ? 18 : 22} /></span>
   <span class="tile-body">
     <span class="tile-name">{c.name}</span>
-    <span class="tile-meta">{categoryLabel(c.category)} · {kindLabel(c)}</span>
+    <span class="tile-meta">{categoryLabel(c.category)} · {kindLabel(c)}{c.status === 'soon' && <span class="tile-soon">Soon</span>}</span>
     {!compact && <span class="tile-does">{c.does}</span>}
   </span>
 </a>
@@ -20,6 +20,7 @@ const { connector: c, compact = false } = Astro.props;
   .tile-body { display: grid; gap: 0.15rem; min-width: 0; }
   .tile-name { font-weight: 600; color: var(--color-fg); line-height: 1.25; }
   .tile-meta { font-size: 0.78rem; color: var(--color-fg-3); }
+  .tile-soon { margin-left: 0.45rem; padding: 0.05rem 0.4rem; border: 1px solid var(--color-line-2); border-radius: var(--radius-pill); font-size: 0.7rem; letter-spacing: 0.02em; color: var(--color-fg-3); }
   .tile-does { font-size: 0.88rem; color: var(--color-fg-2); margin-top: 0.25rem; }
   .is-compact { padding: 0.7rem 0.8rem; }
   .is-compact .tile-mark { width: 2.1rem; height: 2.1rem; }

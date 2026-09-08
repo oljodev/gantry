@@ -5,23 +5,34 @@ const search = document.querySelector<HTMLInputElement>('[data-search]');
 const count = document.querySelector<HTMLElement>('[data-count]');
 const empty = document.querySelector<HTMLElement>('[data-empty]');
 const groups = Array.from(document.querySelectorAll<HTMLElement>('[data-group]'));
+const onlyAvailable = document.querySelector<HTMLButtonElement>('[data-only-available]');
+const availableCount = tiles.filter((t) => t.dataset.status === 'available').length;
 let filter = 'all';
 let query = '';
+let ready = false;
 
 function apply(): void {
   let shown = 0;
   for (const t of tiles) {
-    const ok = (filter === 'all' || t.dataset.category === filter) && (!query || (t.dataset.name ?? '').includes(query));
+    const ok =
+      (filter === 'all' || t.dataset.category === filter) &&
+      (!ready || t.dataset.status === 'available') &&
+      (!query || (t.dataset.name ?? '').includes(query));
     t.hidden = !ok;
     if (ok) shown++;
   }
   for (const g of groups) g.hidden = !g.querySelector('[data-category]:not([hidden])');
-  if (count) count.textContent = shown === tiles.length ? `${shown} connectors` : `${shown} of ${tiles.length} connectors`;
+  if (count) count.textContent = shown === tiles.length ? `${shown} connectors · ${availableCount} available now` : `${shown} of ${tiles.length} connectors`;
   if (empty) empty.hidden = shown > 0;
 }
 for (const p of pills) p.addEventListener('click', () => {
   filter = p.dataset.filter ?? 'all';
   pills.forEach((o) => o.setAttribute('aria-pressed', o === p ? 'true' : 'false'));
+  apply();
+});
+onlyAvailable?.addEventListener('click', () => {
+  ready = !ready;
+  onlyAvailable.setAttribute('aria-pressed', ready ? 'true' : 'false');
   apply();
 });
 search?.addEventListener('input', () => { query = search.value.trim().toLowerCase(); apply(); });

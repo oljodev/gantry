@@ -2,16 +2,19 @@
 import BaseLayout from '@/layouts/BaseLayout.astro';
 import Icon from '@/components/Icon.astro';
 import ConnectorTile from '@/components/connectors/ConnectorTile.astro';
-import { CATEGORIES, CATEGORY_IDS, connectors } from '@/data/connectors';
+import { CATEGORIES, CATEGORY_IDS, available, connectors } from '@/data/connectors';
 import { REQUEST_URL } from '@/lib/connectors';
-const groups = CATEGORY_IDS.map((id) => ({ id, ...CATEGORIES[id], items: connectors.filter((c) => c.category === id) }));
+// Ready ones first inside each category; the rest are marked Soon and say so on their page.
+const rank = (c: (typeof connectors)[number]) => (c.status === 'available' ? 0 : 1);
+const groups = CATEGORY_IDS.map((id) => ({ id, ...CATEGORIES[id], items: connectors.filter((c) => c.category === id).sort((a, b) => rank(a) - rank(b)) }));
 ---
-<BaseLayout title="Connectors" description={`The ${connectors.length} connectors that ship with Gantry: built-in tools for your machine and MCP servers for GitHub, Notion, Postgres, Slack and more. Nothing installs itself.`}>
+<BaseLayout title="Connectors" description={`${available.length} connectors ship with Gantry today and ${connectors.length - available.length} more are on the way: built-in tools for your machine and MCP servers for GitHub, Notion, Postgres, Slack and more. Nothing installs itself.`}>
   <section class="head">
     <div class="wrap">
       <p class="eyebrow">Connectors</p>
       <h1 class="display">Every connector, one click away.</h1>
       <p class="lede">Built-in tools for your machine and MCP servers for the services you use, all under the same permission model. Find one here, install it from inside the app.</p>
+      <p class="lede-note"><strong>{available.length} are available now.</strong> The rest are marked <em>Soon</em>: the server exists and we have checked it, and the connector lands in one of the next releases. More are added every release.</p>
     </div>
   </section>
 
@@ -26,9 +29,10 @@ const groups = CATEGORY_IDS.map((id) => ({ id, ...CATEGORIES[id], items: connect
       <div class="pills" role="group" aria-label="Filter by category">
         <button type="button" class="pill" data-filter="all" aria-pressed="true">All</button>
         {CATEGORY_IDS.map((id) => <button type="button" class="pill" data-filter={id} aria-pressed="false">{CATEGORIES[id].label}</button>)}
+        <button type="button" class="pill pill-status" data-only-available aria-pressed="false">Available now</button>
       </div>
     </div>
-    <p class="count" data-count aria-live="polite">{connectors.length} connectors</p>
+    <p class="count" data-count aria-live="polite">{connectors.length} connectors · {available.length} available now</p>
 
     {groups.map((g) => (
       <div class="group" data-group>
@@ -50,7 +54,7 @@ const groups = CATEGORY_IDS.map((id) => ({ id, ...CATEGORIES[id], items: connect
       </div>
       <a class="btn" href={REQUEST_URL} rel="noopener">Request a connector</a>
     </div>
-    <p class="note">Product names and logos belong to their owners and show which services Gantry can connect to, not endorsement. Connectors without a public mark are shown with their initials. Every connector, built in or MCP, waits for an explicit Install in the app.</p>
+    <p class="note">Connectors marked <em>Soon</em> are planned, not shipped; the app only ever offers what is really there. Product names and logos belong to their owners and show which services Gantry can connect to, not endorsement. Connectors without a public mark are shown with their initials. Every connector, built in or MCP, waits for an explicit Install in the app.</p>
   </section>
   <script src="../../scripts/connector-filter.ts"></script>
 </BaseLayout>
@@ -58,6 +62,8 @@ const groups = CATEGORY_IDS.map((id) => ({ id, ...CATEGORIES[id], items: connect
   .head { padding: clamp(3.5rem, 8vw, 6rem) 0 2.5rem; }
   .head .display { margin-top: 1rem; max-width: 16ch; }
   .head .lede { margin-top: 1.25rem; }
+  .head .lede-note { margin-top: 0.9rem; max-width: 62ch; color: var(--color-fg-3); font-size: 0.95rem; }
+  .head .lede-note strong { color: var(--color-fg-2); }
   .directory { padding-bottom: clamp(4rem, 8vw, 6rem); }
   .toolbar { display: flex; flex-wrap: wrap; gap: 0.75rem 1rem; align-items: center; justify-content: space-between; padding-top: 1.5rem; border-top: 1px solid var(--color-line); }
   html:not(.js-directory) .toolbar, html:not(.js-directory) .count { display: none; }
@@ -69,6 +75,8 @@ const groups = CATEGORY_IDS.map((id) => ({ id, ...CATEGORIES[id], items: connect
   .pill { font: inherit; font-size: 0.88rem; font-weight: 500; padding: 0.4rem 0.9rem; border-radius: var(--radius-pill); border: 1px solid var(--color-line-2); background: transparent; color: var(--color-fg-2); cursor: pointer; transition: color 150ms ease, background-color 150ms ease, border-color 150ms ease; }
   .pill:hover { color: var(--color-fg); border-color: #3f3f46; }
   .pill[aria-pressed="true"] { background: var(--color-fg); color: var(--color-bg); border-color: var(--color-fg); }
+  .pill-status { margin-left: 0.35rem; }
+  .pill-status[aria-pressed="true"] { background: var(--color-brand); border-color: var(--color-brand); color: #fff; }
   .count { margin-top: 1.4rem; font-family: var(--font-mono); font-size: 0.78rem; color: var(--color-fg-3); }
   .group { margin-top: 2.25rem; }
   .group[hidden] { display: none; }

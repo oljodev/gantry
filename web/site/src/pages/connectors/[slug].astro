@@ -24,7 +24,7 @@ const runtimeNote: Record<string, string> = {
   'mcp-stdio': 'An MCP server that runs as a local process on the Node or Python you already have. Gantry checks the runtime is present before installing.',
 };
 ---
-<BaseLayout title={`${c.name} connector`} description={`${c.name} in Gantry: ${c.does.toLowerCase()}. ${kindLabel(c) === 'Built in' ? 'Built into the app.' : 'An MCP server, installed with one click.'}`}>
+<BaseLayout title={`${c.name} connector`} description={`${c.name} in Gantry: ${c.does.toLowerCase()}. ${c.status === 'soon' ? 'Planned, and on the way.' : kindLabel(c) === 'Built in' ? 'Built into the app.' : 'An MCP server, installed with one click.'}`}>
   <article class="wrap page">
     <nav class="crumbs" aria-label="Breadcrumb"><a href="/connectors/">Connectors</a><span aria-hidden="true">/</span><a href={`/connectors/?category=${c.category}`}>{cat.label}</a></nav>
     <header class="head">
@@ -32,12 +32,17 @@ const runtimeNote: Record<string, string> = {
       <div>
         <h1 class="title">{c.name}</h1>
         <p class="lede">{c.does}.</p>
-        <p class="badges"><span class:list={['badge', c.firstParty && 'badge-brand']}>{kindLabel(c)}</span><span class="badge">{cat.label}</span><span class="badge">{AUTH_LABEL[c.auth]}</span></p>
+        <p class="badges"><span class:list={['badge', c.firstParty && 'badge-brand']}>{kindLabel(c)}</span><span class="badge">{cat.label}</span><span class="badge">{AUTH_LABEL[c.auth]}</span>{c.status === 'soon' && <span class="badge badge-soon">Coming soon</span>}</p>
       </div>
     </header>
 
     <div class="body">
       <div class="main">
+        {c.status === 'soon' && (
+          <p class="soon-note card">
+            <strong>This one is on the way.</strong> {c.name}’s server has been checked and the connector is planned for one of the next releases — it is not in the app yet. Everything below is what it will do. Until it lands you can add it yourself as a custom MCP server, and <a class="link" href={REQUEST_URL} rel="noopener">saying you want it</a> moves it up the list.
+          </p>
+        )}
         <p class="prose-muted summary">{c.summary}</p>
 
         <h2 class="h">What it can do</h2>
@@ -53,7 +58,7 @@ const runtimeNote: Record<string, string> = {
           <div><dt>Permissions</dt><dd>Reads run in every mode. Writes outside your folders, messages and anything destructive follow the chat's permission mode: they ask in Manual and Auto-edit, and are judged by the guard model in Auto. <a class="link" href="/product/#permissions">How permissions work</a></dd></div>
         </dl>
 
-        <h2 class="h">Install in Gantry</h2>
+        <h2 class="h">{c.status === 'soon' ? 'How it will install' : 'Install in Gantry'}</h2>
         <ol class="steps">
           <li><span>1</span><p>Open <strong>Connectors</strong> in the sidebar. The catalog ships with the app; nothing is downloaded until you ask.</p></li>
           <li><span>2</span><p>Find <strong>{c.name}</strong> and choose <strong>Install</strong>. {c.auth === 'oauth' ? 'Your browser opens to sign in; close it when it says you can.' : c.auth === 'api-key' ? 'Paste your API key when asked.' : c.auth === 'connection-string' ? 'Enter the connection string when asked.' : 'That is all.'}</p></li>
@@ -66,11 +71,12 @@ const runtimeNote: Record<string, string> = {
           <dl class="side-facts">
             <div><dt>Category</dt><dd><a class="link" href={`/connectors/?category=${c.category}`}>{cat.label}</a></dd></div>
             <div><dt>Kind</dt><dd>{kindLabel(c) === 'Built in' ? 'Built into Gantry' : 'MCP server'}</dd></div>
+            <div><dt>Status</dt><dd>{c.status === 'available' ? 'Available now' : 'Coming soon'}</dd></div>
             <div><dt>Sign-in</dt><dd>{AUTH_LABEL[c.auth]}</dd></div>
             {c.website && <div><dt>Service</dt><dd><a class="link" href={c.website} rel="noopener">{c.website.replace(/^https?:\/\//, '').replace(/\/$/, '')} <Icon name="arrow-up-right" size={12} /></a></dd></div>}
           </dl>
           <a class="btn btn-primary side-cta" href="/download/">Get Gantry</a>
-          <p class="side-note">Free. The connector installs from inside the app.</p>
+          <p class="side-note">{c.status === 'available' ? 'Free. The connector installs from inside the app.' : 'Free. This connector is not in the app yet.'}</p>
         </div>
         <a class="request-link" href={REQUEST_URL} rel="noopener">Not what you need? Request a connector <Icon name="arrow-up-right" size={12} /></a>
       </aside>
@@ -92,6 +98,9 @@ const runtimeNote: Record<string, string> = {
   .big-mark { display: inline-grid; place-items: center; width: 4.5rem; height: 4.5rem; border-radius: 1rem; border: 1px solid var(--color-line); background: var(--color-surface); box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.05); }
   .head .lede { margin-top: 0.5rem; }
   .badges { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.9rem; }
+  .badge-soon { border-color: color-mix(in srgb, var(--color-brand) 45%, transparent); color: var(--color-brand); }
+  .soon-note { display: block; padding: 1rem 1.1rem; margin-bottom: 1.5rem; color: var(--color-fg-2); font-size: 0.95rem; line-height: 1.6; }
+  .soon-note strong { color: var(--color-fg); font-weight: 600; }
   .body { display: grid; grid-template-columns: minmax(0, 1fr) 18rem; gap: clamp(2rem, 5vw, 4rem); margin-top: 2.5rem; padding-top: 2.5rem; border-top: 1px solid var(--color-line); }
   .summary { font-size: 1.1rem; color: var(--color-fg-2); }
   .h { font-size: 1.25rem; margin-top: 2.5rem; margin-bottom: 0.6rem; }

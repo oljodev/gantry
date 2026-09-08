@@ -13,6 +13,8 @@ export default defineConfig({
   trailingSlash: 'always',
   compressHTML: true,
   build: { format: 'directory', inlineStylesheets: 'never' },
+  // The one Cloudflare entry became the two connectors the app actually ships (docs/plan/17-connector-catalog.md §7).
+  redirects: { '/connectors/cloudflare/': '/connectors/cloudflare-bindings/' },
   vite: { plugins: [tailwindcss()], build: { assetsInlineLimit: 0 } },
   fonts: [
     {
