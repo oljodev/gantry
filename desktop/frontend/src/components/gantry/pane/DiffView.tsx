@@ -40,20 +40,24 @@ export function DiffView({ file }: { file: DiffFile }) {
 function SplitDiff({ file }: { file: DiffFile }) {
   return (
     <div className="selectable overflow-x-auto rounded-2 border border-line-subtle bg-inset font-mono text-mono">
-      {file.hunks.map((h, i) => {
-        const rows = pairLines(h.lines);
-        return (
-          <div key={i}>
-            <div className="px-3 py-1 text-fg-3">{h.header}</div>
-            {rows.map(([l, r], j) => (
-              <div key={j} className="grid grid-cols-2">
-                <Cell line={l} side="old" />
-                <Cell line={r} side="new" />
-              </div>
-            ))}
-          </div>
-        );
-      })}
+      {/* As wide as the longest line: a row that is only the scroller's width runs out of tint
+          halfway across as soon as the diff is scrolled sideways. */}
+      <div className="min-w-max">
+        {file.hunks.map((h, i) => {
+          const rows = pairLines(h.lines);
+          return (
+            <div key={i}>
+              <div className="px-3 py-1 text-fg-3">{h.header}</div>
+              {rows.map(([l, r], j) => (
+                <div key={j} className="grid grid-cols-2">
+                  <Cell line={l} side="old" />
+                  <Cell line={r} side="new" />
+                </div>
+              ))}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
