@@ -31,10 +31,16 @@ export interface ActivityRowProps {
    * and a diff two clicks away in a side panel is a diff nobody looks at.
    */
   expandable?: boolean;
+  /**
+   * The header of an expandable row: the same row without the preview it normally carries under
+   * itself. The preview is what opening the row shows, and a row that shows it collapsed too is
+   * both open by default and doubled once opened.
+   */
+  bare?: boolean;
 }
 
 /** One activity item (05 §1, 15 §8): icon, title, mono summary, status at the right. */
-export function ActivityRow({ item, onOpen, expandable }: ActivityRowProps) {
+export function ActivityRow({ item, onOpen, expandable, bare }: ActivityRowProps) {
   const detail = expandable ? inlineDetail(item, onOpen) : undefined;
   if (detail) return <ExpandableRow item={item} detail={detail} onOpen={onOpen} />;
   const open = onOpen ? () => onOpen(item) : undefined;
@@ -73,7 +79,7 @@ export function ActivityRow({ item, onOpen, expandable }: ActivityRowProps) {
             </span>
           }
           onOpen={open}
-          below={<HunkPreview hunks={item.hunks} onShowAll={open} />}
+          below={bare ? undefined : <HunkPreview hunks={item.hunks} onShowAll={open} />}
         />
       );
     case 'command':
@@ -102,9 +108,11 @@ export function ActivityRow({ item, onOpen, expandable }: ActivityRowProps) {
           }
           onOpen={open}
           below={
-            <pre className="selectable max-h-24 overflow-hidden rounded-2 border border-line-subtle bg-inset px-3 py-2 font-mono text-mono text-fg-2">
-              {item.output.slice(-3).join('\n')}
-            </pre>
+            bare ? undefined : (
+              <pre className="selectable max-h-24 overflow-hidden rounded-2 border border-line-subtle bg-inset px-3 py-2 font-mono text-mono text-fg-2">
+                {item.output.slice(-3).join('\n')}
+              </pre>
+            )
           }
         />
       );
@@ -236,7 +244,7 @@ function ExpandableRow({
           />
         </button>
         <div className="min-w-0 flex-1">
-          <ActivityRow item={item} onOpen={() => setOpen((o) => !o)} />
+          <ActivityRow item={item} bare onOpen={() => setOpen((o) => !o)} />
         </div>
       </div>
       {open && (
@@ -262,25 +270,17 @@ function inlineDetail(item: ActivityItem, onOpen?: (item: ActivityItem) => void)
   switch (item.kind) {
     case 'edit':
       if (item.hunks.length === 0) return undefined;
+      // No path header: the row above it already names the file, and repeating it costs a line
+      // of the diff the user opened the row to read.
       return (
-        <>
-          <PathHeader path={item.path} />
-          <HunkPreview
-            hunks={item.hunks}
-            full
-            onShowAll={onOpen ? () => onOpen(item) : undefined}
-          />
-        </>
+        <HunkPreview hunks={item.hunks} full onShowAll={onOpen ? () => onOpen(item) : undefined} />
       );
     case 'command':
       if (item.output.length === 0) return undefined;
       return (
-        <>
-          <PathHeader path={`$ ${item.command}`} />
-          <pre className="selectable max-h-96 overflow-auto rounded-2 border border-line-subtle bg-inset px-3 py-2 font-mono text-mono text-fg-2">
-            {item.output.join('\n')}
-          </pre>
-        </>
+        <pre className="selectable max-h-96 overflow-auto rounded-2 border border-line-subtle bg-inset px-3 py-2 font-mono text-mono text-fg-2">
+          {item.output.join('\n')}
+        </pre>
       );
     case 'connector': {
       const args = item.args ? JSON.stringify(item.args, null, 2) : undefined;
@@ -296,14 +296,6 @@ function inlineDetail(item: ActivityItem, onOpen?: (item: ActivityItem) => void)
     default:
       return undefined;
   }
-}
-
-function PathHeader({ path }: { path: string }) {
-  return (
-    <div className="truncate rounded-2 bg-inset px-3 py-1 font-mono text-mono text-fg-2">
-      {path}
-    </div>
-  );
 }
 
 function Block({ label, body, tone }: { label: string; body: string; tone?: 'bad' }) {
