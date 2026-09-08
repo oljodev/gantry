@@ -16,6 +16,7 @@
     "dialog:default",
     "opener:default",
     "clipboard-manager:allow-write-text",
+    "clipboard-manager:allow-read-image",
     "notification:default",
     "os:default"
   ]

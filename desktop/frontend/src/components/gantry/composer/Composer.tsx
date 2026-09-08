@@ -158,6 +158,43 @@ export function Composer({
     });
   };
 
+  /**
+   * A paste that carries something other than text becomes an attachment.
+   *
+   * The webview's own clipboard data is tried first. WebKitGTK hands over an empty file list for
+   * a screenshot, so when there is no text either the app asks the system clipboard itself; that
+   * path needs `clipboard-manager:allow-read-image` in the app's capabilities, without which it
+   * fails silently and pasting a screenshot looks like a dead key.
+   */
+  const paste = (e: { clipboardData: DataTransfer | null; preventDefault: () => void }) => {
+    const data = e.clipboardData;
+    const files = data ? pastedFiles(data) : [];
+    if (files.length > 0) {
+      e.preventDefault();
+      void fromFiles(files).then(add);
+      return;
+    }
+    if (data && data.getData('text').length > 0) return;
+    e.preventDefault();
+    void readClipboardImage().then((file) => {
+      if (file) void fromFiles([file]).then(add);
+    });
+  };
+
+  // Pasting a screenshot with the focus anywhere but the text area still lands in the composer:
+  // the picture was copied for this chat, and hunting for the caret first is a step for nothing.
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      if (e.defaultPrevented) return;
+      const target = e.target as HTMLElement | null;
+      if (target?.isContentEditable || target instanceof HTMLInputElement) return;
+      if (target instanceof HTMLTextAreaElement) return;
+      paste(e);
+    };
+    window.addEventListener('paste', onPaste);
+    return () => window.removeEventListener('paste', onPaste);
+  });
+
   useEffect(() => {
     let unlisten: (() => void) | undefined;
     let cancelled = false;
@@ -196,21 +233,7 @@ export function Composer({
               send();
             }
           }}
-          onPaste={(e) => {
-            const files = pastedFiles(e.clipboardData);
-            if (files.length > 0) {
-              e.preventDefault();
-              void fromFiles(files).then(add);
-              return;
-            }
-            // WebKitGTK often hands over an empty file list for a screenshot on the clipboard,
-            // so the app asks the clipboard itself before giving up.
-            if (e.clipboardData.getData('text').length > 0) return;
-            e.preventDefault();
-            void readClipboardImage().then((file) => {
-              if (file) void fromFiles([file]).then(add);
-            });
-          }}
+          onPaste={paste}
           placeholder={placeholder ?? 'Message Gantry…'}
           aria-label="Message"
           rows={1}
