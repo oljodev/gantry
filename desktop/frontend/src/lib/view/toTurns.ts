@@ -7,7 +7,14 @@ import type {
   ToolCallDto,
   TurnDto,
 } from '@/bindings';
-import type { ActivityItem, Block, Permission, Turn } from '@/fixtures/types';
+import type {
+  AccessAsk,
+  ActivityItem,
+  Block,
+  ConnectorOffer,
+  Permission,
+  Turn,
+} from '@/fixtures/types';
 import { isArtifactTool } from '@/features/artifacts/registry';
 import type { LiveMessage, LiveTurn } from '@/lib/stores/runStore';
 
@@ -199,6 +206,9 @@ function messagesToBlocks(
   for (const p of pending) {
     if (p.payload.kind === 'permission')
       blocks.push({ kind: 'permission', permission: permissionOf(p) });
+    else if (p.payload.kind === 'access_request') blocks.push({ kind: 'access', ask: accessOf(p) });
+    else if (p.payload.kind === 'connector_suggestion')
+      blocks.push({ kind: 'offer', offer: offerOf(p) });
   }
   return blocks;
 }
@@ -343,6 +353,35 @@ export function permissionOf(i: Interaction): Permission {
     note: r.description,
     why: r.why ?? undefined,
     scopes: [{ id: 'once', label: 'Allow once' }, ...r.scopes.map((s) => scopeOption(s, r.tool))],
+  };
+}
+
+/** A pending access request as its card renders it (04 §9). */
+export function accessOf(i: Interaction): AccessAsk {
+  if (i.payload.kind !== 'access_request') throw new Error('not an access request');
+  const r = i.payload.request;
+  return {
+    id: i.id,
+    connector: r.connector,
+    connectorName: r.connector_name,
+    tools: r.tools,
+    toolCount: r.tool_count,
+    reason: r.reason,
+  };
+}
+
+/** A pending connector suggestion as its card renders it (03 §9). */
+export function offerOf(i: Interaction): ConnectorOffer {
+  if (i.payload.kind !== 'connector_suggestion') throw new Error('not a suggestion');
+  const s = i.payload.suggestion;
+  return {
+    id: i.id,
+    catalogId: s.catalog_id,
+    name: s.name,
+    description: s.description,
+    auth: s.auth,
+    requires: s.requires.map((r) => `${r.name} ${r.version}`),
+    reason: s.reason,
   };
 }
 

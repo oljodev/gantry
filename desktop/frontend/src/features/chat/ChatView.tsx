@@ -7,9 +7,9 @@ import {
 } from '@phosphor-icons/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import type { PermissionDecision } from '@/bindings';
+import type { CatalogEntryDto, PermissionDecision } from '@/bindings';
 import { ArtifactGlyph } from '@/components/gantry/chat/ArtifactCard';
-import type { PermissionAnswer } from '@/components/gantry/chat/InteractionCard';
+import type { AccessAnswer, PermissionAnswer } from '@/components/gantry/chat/InteractionCard';
 import { Button } from '@/components/ui/button';
 import { TurnView } from '@/components/gantry/chat/TurnView';
 import { Composer } from '@/components/gantry/composer/Composer';
@@ -25,10 +25,13 @@ import { copyText, openExternal } from '@/lib/clipboard';
 import { useArtifacts } from '@/lib/ipc/hooks/artifacts';
 import { useChat, useChatMutations } from '@/lib/ipc/hooks/chats';
 import {
+  useCatalog,
   useChatConnectors,
   useConnectorMutations,
   useConnectors,
 } from '@/lib/ipc/hooks/connectors';
+import { InstallDialog } from '@/features/connectors/InstallDialog';
+import { useInstallFlow } from '@/features/connectors/install';
 import { modelCapabilities, modelLabel, useModelCatalog } from '@/lib/ipc/hooks/providers';
 import { useSettings } from '@/lib/ipc/hooks/settings';
 import { chatDefaults } from '@/lib/settingsDefaults';
@@ -75,6 +78,16 @@ export function ChatView({
       })),
     [installedConnectors.data, chatConnectors.data],
   );
+  const catalog = useCatalog();
+  const { runInstall } = useInstallFlow();
+  /** The suggestion whose install is running, and the fallback dialog when one click was not
+      enough (03 §11). */
+  const [installingOffer, setInstallingOffer] = useState<string | null>(null);
+  const [asking, setAsking] = useState<{
+    entry: CatalogEntryDto;
+    interactionId: string;
+    reason?: string;
+  } | null>(null);
   const [detailTabs, setDetailTabs] = useState<PaneTab[]>([]);
   // A deep link (`?artifact=`) starts with that artifact's tab open (13 §9).
   const [activeTab, setActiveTab] = useState<string>(() =>
@@ -266,6 +279,65 @@ export function ChatView({
     );
   };
 
+  /** An access request (04 §9): attach for this chat, optionally allowing the named tools. */
+  const answerAccess = (interactionId: string, answer: AccessAnswer) => {
+    void resolve(chatId, interactionId, {
+      kind: 'access_request',
+      decision:
+        answer.kind === 'attach'
+          ? { kind: 'attach', allow_tools: answer.allowTools }
+          : { kind: 'deny' },
+      message: null,
+    }).catch((err) =>
+      toast.add({ title: 'Could not answer', description: describe(err), type: 'error' }),
+    );
+  };
+
+  /**
+   * A connector suggestion (03 §9). Install runs the ordinary install flow from inside the
+   * chat; the interaction is answered with the instance it produced, and the waiting turn goes
+   * on with the new tools. A server that needs more than one click falls back to the install
+   * dialog, and the card stays until that finishes.
+   */
+  const answerOffer = (interactionId: string, install: boolean) => {
+    const decline = () =>
+      void resolve(chatId, interactionId, {
+        kind: 'connector_suggestion',
+        outcome: { kind: 'declined' },
+      }).catch((err) =>
+        toast.add({ title: 'Could not answer', description: describe(err), type: 'error' }),
+      );
+    if (!install) {
+      decline();
+      return;
+    }
+    const offer = turns
+      .flatMap((t) => t.blocks)
+      .find((b) => b.kind === 'offer' && b.offer.id === interactionId);
+    const entry =
+      offer?.kind === 'offer'
+        ? (catalog.data ?? []).find((c) => c.id === offer.offer.catalogId)
+        : undefined;
+    if (!entry) {
+      toast.add({ title: 'That connector is not in the catalog', type: 'error' });
+      return;
+    }
+    setInstallingOffer(interactionId);
+    void runInstall(entry)
+      .then((instance) =>
+        resolve(chatId, interactionId, {
+          kind: 'connector_suggestion',
+          outcome: { kind: 'installed', instance_id: instance.id },
+        }),
+      )
+      .catch((err) => {
+        // Not a failure of the suggestion: the server wants something only the user can give,
+        // so the dialog takes over and the card waits.
+        setAsking({ entry, interactionId, reason: describe(err) });
+      })
+      .finally(() => setInstallingOffer(null));
+  };
+
   return (
     <div className="relative flex h-full min-w-0">
       <div className="flex min-w-0 flex-1 flex-col">
@@ -278,6 +350,9 @@ export function ChatView({
                 isLast={i === turns.length - 1}
                 onOpenItem={openItem}
                 onDecide={decide}
+                onAccess={answerAccess}
+                onOffer={answerOffer}
+                installing={installingOffer ?? undefined}
                 onCopy={async (text) => {
                   try {
                     await copyText(text);
@@ -351,6 +426,26 @@ export function ChatView({
           onStop={() => void stop(chatId)}
         />
       </div>
+      {asking && (
+        <InstallDialog
+          entry={asking.entry}
+          reason={asking.reason}
+          onClose={() => {
+            // The dialog is where the credential is given; if it produced a usable instance,
+            // the suggestion is answered with it and the waiting turn goes on (03 §9).
+            const instance = (installedConnectors.data ?? []).find(
+              (i) => i.catalog_id === asking.entry.id,
+            );
+            if (instance) {
+              void resolve(chatId, asking.interactionId, {
+                kind: 'connector_suggestion',
+                outcome: { kind: 'installed', instance_id: instance.id },
+              }).catch(() => {});
+            }
+            setAsking(null);
+          }}
+        />
+      )}
       {paneOpen && tabs.length > 0 && (
         <RightPane
           tabs={tabs}

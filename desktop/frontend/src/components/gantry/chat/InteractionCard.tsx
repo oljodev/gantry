@@ -12,8 +12,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
 import { connectorName } from '@/fixtures/connectors';
-import type { Permission } from '@/fixtures/types';
+import type { AccessAsk, ConnectorOffer, Permission } from '@/fixtures/types';
 
 /**
  * The shared shell for every pending decision (04 §7, 15 §8): level 1, a 2 px accent bar,
@@ -195,4 +196,131 @@ export function PermissionCard({
       {permission.note && <p className="mt-2 text-meta text-fg-3">{permission.note}</p>}
     </InteractionCard>
   );
+}
+
+/** What the access card reports back (04 §9). */
+export type AccessAnswer = { kind: 'attach'; allowTools: boolean } | { kind: 'deny' };
+
+/**
+ * A mid-conversation access request (04 §9): the assistant found a connector that is installed
+ * but that this chat never attached, and says what it wants it for. Attaching widens what this
+ * chat can reach and nothing else — every call it then makes still follows the chat's mode.
+ */
+export function AccessRequestCard({
+  ask,
+  onDecide,
+  pending = false,
+}: {
+  ask: AccessAsk;
+  onDecide?: (answer: AccessAnswer) => void;
+  pending?: boolean;
+}) {
+  const named = ask.tools.length > 0;
+  return (
+    <InteractionCard
+      mark={<ConnectorMark id={ask.connector} name={ask.connectorName} />}
+      title={`${ask.connectorName} in this chat?`}
+      actions={
+        <>
+          <Button
+            variant="primary"
+            disabled={pending}
+            onClick={() => onDecide?.({ kind: 'attach', allowTools: false })}
+          >
+            Attach for this chat
+          </Button>
+          {named && (
+            <Button
+              variant="secondary"
+              disabled={pending}
+              onClick={() => onDecide?.({ kind: 'attach', allowTools: true })}
+            >
+              Attach and allow {ask.tools.length === 1 ? ask.tools[0] : 'these tools'}
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            className="ml-auto text-bad hover:bg-bad-subtle"
+            disabled={pending}
+            onClick={() => onDecide?.({ kind: 'deny' })}
+          >
+            Not now
+          </Button>
+        </>
+      }
+    >
+      <p>{ask.reason}</p>
+      <p className="mt-2 text-meta text-fg-3">
+        {named ? (
+          <>
+            It wants <code className="font-mono">{ask.tools.join(', ')}</code>
+            {ask.toolCount > ask.tools.length && ` of its ${ask.toolCount} tools`}.{' '}
+          </>
+        ) : (
+          <>{ask.toolCount} tools. </>
+        )}
+        Attaching allows nothing on its own: each call still asks as your mode says.
+      </p>
+    </InteractionCard>
+  );
+}
+
+/**
+ * A connector the assistant would like to have (03 §9). Installing is the ordinary install:
+ * the catalog entry, its runtime and its sign-in, run from here so the chat is not left.
+ */
+export function ConnectorSuggestionCard({
+  offer,
+  onInstall,
+  onDecline,
+  busy = false,
+}: {
+  offer: ConnectorOffer;
+  onInstall?: () => void;
+  onDecline?: () => void;
+  busy?: boolean;
+}) {
+  return (
+    <InteractionCard
+      mark={<ConnectorMark id={offer.catalogId} name={offer.name} />}
+      title={`Install ${offer.name}?`}
+      actions={
+        <>
+          <Button variant="primary" disabled={busy} onClick={onInstall}>
+            {busy ? 'Installing…' : 'Install'}
+          </Button>
+          <Button
+            variant="ghost"
+            className="ml-auto text-bad hover:bg-bad-subtle"
+            disabled={busy}
+            onClick={onDecline}
+          >
+            Not now
+          </Button>
+        </>
+      }
+    >
+      <p>{offer.reason}</p>
+      <p className="mt-2 text-meta text-fg-3">{offer.description}</p>
+      <div className="mt-2 flex flex-wrap items-center gap-1.5 text-meta text-fg-3">
+        {offer.auth !== 'none' && <Badge>{authLabel(offer.auth)}</Badge>}
+        {offer.requires.map((r) => (
+          <Badge key={r}>Needs {r}</Badge>
+        ))}
+      </div>
+    </InteractionCard>
+  );
+}
+
+function authLabel(auth: string): string {
+  switch (auth) {
+    case 'oauth2':
+      return 'Signs you in';
+    case 'api_key':
+      return 'Needs a key';
+    case 'headers':
+      return 'Needs a token';
+    default:
+      return 'No account';
+  }
 }

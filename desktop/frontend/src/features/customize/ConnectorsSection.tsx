@@ -13,9 +13,9 @@ import { TierLabel } from '@/components/gantry/TierLabel';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
-import { toast } from '@/components/ui/toast';
 import type { CatalogEntryDto, ConnectorInstanceDto } from '@/bindings';
 import { AddCustomServer } from '@/features/connectors/AddCustomServer';
+import { useInstallFlow } from '@/features/connectors/install';
 import { InstallDialog } from '@/features/connectors/InstallDialog';
 import { isTauri } from '@/lib/ipc/client';
 import { useCatalog, useConnectorMutations, useConnectors } from '@/lib/ipc/hooks/connectors';
@@ -34,34 +34,18 @@ export function ConnectorsSection() {
   const [query, setQuery] = useState('');
   /** The entry whose install needs something from the user; the fallback dialog, not the path. */
   const [asking, setAsking] = useState<{ entry: CatalogEntryDto; reason?: string } | null>(null);
-  const [busy, setBusy] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const catalog = useCatalog();
   const connectors = useConnectors();
-  const { install, authorize, connect, setEnabled, remove } = useConnectorMutations();
+  const { connect, setEnabled, remove } = useConnectorMutations();
+  const { runInstall: install, busyId: busy } = useInstallFlow();
 
-  /**
-   * One click, all the way (03 §11). Install, and then do whatever that server needs without
-   * asking first: nothing at all, or a browser sign-in. Only a server that will not register a
-   * client by itself — GitHub is the one in this catalog — has anything left to ask, and only
-   * then does a dialog appear.
-   */
+  /** The one-click install, with the dialog as the fallback when a server needs more (03 §11). */
   const runInstall = async (entry: CatalogEntryDto) => {
-    setBusy(entry.id);
     try {
-      const existing = (connectors.data ?? []).find((i) => i.catalog_id === entry.id);
-      const instance = existing ?? (await install.mutateAsync(entry.id));
-      if (entry.auth === 'none') return;
-      if (instance.auth_state === 'authorized' && instance.tools.length > 0) return;
-      toast.add({
-        title: `Sign in to ${entry.name}`,
-        description: 'Your browser is opening; come back when it says you can.',
-      });
-      await authorize.mutateAsync({ instanceId: instance.id });
+      await install(entry);
     } catch (err) {
       setAsking({ entry, reason: describe(err) });
-    } finally {
-      setBusy(null);
     }
   };
 

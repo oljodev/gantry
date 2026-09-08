@@ -82,7 +82,7 @@ export function General() {
         </SettingsRow>
         <SettingsRow
           label="Suggest connectors"
-          hint="Let the assistant propose a connector when one would help (from M10)."
+          hint="Let the assistant look through the catalog and offer to install a connector when one would help. It never installs anything by itself."
         >
           <Switch
             aria-label="Suggest connectors"

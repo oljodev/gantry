@@ -2,7 +2,13 @@ import { WarningCircleIcon } from '@phosphor-icons/react';
 
 import { type StepBlock, TurnSteps } from '@/components/gantry/activity/TurnSteps';
 import { ArtifactCard } from '@/components/gantry/chat/ArtifactCard';
-import { type PermissionAnswer, PermissionCard } from '@/components/gantry/chat/InteractionCard';
+import {
+  type AccessAnswer,
+  AccessRequestCard,
+  ConnectorSuggestionCard,
+  type PermissionAnswer,
+  PermissionCard,
+} from '@/components/gantry/chat/InteractionCard';
 import { TurnActions, type TurnActionsProps } from '@/components/gantry/chat/TurnActions';
 import { UserMessage } from '@/components/gantry/chat/UserMessage';
 import { Markdown } from '@/components/gantry/markdown/Markdown';
@@ -34,6 +40,9 @@ export function TurnView({
   turn,
   onOpenItem,
   onDecide,
+  onAccess,
+  onOffer,
+  installing,
   isLast,
   onCopy,
   onRate,
@@ -43,6 +52,12 @@ export function TurnView({
   onOpenItem?: (item: ActivityItem) => void;
   /** Answers a permission card; absent in the gallery. */
   onDecide?: (interactionId: string, answer: PermissionAnswer) => void;
+  /** Answers an access request (04 §9). */
+  onAccess?: (interactionId: string, answer: AccessAnswer) => void;
+  /** Answers a connector suggestion: install it, or not (03 §9). */
+  onOffer?: (interactionId: string, install: boolean) => void;
+  /** The suggestion whose install is running. */
+  installing?: string;
   isLast?: boolean;
 } & Pick<TurnActionsProps, 'onCopy' | 'onRate' | 'onRetry'>) {
   const hasText = turn.blocks.some((b) => b.kind === 'text');
@@ -110,6 +125,24 @@ export function TurnView({
                   onDecide={
                     onDecide ? (answer) => onDecide(block.permission.id, answer) : undefined
                   }
+                />
+              );
+            case 'access':
+              return (
+                <AccessRequestCard
+                  key={block.ask.id}
+                  ask={block.ask}
+                  onDecide={onAccess ? (answer) => onAccess(block.ask.id, answer) : undefined}
+                />
+              );
+            case 'offer':
+              return (
+                <ConnectorSuggestionCard
+                  key={block.offer.id}
+                  offer={block.offer}
+                  busy={installing === block.offer.id}
+                  onInstall={onOffer ? () => onOffer(block.offer.id, true) : undefined}
+                  onDecline={onOffer ? () => onOffer(block.offer.id, false) : undefined}
                 />
               );
           }

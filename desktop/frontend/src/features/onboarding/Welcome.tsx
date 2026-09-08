@@ -9,6 +9,7 @@ import type { Mode, ModelRef } from '@/fixtures/types';
 import type { PendingAttachment } from '@/lib/attachments';
 import { isTauri } from '@/lib/ipc/client';
 import { useChatMutations } from '@/lib/ipc/hooks/chats';
+import { useUiStore } from '@/lib/stores/uiStore';
 import { useSettings } from '@/lib/ipc/hooks/settings';
 import { useRunStore } from '@/lib/stores/runStore';
 
@@ -44,6 +45,7 @@ export function Welcome() {
   const settings = useSettings();
   const { create, update } = useChatMutations();
   const send = useRunStore((s) => s.send);
+  const openCustomize = useUiStore((s) => s.openCustomize);
   const [mode, setMode] = useState<Mode | null>(null);
   const [guard, setGuard] = useState<boolean | null>(null);
   const [model, setModel] = useState<ModelRef | null>(null);
@@ -123,6 +125,7 @@ export function Welcome() {
         onModeChange={setMode}
         onGuardChange={setGuard}
         onModelChange={setModel}
+        onBrowseConnectors={() => openCustomize('connectors')}
         onSend={(text, attachments) => void onSend(text, attachments)}
       />
       <div className="flex h-8 items-center justify-center gap-1.5 text-meta text-fg-3">

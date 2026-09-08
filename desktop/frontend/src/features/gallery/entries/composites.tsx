@@ -2,7 +2,12 @@ import { ActivityRow } from '@/components/gantry/activity/ActivityRow';
 import { HunkPreview } from '@/components/gantry/activity/HunkPreview';
 import { TurnSteps } from '@/components/gantry/activity/TurnSteps';
 import { ArtifactCard } from '@/components/gantry/chat/ArtifactCard';
-import { InteractionCard, PermissionCard } from '@/components/gantry/chat/InteractionCard';
+import {
+  AccessRequestCard,
+  ConnectorSuggestionCard,
+  InteractionCard,
+  PermissionCard,
+} from '@/components/gantry/chat/InteractionCard';
 import { UserMessage } from '@/components/gantry/chat/UserMessage';
 import { AttachmentTray, Composer } from '@/components/gantry/composer/Composer';
 import { ConnectorMark } from '@/components/gantry/ConnectorMark';
@@ -139,21 +144,37 @@ function Cards() {
           )}
         </div>
       </State>
+      <State label="Access request">
+        <div className="w-full max-w-(--measure)">
+          <AccessRequestCard
+            ask={{
+              id: 'i1',
+              connector: 'github',
+              connectorName: 'GitHub',
+              tools: ['list_issues'],
+              toolCount: 44,
+              reason: 'To read the open issues on oljodev/gantry before I answer.',
+            }}
+          />
+        </div>
+      </State>
+      <State label="Connector suggestion">
+        <div className="w-full max-w-(--measure)">
+          <ConnectorSuggestionCard
+            offer={{
+              id: 'i2',
+              catalogId: 'cloudflare-bindings',
+              name: 'Cloudflare Workers',
+              description: 'Deploy Workers, read logs and reach KV, D1 and R2.',
+              auth: 'oauth2',
+              requires: [],
+              reason: 'You asked me to deploy this Worker; nothing installed can reach Cloudflare.',
+            }}
+          />
+        </div>
+      </State>
       <State label="Other decisions share the shell">
         <div className="w-full max-w-(--measure)">
-          <InteractionCard
-            mark={<ConnectorMark id="google-drive" name="Google Drive" />}
-            title="Gantry suggests connecting Google Drive"
-            actions={
-              <>
-                <Button variant="primary">Install and connect</Button>
-                <Button variant="ghost">Not now</Button>
-              </>
-            }
-          >
-            You asked what is in your Drive; no connector reaches it yet. Installing takes one
-            sign-in.
-          </InteractionCard>
           <InteractionCard
             title="Remember this?"
             actions={

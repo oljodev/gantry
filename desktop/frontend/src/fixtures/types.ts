@@ -110,6 +110,31 @@ export interface Permission {
   scopes: { id: string; label: string }[];
 }
 
+/** A mid-conversation access request (04 §9): installed, but not attached to this chat. */
+export interface AccessAsk {
+  /** The interaction's id. */
+  id: string;
+  connector: string;
+  connectorName: string;
+  /** The tools the assistant named; empty when it asked for the connector as a whole. */
+  tools: string[];
+  toolCount: number;
+  reason: string;
+}
+
+/** A connector the assistant offers to install (03 §9). Nothing happens without the button. */
+export interface ConnectorOffer {
+  id: string;
+  catalogId: string;
+  name: string;
+  description: string;
+  /** `oauth2`, `headers`, `api_key` or `none`. */
+  auth: string;
+  /** Runtimes it needs first, e.g. `node >=20`. */
+  requires: string[];
+  reason: string;
+}
+
 export type Block =
   | { kind: 'text'; markdown: string }
   | { kind: 'thinking'; text: string; running: boolean; durationMs?: number }
@@ -124,7 +149,9 @@ export type Block =
       version: number;
       action: 'created' | 'updated';
     }
-  | { kind: 'permission'; permission: Permission };
+  | { kind: 'permission'; permission: Permission }
+  | { kind: 'access'; ask: AccessAsk }
+  | { kind: 'offer'; offer: ConnectorOffer };
 
 /** An attachment as a sent message shows it; `blob` and `mime` let an image be fetched. */
 export interface SentAttachment {
