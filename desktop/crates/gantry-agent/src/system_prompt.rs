@@ -100,6 +100,30 @@ impl SystemPromptBuilder {
     }
 }
 
+/// The chat's folders, as of this turn (16 §7).
+///
+/// Like the connector inventory below, and for the same reason: the snapshot is frozen at
+/// creation, but a folder is attached from the composer at any moment, and a prompt that still
+/// says `workspace: none attached` is a prompt that makes the model ask the user for a path it
+/// already has. The line is rewritten in place rather than appended, so the context block stays
+/// one block and the prefix keeps caching between turns.
+#[must_use]
+pub fn with_roots(system: &str, roots: &[String]) -> String {
+    let Some(start) = system.find("\nworkspace: ") else {
+        return system.to_owned();
+    };
+    let from = start + 1;
+    let to = system[from..]
+        .find('\n')
+        .map_or(system.len(), |at| from + at);
+    let line = if roots.is_empty() {
+        "workspace: none attached".to_owned()
+    } else {
+        format!("workspace: {}", roots.join(", "))
+    };
+    format!("{}{line}{}", &system[..from], &system[to..])
+}
+
 /// The connector inventory (03 §9, 04 §9, 10 §2): what this chat can reach, what is installed
 /// but not attached, and how to ask for either.
 ///
@@ -218,5 +242,21 @@ mod tests {
             prompt.ends_with("</gantry_context>\n"),
             "no empty layer after the context"
         );
+    }
+
+    #[test]
+    fn the_folders_are_rewritten_for_the_turn_that_is_starting() {
+        let frozen =
+            "<gantry_context>\nplatform: linux\nworkspace: none attached\n</gantry_context>\n";
+        let attached = with_roots(frozen, &["/home/o/dev/site".to_owned()]);
+        assert!(
+            attached.contains("workspace: /home/o/dev/site"),
+            "{attached}"
+        );
+        assert!(!attached.contains("none attached"), "{attached}");
+        assert!(attached.ends_with("</gantry_context>\n"), "{attached}");
+        // Detaching the last one says so again, and a prompt without the line is left alone.
+        assert!(with_roots(&attached, &[]).contains("workspace: none attached"));
+        assert_eq!(with_roots("no context here", &[]), "no context here");
     }
 }

@@ -25,6 +25,7 @@ use crate::{
     runner::{self, RunContext},
     system_prompt::{
         CORE_VERSION, PromptContext, SystemPromptBuilder, connector_inventory, mode_note,
+        with_roots,
     },
     title,
     tools::ToolSet,
@@ -331,9 +332,9 @@ impl TurnManager {
         input.system = format!(
             "{}\n\n{}\n",
             // Chats created before M10 froze the line "connectors: none attached" into their
-            // snapshot; leaving it in would contradict the block that follows.
-            input
-                .system
+            // snapshot; leaving it in would contradict the block that follows. The folders are
+            // rewritten for the same reason: both change outside the chat.
+            with_roots(&input.system, &input.roots)
                 .replace("\nconnectors: none attached", "")
                 .trim_end(),
             connector_inventory(
