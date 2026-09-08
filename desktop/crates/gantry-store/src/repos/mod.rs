@@ -7,6 +7,7 @@ pub mod chats;
 pub mod connectors;
 pub mod credentials;
 pub mod events;
+pub mod file_edits;
 pub mod grants;
 pub mod interactions;
 pub mod messages;

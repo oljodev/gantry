@@ -12,6 +12,7 @@ pub mod chat;
 pub mod connector;
 pub mod error;
 pub mod event;
+pub mod file;
 pub mod grant;
 pub mod ids;
 pub mod interaction;
@@ -35,6 +36,7 @@ pub use connector::{
 };
 pub use error::{ErrorDto, GantryError, ProviderErrorKind};
 pub use event::{AgentEvent, AgentEventBatch, AgentEventKind, TurnSnapshot};
+pub use file::{EditOp, FileEditDto};
 pub use grant::{ArgScope, ChatGrant, GrantScope, GrantSource};
 pub use ids::{
     ArtifactId, CallId, ChatId, EventId, GrantId, InstanceId, InteractionId, MessageId, ProjectId,
