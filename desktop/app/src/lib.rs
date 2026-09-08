@@ -8,6 +8,7 @@
 mod commands;
 mod connectors;
 mod events;
+mod native;
 mod startup;
 mod state;
 

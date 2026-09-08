@@ -116,7 +116,8 @@ gantry/
 │   │   │       ├── tests/live.rs         # ignored: a real MCP server, no account needed
 │   │   │       └── later: native/, runtimes.rs, resources.rs, catalog overlay (03 §11)
 │   │   ├── gantry-workspace/
-│   │   │   └── src/{lib.rs, scope.rs, fs.rs, journal.rs, diff.rs, search.rs, runner.rs, classify.rs, encoding.rs}
+│   │   │   └── src/{lib.rs, scope.rs, text.rs, edit.rs, session.rs, guard.rs, journal.rs; later search.rs, runner.rs, classify.rs}
+│   │   │                                 # scope.rs: the capability open on cap-std; session.rs: what this chat has read
 │   │   ├── gantry-agent/
 │   │   │   ├── build.rs                  # validates and embeds ../../skills/*/SKILL.md (M12)
 │   │   │   ├── tests/{turns.rs, prompts.rs, fixtures/prompts/<mode>.txt}   # the loop on a scripted provider; one pinned prompt per mode
@@ -141,8 +142,8 @@ gantry/
 │   │   │   ├── Cargo.toml                # package gantry-connector-filesystem
 │   │   │   └── src/
 │   │   │       ├── lib.rs                # impl Connector; embeds manifest.json with include_str!
-│   │   │       └── tools/{list.rs, read.rs, stat.rs, search.rs, grep.rs, write.rs, mkdir.rs, move_path.rs, delete.rs, mod.rs}
-│   │   ├── code-editor/                  # first-party · native: src/{lib.rs, view.rs, edit.rs, patch.rs, undo.rs}
+│   │   │       └── later: tools/{list.rs, stat.rs, search.rs, grep.rs, write.rs, mkdir.rs, move_path.rs, delete.rs}   # read_file is in lib.rs (M6)
+│   │   ├── code-editor/                  # first-party · native: src/lib.rs, tests/edits.rs (the four tools; the work is in gantry-workspace)
 │   │   ├── shell/                        # first-party · native: src/{lib.rs, run.rs, kill.rs, shells.rs}, fixtures/commands.txt (classifier corpus)
 │   │   ├── web/                          # first-party · native: src/{lib.rs, fetch.rs, extract.rs, search.rs}
 │   │   ├── google-drive/                 # bundled third-party · mcp-remote · user-supplied OAuth client; ui/index.tsx helper panel

@@ -287,11 +287,16 @@ work into a second surface. The milestone grows by about a week and swallows 16 
 recommendation: the surface and the tools ship together, because neither demonstrates anything
 alone.
 
+Built so far (2026-09-08): migration 0008 and the session half of the surface; the workspace
+layer; the code editor's four tools with `filesystem__read_file` beside them; native connectors
+registered and installable. What is left is the visible surface, the rest of the filesystem
+tools, and the feed.
+
 **The surface** (16 §4, §5, §12, §13)
 
-- Migration 0008: `chats.surface` (`chat` | `code`, default `chat`, indexed with
+- ~~Migration 0008: `chats.surface` (`chat` | `code`, default `chat`, indexed with
   `last_message_at`), and the `chat_roots` rows a code session must have before its first turn,
-  enforced in the agent.
+  enforced in the agent.~~ **Done.**
 - The two-icon segmented control in the title strip, `Cmd/Ctrl+Shift+K`, the palette entries, the
   last-route-per-surface in the persisted UI store, and `/code` + `/code/$sessionId`.
 - The code sidebar: sessions with their folder on the second line, the folder filter, Projects
@@ -301,26 +306,34 @@ alone.
   **Revert all**, all through the journal.
 - The two empty states, including the one-time disclosure of §8 naming the connectors the surface
   just turned on.
-- Per-surface defaults in Settings → General (16 §9): Manual for chat, Auto-edit for code.
+- Per-surface defaults in Settings → General (16 §9). Both ship at Auto-edit, for the reason
+  16 §9 now records; the two settings stay separate.
 
-**The workspace layer**
+**The workspace layer** — **done**, apart from search
 
-- `gantry-workspace`: roots and canonicalisation, sensitive-path patterns, Gantry's own
-  configuration refused outright, atomic writes preserving encoding, line endings and
-  permissions, the `file_edits` journal, `similar`-based hunks, `ignore`/`grep-searcher` search,
+- `gantry-workspace`: the containment algorithm of `filesystem.md` §4 on `cap-std`, so the open
+  goes through a directory handle that cannot escape rather than through a string comparison;
+  sensitive-path patterns; Gantry's own data refused outright; atomic writes preserving the
+  byte-order mark, line endings, the final newline and permissions; migration 0009 and the
+  `file_edits` journal with both versions in the blob store; `diffy` hunks and patch application;
   and the read-hash table that makes the freshness rule of `docs/connectors/code-editor.md` §5
   work across both connectors.
+- Still to come here: `ignore`/`grep-searcher` search, and the command runner with M7.
 
 **The connectors** (16 §8, C6 as revised)
 
 - `desktop/connectors/filesystem` complete, per its document: read, write, list, glob, search,
-  move, document text extraction.
+  move, document text extraction. **`read_file` is done**; it shipped with the code editor,
+  because the freshness rule has nothing to open its gate with otherwise.
 - `desktop/connectors/code-editor` complete, per the document written with this plan: `replace`,
-  `insert`, `apply_patch`, `undo`, each journaled.
+  `insert`, `apply_patch`, `undo`, each journaled. **Done**, with one deviation recorded in that
+  document §8: a credential file is refused rather than confirmed until M7 can raise the ask.
 - Opening the Code surface installs and attaches them, emits `ConnectorsChanged` like any other
   install, and says so once in the empty state. 03 §11 gains this as its one named exception.
 - Both are native, in-process connectors: the `Connector` trait and the registry already exist
-  from M9, so this is the first use of `runtime.kind = "native"`.
+  from M9, so this is the first use of `runtime.kind = "native"`. **Done**: the factory is
+  `desktop/app/src/native.rs`, and 03 §2 is corrected to say so — it cannot live in
+  `gantry-connectors` without a dependency cycle.
 
 **In the feed**
 

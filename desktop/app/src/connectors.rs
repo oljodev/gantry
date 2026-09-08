@@ -19,6 +19,7 @@ use gantry_core::{
 };
 use gantry_secrets::{CredentialKind, OwnerKind, SecretVault};
 use gantry_store::{Store, repos};
+use gantry_workspace::Workspace;
 use serde::{Deserialize, Serialize};
 
 /// A stored OAuth result (06 §5: one credential per authorization, issuer included so a token
@@ -56,6 +57,8 @@ pub struct ConnectorService {
     store: Arc<Store>,
     secrets: Arc<SecretVault>,
     registry: Arc<ConnectorRegistry>,
+    /// Roots, file IO and the journal, which every native connector shares (03 §5).
+    workspace: Arc<Workspace>,
     http: reqwest::Client,
 }
 
@@ -65,12 +68,14 @@ impl ConnectorService {
         store: Arc<Store>,
         secrets: Arc<SecretVault>,
         registry: Arc<ConnectorRegistry>,
+        workspace: Arc<Workspace>,
     ) -> Self {
         Self {
             catalog: Catalog::embedded(),
             store,
             secrets,
             registry,
+            workspace,
             http: reqwest::Client::builder()
                 .user_agent(concat!("Gantry/", env!("CARGO_PKG_VERSION")))
                 .build()
@@ -208,6 +213,9 @@ impl ConnectorService {
     /// "Reconnect" does, and what the detail page's refresh calls.
     pub async fn connect(&self, id: InstanceId) -> Result<Vec<ToolInfo>, GantryError> {
         let instance = self.instance(id)?;
+        if instance.kind == ConnectorKind::Native {
+            return self.record_native(&instance).await;
+        }
         let endpoint = self.endpoint(&instance).await?;
         let remote = instance.kind == ConnectorKind::McpRemote;
         match gantry_connectors::mcp::McpSession::connect(&endpoint).await {
@@ -455,6 +463,27 @@ impl ConnectorService {
         Ok(())
     }
 
+    /// A native connector's tools come from its own code, so "connect" means recording what it
+    /// offers. There is no process to start and nothing to authorize.
+    async fn record_native(
+        &self,
+        instance: &ConnectorInstanceDto,
+    ) -> Result<Vec<ToolInfo>, GantryError> {
+        let catalog_id = instance.catalog_id.as_deref().unwrap_or_default();
+        let defs = crate::native::definitions(catalog_id).ok_or_else(|| {
+            GantryError::internal(format!("{} has no code in this build", instance.name))
+        })?;
+        let manifest = self.catalog.get(catalog_id);
+        let tools = tool_infos(&defs, manifest.as_deref());
+        let id = instance.id;
+        let (t, d) = (tools.clone(), with_overrides(&defs, manifest.as_deref()));
+        self.store
+            .write(move |c| repos::connectors::record_connection(c, id, &t, &d, None, None))
+            .await?;
+        self.rebuild().await?;
+        Ok(tools)
+    }
+
     /// Reads the instance's credential and turns the configuration into something connectable,
     /// refreshing an expiring token on the way (03 §7 step 4).
     async fn endpoint(&self, instance: &ConnectorInstanceDto) -> Result<Endpoint, GantryError> {
@@ -568,6 +597,23 @@ impl ConnectorService {
         for instance in instances {
             if !instance.enabled || !instance.auth_state.usable() {
                 self.registry.remove(&instance.namespace);
+                continue;
+            }
+            if instance.kind == ConnectorKind::Native {
+                match instance.catalog_id.as_deref().and_then(|catalog_id| {
+                    crate::native::build(
+                        catalog_id,
+                        instance.namespace.clone(),
+                        instance.id,
+                        &self.workspace,
+                    )
+                }) {
+                    Some(connector) => self.registry.register(connector),
+                    None => log::warn!(
+                        "{} says it is native, but no code is registered for it",
+                        instance.name
+                    ),
+                }
                 continue;
             }
             match self.endpoint(&instance).await {

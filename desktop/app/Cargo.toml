@@ -19,10 +19,13 @@ tauri-build = { version = "2.6", features = [] }
 gantry-agent.workspace = true
 base64.workspace = true
 gantry-connectors.workspace = true
+gantry-connector-code-editor.workspace = true
+gantry-connector-filesystem.workspace = true
 gantry-core.workspace = true
 gantry-providers.workspace = true
 gantry-secrets.workspace = true
 gantry-store.workspace = true
+gantry-workspace.workspace = true
 tokio.workspace = true
 reqwest.workspace = true
 secrecy.workspace = true

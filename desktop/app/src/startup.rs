@@ -16,6 +16,7 @@ use gantry_core::{ChatId, ProviderId, Settings};
 use gantry_providers::{ProviderRegistry, http_client};
 use gantry_secrets::SecretVault;
 use gantry_store::{BlobStore, Store, repos};
+use gantry_workspace::Workspace;
 use tauri::{App, AppHandle, Manager, plugin::TauriPlugin};
 use tauri_plugin_log::{Target, TargetKind};
 use tauri_specta::Event;
@@ -155,10 +156,17 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn Error>> {
     // Runtime tools are always registered; installed connectors join them below.
     let artifacts = Arc::new(Artifacts::new(store.clone(), blobs.clone()));
     let tools = Arc::new(ConnectorRegistry::new());
+    // Roots, atomic file IO and the edit journal, shared by every native connector (03 §5).
+    let workspace = Arc::new(Workspace::new(
+        store.clone(),
+        blobs.clone(),
+        data_dir.clone(),
+    ));
     let connectors = Arc::new(ConnectorService::new(
         store.clone(),
         secrets.clone(),
         tools.clone(),
+        workspace.clone(),
     ));
 
     let turns = TurnManager::new(
