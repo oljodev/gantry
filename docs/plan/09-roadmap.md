@@ -359,6 +359,27 @@ Done when: a real repository can be opened in the Code surface, changed by the m
 change visible as a diff, and reverted byte for byte, while a chat about something else continues
 on the other surface.
 
+### Alongside M6 — the model dialog and image models (2026-09-08)
+
+Asked for during M6's testing and built the same day, because choosing a model is the one control
+in the composer that is used on every single chat.
+
+- **The model dialog** (15 §7) replaces the composer's drop-up: search and sort in the header,
+  facets down the rail (what a model makes, what it can do, price, creator), and a row that
+  answers the question rather than repeating the name. Favourites are a settings field
+  (`chat.favourite_models`) so they follow the user; recents live in the UI store, where a trace
+  of one machine's use belongs. Which upstream OpenRouter routes to gets one quiet footer line
+  and no facet, which is all it is worth.
+- **The catalog learned modalities and per-unit prices** (02 §2): `ModelCapabilities.input` /
+  `.output`, and `image_input_usd` / `image_output_usd` / `request_usd` on `Pricing`. Both ride
+  in the JSON columns the `models` cache already had, so no migration.
+- **Image models answer with pictures** (02 §5): the request asks for them, the stream turns the
+  data URLs into image parts, and the answer shows them where the model produced them. Sending
+  straight to an image model works; the connector that lets a *text* model call an image, video
+  or speech model per tool call, and place the result mid-answer, is the next piece, along with
+  the audio, video and speech kinds themselves. The dialog already files and filters those kinds,
+  so they appear the day a provider serves them.
+
 ## M7 — Shell, Plan mode, guardrails (1–2 weeks)
 
 Partly done ahead of its milestone (2026-09-07), because the modes are one policy function and

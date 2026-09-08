@@ -203,3 +203,28 @@ fn the_decoder_survives_a_chunk_boundary_inside_a_utf8_character() {
     assert_eq!(events.len(), 1);
     assert!(events[0].data.contains("héllo"));
 }
+
+/// An image model answers with pictures beside its text (02 §3). They arrive whole, as data
+/// URLs, and become image parts; a hosted URL is not a part, because nothing here fetches it.
+#[tokio::test]
+async fn images_become_parts_and_hosted_urls_do_not() {
+    let events = replay("image-output.sse").await;
+    let images: Vec<(String, usize)> = events
+        .iter()
+        .filter_map(|e| match e {
+            Ok(StreamEvent::ProviderBlock {
+                part:
+                    gantry_core::ContentPart::Image {
+                        source: gantry_core::MediaSource::Base64 { data },
+                        mime,
+                    },
+                ..
+            }) => Some((mime.clone(), data.len())),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(images.len(), 1, "one picture, not the hosted one as well");
+    assert_eq!(images[0].0, "image/png");
+    assert!(images[0].1 > 0);
+    assert_eq!(text_of(&events), "Here it is.");
+}

@@ -190,6 +190,19 @@ function messagesToBlocks(
           running: running && m === lastMessage && lastIsThinking(),
           durationMs: thinkingMs,
         });
+      } else if (part.kind === 'image') {
+        // An image model answers with pictures; they belong in the reply at the point the model
+        // produced them, not in an attachment tray at the end.
+        blocks.push({
+          kind: 'image',
+          src:
+            part.source.kind === 'base64'
+              ? `data:${part.mime};base64,${part.source.data}`
+              : undefined,
+          blob: part.source.kind === 'blob' ? part.source.hash : undefined,
+          mime: part.mime,
+          alt: 'Picture from the model',
+        });
       } else if (part.kind === 'tool_call') {
         pushItem(callItem(part, calls[part.id], titles));
       }

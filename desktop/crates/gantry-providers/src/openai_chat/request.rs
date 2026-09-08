@@ -5,7 +5,7 @@ use serde_json::{Value, json};
 
 use super::profiles::{CompatProfile, ReasoningParam, WebSearchParam};
 use crate::{
-    provider::{ChatRequest, ModelInfo, ReasoningSupport, ServerTool, ToolChoice},
+    provider::{ChatRequest, Modality, ModelInfo, ReasoningSupport, ServerTool, ToolChoice},
     tools::{ToolSchemaSanitizer, call_origins, wire_call_id},
 };
 
@@ -36,6 +36,11 @@ pub fn build_body(profile: &CompatProfile, req: &ChatRequest, info: Option<&Mode
     });
     let obj = body.as_object_mut().expect("body is an object");
 
+    // A model that draws only draws when the request says it may: without the output modalities
+    // spelled out, an image model answers with a paragraph about the picture it would have made.
+    if info.is_some_and(|i| i.capabilities.output.contains(&Modality::Image)) {
+        obj.insert("modalities".into(), json!(["image", "text"]));
+    }
     if profile.supports_stream_usage {
         obj.insert("stream_options".into(), json!({ "include_usage": true }));
     }
@@ -250,6 +255,18 @@ mod tests {
                 ..Default::default()
             },
         }
+    }
+
+    #[test]
+    fn a_model_that_draws_is_asked_for_pictures_and_a_text_model_is_not() {
+        let req = ChatRequest::new("google/gemini-image", "", vec![Message::user_text("a cat")]);
+        let mut drawing = info(ReasoningSupport::None, None);
+        drawing.capabilities.output = vec![Modality::Text, Modality::Image];
+        let body = build_body(&CompatProfile::openrouter(), &req, Some(&drawing));
+        assert_eq!(body["modalities"], serde_json::json!(["image", "text"]));
+        let text = info(ReasoningSupport::None, None);
+        let body = build_body(&CompatProfile::openrouter(), &req, Some(&text));
+        assert!(body.get("modalities").is_none());
     }
 
     #[test]

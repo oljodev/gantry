@@ -142,6 +142,9 @@ export type Block =
   | { kind: 'thinking'; text: string; running: boolean; durationMs?: number }
   | { kind: 'error'; message: string; retryable: boolean }
   | { kind: 'activity'; items: ActivityItem[] }
+  /** A picture an image model drew, in the answer where it produced it. Inline bytes carry a
+      `src`; a picture kept in the blob store carries the hash to read it back with. */
+  | { kind: 'image'; src?: string; blob?: string; mime?: string; alt: string }
   /** The card for an artifact the turn created or changed, after the text (13 §10). */
   | {
       kind: 'artifact';

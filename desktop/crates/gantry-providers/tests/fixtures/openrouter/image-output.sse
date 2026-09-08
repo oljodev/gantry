@@ -1,0 +1,11 @@
+: OPENROUTER PROCESSING
+
+data: {"id":"gen-image-1","object":"chat.completion.chunk","created":1788900000,"model":"google/gemini-3-flash-image","choices":[{"index":0,"delta":{"role":"assistant","content":"Here it is."},"finish_reason":null}]}
+
+data: {"id":"gen-image-1","object":"chat.completion.chunk","created":1788900000,"model":"google/gemini-3-flash-image","choices":[{"index":0,"delta":{"images":[{"type":"image_url","image_url":{"url":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="}}]},"finish_reason":null}]}
+
+data: {"id":"gen-image-1","object":"chat.completion.chunk","created":1788900000,"model":"google/gemini-3-flash-image","choices":[{"index":0,"delta":{"images":[{"type":"image_url","image_url":{"url":"https://example.com/cat.png"}}]},"finish_reason":null}]}
+
+data: {"id":"gen-image-1","object":"chat.completion.chunk","created":1788900000,"model":"google/gemini-3-flash-image","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
+
+data: [DONE]

@@ -4,7 +4,7 @@
 use std::collections::BTreeMap;
 
 use futures_util::Stream;
-use gantry_core::{CallId, ProviderErrorKind, StopReason, Usage};
+use gantry_core::{CallId, ContentPart, MediaSource, ProviderErrorKind, StopReason, Usage};
 use serde::Deserialize;
 
 use super::profiles::ToolIdQuirk;
@@ -34,6 +34,28 @@ struct Delta {
     reasoning_details: Vec<ReasoningDetail>,
     #[serde(default)]
     tool_calls: Vec<ToolCallDelta>,
+    /// Pictures an image model drew, as data URLs. They arrive whole rather than in deltas.
+    #[serde(default)]
+    images: Vec<ImageDelta>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ImageDelta {
+    image_url: Option<ImageUrl>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ImageUrl {
+    url: Option<String>,
+}
+
+/// `data:image/png;base64,…` → the mime and the bytes. An `http(s)` url is left alone: nothing
+/// downloads it here, and a part pointing at a URL the app never fetched would be a lie.
+fn data_url(url: &str) -> Option<(String, String)> {
+    let rest = url.strip_prefix("data:")?;
+    let (meta, data) = rest.split_once(',')?;
+    let mime = meta.strip_suffix(";base64")?;
+    (!mime.is_empty() && !data.is_empty()).then(|| (mime.to_owned(), data.to_owned()))
 }
 
 #[derive(Debug, Deserialize)]
@@ -201,6 +223,24 @@ impl ChunkParser {
                     }
                 };
                 out.push(StreamEvent::TextDelta { index, text });
+            }
+            for image in &d.images {
+                let Some((mime, data)) = image
+                    .image_url
+                    .as_ref()
+                    .and_then(|u| u.url.as_deref())
+                    .and_then(data_url)
+                else {
+                    continue;
+                };
+                let index = self.alloc();
+                out.push(StreamEvent::ProviderBlock {
+                    index,
+                    part: ContentPart::Image {
+                        source: MediaSource::Base64 { data },
+                        mime,
+                    },
+                });
             }
             for tc in d.tool_calls {
                 let state = if let Some(s) = self.tools.get_mut(&tc.index) {

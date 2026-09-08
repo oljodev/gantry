@@ -1,7 +1,9 @@
 import { WarningCircleIcon } from '@phosphor-icons/react';
+import { useEffect, useState } from 'react';
 
 import { type StepBlock, TurnSteps } from '@/components/gantry/activity/TurnSteps';
 import { ArtifactCard } from '@/components/gantry/chat/ArtifactCard';
+import { ImageLightbox } from '@/components/gantry/ImageLightbox';
 import {
   type AccessAnswer,
   AccessRequestCard,
@@ -12,6 +14,7 @@ import {
 import { TurnActions, type TurnActionsProps } from '@/components/gantry/chat/TurnActions';
 import { UserMessage } from '@/components/gantry/chat/UserMessage';
 import { Markdown } from '@/components/gantry/markdown/Markdown';
+import { commands, isTauri } from '@/lib/ipc/client';
 import type { ActivityItem, Block, Turn } from '@/fixtures/types';
 
 /** Consecutive reasoning and activity blocks fold into one steps line (15 A7). */
@@ -74,6 +77,10 @@ export function TurnView({
           switch (block.kind) {
             case 'text':
               return <Markdown key={i}>{block.markdown}</Markdown>;
+            case 'image':
+              return (
+                <AnswerImage key={i} src={block.src} blob={block.blob} mime={block.mime} alt={block.alt} />
+              );
             case 'steps':
               return (
                 <TurnSteps
@@ -181,5 +188,50 @@ export function TurnView({
         )}
       </div>
     </article>
+  );
+}
+
+/**
+ * A picture the model drew, in the answer at the point it made it (15 §7). Bounded so a tall
+ * image does not push the rest of the reply off the screen, and opened full size on a click,
+ * the same way a picture the user sent opens.
+ */
+function AnswerImage({
+  src,
+  blob,
+  mime,
+  alt,
+}: {
+  src?: string;
+  blob?: string;
+  mime?: string;
+  alt: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [loaded, setLoaded] = useState<string | null>(null);
+  useEffect(() => {
+    if (src || !isTauri() || !blob || !mime) return;
+    let cancelled = false;
+    void commands.blobImage(blob, mime).then((data) => {
+      if (!cancelled && data) setLoaded(data);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [src, blob, mime]);
+  const url = src ?? loaded;
+  if (!url) return null;
+  return (
+    <div className="my-2">
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        aria-label={`Open ${alt}`}
+        className="block max-h-96 cursor-zoom-in overflow-hidden rounded-3 border border-line-subtle bg-inset transition-colors duration-(--dur-1) hover:border-line-strong"
+      >
+        <img src={url} alt={alt} className="max-h-96 w-auto max-w-full object-contain" />
+      </button>
+      <ImageLightbox src={open ? url : null} alt={alt} open={open} onClose={() => setOpen(false)} />
+    </div>
   );
 }

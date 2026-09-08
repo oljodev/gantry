@@ -219,6 +219,16 @@ Shipped profiles: `xai` (`https://api.x.ai/v1`; `reasoning_effort`, `stream_opti
 
 `Thinking` and `ProviderOpaque` parts are tagged with the provider that produced them. Projection keeps them only for that provider and drops them for others, which is what every provider tolerates. Server-tool results (web search) are stored as `ProviderOpaque` and rendered in the activity feed through small per-provider decoders ("Searched the web for …", with sources), so the transparency UI works without the agent understanding each provider's block shapes.
 
+**Image output** (built 2026-09-08). A model whose catalog row says it produces images is asked
+for them: the Chat Completions body carries `modalities: ["image", "text"]`, without which an
+image model answers with a paragraph about the picture it would have drawn. Pictures come back
+whole rather than in deltas, as data URLs in `delta.images`, and become `ContentPart::Image`
+blocks through `ProviderBlock`, so they are persisted, replayed to the view and shown in the
+answer at the point the model produced them. A hosted `http(s)` URL is *not* turned into a part:
+nothing in the app fetches it, and a part pointing at a picture the app never read would be a
+lie. Projection drops assistant images on the way back to the provider, so a chat full of
+generated pictures does not re-send them.
+
 ## 6. Transcript → request projection
 
 `Transcript` in `gantry-agent` is an append-only list of `Message`s plus per-chat frozen context. `project(provider, model)` produces a `ChatRequest`:
