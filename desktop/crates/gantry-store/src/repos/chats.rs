@@ -1,7 +1,9 @@
 //! The `chats` table (docs/plan/06 §3): one row per conversation with its settings and the
 //! frozen system prompt. The transcript lives in `messages`, the turns in `turns`.
 
-use gantry_core::{ChatId, Mode, ModelRef, ProjectId, ProviderId, ReasoningEffort, now_ms};
+use gantry_core::{
+    ChatId, Mode, ModelRef, ProjectId, ProviderId, ReasoningEffort, Surface, now_ms,
+};
 use rusqlite::{Connection, OptionalExtension, Row, params};
 
 use crate::{
@@ -12,6 +14,8 @@ use crate::{
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChatRecord {
     pub id: ChatId,
+    /// Which surface the session belongs to (16 §13). Chosen at creation, never changed.
+    pub surface: Surface,
     pub project_id: Option<ProjectId>,
     pub title: String,
     /// `auto` (the first words, then the title generator) or `user` (renamed by hand).
@@ -31,7 +35,7 @@ pub struct ChatRecord {
     pub archived_at: Option<i64>,
 }
 
-const COLUMNS: &str = "id, project_id, title, title_source, pinned, permission_mode, auto_guard, provider_id, model_id, effort, web_search, instructions, system_snapshot, system_snapshot_version, created_at, updated_at, last_message_at, archived_at";
+const COLUMNS: &str = "id, project_id, title, title_source, pinned, permission_mode, auto_guard, provider_id, model_id, effort, web_search, instructions, system_snapshot, system_snapshot_version, created_at, updated_at, last_message_at, archived_at, surface";
 
 fn from_row(r: &Row<'_>) -> rusqlite::Result<ChatRecord> {
     Ok(ChatRecord {
@@ -65,13 +69,14 @@ fn from_row(r: &Row<'_>) -> rusqlite::Result<ChatRecord> {
         updated_at: r.get(15)?,
         last_message_at: r.get(16)?,
         archived_at: r.get(17)?,
+        surface: enum_from_str(r, 18)?,
     })
 }
 
 pub fn insert(conn: &Connection, c: &ChatRecord) -> Result<()> {
     conn.execute(
         &format!(
-            "INSERT INTO chats ({COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)"
+            "INSERT INTO chats ({COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)"
         ),
         params![
             c.id.to_string(),
@@ -92,6 +97,7 @@ pub fn insert(conn: &Connection, c: &ChatRecord) -> Result<()> {
             c.updated_at,
             c.last_message_at,
             c.archived_at,
+            enum_to_str(&c.surface),
         ],
     )?;
     Ok(())
@@ -138,13 +144,52 @@ pub fn get(conn: &Connection, id: ChatId) -> Result<Option<ChatRecord>> {
         .optional()?)
 }
 
-/// Every chat, archived ones included, most recent first.
-pub fn list(conn: &Connection) -> Result<Vec<ChatRecord>> {
+/// Every session of one surface, archived ones included, most recent first. The two lists never
+/// mix: a code session does not appear among the chats and the reverse (16 §6).
+pub fn list(conn: &Connection, surface: Surface) -> Result<Vec<ChatRecord>> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {COLUMNS} FROM chats WHERE surface = ?1 ORDER BY last_message_at DESC, id DESC"
+    ))?;
+    let rows = stmt.query_map(params![surface.as_str()], from_row)?;
+    Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
+}
+
+/// Every session of either surface, for the places that span both: search, the artifact
+/// library, and the sweep that marks turns interrupted at startup.
+pub fn list_all(conn: &Connection) -> Result<Vec<ChatRecord>> {
     let mut stmt = conn.prepare(&format!(
         "SELECT {COLUMNS} FROM chats ORDER BY last_message_at DESC, id DESC"
     ))?;
     let rows = stmt.query_map([], from_row)?;
     Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
+}
+
+// ---- Roots ---------------------------------------------------------------------------------
+
+/// The folders a session may reach, oldest first: the first one is its primary folder (16 §7).
+pub fn roots(conn: &Connection, chat_id: ChatId) -> Result<Vec<String>> {
+    let mut stmt =
+        conn.prepare("SELECT path FROM chat_roots WHERE chat_id = ?1 ORDER BY added_at, path")?;
+    let rows = stmt.query_map(params![chat_id.to_string()], |r| r.get::<_, String>(0))?;
+    Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
+}
+
+/// Adds a folder. Adding the same one twice is not an error.
+pub fn add_root(conn: &Connection, chat_id: ChatId, path: &str) -> Result<()> {
+    conn.execute(
+        "INSERT INTO chat_roots (chat_id, path, added_at) VALUES (?1, ?2, ?3) \
+         ON CONFLICT (chat_id, path) DO NOTHING",
+        params![chat_id.to_string(), path, now_ms()],
+    )?;
+    Ok(())
+}
+
+pub fn remove_root(conn: &Connection, chat_id: ChatId, path: &str) -> Result<()> {
+    conn.execute(
+        "DELETE FROM chat_roots WHERE chat_id = ?1 AND path = ?2",
+        params![chat_id.to_string(), path],
+    )?;
+    Ok(())
 }
 
 /// Deletes the chat and, through the foreign keys, its turns, messages, attachments and events.

@@ -28,6 +28,37 @@ impl TurnStatus {
     }
 }
 
+/// Which of the app's two surfaces a session belongs to (docs/plan/16 §2, C3). It is chosen at
+/// creation and never changes: a session whose tools changed halfway would have a transcript
+/// that cannot be explained.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize, specta::Type,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum Surface {
+    /// Conversation, documents, research, connectors, artifacts.
+    #[default]
+    Chat,
+    /// Working inside a folder on this machine.
+    Code,
+}
+
+impl Surface {
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Surface::Chat => "chat",
+            Surface::Code => "code",
+        }
+    }
+
+    /// Whether a session on this surface must have a folder before its first turn (16 C5).
+    #[must_use]
+    pub fn needs_folder(self) -> bool {
+        matches!(self, Surface::Code)
+    }
+}
+
 /// The user's verdict on an assistant reply.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "snake_case")]
@@ -40,6 +71,10 @@ pub enum Feedback {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 pub struct ChatSummary {
     pub id: ChatId,
+    pub surface: Surface,
+    /// The folders this session may reach; the sidebar names the first one under a code
+    /// session's title (16 §5).
+    pub roots: Vec<String>,
     pub title: String,
     pub pinned: bool,
     pub archived: bool,
@@ -95,6 +130,8 @@ impl TurnDto {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
 pub struct ChatDetail {
     pub id: ChatId,
+    pub surface: Surface,
+    pub roots: Vec<String>,
     pub title: String,
     pub pinned: bool,
     pub archived: bool,

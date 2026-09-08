@@ -20,6 +20,7 @@ fn open() -> (tempfile::TempDir, Store) {
 fn seed(conn: &rusqlite::Connection) -> (ChatId, TurnId) {
     let now = now_ms();
     let chat = chats::ChatRecord {
+        surface: gantry_core::Surface::Chat,
         id: ChatId::new(),
         project_id: None,
         title: "t".into(),

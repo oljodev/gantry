@@ -20,7 +20,7 @@ pub mod tools;
 pub mod turn_manager;
 
 pub use artifacts::{Artifacts, user_change_note};
-pub use chats::{ChatBook, ChatPatch, NewAttachment};
+pub use chats::{ChatBook, ChatPatch, NewAttachment, NewChat};
 pub use events::{Batcher, EventSink, FanoutSink};
 pub use export::ExportFormat;
 pub use interactions::Interactions;

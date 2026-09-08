@@ -18,7 +18,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{
     attachments,
-    chats::{ChatBook, ChatPatch, NewAttachment},
+    chats::{ChatBook, ChatPatch, NewAttachment, NewChat},
     events::{Batcher, EventSink, FanoutSink},
     interactions::Interactions,
     persist::PersistSink,
@@ -190,17 +190,36 @@ impl TurnManager {
 
     /// A new chat with the settings' defaults and a freshly assembled system prompt.
     pub fn create_chat(&self, model: Option<ModelRef>) -> Result<ChatSummary, GantryError> {
+        self.create_session(gantry_core::Surface::Chat, Vec::new(), model)
+    }
+
+    /// A new session on either surface (16 C3, C5). A code session is created with the folder
+    /// it will work in; a chat is created with none.
+    pub fn create_session(
+        &self,
+        surface: gantry_core::Surface,
+        roots: Vec<String>,
+        model: Option<ModelRef>,
+    ) -> Result<ChatSummary, GantryError> {
+        if surface.needs_folder() && roots.is_empty() {
+            return Err(GantryError::invalid(
+                "a code session needs a folder to work in",
+            ));
+        }
         let settings = self.settings();
         let model = model.unwrap_or_else(|| settings.default_model());
-        let prompt = self.build_prompt(&settings, settings.chat.default_mode);
-        self.chats.create(
+        let (mode, guard) = settings.defaults_for(surface);
+        let prompt = self.build_prompt(&settings, mode);
+        self.chats.create(NewChat {
+            surface,
+            roots,
             model,
-            settings.chat.default_mode,
-            settings.chat.default_guard,
-            settings.chat.default_effort,
-            prompt,
-            CORE_VERSION,
-        )
+            mode,
+            guard,
+            effort: settings.chat.default_effort,
+            system_snapshot: prompt,
+            system_snapshot_version: CORE_VERSION,
+        })
     }
 
     /// Applies a patch; a mode change on a chat with turns appends the mode note (04 §3).

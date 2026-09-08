@@ -972,6 +972,49 @@ async fn plan_mode_offers_only_tools_it_would_allow() {
     );
 }
 
+/// A code session is defined by the folder it works in (16 C3, C5): it cannot be created
+/// without one, it cannot send a message without one, and it never appears in the chat list.
+#[tokio::test]
+async fn a_code_session_needs_a_folder_and_keeps_its_own_list() {
+    let m = manager(vec![text("hi"), end()], Duration::ZERO);
+    let refused = m.create_session(gantry_core::Surface::Code, Vec::new(), None);
+    assert!(
+        refused.is_err(),
+        "a code session with no folder was created"
+    );
+
+    let chat = m.create_chat(None).unwrap();
+    let code = m
+        .create_session(
+            gantry_core::Surface::Code,
+            vec!["/home/olav/dev/gantry".into()],
+            None,
+        )
+        .unwrap();
+    assert_eq!(code.surface, gantry_core::Surface::Code);
+    assert_eq!(code.roots, ["/home/olav/dev/gantry"]);
+
+    let chats = m.chats().list(gantry_core::Surface::Chat).unwrap();
+    let sessions = m.chats().list(gantry_core::Surface::Code).unwrap();
+    assert_eq!(chats.iter().map(|c| c.id).collect::<Vec<_>>(), [chat.id]);
+    assert_eq!(sessions.iter().map(|c| c.id).collect::<Vec<_>>(), [code.id]);
+    assert_eq!(
+        sessions[0].roots,
+        ["/home/olav/dev/gantry"],
+        "the sidebar names the folder"
+    );
+
+    // The folder can be taken away only through the store; the turn then refuses.
+    m.chats()
+        .remove_root(code.id, "/home/olav/dev/gantry".into())
+        .unwrap();
+    let sink = Arc::new(Collect::default());
+    let err = m
+        .start(code.id, "go".into(), Vec::new(), sink)
+        .expect_err("a code session with no folder sent a message");
+    assert!(format!("{err:?}").contains("folder"), "{err:?}");
+}
+
 /// The model finds a connector it does not have, asks for it, and uses it in the same reply
 /// (03 §9, 04 §9). Nothing is attached without the user's answer, and once it is attached the
 /// tool set is rebuilt mid-turn so the next round can call it.

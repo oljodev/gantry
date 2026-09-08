@@ -43,10 +43,18 @@ export const commands = {
 	addCustomProvider: (endpoint: CustomEndpoint) => typedError<ProviderId, ErrorDto>(__TAURI_INVOKE("add_custom_provider", { endpoint })),
 	/**  Removes a custom endpoint and its key; the built-in accounts stay. */
 	removeProvider: (providerId: ProviderId) => typedError<null, ErrorDto>(__TAURI_INVOKE("remove_provider", { providerId })),
+	/**
+	 *  A new session. `surface` is `chat` unless given; a code session must arrive with the folder
+	 *  it will work in (docs/plan/16 C5).
+	 */
 	createChat: (model: {
 	provider: ProviderId,
 	model: string,
-} | null) => typedError<ChatSummary, ErrorDto>(__TAURI_INVOKE("create_chat", { model })),
+} | null, surface: 
+/**  Conversation, documents, research, connectors, artifacts. */
+"chat" | 
+/**  Working inside a folder on this machine. */
+"code" | null, roots: string[] | null) => typedError<ChatSummary, ErrorDto>(__TAURI_INVOKE("create_chat", { model, surface, roots })),
 	/**
 	 *  A `data:` URL for an image on disk, so the composer can show what is attached before the
 	 *  message is sent. Anything that is not a supported image, or is over the image cap, answers
@@ -58,7 +66,19 @@ export const commands = {
 	 *  picture rather than a file name. Only image types, only inside the size cap.
 	 */
 	blobImage: (hash: string, mime: string) => __TAURI_INVOKE<string | null>("blob_image", { hash, mime }),
-	listChats: () => typedError<ChatSummary[], ErrorDto>(__TAURI_INVOKE("list_chats")),
+	/**  One surface's sessions. The two lists never mix (16 §6). */
+	listChats: (surface: 
+/**  Conversation, documents, research, connectors, artifacts. */
+"chat" | 
+/**  Working inside a folder on this machine. */
+"code" | null) => typedError<ChatSummary[], ErrorDto>(__TAURI_INVOKE("list_chats", { surface })),
+	/**
+	 *  Adds a folder to a session (16 §7). The path is taken as the user picked it; the workspace
+	 *  layer canonicalises it when the file tools arrive.
+	 */
+	addChatRoot: (chatId: ChatId, path: string) => typedError<string[], ErrorDto>(__TAURI_INVOKE("add_chat_root", { chatId, path })),
+	/**  Removes a folder. A code session may not drop its last one: it would stop being one. */
+	removeChatRoot: (chatId: ChatId, path: string) => typedError<string[], ErrorDto>(__TAURI_INVOKE("remove_chat_root", { chatId, path })),
 	getChat: (chatId: ChatId) => typedError<ChatDetail_Serialize, ErrorDto>(__TAURI_INVOKE("get_chat", { chatId })),
 	updateChat: (chatId: ChatId, update: ChatUpdate) => typedError<ChatSummary, ErrorDto>(__TAURI_INVOKE("update_chat", { chatId, update })),
 	deleteChat: (chatId: ChatId) => typedError<null, ErrorDto>(__TAURI_INVOKE("delete_chat", { chatId })),
@@ -438,6 +458,8 @@ export type ChatDetail = ChatDetail_Serialize | ChatDetail_Deserialize;
 /**  Everything the chat view needs. */
 export type ChatDetail_Deserialize = {
 	id: ChatId,
+	surface: Surface,
+	roots: string[],
 	title: string,
 	pinned: boolean,
 	archived: boolean,
@@ -457,6 +479,8 @@ export type ChatDetail_Deserialize = {
 /**  Everything the chat view needs. */
 export type ChatDetail_Serialize = {
 	id: ChatId,
+	surface: Surface,
+	roots: string[],
 	title: string,
 	pinned: boolean,
 	archived: boolean,
@@ -499,6 +523,9 @@ export type ChatSettings = {
 	default_mode?: Mode,
 	/**  Whether the judge guards Auto mode by default. */
 	default_guard?: boolean,
+	/**  The same pair for the Code surface, which starts somewhere else (docs/plan/16 §9). */
+	code_default_mode?: Mode,
+	code_default_guard?: boolean,
 	/**  The model for new chats; `None` means [`ModelRef::default_model`]. */
 	default_model?: ModelRef | null,
 	default_effort?: ReasoningEffort,
@@ -512,6 +539,12 @@ export type ChatSettings = {
 /**  A sidebar row. */
 export type ChatSummary = {
 	id: ChatId,
+	surface: Surface,
+	/**
+	 *  The folders this session may reach; the sidebar names the first one under a code
+	 *  session's title (16 §5).
+	 */
+	roots: string[],
 	title: string,
 	pinned: boolean,
 	archived: boolean,
@@ -1024,6 +1057,17 @@ export type StopReason = { kind: "end_turn" } | { kind: "tool_use" } | { kind: "
  *  ordinary install flow, and hands back the instance it made.
  */
 export type SuggestionOutcome = { kind: "installed"; instance_id: InstanceId } | { kind: "declined" };
+
+/**
+ *  Which of the app's two surfaces a session belongs to (docs/plan/16 §2, C3). It is chosen at
+ *  creation and never changes: a session whose tools changed halfway would have a transcript
+ *  that cannot be explained.
+ */
+export type Surface = 
+/**  Conversation, documents, research, connectors, artifacts. */
+"chat" | 
+/**  Working inside a folder on this machine. */
+"code";
 
 /**  What developer mode shows: the frozen prompt and the notes appended since (10 §4). */
 export type SystemPromptView = {

@@ -38,6 +38,8 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::chats::image_preview,
             commands::chats::blob_image,
             commands::chats::list_chats,
+            commands::chats::add_chat_root,
+            commands::chats::remove_chat_root,
             commands::chats::get_chat,
             commands::chats::update_chat,
             commands::chats::delete_chat,

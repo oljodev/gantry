@@ -4,7 +4,7 @@
 use std::{sync::Arc, time::Duration};
 
 use gantry_agent::{
-    Artifacts, ChatBook, RuntimeTools,
+    Artifacts, ChatBook, NewChat, RuntimeTools,
     artifacts::{CreateRequest, Edit, Origin},
 };
 use gantry_connectors::{
@@ -12,7 +12,7 @@ use gantry_connectors::{
 };
 use gantry_core::{
     AgentEventKind, CallId, ChatId, Mode, ModelRef, ReasoningEffort, RenderReport, RenderStatus,
-    TurnId, VersionSource,
+    Surface, TurnId, VersionSource,
 };
 use gantry_store::{BlobStore, Store};
 use tokio_util::sync::CancellationToken;
@@ -28,14 +28,16 @@ fn setup() -> (tempfile::TempDir, Arc<ChatBook>, Arc<Artifacts>) {
 }
 
 fn chat(book: &ChatBook) -> ChatId {
-    book.create(
-        ModelRef::default_model(),
-        Mode::AutoEdit,
-        true,
-        ReasoningEffort::Off,
-        String::new(),
-        1,
-    )
+    book.create(NewChat {
+        surface: Surface::Chat,
+        roots: Vec::new(),
+        model: ModelRef::default_model(),
+        mode: Mode::AutoEdit,
+        guard: true,
+        effort: ReasoningEffort::Off,
+        system_snapshot: String::new(),
+        system_snapshot_version: 1,
+    })
     .unwrap()
     .id
 }

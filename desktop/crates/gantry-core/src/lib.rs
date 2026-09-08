@@ -26,7 +26,9 @@ pub use artifact::{
     VersionSource,
 };
 pub use attachment::{AttachmentInput, MAX_IMAGE_BYTES, MAX_TEXT_BYTES};
-pub use chat::{ChatDetail, ChatSummary, Feedback, SearchHit, SearchHitKind, TurnDto, TurnStatus};
+pub use chat::{
+    ChatDetail, ChatSummary, Feedback, SearchHit, SearchHitKind, Surface, TurnDto, TurnStatus,
+};
 pub use connector::{
     AuthState, AuthType, CatalogEntryDto, ConnectorConfig, ConnectorInstanceDto, ConnectorKind,
     RuntimeRequirement, ServerInfo, ToolInfo,

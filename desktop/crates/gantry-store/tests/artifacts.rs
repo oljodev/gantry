@@ -23,6 +23,7 @@ fn chat(store: &Store) -> ChatId {
             chats::insert(
                 c,
                 &ChatRecord {
+                    surface: gantry_core::Surface::Chat,
                     id,
                     project_id: None,
                     title: "T".into(),

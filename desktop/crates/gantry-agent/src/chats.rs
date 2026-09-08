@@ -5,8 +5,8 @@ use std::sync::Arc;
 
 use gantry_core::{
     ChatDetail, ChatGrant, ChatId, ChatSummary, ContentPart, Feedback, GantryError, MediaSource,
-    Message, MessageId, Mode, ModelRef, ReasoningEffort, Role, StopReason, TurnDto, TurnId,
-    TurnStatus, Usage, now_ms,
+    Message, MessageId, Mode, ModelRef, ReasoningEffort, Role, StopReason, Surface, TurnDto,
+    TurnId, TurnStatus, Usage, now_ms,
 };
 use gantry_store::{
     BlobStore, Store,
@@ -41,6 +41,24 @@ pub struct TurnInput {
     /// The tool namespaces this chat attached (03 §11). Runtime tools are always available;
     /// a connector is not, until the chat asks for it.
     pub connectors: Vec<String>,
+    /// Which surface the session is on (16 §6): it decides which tools are offered.
+    pub surface: Surface,
+    /// The folders the session may reach, primary first (16 §7). Empty for most chats.
+    pub roots: Vec<String>,
+}
+
+/// What creating a session needs (16 C3, C5).
+#[derive(Debug, Clone, PartialEq)]
+pub struct NewChat {
+    pub surface: Surface,
+    /// The folders it starts with. Required on the code surface, empty for most chats.
+    pub roots: Vec<String>,
+    pub model: ModelRef,
+    pub mode: Mode,
+    pub guard: bool,
+    pub effort: ReasoningEffort,
+    pub system_snapshot: String,
+    pub system_snapshot_version: u32,
 }
 
 /// Chat settings the composer and the sidebar can change; `None` leaves a field alone.
@@ -121,18 +139,23 @@ impl ChatBook {
         &self.blobs
     }
 
-    pub fn create(
-        &self,
-        model: ModelRef,
-        mode: Mode,
-        guard: bool,
-        effort: ReasoningEffort,
-        system_snapshot: String,
-        system_snapshot_version: u32,
-    ) -> Result<ChatSummary, GantryError> {
+    /// A new session on one surface, with the folders it starts with (16 C5: a code session
+    /// needs one before its first message, and the picker is how it gets there).
+    pub fn create(&self, new: NewChat) -> Result<ChatSummary, GantryError> {
+        let NewChat {
+            surface,
+            roots,
+            model,
+            mode,
+            guard,
+            effort,
+            system_snapshot,
+            system_snapshot_version,
+        } = new;
         let now = now_ms();
         let chat = ChatRecord {
             id: ChatId::new(),
+            surface,
             project_id: None,
             title: "New chat".to_owned(),
             title_source: "auto".into(),
@@ -150,23 +173,60 @@ impl ChatBook {
             last_message_at: now,
             archived_at: None,
         };
-        let summary = summary(&chat, None);
+        let mut summary = summary(&chat, None);
+        summary.roots.clone_from(&roots);
         self.store
-            .write_blocking(move |conn| chats::insert(conn, &chat))
+            .write_blocking(move |conn| {
+                chats::insert(conn, &chat)?;
+                for root in &roots {
+                    chats::add_root(conn, chat.id, root)?;
+                }
+                Ok(())
+            })
             .map_err(store_err)?;
         Ok(summary)
     }
 
-    /// Most recent first, archived chats included (the sidebar groups them).
-    pub fn list(&self) -> Result<Vec<ChatSummary>, GantryError> {
+    /// Adds a folder to a session (16 §7, the composer's folder chip).
+    pub fn add_root(&self, chat_id: ChatId, path: String) -> Result<Vec<String>, GantryError> {
         self.store
-            .read(|conn| {
+            .write_blocking(move |conn| {
+                chats::add_root(conn, chat_id, &path)?;
+                chats::roots(conn, chat_id)
+            })
+            .map_err(store_err)
+    }
+
+    pub fn remove_root(&self, chat_id: ChatId, path: String) -> Result<Vec<String>, GantryError> {
+        self.store
+            .write_blocking(move |conn| {
+                chats::remove_root(conn, chat_id, &path)?;
+                chats::roots(conn, chat_id)
+            })
+            .map_err(store_err)
+    }
+
+    pub fn roots(&self, chat_id: ChatId) -> Result<Vec<String>, GantryError> {
+        self.store
+            .read(move |conn| chats::roots(conn, chat_id))
+            .map_err(store_err)
+    }
+
+    /// One surface's sessions, most recent first, archived ones included (the sidebar groups
+    /// them). The two lists never mix (16 §6).
+    pub fn list(&self, surface: Surface) -> Result<Vec<ChatSummary>, GantryError> {
+        self.store
+            .read(move |conn| {
                 let running: std::collections::HashMap<ChatId, TurnId> =
                     turns::chats_with_running_turns(conn)?.into_iter().collect();
-                Ok(chats::list(conn)?
+                chats::list(conn, surface)?
                     .iter()
-                    .map(|c| summary(c, running.get(&c.id).copied()))
-                    .collect())
+                    .map(|c| {
+                        let mut s = summary(c, running.get(&c.id).copied());
+                        s.roots = chats::roots(conn, c.id)?;
+                        Ok(s)
+                    })
+                    .collect()
             })
             .map_err(store_err)
     }
@@ -181,7 +241,10 @@ impl ChatBook {
                 let messages = messages::list_for_chat(conn, id)?;
                 let calls = tool_calls::list_for_chat(conn, id)?;
                 let notices = gantry_store::repos::events::list_notices_for_chat(conn, id)?;
-                Ok(Some(detail(&chat, &turns, &messages, &calls, &notices)))
+                let roots = chats::roots(conn, id)?;
+                Ok(Some(detail(
+                    &chat, roots, &turns, &messages, &calls, &notices,
+                )))
             })
             .map_err(store_err)
     }
@@ -209,6 +272,15 @@ impl ChatBook {
                 if turns::running_for_chat(conn, chat_id)?.is_some() {
                     return Err(gantry_store::StoreError::Other(
                         "this chat already has a turn running".into(),
+                    ));
+                }
+                // 16 C5: a code session is defined by the folder it works in, and the check is
+                // here rather than in the schema so the folder and the first message can land
+                // in one transaction.
+                let roots = chats::roots(conn, chat_id)?;
+                if chat.surface.needs_folder() && roots.is_empty() {
+                    return Err(gantry_store::StoreError::Other(
+                        "this code session has no folder to work in".into(),
                     ));
                 }
                 let seq = turns::next_seq(conn, chat_id)?;
@@ -277,6 +349,8 @@ impl ChatBook {
                     first_turn,
                     previous_model,
                     connectors: connectors::attached_namespaces(conn, chat_id)?,
+                    surface: chat.surface,
+                    roots,
                 })
             })
             .map_err(|e| match e {
@@ -479,7 +553,7 @@ impl ChatBook {
     pub fn open_chat_ids(&self) -> Result<Vec<ChatId>, GantryError> {
         self.store
             .read(|conn| {
-                Ok(chats::list(conn)?
+                Ok(chats::list_all(conn)?
                     .into_iter()
                     .filter(|c| c.archived_at.is_none())
                     .map(|c| c.id)
@@ -635,6 +709,8 @@ fn not_found_or_store(e: gantry_store::StoreError) -> GantryError {
 fn summary(chat: &ChatRecord, active: Option<TurnId>) -> ChatSummary {
     ChatSummary {
         id: chat.id,
+        surface: chat.surface,
+        roots: Vec::new(),
         title: chat.title.clone(),
         pinned: chat.pinned,
         archived: chat.archived_at.is_some(),
@@ -647,6 +723,7 @@ fn summary(chat: &ChatRecord, active: Option<TurnId>) -> ChatSummary {
 
 fn detail(
     chat: &ChatRecord,
+    roots: Vec<String>,
     turns: &[TurnRecord],
     messages: &[MessageRecord],
     calls: &[gantry_core::ToolCallDto],
@@ -716,6 +793,8 @@ fn detail(
         .collect();
     ChatDetail {
         id: chat.id,
+        surface: chat.surface,
+        roots,
         title: chat.title.clone(),
         pinned: chat.pinned,
         archived: chat.archived_at.is_some(),
@@ -808,14 +887,16 @@ mod tests {
     fn book_with_chat() -> (tempfile::TempDir, ChatBook, ChatId) {
         let (dir, book) = temp_book();
         let c = book
-            .create(
-                ModelRef::default_model(),
-                Mode::AutoEdit,
-                true,
-                ReasoningEffort::Off,
-                "sys".into(),
-                1,
-            )
+            .create(NewChat {
+                surface: Surface::Chat,
+                roots: Vec::new(),
+                model: ModelRef::default_model(),
+                mode: Mode::AutoEdit,
+                guard: true,
+                effort: ReasoningEffort::Off,
+                system_snapshot: "sys".into(),
+                system_snapshot_version: 1,
+            })
             .unwrap();
         (dir, book, c.id)
     }
@@ -844,7 +925,10 @@ mod tests {
                 .is_err()
         );
         assert_eq!(book.get(id).unwrap().unwrap().title, "Hello there friend");
-        assert_eq!(book.list().unwrap()[0].active_turn, Some(input.turn_id));
+        assert_eq!(
+            book.list(Surface::Chat).unwrap()[0].active_turn,
+            Some(input.turn_id)
+        );
 
         let mut assistant = Message::user_text("Hi!");
         assistant.role = Role::Assistant;

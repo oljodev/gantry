@@ -90,6 +90,8 @@ mod tests {
     #[test]
     fn markdown_has_the_title_and_both_sides() {
         let chat = ChatDetail {
+            surface: gantry_core::Surface::Chat,
+            roots: Vec::new(),
             id: ChatId::new(),
             title: "T".into(),
             pinned: false,

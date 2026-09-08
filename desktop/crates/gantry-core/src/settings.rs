@@ -128,6 +128,9 @@ pub struct ChatSettings {
     pub default_mode: Mode,
     /// Whether the judge guards Auto mode by default.
     pub default_guard: bool,
+    /// The same pair for the Code surface, which starts somewhere else (docs/plan/16 §9).
+    pub code_default_mode: Mode,
+    pub code_default_guard: bool,
     /// The model for new chats; `None` means [`ModelRef::default_model`].
     pub default_model: Option<ModelRef>,
     pub default_effort: ReasoningEffort,
@@ -143,6 +146,8 @@ impl Default for ChatSettings {
         Self {
             default_mode: Mode::AutoEdit,
             default_guard: true,
+            code_default_mode: Mode::AutoEdit,
+            code_default_guard: true,
             default_model: None,
             default_effort: ReasoningEffort::Medium,
             custom_instructions: String::new(),
@@ -185,6 +190,15 @@ pub struct Settings {
 impl Settings {
     /// The keys of the `settings` table, one per section.
     pub const SECTIONS: [&'static str; 3] = ["appearance", "chat", "advanced"];
+
+    /// Where a new session on this surface starts (16 §9).
+    #[must_use]
+    pub fn defaults_for(&self, surface: crate::Surface) -> (Mode, bool) {
+        match surface {
+            crate::Surface::Chat => (self.chat.default_mode, self.chat.default_guard),
+            crate::Surface::Code => (self.chat.code_default_mode, self.chat.code_default_guard),
+        }
+    }
 
     /// The model new chats start with.
     #[must_use]

@@ -1,7 +1,7 @@
 use gantry_agent::{ChatPatch, ExportFormat};
 use gantry_core::{
     ChatDetail, ChatId, ChatSummary, ErrorDto, Feedback, GantryError, Mode, ModelRef,
-    ReasoningEffort, SearchHit, TurnId,
+    ReasoningEffort, SearchHit, Surface, TurnId,
 };
 use gantry_store::repos;
 use serde::{Deserialize, Serialize};
@@ -32,14 +32,22 @@ pub struct SystemPromptView {
     pub notes: Vec<String>,
 }
 
+/// A new session. `surface` is `chat` unless given; a code session must arrive with the folder
+/// it will work in (docs/plan/16 C5).
 #[tauri::command]
 #[specta::specta]
 pub fn create_chat(
     app: AppHandle,
     state: State<'_, AppState>,
     model: Option<ModelRef>,
+    surface: Option<Surface>,
+    roots: Option<Vec<String>>,
 ) -> Result<ChatSummary, ErrorDto> {
-    let chat = state.turns.create_chat(model)?;
+    let chat = state.turns.create_session(
+        surface.unwrap_or_default(),
+        roots.unwrap_or_default(),
+        model,
+    )?;
     let _ = ChatsChanged {
         chat_ids: vec![chat.id],
     }
@@ -47,10 +55,56 @@ pub fn create_chat(
     Ok(chat)
 }
 
+/// One surface's sessions. The two lists never mix (16 §6).
 #[tauri::command]
 #[specta::specta]
-pub fn list_chats(state: State<'_, AppState>) -> Result<Vec<ChatSummary>, ErrorDto> {
-    Ok(state.turns.chats().list()?)
+pub fn list_chats(
+    state: State<'_, AppState>,
+    surface: Option<Surface>,
+) -> Result<Vec<ChatSummary>, ErrorDto> {
+    Ok(state.turns.chats().list(surface.unwrap_or_default())?)
+}
+
+/// Adds a folder to a session (16 §7). The path is taken as the user picked it; the workspace
+/// layer canonicalises it when the file tools arrive.
+#[tauri::command]
+#[specta::specta]
+pub fn add_chat_root(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    chat_id: ChatId,
+    path: String,
+) -> Result<Vec<String>, ErrorDto> {
+    let roots = state.turns.chats().add_root(chat_id, path)?;
+    let _ = ChatsChanged {
+        chat_ids: vec![chat_id],
+    }
+    .emit(&app);
+    Ok(roots)
+}
+
+/// Removes a folder. A code session may not drop its last one: it would stop being one.
+#[tauri::command]
+#[specta::specta]
+pub fn remove_chat_root(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    chat_id: ChatId,
+    path: String,
+) -> Result<Vec<String>, ErrorDto> {
+    let chats = state.turns.chats();
+    let detail = chats
+        .get(chat_id)?
+        .ok_or_else(|| GantryError::not_found(format!("chat {chat_id}")))?;
+    if detail.surface.needs_folder() && detail.roots.len() <= 1 {
+        return Err(GantryError::invalid("a code session needs a folder").into());
+    }
+    let roots = chats.remove_root(chat_id, path)?;
+    let _ = ChatsChanged {
+        chat_ids: vec![chat_id],
+    }
+    .emit(&app);
+    Ok(roots)
 }
 
 #[tauri::command]

@@ -18,6 +18,7 @@ fn open() -> (tempfile::TempDir, Store) {
 fn chat(title: &str) -> chats::ChatRecord {
     let now = now_ms();
     chats::ChatRecord {
+        surface: gantry_core::Surface::Chat,
         id: ChatId::new(),
         project_id: None,
         title: title.into(),
