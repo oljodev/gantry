@@ -1,14 +1,16 @@
 import { BugIcon, FileTextIcon, MagnifyingGlassIcon } from '@phosphor-icons/react';
 import { useNavigate } from '@tanstack/react-router';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 
 import { Composer } from '@/components/gantry/composer/Composer';
 import { Kbd } from '@/components/ui/kbd';
 import { toast } from '@/components/ui/toast';
 import type { Mode, ModelRef } from '@/fixtures/types';
 import type { PendingAttachment } from '@/lib/attachments';
+import { pickFolder } from '@/lib/folders';
 import { isTauri } from '@/lib/ipc/client';
 import { useChatMutations } from '@/lib/ipc/hooks/chats';
+import { useConnectorMutations, useConnectors } from '@/lib/ipc/hooks/connectors';
 import { useUiStore } from '@/lib/stores/uiStore';
 import { useSettings } from '@/lib/ipc/hooks/settings';
 import { useRunStore } from '@/lib/stores/runStore';
@@ -43,7 +45,9 @@ const DEFAULT_MODEL: ModelRef = { provider: 'openrouter', model: 'deepseek/deeps
 export function Welcome() {
   const navigate = useNavigate();
   const settings = useSettings();
-  const { create, update } = useChatMutations();
+  const { create, update, addRoot } = useChatMutations();
+  const installedConnectors = useConnectors();
+  const { attach: attachConnector } = useConnectorMutations();
   const send = useRunStore((s) => s.send);
   const openCustomize = useUiStore((s) => s.openCustomize);
   const [mode, setMode] = useState<Mode | null>(null);
@@ -52,6 +56,22 @@ export function Welcome() {
   const [thinking, setThinking] = useState<boolean | null>(null);
   const [prefill, setPrefill] = useState<{ text: string; nonce: number } | undefined>();
   const [busy, setBusy] = useState(false);
+  // There is no chat yet to attach anything to, so the folders and connectors chosen here are
+  // held until the first message creates one. Making the chat early instead would leave an empty
+  // chat behind every time somebody opened the menu and changed their mind.
+  const [roots, setRoots] = useState<string[]>([]);
+  const [connectors, setConnectors] = useState<string[]>([]);
+
+  const connectorChoices = useMemo(
+    () =>
+      (installedConnectors.data ?? []).map((c) => ({
+        id: c.id,
+        name: c.name,
+        attached: connectors.includes(c.id),
+        ready: c.enabled && c.auth_state === 'authorized' && c.tools.length > 0,
+      })),
+    [installedConnectors.data, connectors],
+  );
 
   const chatDefaults = settings.data?.chat;
   const effectiveMode = mode ?? chatDefaults?.default_mode ?? 'auto_edit';
@@ -77,6 +97,12 @@ export function Welcome() {
             }
           : null;
       if (changed) await update.mutateAsync({ chatId: chat.id, update: changed });
+      // Everything chosen before the chat existed, applied before its first turn so the model
+      // sees the folders and the tools in the prompt it is given.
+      for (const path of roots) await addRoot.mutateAsync({ chatId: chat.id, path });
+      for (const instanceId of connectors) {
+        await attachConnector.mutateAsync({ chatId: chat.id, instanceId, attached: true });
+      }
       await send(
         chat.id,
         text,
@@ -117,7 +143,20 @@ export function Welcome() {
         mode={effectiveMode}
         guard={effectiveGuard}
         model={effectiveModel}
-        roots={[]}
+        roots={roots}
+        onAddRoot={() => {
+          void pickFolder().then((path) => {
+            if (path)
+              setRoots((current) => (current.includes(path) ? current : [...current, path]));
+          });
+        }}
+        onRemoveRoot={(path) => setRoots((current) => current.filter((r) => r !== path))}
+        connectors={connectorChoices}
+        onConnectorChange={(instanceId, attached) =>
+          setConnectors((current) =>
+            attached ? [...current, instanceId] : current.filter((id) => id !== instanceId),
+          )
+        }
         running={busy}
         thinking={effectiveThinking}
         prefill={prefill}
