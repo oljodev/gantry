@@ -40,6 +40,7 @@ import {
   pickFiles,
 } from '@/lib/attachments';
 import { readClipboardImage } from '@/lib/clipboard';
+import { folderName } from '@/lib/folders';
 import { cn } from '@/lib/utils';
 
 /**
@@ -59,7 +60,11 @@ export interface ComposerProps {
   mode: Mode;
   guard: boolean;
   model: ModelRef;
+  /** The folders this chat may reach; the file tools work in these and nowhere else. */
   roots: string[];
+  /** Opens the native folder picker. The menu item is disabled without it (the gallery). */
+  onAddRoot?: () => void;
+  onRemoveRoot?: (root: string) => void;
   running?: boolean;
   placeholder?: string;
   /** Controlled thinking toggle; uncontrolled when absent (the gallery). */
@@ -105,6 +110,8 @@ export function Composer({
   guard,
   model,
   roots,
+  onAddRoot,
+  onRemoveRoot,
   running,
   placeholder,
   thinking: thinkingProp,
@@ -221,7 +228,7 @@ export function Composer({
                 <PaperclipIcon />
                 Add files or images
               </DropdownMenuItem>
-              <DropdownMenuItem disabled>
+              <DropdownMenuItem disabled={!onAddRoot} onClick={() => onAddRoot?.()}>
                 <FolderPlusIcon />
                 Add folder to workspace
               </DropdownMenuItem>
@@ -283,7 +290,7 @@ export function Composer({
           />
           <ModelPicker value={model} onChange={onModelChange} />
           {roots.map((root) => (
-            <RootChip key={root} root={root} />
+            <RootChip key={root} root={root} onRemove={onRemoveRoot} />
           ))}
           <div className="ml-auto flex items-center gap-1">
             {canSearch && webSearch && (
@@ -441,18 +448,29 @@ export function AttachmentTray({
   );
 }
 
-function RootChip({ root }: { root: string }) {
+/** A folder chip: the name is enough to recognise it, the full path is one hover away. */
+function RootChip({ root, onRemove }: { root: string; onRemove?: (root: string) => void }) {
   return (
-    <span className="inline-flex h-(--control-sm) items-center gap-1 rounded-2 border border-line-subtle px-1.5 text-meta text-fg-2">
-      <FolderSimpleIcon className="size-3.5" />
-      <span className="font-mono">{root}</span>
-      <button
-        type="button"
-        aria-label={`Remove ${root}`}
-        className="rounded-1 text-fg-3 hover:text-fg"
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <span className="inline-flex h-(--control-sm) items-center gap-1 rounded-2 border border-line-subtle px-1.5 text-meta text-fg-2" />
+        }
       >
-        <XIcon className="size-3" />
-      </button>
-    </span>
+        <FolderSimpleIcon className="size-3.5" />
+        <span className="font-mono">{folderName(root)}</span>
+        {onRemove && (
+          <button
+            type="button"
+            aria-label={`Remove ${root}`}
+            onClick={() => onRemove(root)}
+            className="rounded-1 text-fg-3 hover:text-fg"
+          >
+            <XIcon className="size-3" />
+          </button>
+        )}
+      </TooltipTrigger>
+      <TooltipContent>{root}</TooltipContent>
+    </Tooltip>
   );
 }

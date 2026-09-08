@@ -22,6 +22,7 @@ import { ArtifactPanel } from '@/features/artifacts/ArtifactPanel';
 import { useArtifactStore } from '@/features/artifacts/store';
 import type { ActivityItem, ModelRef } from '@/fixtures/types';
 import { copyText, openExternal } from '@/lib/clipboard';
+import { pickFolder } from '@/lib/folders';
 import { useArtifacts } from '@/lib/ipc/hooks/artifacts';
 import { useChat, useChatMutations } from '@/lib/ipc/hooks/chats';
 import {
@@ -60,7 +61,7 @@ export function ChatView({
   const clear = useRunStore((s) => s.clear);
   const retry = useRunStore((s) => s.retry);
   const resolve = useRunStore((s) => s.resolve);
-  const { update, rate } = useChatMutations();
+  const { update, rate, addRoot, removeRoot } = useChatMutations();
   const { providers } = useModelCatalog();
   const settings = useSettings();
   // Which connectors this chat may use (03 §11); `attach` above belongs to the run store.
@@ -399,7 +400,13 @@ export function ChatView({
           mode={detail.mode}
           guard={detail.guard}
           model={detail.model}
-          roots={[]}
+          roots={detail.roots}
+          onAddRoot={() => {
+            void pickFolder().then((path) => {
+              if (path) addRoot.mutate({ chatId, path });
+            });
+          }}
+          onRemoveRoot={(path) => removeRoot.mutate({ chatId, path })}
           running={running}
           thinking={thinking}
           onThinkingChange={(on) => patch({ effort: on ? defaultEffort : 'off' })}

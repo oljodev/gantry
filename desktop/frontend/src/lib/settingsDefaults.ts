@@ -9,6 +9,8 @@ export function chatDefaults(s: Settings | undefined): Required<ChatSettings> {
   return {
     default_mode: c.default_mode ?? 'auto_edit',
     default_guard: c.default_guard ?? true,
+    code_default_mode: c.code_default_mode ?? 'auto_edit',
+    code_default_guard: c.code_default_guard ?? true,
     default_model: c.default_model ?? null,
     default_effort: c.default_effort ?? 'medium',
     custom_instructions: c.custom_instructions ?? '',

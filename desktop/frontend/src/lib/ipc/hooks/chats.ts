@@ -22,7 +22,8 @@ export function chatQuery(chatId: ChatId) {
 export function useChats() {
   return useQuery({
     queryKey: keys.chats,
-    queryFn: () => unwrap(commands.listChats()),
+    // Every surface until the Code sidebar exists to filter them (16 §5).
+    queryFn: () => unwrap(commands.listChats(null)),
     enabled: isTauri(),
   });
 }
@@ -72,7 +73,7 @@ const EMPTY_UPDATE: ChatUpdate = {
 export function useChatMutations() {
   const qc = useQueryClient();
   const create = useMutation({
-    mutationFn: (model: ModelRef | null) => unwrap(commands.createChat(model)),
+    mutationFn: (model: ModelRef | null) => unwrap(commands.createChat(model, null, null)),
     onSuccess: () => void qc.invalidateQueries({ queryKey: keys.chats }),
   });
   // Pin, rename and archive show at once and roll back if the backend refuses (01 §5).
@@ -134,5 +135,17 @@ export function useChatMutations() {
       path: string;
     }) => unwrap(commands.exportChat(chatId, format, path)),
   });
-  return { create, update, remove, rate, exportChat };
+  // A folder is the one thing the file tools cannot work without, so both mutations refresh
+  // the chat rather than guessing: the backend answers with the list it kept.
+  const addRoot = useMutation({
+    mutationFn: ({ chatId, path }: { chatId: ChatId; path: string }) =>
+      unwrap(commands.addChatRoot(chatId, path)),
+    onSuccess: (_, { chatId }) => invalidateChat(qc, chatId),
+  });
+  const removeRoot = useMutation({
+    mutationFn: ({ chatId, path }: { chatId: ChatId; path: string }) =>
+      unwrap(commands.removeChatRoot(chatId, path)),
+    onSuccess: (_, { chatId }) => invalidateChat(qc, chatId),
+  });
+  return { create, update, remove, rate, exportChat, addRoot, removeRoot };
 }

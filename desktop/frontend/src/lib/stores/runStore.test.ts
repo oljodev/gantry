@@ -49,6 +49,8 @@ const chat = (turn: Partial<TurnDto>): ChatDetail => ({
   pinned: false,
   archived: false,
   project_id: null,
+  surface: 'chat',
+  roots: [],
   created_at: 0,
   last_message_at: 0,
   model: { provider: 'openrouter', model: 'm' },
