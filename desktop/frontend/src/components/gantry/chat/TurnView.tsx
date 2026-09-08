@@ -47,8 +47,11 @@ export function TurnView({
   onCopy,
   onRate,
   onRetry,
+  detailed = false,
 }: {
   turn: Turn;
+  /** The code surface shows the work open, with diffs and output inline (16 §6). */
+  detailed?: boolean;
   onOpenItem?: (item: ActivityItem) => void;
   /** Answers a permission card; absent in the gallery. */
   onDecide?: (interactionId: string, answer: PermissionAnswer) => void;
@@ -77,6 +80,7 @@ export function TurnView({
                   key={i}
                   steps={block.steps}
                   running={turn.status === 'running' || turn.status === 'waiting'}
+                  detailed={detailed}
                   onOpen={onOpenItem}
                 />
               );

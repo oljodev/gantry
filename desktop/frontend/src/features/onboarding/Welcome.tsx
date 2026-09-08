@@ -87,7 +87,7 @@ export function Welcome() {
     }
     setBusy(true);
     try {
-      const chat = await create.mutateAsync(effectiveModel);
+      const chat = await create.mutateAsync({ model: effectiveModel });
       const changed =
         mode !== null || guard !== null || thinking !== null
           ? {

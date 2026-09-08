@@ -2,6 +2,7 @@ import { useNavigate } from '@tanstack/react-router';
 import {
   ChatCircleIcon,
   ChatTextIcon,
+  CodeIcon,
   FolderSimpleIcon,
   GearIcon,
   PlugIcon,
@@ -65,6 +66,13 @@ export function CommandPalette() {
     fn();
   };
   const goChat = (chatId: string) => void navigate({ to: '/chat/$chatId', params: { chatId } });
+  /** Same move as the toggle beside the logo (16 §4), so both land in the same place. */
+  const switchSurface = (surface: 'chat' | 'code') => {
+    const ui = useUiStore.getState();
+    ui.setSurface(surface);
+    const back = ui.lastRoute[surface];
+    void navigate({ to: back ?? (surface === 'code' ? '/code' : '/chat') });
+  };
 
   const q = query.trim().toLowerCase();
   const matches = (text: string) => q.length === 0 || fuzzy(q, text.toLowerCase());
@@ -75,6 +83,20 @@ export function CommandPalette() {
       icon: <PlusIcon />,
       kbd: '⌘N',
       run: () => void navigate({ to: '/chat' }),
+    },
+    {
+      key: 'switch surface code',
+      label: 'Switch to Code',
+      icon: <CodeIcon />,
+      kbd: '⌘⇧K',
+      run: () => switchSurface('code'),
+    },
+    {
+      key: 'switch surface chat',
+      label: 'Switch to Chat',
+      icon: <ChatCircleIcon />,
+      kbd: '⌘⇧K',
+      run: () => switchSurface('chat'),
     },
     {
       key: 'toggle sidebar',

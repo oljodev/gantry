@@ -12,30 +12,35 @@ export function UserMessage({ user }: { user: Turn['user'] }) {
   const files = attachments.filter((a) => a.kind !== 'image');
   const [shown, setShown] = useState<{ src: string; name: string } | null>(null);
   return (
-    <div className="flex justify-end">
-      <div className="selectable max-w-[75%] rounded-3 bg-raised px-4 py-3 text-chat text-fg ring-1 ring-line-subtle">
-        {images.length > 0 && (
-          <div className="mb-2 flex flex-wrap justify-end gap-1.5">
-            {images.map((a, i) => (
-              <SentImage key={a.blob ?? i} attachment={a} onOpen={setShown} />
-            ))}
-          </div>
-        )}
-        {files.length > 0 && (
-          <div className="mb-2 flex flex-wrap justify-end gap-1.5">
-            {files.map((a) => (
-              <span
-                key={a.name}
-                className="inline-flex h-6 items-center gap-1 rounded-2 border border-line bg-surface px-1.5 text-meta text-fg-2"
-              >
-                <FileIcon className="size-3.5" />
-                {a.name}
-              </span>
-            ))}
-          </div>
-        )}
-        <div className="whitespace-pre-wrap">{user.text}</div>
-      </div>
+    <div className="flex flex-col items-end gap-1.5">
+      {/* Pictures sit above the message rather than inside it: a screenshot is a thing you
+          look at, and a tinted bubble around it makes it read as a decoration on the text.
+          Above, at a size worth looking at, is how a person sent it. */}
+      {images.length > 0 && (
+        <div className="flex max-w-[75%] flex-wrap justify-end gap-2">
+          {images.map((a, i) => (
+            <SentImage key={a.blob ?? i} attachment={a} onOpen={setShown} />
+          ))}
+        </div>
+      )}
+      {files.length > 0 && (
+        <div className="flex max-w-[75%] flex-wrap justify-end gap-1.5">
+          {files.map((a) => (
+            <span
+              key={a.name}
+              className="inline-flex h-7 items-center gap-1.5 rounded-2 border border-line-subtle bg-raised px-2 text-meta text-fg-2"
+            >
+              <FileIcon className="size-3.5 shrink-0 text-fg-3" />
+              <span className="max-w-40 truncate">{a.name}</span>
+            </span>
+          ))}
+        </div>
+      )}
+      {user.text.trim().length > 0 && (
+        <div className="selectable max-w-[75%] rounded-3 bg-raised px-4 py-3 text-chat text-fg ring-1 ring-line-subtle">
+          <div className="whitespace-pre-wrap">{user.text}</div>
+        </div>
+      )}
       <ImageLightbox
         src={shown?.src ?? null}
         alt={shown?.name}
@@ -66,11 +71,12 @@ function SentImage({
       cancelled = true;
     };
   }, [blob, mime]);
+  // Until the bytes arrive, the placeholder holds the space the picture will take, so the
+  // message does not jump as it loads.
   if (!src) {
     return (
-      <span className="inline-flex h-6 items-center gap-1 rounded-2 border border-line bg-surface px-1.5 text-meta text-fg-2">
-        <ImageIcon className="size-3.5" />
-        {attachment.name}
+      <span className="flex h-40 w-28 animate-pulse items-center justify-center rounded-3 border border-line-subtle bg-raised text-fg-3">
+        <ImageIcon className="size-5" />
       </span>
     );
   }
@@ -79,9 +85,10 @@ function SentImage({
       type="button"
       onClick={() => onOpen({ src, name: attachment.name })}
       aria-label={`Open ${attachment.name}`}
-      className="size-20 cursor-zoom-in overflow-hidden rounded-2 border border-line"
+      title={attachment.name}
+      className="group/img block max-h-56 cursor-zoom-in overflow-hidden rounded-3 border border-line-subtle bg-inset transition-colors duration-(--dur-1) hover:border-line-strong"
     >
-      <img src={src} alt={attachment.name} className="size-full object-cover" />
+      <img src={src} alt={attachment.name} className="max-h-56 w-auto max-w-full object-contain" />
     </button>
   );
 }

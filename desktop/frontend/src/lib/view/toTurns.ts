@@ -16,6 +16,7 @@ import type {
   Turn,
 } from '@/fixtures/types';
 import { isArtifactTool } from '@/features/artifacts/registry';
+import { fileItem } from '@/lib/view/fileTools';
 import type { LiveMessage, LiveTurn } from '@/lib/stores/runStore';
 
 type Label = (ref: { provider: string; model: string }) => string;
@@ -246,6 +247,10 @@ function callItem(
   const [connector, tool] = call ? [call.connector, call.tool] : splitName(part?.name ?? '');
   const modelName = call?.model_tool_name ?? part?.name ?? '';
   if (isArtifactTool(modelName)) return artifactItem(id, tool, call, part, titles);
+  // The file connectors have richer rows than "used a tool": a read with its line range, a
+  // search with its count, an edit with its diff (16 §6).
+  const file = call ? fileItem(call) : undefined;
+  if (file) return file;
   return {
     kind: 'connector',
     id,

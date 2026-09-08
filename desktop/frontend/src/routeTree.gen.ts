@@ -16,6 +16,8 @@ import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as ProjectsRouteImport } from './routes/projects'
 import { Route as ChatIndexRouteImport } from './routes/chat.index'
 import { Route as ChatChatIdRouteImport } from './routes/chat.$chatId'
+import { Route as CodeIndexRouteImport } from './routes/code.index'
+import { Route as CodeSessionIdRouteImport } from './routes/code.$sessionId'
 import { Route as DevGalleryRouteImport } from './routes/dev.gallery'
 
 const IndexRoute = IndexRouteImport.update({
@@ -53,6 +55,16 @@ const ChatChatIdRoute = ChatChatIdRouteImport.update({
   path: '/chat/$chatId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CodeIndexRoute = CodeIndexRouteImport.update({
+  id: '/code/',
+  path: '/code/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CodeSessionIdRoute = CodeSessionIdRouteImport.update({
+  id: '/code/$sessionId',
+  path: '/code/$sessionId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DevGalleryRoute = DevGalleryRouteImport.update({
   id: '/dev/gallery',
   path: '/dev/gallery',
@@ -66,8 +78,10 @@ export interface FileRoutesByFullPath {
   '/onboarding': typeof OnboardingRoute
   '/projects': typeof ProjectsRoute
   '/chat/$chatId': typeof ChatChatIdRoute
+  '/code/$sessionId': typeof CodeSessionIdRoute
   '/dev/gallery': typeof DevGalleryRoute
   '/chat/': typeof ChatIndexRoute
+  '/code/': typeof CodeIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -76,8 +90,10 @@ export interface FileRoutesByTo {
   '/onboarding': typeof OnboardingRoute
   '/projects': typeof ProjectsRoute
   '/chat/$chatId': typeof ChatChatIdRoute
+  '/code/$sessionId': typeof CodeSessionIdRoute
   '/dev/gallery': typeof DevGalleryRoute
   '/chat': typeof ChatIndexRoute
+  '/code': typeof CodeIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -87,8 +103,10 @@ export interface FileRoutesById {
   '/onboarding': typeof OnboardingRoute
   '/projects': typeof ProjectsRoute
   '/chat/$chatId': typeof ChatChatIdRoute
+  '/code/$sessionId': typeof CodeSessionIdRoute
   '/dev/gallery': typeof DevGalleryRoute
   '/chat/': typeof ChatIndexRoute
+  '/code/': typeof CodeIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -99,8 +117,10 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/projects'
     | '/chat/$chatId'
+    | '/code/$sessionId'
     | '/dev/gallery'
     | '/chat/'
+    | '/code/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -109,8 +129,10 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/projects'
     | '/chat/$chatId'
+    | '/code/$sessionId'
     | '/dev/gallery'
     | '/chat'
+    | '/code'
   id:
     | '__root__'
     | '/'
@@ -119,8 +141,10 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/projects'
     | '/chat/$chatId'
+    | '/code/$sessionId'
     | '/dev/gallery'
     | '/chat/'
+    | '/code/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -130,8 +154,10 @@ export interface RootRouteChildren {
   OnboardingRoute: typeof OnboardingRoute
   ProjectsRoute: typeof ProjectsRoute
   ChatChatIdRoute: typeof ChatChatIdRoute
+  CodeSessionIdRoute: typeof CodeSessionIdRoute
   DevGalleryRoute: typeof DevGalleryRoute
   ChatIndexRoute: typeof ChatIndexRoute
+  CodeIndexRoute: typeof CodeIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -185,6 +211,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ChatChatIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/code/': {
+      id: '/code/'
+      path: '/code'
+      fullPath: '/code/'
+      preLoaderRoute: typeof CodeIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/code/$sessionId': {
+      id: '/code/$sessionId'
+      path: '/code/$sessionId'
+      fullPath: '/code/$sessionId'
+      preLoaderRoute: typeof CodeSessionIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/dev/gallery': {
       id: '/dev/gallery'
       path: '/dev/gallery'
@@ -202,8 +242,10 @@ const rootRouteChildren: RootRouteChildren = {
   OnboardingRoute: OnboardingRoute,
   ProjectsRoute: ProjectsRoute,
   ChatChatIdRoute: ChatChatIdRoute,
+  CodeSessionIdRoute: CodeSessionIdRoute,
   DevGalleryRoute: DevGalleryRoute,
   ChatIndexRoute: ChatIndexRoute,
+  CodeIndexRoute: CodeIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

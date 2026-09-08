@@ -24,14 +24,21 @@ export function TurnSteps({
   steps,
   running: turnRunning = true,
   defaultOpen = false,
+  detailed = false,
   onOpen,
 }: {
   steps: StepBlock[];
   running?: boolean;
   defaultOpen?: boolean;
+  /**
+   * The code surface (16 §6). A chat folds its tool work away because the answer is the point;
+   * a code session's work *is* the answer, so the steps start open and each one can be opened
+   * further to the diff or the output it produced.
+   */
+  detailed?: boolean;
   onOpen?: (item: ActivityItem) => void;
 }) {
-  const [open, setOpen] = useState(defaultOpen);
+  const [open, setOpen] = useState(defaultOpen || detailed);
   const items = steps.flatMap((s) => (s.kind === 'activity' ? s.items : []));
   // Context and notices are always visible; only reasoning and tool work fold.
   const plain = items.filter((i) => i.kind === 'context' || i.kind === 'notice');
@@ -101,7 +108,9 @@ export function TurnSteps({
             ) : (
               s.items
                 .filter((item) => item.kind !== 'context' && item.kind !== 'notice')
-                .map((item) => <ActivityRow key={item.id} item={item} onOpen={onOpen} />)
+                .map((item) => (
+                  <ActivityRow key={item.id} item={item} expandable={detailed} onOpen={onOpen} />
+                ))
             ),
           )}
         </div>

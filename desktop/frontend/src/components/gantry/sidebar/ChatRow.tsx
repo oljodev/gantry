@@ -44,7 +44,11 @@ type ItemProps = {
  * hollow at rest and filled accent while a turn runs. Right-click or the `⋯` that appears on
  * hover open the same menu; Rename edits the title in place.
  */
-export function ChatRow({ chat, ...actions }: { chat: ChatSummary } & ChatRowActions) {
+export function ChatRow({
+  chat,
+  to = '/chat/$chatId',
+  ...actions
+}: { chat: ChatSummary; to?: '/chat/$chatId' | '/code/$sessionId' } & ChatRowActions) {
   const [editing, setEditing] = useState(false);
   const running = chat.running === true;
   const menu = (Item: ComponentType<ItemProps>, Separator: ComponentType) => (
@@ -86,9 +90,12 @@ export function ChatRow({ chat, ...actions }: { chat: ChatSummary } & ChatRowAct
       <ContextMenuTrigger
         render={
           <Link
-            to="/chat/$chatId"
-            params={{ chatId: chat.id }}
-            className="group/row flex h-(--row-sidebar) items-center gap-2.5 rounded-2 px-2 text-ui text-fg transition-colors duration-(--dur-1) hover:bg-hover data-[status=active]:bg-selected"
+            to={to}
+            params={{ chatId: chat.id, sessionId: chat.id }}
+            className={cn(
+              'group/row flex items-center gap-2.5 rounded-2 px-2 text-ui text-fg transition-colors duration-(--dur-1) hover:bg-hover data-[status=active]:bg-selected',
+              chat.subtitle ? 'py-1' : 'h-(--row-sidebar)',
+            )}
           />
         }
       >
@@ -99,8 +106,11 @@ export function ChatRow({ chat, ...actions }: { chat: ChatSummary } & ChatRowAct
             running ? 'animate-pulse border-accent bg-accent' : 'border-fg-3',
           )}
         />
-        <span className={cn('min-w-0 flex-1 truncate', chat.archived && 'text-fg-2')}>
-          {chat.title}
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className={cn('truncate', chat.archived && 'text-fg-2')}>{chat.title}</span>
+          {chat.subtitle && (
+            <span className="truncate font-mono text-micro text-fg-3">{chat.subtitle}</span>
+          )}
         </span>
         {chat.pending !== undefined && chat.pending > 0 && (
           <Badge variant="accent" aria-label={`${chat.pending} pending decision`}>

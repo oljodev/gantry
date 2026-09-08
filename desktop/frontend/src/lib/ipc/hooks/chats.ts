@@ -7,6 +7,7 @@ import type {
   ExportFormat,
   Feedback,
   ModelRef,
+  Surface,
   TurnId,
 } from '@/bindings';
 import { commands, isTauri, unwrap } from '@/lib/ipc/client';
@@ -19,11 +20,14 @@ export function chatQuery(chatId: ChatId) {
   };
 }
 
-export function useChats() {
+/**
+ * The chats of one surface, or of both when none is named (16 §5). The two lists never mix: a
+ * code session in the chat sidebar would be a session whose folder the chat side cannot show.
+ */
+export function useChats(surface?: Surface) {
   return useQuery({
-    queryKey: keys.chats,
-    // Every surface until the Code sidebar exists to filter them (16 §5).
-    queryFn: () => unwrap(commands.listChats(null)),
+    queryKey: surface ? [...keys.chats, surface] : keys.chats,
+    queryFn: () => unwrap(commands.listChats(surface ?? null)),
     enabled: isTauri(),
   });
 }
@@ -73,7 +77,15 @@ const EMPTY_UPDATE: ChatUpdate = {
 export function useChatMutations() {
   const qc = useQueryClient();
   const create = useMutation({
-    mutationFn: (model: ModelRef | null) => unwrap(commands.createChat(model, null, null)),
+    mutationFn: ({
+      model,
+      surface,
+      roots,
+    }: {
+      model: ModelRef | null;
+      surface?: Surface;
+      roots?: string[];
+    }) => unwrap(commands.createChat(model, surface ?? null, roots ?? null)),
     onSuccess: () => void qc.invalidateQueries({ queryKey: keys.chats }),
   });
   // Pin, rename and archive show at once and roll back if the backend refuses (01 §5).

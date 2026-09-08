@@ -1,5 +1,6 @@
 import {
   ArrowSquareOutIcon,
+  CaretRightIcon,
   CheckIcon,
   FileTextIcon,
   InfoIcon,
@@ -11,7 +12,7 @@ import {
   TerminalIcon,
   XIcon,
 } from '@phosphor-icons/react';
-import type { ReactNode } from 'react';
+import { type ReactNode, useState } from 'react';
 
 import { HunkPreview } from '@/components/gantry/activity/HunkPreview';
 import { ConnectorMark } from '@/components/gantry/ConnectorMark';
@@ -24,10 +25,18 @@ export interface ActivityRowProps {
   item: ActivityItem;
   /** Opens the item in the right pane. */
   onOpen?: (item: ActivityItem) => void;
+  /**
+   * The code surface (16 §6): the row opens in place to the whole diff or the whole output,
+   * rather than only into the pane. A code session is read by scrolling through what happened,
+   * and a diff two clicks away in a side panel is a diff nobody looks at.
+   */
+  expandable?: boolean;
 }
 
 /** One activity item (05 §1, 15 §8): icon, title, mono summary, status at the right. */
-export function ActivityRow({ item, onOpen }: ActivityRowProps) {
+export function ActivityRow({ item, onOpen, expandable }: ActivityRowProps) {
+  const detail = expandable ? inlineDetail(item, onOpen) : undefined;
+  if (detail) return <ExpandableRow item={item} detail={detail} onOpen={onOpen} />;
   const open = onOpen ? () => onOpen(item) : undefined;
   switch (item.kind) {
     case 'read':
@@ -196,6 +205,123 @@ export function ActivityRow({ item, onOpen }: ActivityRowProps) {
         </div>
       );
   }
+}
+
+/**
+ * A row that opens in place. The header stays exactly the row it was — same icon, title and
+ * status — so a session reads the same whether or not anything is open.
+ */
+function ExpandableRow({
+  item,
+  detail,
+  onOpen,
+}: {
+  item: ActivityItem;
+  detail: ReactNode;
+  onOpen?: (item: ActivityItem) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="flex flex-col">
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          aria-expanded={open}
+          aria-label={open ? 'Hide details' : 'Show details'}
+          onClick={() => setOpen((o) => !o)}
+          className="flex size-4 shrink-0 items-center justify-center rounded-1 text-fg-3 transition-colors duration-(--dur-1) hover:text-fg"
+        >
+          <CaretRightIcon
+            className={cn('size-3 transition-transform duration-(--dur-1)', open && 'rotate-90')}
+          />
+        </button>
+        <div className="min-w-0 flex-1">
+          <ActivityRow item={item} onOpen={() => setOpen((o) => !o)} />
+        </div>
+      </div>
+      {open && (
+        <div className="mt-1 mb-2 ml-5 flex flex-col gap-1">
+          {detail}
+          {onOpen && (
+            <button
+              type="button"
+              onClick={() => onOpen(item)}
+              className="self-start text-meta text-fg-3 transition-colors duration-(--dur-1) hover:text-fg"
+            >
+              Open in pane
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** What opening a row shows, or nothing when the row has nothing more to say. */
+function inlineDetail(item: ActivityItem, onOpen?: (item: ActivityItem) => void): ReactNode {
+  switch (item.kind) {
+    case 'edit':
+      if (item.hunks.length === 0) return undefined;
+      return (
+        <>
+          <PathHeader path={item.path} />
+          <HunkPreview
+            hunks={item.hunks}
+            full
+            onShowAll={onOpen ? () => onOpen(item) : undefined}
+          />
+        </>
+      );
+    case 'command':
+      if (item.output.length === 0) return undefined;
+      return (
+        <>
+          <PathHeader path={`$ ${item.command}`} />
+          <pre className="selectable max-h-96 overflow-auto rounded-2 border border-line-subtle bg-inset px-3 py-2 font-mono text-mono text-fg-2">
+            {item.output.join('\n')}
+          </pre>
+        </>
+      );
+    case 'connector': {
+      const args = item.args ? JSON.stringify(item.args, null, 2) : undefined;
+      const result = typeof item.result === 'string' ? item.result : undefined;
+      if (!args && !result) return undefined;
+      return (
+        <>
+          {args && <Block label="Arguments" body={args} />}
+          {result && <Block label="Result" body={result} tone={item.isError ? 'bad' : undefined} />}
+        </>
+      );
+    }
+    default:
+      return undefined;
+  }
+}
+
+function PathHeader({ path }: { path: string }) {
+  return (
+    <div className="truncate rounded-2 bg-inset px-3 py-1 font-mono text-mono text-fg-2">
+      {path}
+    </div>
+  );
+}
+
+function Block({ label, body, tone }: { label: string; body: string; tone?: 'bad' }) {
+  return (
+    <div>
+      <div className="pb-0.5 text-micro font-medium uppercase tracking-[0.04em] text-fg-3">
+        {label}
+      </div>
+      <pre
+        className={cn(
+          'selectable max-h-64 overflow-auto rounded-2 border border-line-subtle bg-inset px-3 py-2 font-mono text-mono',
+          tone === 'bad' ? 'text-bad' : 'text-fg-2',
+        )}
+      >
+        {body}
+      </pre>
+    </div>
+  );
 }
 
 function Row({

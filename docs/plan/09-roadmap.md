@@ -297,15 +297,19 @@ tools, and the feed.
 - ~~Migration 0008: `chats.surface` (`chat` | `code`, default `chat`, indexed with
   `last_message_at`), and the `chat_roots` rows a code session must have before its first turn,
   enforced in the agent.~~ **Done.**
-- The two-icon segmented control in the title strip, `Cmd/Ctrl+Shift+K`, the palette entries, the
-  last-route-per-surface in the persisted UI store, and `/code` + `/code/$sessionId`.
-- The code sidebar: sessions with their folder on the second line, the folder filter, Projects
-  shared and filtered to those with a workspace folder.
+- ~~The two-icon segmented control in the title strip, `Cmd/Ctrl+Shift+K`, the palette entries,
+  the last-route-per-surface in the persisted UI store, and `/code` + `/code/$sessionId`.~~
+  **Done** 2026-09-08; the control sits beside the logo, as 16 §4 now says.
+- ~~The code sidebar: sessions with their folder on the second line~~ **done**; the folder
+  filter and Projects filtered to those with a workspace folder are still to come.
 - The right pane's home tab becomes **Changes**: every file the session touched, newest first,
   with net line counts, the selected file's unified diff, per-file **Revert** and session-level
   **Revert all**, all through the journal.
-- The two empty states, including the one-time disclosure of §8 naming the connectors the surface
-  just turned on.
+- ~~The two empty states, including the one-time disclosure of §8 naming the connectors the
+  surface just turned on.~~ **Done**: the Code home picks the folder, names the two connectors it
+  turns on, and lists recent sessions. It says "Filesystem and Code editor" rather than three,
+  because the shell has no code behind it until M7 and naming a connector that does nothing would
+  be the disclosure lying in the other direction.
 - Per-surface defaults in Settings → General (16 §9). Both ship at Auto-edit, for the reason
   16 §9 now records; the two settings stay separate.
 

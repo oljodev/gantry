@@ -5,6 +5,8 @@ import type { CustomizeSection, Section } from '@/features/settings/sections';
 
 export type ThemePref = 'system' | 'light' | 'dark';
 export type Density = 'comfortable' | 'compact';
+/** Which half of the app is showing (docs/plan/16 §4). */
+export type Surface = 'chat' | 'code';
 
 interface UiState {
   theme: ThemePref;
@@ -12,6 +14,11 @@ interface UiState {
   sidebarWidth: number;
   sidebarCollapsed: boolean;
   paneWidth: number;
+  surface: Surface;
+  /** Where each surface was last, so switching back returns to it rather than to its index. */
+  lastRoute: Record<Surface, string | null>;
+  setSurface: (surface: Surface) => void;
+  rememberRoute: (surface: Surface, path: string) => void;
   /** The open section of each dialog, or null when it is closed (15 A18). */
   settings: Section | null;
   customize: CustomizeSection | null;
@@ -28,7 +35,7 @@ interface UiState {
 
 type Persisted = Pick<
   UiState,
-  'theme' | 'density' | 'sidebarWidth' | 'sidebarCollapsed' | 'paneWidth'
+  'theme' | 'density' | 'sidebarWidth' | 'sidebarCollapsed' | 'paneWidth' | 'surface' | 'lastRoute'
 >;
 
 export const SIDEBAR_MIN = 200;
@@ -57,6 +64,11 @@ export const useUiStore = create<UiState>()(
       sidebarWidth: SIDEBAR_DEFAULT,
       sidebarCollapsed: false,
       paneWidth: PANE_DEFAULT,
+      surface: 'chat',
+      lastRoute: { chat: null, code: null },
+      setSurface: (surface) => set({ surface }),
+      rememberRoute: (surface, path) =>
+        set((s) => ({ surface, lastRoute: { ...s.lastRoute, [surface]: path } })),
       settings: null,
       customize: null,
       // Only one of the two is ever open: they are the same kind of surface.
@@ -86,6 +98,8 @@ export const useUiStore = create<UiState>()(
         sidebarWidth: s.sidebarWidth,
         sidebarCollapsed: s.sidebarCollapsed,
         paneWidth: s.paneWidth,
+        surface: s.surface,
+        lastRoute: s.lastRoute,
       }),
     },
   ),

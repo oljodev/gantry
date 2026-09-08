@@ -29,6 +29,8 @@ export interface ChatSummary {
   running?: boolean;
   pending?: number;
   archived?: boolean;
+  /** A code session's folder, under the title (16 §5). */
+  subtitle?: string;
 }
 
 export interface HunkLine {

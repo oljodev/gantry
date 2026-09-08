@@ -1,4 +1,4 @@
-import { Link } from '@tanstack/react-router';
+import { Link, useNavigate } from '@tanstack/react-router';
 import {
   FolderSimpleIcon,
   GearIcon,
@@ -8,12 +8,15 @@ import {
   SparkleIcon,
   SidebarSimpleIcon,
 } from '@phosphor-icons/react';
-import { type ReactNode, useCallback, useRef, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 
 import { Logo } from '@/components/gantry/Logo';
+import { SurfaceToggle } from '@/components/gantry/sidebar/SurfaceToggle';
 import { PermissionsDialog } from '@/components/gantry/chat/PermissionsDialog';
 import { SystemPromptDialog } from '@/components/gantry/chat/SystemPromptDialog';
 import { ChatRow } from '@/components/gantry/sidebar/ChatRow';
+import { useNewCodeSession } from '@/features/code/session';
+import { folderName } from '@/lib/folders';
 import { toast } from '@/components/ui/toast';
 import type { ChatSummary } from '@/fixtures/types';
 import { useChatMutations, useChats } from '@/lib/ipc/hooks/chats';
@@ -29,13 +32,17 @@ import { cn, isMac } from '@/lib/utils';
  * chats query; the running dot comes from the run store at channel speed.
  */
 export function Sidebar() {
+  const navigate = useNavigate();
+  const surface = useUiStore((s) => s.surface);
+  const code = surface === 'code';
   const width = useUiStore((s) => s.sidebarWidth);
   const setWidth = useUiStore((s) => s.setSidebarWidth);
   const toggleSidebar = useUiStore((s) => s.toggleSidebar);
   const openSettings = useUiStore((s) => s.openSettings);
   const openCustomize = useUiStore((s) => s.openCustomize);
   const dragging = useRef(false);
-  const chatsQuery = useChats();
+  const chatsQuery = useChats(surface);
+  const { start: startCodeSession } = useNewCodeSession();
   const live = useRunStore((s) => s.byChat);
   const pendingCounts = usePendingCounts();
   const { update, remove, exportChat } = useChatMutations();
@@ -72,6 +79,8 @@ export function Sidebar() {
     lastMessageAt: c.last_message_at,
     running: live[c.id]?.status === 'running' || c.active_turn !== null,
     pending: live[c.id]?.pending.length || pendingCounts[c.id] || undefined,
+    // A code session is its folder as much as its title, so the row says which one (16 §5).
+    subtitle: c.roots[0] ? folderName(c.roots[0]) : undefined,
   }));
   const byRecent = (a: ChatSummary, b: ChatSummary) => b.lastMessageAt - a.lastMessageAt;
   const pinned = rows.filter((c) => c.pinned && !c.archived);
@@ -89,8 +98,23 @@ export function Sidebar() {
       onExport={() => void exportOne(c)}
       onViewPermissions={() => setPermissionsFor(c.id)}
       onViewPrompt={developer ? () => setPromptFor(c.id) : undefined}
+      to={code ? '/code/$sessionId' : '/chat/$chatId'}
     />
   );
+
+  // ⌘⇧K switches surface from anywhere in the window (16 §4).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || !e.shiftKey || e.key.toLowerCase() !== 'k') return;
+      e.preventDefault();
+      const next = code ? 'chat' : 'code';
+      useUiStore.getState().setSurface(next);
+      const back = useUiStore.getState().lastRoute[next];
+      void navigate({ to: back ?? (next === 'code' ? '/code' : '/chat') });
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [code, navigate]);
 
   const onPointerDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
@@ -127,7 +151,10 @@ export function Sidebar() {
           isMac() && 'pl-(--traffic-lights)',
         )}
       >
-        <Logo size={22} />
+        <div className="flex min-w-0 items-center gap-2">
+          <Logo size={22} />
+          <SurfaceToggle />
+        </div>
         <button
           type="button"
           aria-label="Hide sidebar"
@@ -141,14 +168,25 @@ export function Sidebar() {
       </div>
 
       <nav className="flex min-h-0 flex-1 flex-col gap-0.5 px-2" aria-label="Main">
-        <SidebarItem to="/chat" icon={<PlusIcon size={16} />} label="New chat" shortcut="⌘N" />
+        {code ? (
+          <SidebarItem
+            icon={<PlusIcon size={16} />}
+            label="New session"
+            shortcut="⌘N"
+            onClick={() => void startCodeSession(null)}
+          />
+        ) : (
+          <SidebarItem to="/chat" icon={<PlusIcon size={16} />} label="New chat" shortcut="⌘N" />
+        )}
         <SidebarItem
           icon={<MagnifyingGlassIcon size={16} />}
           label="Search"
           shortcut="⌘K"
           onClick={() => window.dispatchEvent(new CustomEvent('gantry:palette'))}
         />
-        <SidebarItem to="/projects" icon={<FolderSimpleIcon size={16} />} label="Projects" />
+        {!code && (
+          <SidebarItem to="/projects" icon={<FolderSimpleIcon size={16} />} label="Projects" />
+        )}
         <SidebarItem to="/artifacts" icon={<SparkleIcon size={16} />} label="Artifacts" />
         <SidebarItem
           icon={<PuzzlePieceIcon size={16} />}
@@ -163,8 +201,12 @@ export function Sidebar() {
               {pinned.map(row)}
             </>
           )}
-          <SectionLabel>Chats</SectionLabel>
-          {recents.length === 0 ? <Muted>No chats yet</Muted> : recents.map(row)}
+          <SectionLabel>{code ? 'Sessions' : 'Chats'}</SectionLabel>
+          {recents.length === 0 ? (
+            <Muted>{code ? 'No sessions yet' : 'No chats yet'}</Muted>
+          ) : (
+            recents.map(row)
+          )}
           {archived.length > 0 && (
             <>
               <SectionLabel>Archived</SectionLabel>

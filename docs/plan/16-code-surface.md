@@ -69,8 +69,9 @@ Everything not in this table is identical, deliberately.
 
 ## 4. The switch
 
-A segmented control of two icons in the title strip, at the top of the sidebar and above the
-first navigation row, matching where Claude Desktop puts its own. A speech-bubble glyph for Chat
+A segmented control of two icons in the sidebar's share of the title strip, **beside the logo**
+(built 2026-09-08, from where Claude Desktop puts its own; this document first said "above the
+first navigation row", which put it a row too low and left the header looking empty). A speech-bubble glyph for Chat
 and an angle-bracket glyph for Code, both Phosphor regular at 16, the active one on
 `bg-selected` with its icon in `fg`, the inactive in `fg-2`. A tooltip names each. Twenty-eight
 pixels tall, so it does not compete with the window controls opposite.
@@ -83,10 +84,12 @@ Pressing it:
    streaming while the user is on the other; the sidebar's running indicator shows it there.
 
 `Cmd/Ctrl+Shift+K` does the same from the keyboard. The command palette carries "Switch to Code"
-and "Switch to Chat" so it is discoverable without knowing the shortcut.
+and "Switch to Chat" so it is discoverable without knowing the shortcut. Both are built.
 
 The surface is part of the route, so back and forward move between surfaces naturally and a deep
-link from a notification lands on the right one.
+link from a notification lands on the right one. Which surface is showing is derived from the
+route rather than stored beside it, so a session opened from the palette, from the Code home or
+from a link agrees with the toggle without anything having to keep them in step.
 
 ## 5. Layout of the code surface
 
@@ -127,9 +130,28 @@ the decision badge, is unchanged from 15 §7.
 
 ### Content column
 
-Identical to the chat surface: the same measure, the same turn structure, the same inline
-activity behind a summary line, the same interaction cards. A code session produces more tool
-calls and more file edits, which is exactly what the collapsed activity summary was designed for.
+The same measure, the same turn structure, the same interaction cards. What differs is how much
+of the work is showing, and that difference is the surface (**revised 2026-09-08**, after the
+first code session was watched: this document said the column was *identical*, with the activity
+folded behind a summary line as it is in a chat).
+
+- **The steps start open.** In a chat the tool work is scaffolding and the answer is the point,
+  so folding it away is right. In a code session the work *is* the answer — a paragraph saying
+  "I updated the shell" is worth less than the four edits it names — and a summary line the user
+  opens every single time is a click charged for nothing.
+- **Every step opens further, in place.** An edit opens to its whole diff with line numbers, a
+  command to its whole output, a connector call to its arguments and its result. The pane still
+  offers the same thing, and the row keeps an "Open in pane" for a diff worth sitting with, but
+  the reading position is the feed: a diff two clicks away in a side panel is a diff nobody
+  looks at.
+- **The file tools get their own rows rather than "used a tool".** A read shows the file and the
+  line range, a search its pattern and its count, an edit the path and `+n −m`. The feed already
+  had these row kinds; the code surface is what makes projecting into them worth the code.
+
+A code session produces many more tool calls than a chat, which is the argument this document
+originally made for folding them. Watching one says the opposite: the volume is the reason to
+show the work, because the summary of twelve calls is never the twelve things the user wants to
+check.
 
 ### Right pane
 

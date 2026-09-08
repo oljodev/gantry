@@ -48,10 +48,13 @@ import { toTurns } from '@/lib/view/toTurns';
 export function ChatView({
   chatId,
   openArtifactId,
+  surface = 'chat',
 }: {
   chatId: string;
   /** An artifact to show in the pane on arrival (from the library or a deep link). */
   openArtifactId?: string;
+  /** The code surface shows the work rather than folding it away (16 §6). */
+  surface?: 'chat' | 'code';
 }) {
   const chat = useChat(chatId);
   const live = useRunStore((s) => s.byChat[chatId]);
@@ -348,6 +351,7 @@ export function ChatView({
               <TurnView
                 key={turn.id}
                 turn={turn}
+                detailed={surface === 'code'}
                 isLast={i === turns.length - 1}
                 onOpenItem={openItem}
                 onDecide={decide}
