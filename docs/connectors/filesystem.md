@@ -508,13 +508,23 @@ interpret file contents beyond decoding text and extracting document text. Each 
 another connector's job, and keeping them out is what allows this one's risk statement to be
 short enough that a user can actually read it.
 
-## 19. Ownership still in play
+## 19. Ownership, settled (2026-09-08)
 
-For the code-editor session, the tools whose home is undecided:
+`read_file` and `write_file` stay here. Both connectors are attached in a code session
+(16 §8), so the question is no longer which one a session gets, but which one owns each tool —
+and no tool may exist twice.
 
-| Tool | Argument for filesystem | Argument for code-editor |
-|------|------------------------|--------------------------|
-| `read_file` | Reading a document has nothing to do with editing | If the editor requires a file to have been read before it is changed, the read that satisfies that rule should be the editor's own |
-| `write_file` | Writing a note or a data file is not editing code | Whole-file replacement is an edit, and belongs with the journal, the diff and the undo |
+The one real argument for moving them was the freshness rule: if the editor refuses to change a
+file that has not been read, the read that satisfies the rule should be its own. That argument
+dissolves once the rule lives where it belongs. The journal, the recorded read and the staleness
+check are `gantry-workspace`'s, underneath both connectors, so a `filesystem__read_file` satisfies
+a later `code_editor__replace` exactly as the editor's own read would have.
 
-The rest of §5 stays here under every option.
+What follows from that:
+
+- Reading, writing whole files, listing, globbing, searching, moving and extracting document text
+  are this connector's, in a chat and in a code session alike.
+- The surgical edits — replace, insert, patch and undo — are `code-editor`'s, because each writes
+  a journal entry that `Revert` reads back (`docs/connectors/code-editor.md`).
+- A whole-file `write_file` journals too. Writing a file *is* an edit; keeping the tool here is
+  about which name the model reaches for, not about escaping the journal.

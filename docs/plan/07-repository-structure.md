@@ -66,6 +66,7 @@ gantry/
 │   │       │   ├── projects/{ProjectPage.tsx, ProjectSettings.tsx, KnowledgeFiles.tsx, ProjectArtifacts.tsx}
 │   │       │   ├── connectors/{InstallDialog.tsx, AddCustomServer.tsx, DeviceCodeDialog.tsx, install.ts; later RuntimeCheck.tsx, ConnectorDetail.tsx,
 │   │       │   │               InstanceSettings.tsx, UserConfigForm.tsx, AuthStatus.tsx, customPanels.ts}   # customPanels: import.meta.glob of ../../connectors/*/ui
+│   │       │   ├── code/{CodeSurface.tsx, SessionList.tsx, FolderPicker.tsx, ChangesPane.tsx, FirstRunNotice.tsx}   # the code surface (16 §5)
 │   │       │   ├── customize/{CustomizeDialog.tsx, ConnectorsSection.tsx, SkillsSection.tsx, MemorySection.tsx}   # the second dialog (15 A18)
 │   │       │   ├── settings/{sections.ts, SettingsDialog.tsx, SettingsBody.tsx, General.tsx, Providers.tsx, Data.tsx, Advanced.tsx, Guard.tsx, Guardrails.tsx, About.tsx}
 │   │       │   ├── palette/CommandPalette.tsx

@@ -453,9 +453,10 @@ The curated catalog is hand-authored. Vendor and community directories (mcpserve
 
 ### Nothing is installed by default
 
-The whole catalog is browsable; every entry, first-party included, is inert until the user clicks **Install** on it. There are no default-on connectors. Two consequences are handled explicitly:
+The whole catalog is browsable; every entry, first-party included, is inert until the user acts on it. There are no default-on connectors, and exactly one action installs more than one thing at a time. Three consequences are handled explicitly:
 
-- **Add folder to workspace** in a chat with the local connectors not yet installed shows one dialog: "To work in this folder Gantry needs the Filesystem, Code editor and Shell connectors" with **Install all three** (one action, three installs, each logged) or **Choose**. The same applies to the Web search toggle and the `web` connector.
+- **Opening the Code surface** installs and attaches `filesystem`, `code-editor` and `shell` together (16 C6, §8). This is the one exception to "one click, one install", and it is an exception in convenience only: opening the surface is the explicit action, the empty state names all three before the first message, each is an ordinary instance in the Connectors list, and any of them can be removed. A code session whose shell was removed still edits. The alternative — asking a user who just chose a folder to install three things by hand — was tried on paper and reads as an obstacle course.
+- **Add folder to workspace** in a *chat* with the filesystem connector not installed shows one dialog offering to install it. A chat is never given the code editor or the shell; the surface split (16) is what makes that clean. The same one-dialog pattern applies to the Web search toggle and the `web` connector.
 - Connector suggestions (§9) are runtime tools, not a connector, so they need no installation; they never install anything without the card's Install button.
 
 ### The install flow, by transport

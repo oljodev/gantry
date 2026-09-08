@@ -17,7 +17,7 @@ chat, and a page loses your place.
 
 | Section | Contents | Notes |
 |---------|----------|-------|
-| **General** | Default permission mode and Guard for new chats; "Confirm before switching a chat to Unguarded Auto" (arrives with Auto mode, M8); "Suggest connectors" toggle (03 §9); "Open artifacts automatically" (13 §4, `chat.open_artifact_panel`); global **Custom instructions** editor (10 §2) with a character and token count | Project defaults override these for chats inside the project. Built in M2 |
+| **General** | Default permission mode and Guard, **per surface** (16 §9: Manual for chat, Auto-edit for code); "Confirm before switching a chat to Unguarded Auto" (arrives with Auto mode, M8); "Suggest connectors" toggle (03 §9); "Open artifacts automatically" (13 §4, `chat.open_artifact_panel`); global **Custom instructions** editor (10 §2) with a character and token count | Project defaults override these for chats inside the project. Built in M2 |
 | **Appearance** | Theme: Light / Dark / System; density: Comfortable / Compact | Font size follows the OS; accent colour is fixed in v1 |
 | **Providers & models** | The five providers plus custom endpoints: key status, Add/Replace/Remove key, Test, base URL where applicable, default model, model list refresh, pricing from the models cache; default model for new chats | Builds on 06 §5; keys are write-only |
 | **Guard & guardrails** | Judge model per provider (overrides `judge_defaults.toml`), judge timeout, recent decisions with feedback, the guardrail lists (hard-deny, always-confirm, sensitive paths) | 04 §5–§6 |
@@ -65,7 +65,7 @@ Exactly the credential design of 06 §5, surfaced. The five accounts (OpenRouter
 
 ## 5. Default permission mode
 
-`chat.default_mode` (default `auto_edit`) and `chat.default_guard` (default `judge`) apply to chats created outside a project. Projects override both (`projects.default_mode`, `default_guard`, 06 §3). Precedence: project > global; the chat's own mode chip overrides both at any time and appends the mode `SystemNote` (04 §3). Switching a chat to Unguarded Auto asks for confirmation once per chat unless the General setting turns that off.
+`chat.default_mode` and `chat.default_guard` apply to sessions created outside a project, and each surface has its own pair (16 §9): `chat` defaults to Manual, `code` to Auto-edit, both with the judge as guard. A session created before the code surface existed keeps whatever it had; the defaults only decide where a new one starts. Projects override both (`projects.default_mode`, `default_guard`, 06 §3). Precedence: project > global; the chat's own mode chip overrides both at any time and appends the mode `SystemNote` (04 §3). Switching a chat to Unguarded Auto asks for confirmation once per chat unless the General setting turns that off.
 
 ## 6. Connector management
 

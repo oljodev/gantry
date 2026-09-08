@@ -2,7 +2,7 @@
   "manifest_version": "1",
   "id": "code-editor",
   "name": "Code editor",
-  "description": "Precise, reviewable edits to source files: view, replace, insert, patch and undo.",
+  "description": "Precise, reviewable edits to source files: replace, insert, patch and undo.",
   "version": "0.1.0",
   "icon": "icon.svg",
   "category": "developer",

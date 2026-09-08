@@ -143,7 +143,8 @@ desktop/frontend/src/
   lib/stores/     runStore (streaming), uiStore (sidebar width, theme, collapsed groups; persisted)
   lib/markdown/   block splitter, memoized renderer, shiki loader
   lib/partial/    partial JSON helpers for live tool previews
-  features/sidebar        SidebarNav, ChatListItem, PinnedSection
+  features/sidebar        SidebarNav, SurfaceToggle, ChatListItem, SessionListItem, PinnedSection
+  features/code           the code surface's shell: session list, Changes pane, folder picker (16)
   features/chat           ChatView, MessageList, UserMessage, AssistantMessage, TurnStatusBar
   features/composer       Composer, AttachMenu, ModeChip, ModelPicker, RootsChips, AttachmentTray
   features/activity       ActivityFeed, ActivityItem (tool/edit/command/connector/judge), detail drawer:
@@ -177,6 +178,8 @@ The run store is filled only by channel events. When a chat view mounts and a tu
 ### Sidebar
 
 Structure (Claude Desktop's, settled in session 5): **New chat** · **Search** · **Projects** · **Artifacts** · **Pinned** (chats) · **Chats**, a flat list ordered by `last_message_at`, newest first, with no day groups. Projects are not pinned in the sidebar.
+
+Above all of it sits the surface toggle (16 §4), and the list below it is the current surface's: chats on one side, code sessions with their folder on the other. One component, two queries, filtered by `chats.surface`; everything in this section holds on both sides.
 
 Keeping the list in sync with a streaming chat:
 
@@ -233,6 +236,7 @@ Outside the menu, the composer shows the **mode chip** (Manual · Auto-edit · P
 | T10 | CIMD (the preferred MCP client registration) needs an HTTPS-hosted metadata document | Gantry hosts a static `client-metadata.json` from the `web/client-metadata/` folder on its own subdomain (14 §1). Fallbacks: Dynamic Client Registration, pre-registered ids, and user-supplied client credentials (Google's Drive MCP requires the last). |
 | T11 | tauri-specta is still a release candidate | Pin it. Keep command signatures simple so `ts-rs` plus thin wrappers is a one-day fallback. |
 | T12 | "No connector is ever auto-installed" (session 2) vs session 1's auto-installed first-party connectors and an always-on meta-connector | First-party connectors are catalog entries like any other and are installed by an explicit action; "Add folder to workspace" offers to install the three local connectors in one click. Connector search and suggestions are reclassified as runtime tools owned by the app (`gantry__search_connectors`, `gantry__suggest_connector`), because they are app behaviour, not a connector; a General setting turns suggestions off. 03 §9 and §11. |
+| T12b | "No connector is ever auto-installed" vs the Code surface, which is not usable without file access and a shell | The promise is about the *catalog*, not about capability: nothing installs itself in the background, and opening the Code surface is an explicit user action that installs `filesystem`, `code-editor` and `shell` in one go and says so in the empty state before the first message. All three stay ordinary instances, listed and removable. The alternative — absorbing them into the agent as built-in tools, which is what 16 originally decided — would have meant two implementations of file access and no card to read. 16 C6, 03 §11. |
 | T13 | Manual mode "asks before every tool call, no exceptions" vs tools whose only effect is Gantry's own state (artifacts, skill and memory proposals, catalog search) | A sixth tier, `app`, never prompts in any mode. Its members either only produce output the user sees (artifacts) or persist nothing without the user's own card (memory, skills). Prompting for them would be a prompt to allow being asked. 04 §2. |
 | T14 | Executable artifacts must be sandboxed, yet a sandboxed iframe shares the WebKit process with the app and multi-webview is still unstable in Tauri | `srcdoc` + `sandbox="allow-scripts"` + CSP for isolation (the Tauri advisory's post-fix rule makes IPC unreachable from an opaque origin); loop protection at compile time, teardown, and "Open in window" for process isolation; a `WebviewHost` replaces `SandboxHost` when multi-webview stabilizes. 13 §5. |
 | T15 | "The system prompt is fixed" vs standing user preferences, project instructions, memory and skills | The core scaffold is fixed; instruction layers are additive, size-limited and ranked below the core by a precedence rule the model reads first. 10. |

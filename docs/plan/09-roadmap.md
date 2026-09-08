@@ -11,8 +11,8 @@ Ordering principle: something visible in the first week, one risky subsystem ret
 | M3 | Tool loop and Manual mode | 1 | watch the model call a tool and approve it |
 | M4 | All providers | 2 | continue one chat across Anthropic, OpenAI, Gemini, xAI, OpenRouter |
 | M5 | Artifacts | 2–3 | get documents, pages, diagrams and React components in a panel, versioned and sandboxed |
-| M6 | Filesystem and code editor | 2–3 | have the model edit a real repository with visible diffs |
-| M7 | Shell, Plan mode, grants | 1–2 | run a Claude Code-style coding session in three modes |
+| M6 | The Code surface, files and edits | 3–4 | open a repository in the Code surface and have the model change it, with every change a diff you can revert |
+| M7 | Shell, Plan mode, guardrails | 1–2 | run a Claude Code-style coding session in three modes |
 | M8 | Auto mode and the judge | 1–2 | let a task run hands-off with guard decisions visible |
 | M9 | MCP connectors and the install flow | 3 | install GitHub (OAuth) and Playwright (npx) through explicit, runtime-checked installs and use them |
 | M10 | Connector suggestions and access requests | 1 | get a connector recommended, installed and used in one chat |
@@ -280,18 +280,65 @@ documentation server and the Workers bindings server over OAuth; and **settings 
 dialogs**, a Settings modal and a Customize modal, in place of the full-page settings of 11 §2.
 What the probes of the real servers found is in 03 §7.
 
-## M6 — Filesystem and code editor (2–3 weeks)
+## M6 — The Code surface, files and edits (3–4 weeks)
 
-- `gantry-workspace`: scope, canonicalization, sensitive-path patterns, atomic writes with encoding preservation, edit journal, `similar`-based hunks, `ignore`/`grep-searcher` search.
-- `gantry-connectors`: the `Connector` trait, `ConnectorContext`, `ToolEventSink`, registry, manifest parsing and validation, `build.rs` catalog embedding, `desktop/connectors/README.md`, and the **install flow skeleton** (03 §11): first-party connectors appear in the catalog and are installed by the "Add folder to workspace" dialog's explicit action, never automatically.
-- `desktop/connectors/filesystem` and `desktop/connectors/code-editor` complete, with tests on temp directories.
-- Root chips in the composer, `chat_roots`.
-- Activity: edit rows with live argument streaming, inline hunks, the diff drawer (CodeMirror merge), **Revert** through the journal; read/search rows.
-- **Auto-edit** mode.
+Rewritten 2026-09-08 against document 16, which was written after the original M6 and moves file
+work into a second surface. The milestone grows by about a week and swallows 16 §16's
+recommendation: the surface and the tools ship together, because neither demonstrates anything
+alone.
 
-Done when: a real repository can be modified by the model, every change is visible as a diff before and after, and Revert restores the file byte-for-byte.
+**The surface** (16 §4, §5, §12, §13)
 
-## M7 — Shell, Plan mode, grants (1–2 weeks)
+- Migration 0008: `chats.surface` (`chat` | `code`, default `chat`, indexed with
+  `last_message_at`), and the `chat_roots` rows a code session must have before its first turn,
+  enforced in the agent.
+- The two-icon segmented control in the title strip, `Cmd/Ctrl+Shift+K`, the palette entries, the
+  last-route-per-surface in the persisted UI store, and `/code` + `/code/$sessionId`.
+- The code sidebar: sessions with their folder on the second line, the folder filter, Projects
+  shared and filtered to those with a workspace folder.
+- The right pane's home tab becomes **Changes**: every file the session touched, newest first,
+  with net line counts, the selected file's unified diff, per-file **Revert** and session-level
+  **Revert all**, all through the journal.
+- The two empty states, including the one-time disclosure of §8 naming the connectors the surface
+  just turned on.
+- Per-surface defaults in Settings → General (16 §9): Manual for chat, Auto-edit for code.
+
+**The workspace layer**
+
+- `gantry-workspace`: roots and canonicalisation, sensitive-path patterns, Gantry's own
+  configuration refused outright, atomic writes preserving encoding, line endings and
+  permissions, the `file_edits` journal, `similar`-based hunks, `ignore`/`grep-searcher` search,
+  and the read-hash table that makes the freshness rule of `docs/connectors/code-editor.md` §5
+  work across both connectors.
+
+**The connectors** (16 §8, C6 as revised)
+
+- `desktop/connectors/filesystem` complete, per its document: read, write, list, glob, search,
+  move, document text extraction.
+- `desktop/connectors/code-editor` complete, per the document written with this plan: `replace`,
+  `insert`, `apply_patch`, `undo`, each journaled.
+- Opening the Code surface installs and attaches them, emits `ConnectorsChanged` like any other
+  install, and says so once in the empty state. 03 §11 gains this as its one named exception.
+- Both are native, in-process connectors: the `Connector` trait and the registry already exist
+  from M9, so this is the first use of `runtime.kind = "native"`.
+
+**In the feed**
+
+- Read and search rows; edit rows with live argument streaming and inline hunks; the diff drawer
+  on CodeMirror merge; **Revert** from the row as well as from the pane.
+- **Auto-edit** mode: edits apply without asking, everything else still asks.
+
+**The four defects to fix while the code is open**, found reviewing the connector documents
+before this milestone: the shell's `env` prefix defeating the command classifier (M7's problem,
+recorded here so it is not lost), the filesystem connector able to read Gantry's own
+configuration, no untrusted-content rule for file contents and command output reaching the model,
+and the borrowed browser's unauthenticated debug channel (M11's `web`, same reason).
+
+Done when: a real repository can be opened in the Code surface, changed by the model with every
+change visible as a diff, and reverted byte for byte, while a chat about something else continues
+on the other surface.
+
+## M7 — Shell, Plan mode, guardrails (1–2 weeks)
 
 Partly done ahead of its milestone (2026-09-07), because the modes are one policy function and
 the pieces that make Manual and Plan usable are small: **grants** (`chat_grants`, migration
@@ -301,11 +348,16 @@ What is left here is the shell itself, the command classifier that fills Plan mo
 row, the guardrail floor and its settings page, and the argument-scoped grants that need a path
 or a command to scope to.
 
-- `desktop/connectors/shell`: run with streaming output, caps, timeouts, kill, process-group termination, PowerShell/cmd on Windows, login-shell `PATH` on macOS; `CommandClassifier` with its fixture corpus.
+The shell stays a catalog connector (16 C6 as revised) and joins the set the Code surface
+installs and attaches. Until this milestone lands, a code session can edit but not build or test,
+which is a real gap and the reason M7 follows M6 immediately rather than M8.
+
+- `desktop/connectors/shell`: run with streaming output, caps, timeouts, kill, process-group termination, PowerShell/cmd on Windows, login-shell `PATH` on macOS; `CommandClassifier` with its fixture corpus, and the `env`/`nice`/`xargs` prefix problem fixed rather than documented.
 - Command rows and the command drawer with ANSI rendering.
 - **Plan** mode: filtered tool set, read prompts with "Allow all reads", the "Switch to Auto-edit and execute" action.
-- Grants: `chat_grants`, scope options in the prompt (tool / path prefix / command prefix / all reads), the chat Permissions panel with revoke.
+- Argument-scoped grants: path prefix and command prefix, which now have arguments to scope to.
 - Guardrails from `desktop/assets/guardrails/defaults.toml` (hard-deny, always-confirm, sensitive paths, secret patterns) and the **Guardrails** settings page.
+- The untrusted-content rule in the core prompt, once file contents and command output can reach the model.
 
 Done when: a coding task can be run in Manual, Auto-edit and Plan with the matrix in 04 §3 holding in every cell.
 

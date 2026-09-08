@@ -23,8 +23,13 @@ edits a Dockerfile.
 The boundary that does work is by **kind of session**. Conversation about documents and
 connectors is one thing. Working inside a repository is another. They want different tools,
 different defaults, different right-hand panes and different sidebars. Once they are separate
-sessions, two connectors never compete for one chat, and the question that could not be answered
-stops being asked.
+sessions, a chat can have file reading without file editing, and the question of which connector
+a chat should hand a repository to stops being asked.
+
+The two do meet in a code session, where both are attached, and there the answer is ownership
+rather than separation: one tool exists in exactly one connector, over a workspace layer they
+share (C6, §8). What was never workable was two connectors offering the *same* tool and a rule
+about file types deciding between them.
 
 The second reason is honesty about defaults. A coding session wants edits applied without
 confirming each one; a chat about a PDF does not want a shell. Making that a property of the
@@ -39,7 +44,7 @@ surface means the user is never one wrong click from a mismatch.
 | C3 | **A code session is a chat with a surface.** The `chats` table gains one column. Everything downstream is unchanged. | One transcript model, one runner, one event stream, one search index. A second entity would double the persistence layer for no gain. |
 | C4 | **The surface is chosen at creation and never changes.** | A session whose tools changed halfway has a transcript that cannot be explained. "Continue in the other surface" starts a new session carrying context, which is the same pattern artifacts already use. |
 | C5 | **A code session requires a folder before its first message.** | It is what makes it a code session. Without one there is nothing to read, nothing to edit and nothing to run. |
-| C6 | **The code surface's tools are built in, not installed.** No manifest, no catalog entry, no install flow, no detail page. | Following the precedent already in the plan for artifacts and for connector suggestions (03 §9): capabilities that are app behaviour rather than an integration are runtime tools owned by the agent. Opening a specific folder in a specific surface is a more explicit act than clicking Install on a card. |
+| C6 | **The code surface's tools are connectors, installed and attached when the surface is first opened, and it says so.** `filesystem`, `code-editor` and `shell` keep their manifests, their cards and their detail pages; the surface turns them on rather than reimplementing them. *(Revised 2026-09-08 with Olav; the original decision made them built-in runtime tools with no catalog entry.)* | One implementation of file access, not two. A user who wants to see what the surface can do reads the same card as for any other connector, and can remove any of the three. What 03 §11 promises — nothing installed without an explicit user action — holds, because opening the Code surface **is** that action; §8 says so in the empty state, once, naming all three. |
 | C7 | **Each surface has its own defaults**, including permission mode. | Auto-edit is right for coding and wrong for a chat about a spreadsheet. |
 | C8 | **Switching never converts the current session.** It goes to the other surface's last place. | The switch is navigation. Anything that silently changed the tools of a running conversation would be a trap. |
 | C9 | **Connectors still attach in code sessions.** | GitHub, Linear and Sentry are more useful there than anywhere. What is not offered there is the filesystem connector, whose job the built-in tools already do. |
@@ -51,10 +56,10 @@ surface means the user is never one wrong click from a mismatch.
 |---|---|---|
 | For | Conversation, documents, research, connectors, artifacts | Working inside a folder on this machine |
 | Needs a folder | No | Yes, before the first message |
-| File tools | The `filesystem` connector, if installed and attached | Built in, always present |
-| Shell | Not offered | Built in, always present |
+| File tools | The `filesystem` connector, if installed and attached | `filesystem` and `code-editor`, installed and attached with the surface |
+| Shell | Not offered | The `shell` connector, installed and attached with the surface |
 | Artifacts | Yes, central | Yes, occasional |
-| Connectors | Any | Any except `filesystem` |
+| Connectors | Any | Any |
 | Default mode | Manual | Auto-edit |
 | Right pane | Artifacts, and detail tabs | Changes, and detail tabs |
 | Sidebar list | Chats | Sessions, with their folder |
@@ -192,26 +197,41 @@ and inherits the project's instructions, defaults and pinned skills.
 Nothing about this changes the containment rules. The code surface makes the folder easier to
 choose; it does not make the boundary weaker.
 
-## 8. The built-in tools
+## 8. The tools of a code session
 
-Per C6 the code surface's tools are owned by `gantry-agent`, like the artifact and connector
-tools, rather than being a catalog entry. Concretely that means no
-`desktop/connectors/code-editor/` folder, no manifest, no icon, no README, no install dialog, no
-entry in the browse list and no detail page.
+Per C6 the surface does not own tools; it turns three connectors on. Opening the Code surface for
+the first time installs and attaches `filesystem`, `code-editor` and `shell`, and every later code
+session attaches the same three. They are ordinary instances: one row each in
+`connector_instances`, a card each in Discover, a detail page each, removable like anything else.
+Removing one leaves the surface working without it, which is the honest behaviour — a session
+whose shell was removed can still read and edit.
 
-The shell comes with them. A code surface that can edit but cannot build or test is not the
-thing. This is the part of C6 with real weight: the most dangerous capability in the product
-becomes available on opening a folder rather than on an install click.
+Their ownership is settled rather than overlapping, which is what the two-surface split was for.
+`gantry-workspace` owns the roots, the canonicalisation, the sensitive-path rules, the edit
+journal and the freshness rule, and all three connectors sit on it. So:
 
-Two things make that defensible, and both must actually hold.
+- **`filesystem`** owns reading, writing whole files, listing, globbing, searching and moving.
+- **`code-editor`** owns the surgical edits and only those: replace, insert, patch, undo. It needs
+  no `read_file` of its own, because the rule that a file must have been read before it is changed
+  is enforced by the shared journal underneath both connectors, not by which connector did the
+  reading. This answers `docs/connectors/filesystem.md` §19.
+- **`shell`** owns running commands.
 
-**Permission modes still gate every call**, unchanged. Built in means always present in the tool
-list, not always allowed. The default of Auto-edit applies edits without asking and still asks
-for anything that runs a command or touches something outside the folder.
+No tool exists twice, so nothing in a code session's tool array is ambiguous.
 
-**The first code session says so.** The empty state, before the first message, states in one
-short paragraph what the surface can do: read and change files in the chosen folder, and run
-commands as you. Once, with a "don't show again", not a modal wall.
+The shell arriving this way is the part with real weight: the most dangerous capability in the
+product becomes available on opening a folder. Two things make that defensible, and both must
+actually hold.
+
+**Permission modes still gate every call**, unchanged. Attached means present in the tool list,
+not allowed. The default of Auto-edit applies edits without asking and still asks for anything
+that runs a command or touches something outside the folder.
+
+**The first code session says so.** The empty state, before the first message, states in one short
+paragraph what was just turned on — the three connectors by name, that they read and change files
+in the chosen folder and run commands as you, and where to remove them. Once, with a "don't show
+again", not a modal wall. A `ConnectorsChanged` event fires like any other install, so the
+Connectors list is never out of step with what happened.
 
 ## 9. Permissions and defaults
 
@@ -286,15 +306,15 @@ Nothing else changes. `messages`, `turns`, `events`, `tool_calls`, `file_edits`,
 |----------|--------|
 | `01-architecture-overview.md` §5 | The sidebar section describes one list; there are now two, and a surface toggle above them. The module map gains a `features/code` folder for the surface-specific shell |
 | `01-architecture-overview.md` §8 | Tension T12 is about connectors never being auto-installed. It needs a sibling row, or an amendment, covering the code surface's built-in tools: the promise is about the catalog, not about app-owned capability |
-| `03-connector-system.md` §11 | "Nothing is installed by default, first-party connectors included" stays true of the catalog and stops being true of code editing and the shell. Rewrite rather than let it quietly become false |
-| `03-connector-system.md` §5 | The `code-editor` and `shell` subsections describe catalog connectors. They become descriptions of built-in tools, pointing at their own documents |
+| `03-connector-system.md` §11 | "Nothing is installed by default" gains its one named exception: opening the Code surface installs `filesystem`, `code-editor` and `shell` together, discloses it in the empty state, and leaves all three removable |
+| `03-connector-system.md` §5 | Unchanged in kind: all three stay catalog connectors. The subsections gain the note that the Code surface attaches them |
 | `06-data-model.md` §3 | The `chats` row gains `surface` |
-| `07-repository-structure.md` | `desktop/connectors/code-editor/` disappears; `desktop/connectors/shell/` too, if C6 extends to it as recommended. The frontend gains `features/code` |
+| `07-repository-structure.md` | The three connector folders stay; the frontend gains `features/code` |
 | `09-roadmap.md` | §16 below |
 | `11-settings-and-theming.md` | General gains per-surface defaults |
 | `15-app-design.md` §7 | The layout section gains the toggle and the code surface's sidebar and pane contents. A19 on diffs now also covers the Changes tab |
-| `desktop/connectors/filesystem.md` §19 | The open boundary question is answered: `read_file` and `write_file` stay with the filesystem connector, because the code surface has its own and they never coexist |
-| Root `Cargo.toml` | Two connector crates leave the workspace members |
+| `docs/connectors/filesystem.md` §19 | Answered: `read_file` and `write_file` stay with `filesystem`. The freshness rule that made the editor want its own read is enforced by the shared journal in `gantry-workspace`, under both connectors |
+| `docs/connectors/code-editor.md` | Was an empty file. Written: the four editing tools, the journal they write, and what they refuse |
 
 ## 15. Cost, honestly
 
@@ -326,12 +346,15 @@ something else continues on the other surface.
 
 ## 17. Open questions
 
-1. **Does the shell follow the code editor out of the catalog?** Recommended yes, for the reason
-   in §8, but it is the decision with the most weight in this document and it deserves an
-   explicit answer rather than being carried along.
-2. **Should a chat be able to attach a folder at all** once the code surface exists? Keeping it
-   means the filesystem connector stays useful for document work, which is its stated purpose.
-   Removing it makes the split absolute and costs the "help me organise this folder" use.
+1. **Does the shell follow the code editor out of the catalog?** *Answered 2026-09-08: neither
+   does.* Both stay catalog connectors, and the Code surface installs and attaches them with
+   `filesystem` on first use, disclosed once (C6, §8). The reasoning that made "built in" look
+   right — that a surface which cannot run a test is half a tool — is satisfied by attaching
+   rather than by absorbing, and it costs no duplicated file access.
+2. **Should a chat be able to attach a folder at all** once the code surface exists? *Answered
+   2026-09-08: yes.* The `filesystem` connector stays attachable in a chat for document work,
+   which is its stated purpose. A chat never gets `code-editor` or `shell` unless the user
+   installs and attaches them deliberately.
 3. **Scheduled and background sessions.** Claude Desktop's sidebar has them; Gantry's roadmap has
    them post-MVP. Worth confirming they belong to the code surface when they arrive, since that
    is where an unattended task usually is.
