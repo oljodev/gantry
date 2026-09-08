@@ -129,7 +129,16 @@ impl Shell {
             })
             .unwrap_or_default();
 
-        let class = gantry_core::classify(&command);
+        // The same rule the permission engine applies (`permissions::classified`): an
+        // environment can decide which program the command's words resolve to, so a call that
+        // sets one is never reported as proven read-only.
+        let class = if extra_env.is_empty() {
+            gantry_core::classify(&command)
+        } else {
+            CommandClass::Effectful(
+                "it sets environment variables, which can change what the command runs".to_owned(),
+            )
+        };
         let kill = CancellationToken::new();
         self.running
             .lock()

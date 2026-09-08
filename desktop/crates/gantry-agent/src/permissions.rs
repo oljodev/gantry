@@ -60,9 +60,26 @@ pub fn decide(mode: Mode, guard: bool, call: &Call<'_>, grants: &[ChatGrant]) ->
 }
 
 /// The verdict on a call that carries a command line, and nothing for every other tool.
+///
+/// A call that also sets environment variables is never lowered, whatever the command says. The
+/// classifier reads the command *string*, and an environment decides what that string resolves
+/// to: `PATH` picks which `ls` runs, `BASH_ENV` sources a file before it, and an exported shell
+/// function replaces it outright. Every one of those turns a proven-read-only `ls` into
+/// arbitrary code, so the verdict does not survive them and the call is asked for as an
+/// execute.
 fn classified(call: &Call<'_>) -> Option<CommandClass> {
     if call.def.plan_mode != gantry_core::PlanModePolicy::Classify {
         return None;
+    }
+    if call
+        .args
+        .get("env")
+        .and_then(serde_json::Value::as_object)
+        .is_some_and(|env| !env.is_empty())
+    {
+        return Some(CommandClass::Effectful(
+            "it sets environment variables, which can change what the command runs".to_owned(),
+        ));
     }
     let command = call.args.get("command")?.as_str()?;
     Some(classify(command))
@@ -275,6 +292,51 @@ mod tests {
             decide_with(Mode::Auto, true, &writes),
             Decision::Ask,
             "guarded Auto asks until the judge exists"
+        );
+    }
+
+    /// The hole an adversarial audit found on 2026-09-08: `ls` is proved read-only, and an
+    /// environment supplied with it decides which `ls` that is.
+    #[test]
+    fn an_environment_override_costs_a_command_its_read_only_verdict() {
+        use gantry_core::PlanModePolicy;
+        let mut run = ToolDef::new("run_command", "d", serde_json::json!({}), RiskTier::Execute);
+        run.plan_mode = PlanModePolicy::Classify;
+        let hijack = serde_json::json!({
+            "command": "ls",
+            "env": { "PATH": "/tmp/mine:/usr/bin" }
+        });
+        let call = Call {
+            def: &run,
+            instance_id: "shell",
+            args: &hijack,
+        };
+        assert_eq!(
+            super::decide(Mode::AutoEdit, true, &call, &[]),
+            Decision::Ask,
+            "Auto-edit must not run it unasked"
+        );
+        assert!(
+            matches!(
+                super::decide(Mode::Plan, true, &call, &[]),
+                Decision::Deny { .. }
+            ),
+            "Plan mode must refuse it"
+        );
+        // An empty env map is not an override, and must not cost the verdict.
+        let plain = serde_json::json!({ "command": "ls", "env": {} });
+        assert_eq!(
+            super::decide(
+                Mode::AutoEdit,
+                true,
+                &Call {
+                    def: &run,
+                    instance_id: "shell",
+                    args: &plain
+                },
+                &[]
+            ),
+            Decision::Allow(DecisionSource::Mode)
         );
     }
 

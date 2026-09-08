@@ -335,7 +335,7 @@ async fn the_classifier_verdict_travels_with_the_result() {
 }
 
 #[tokio::test]
-async fn extra_environment_reaches_the_command_and_gantry_keeps_its_own_out() {
+async fn extra_environment_reaches_the_command_and_costs_it_the_read_only_verdict() {
     let f = fixture();
     let result = f
         .run(serde_json::json!({
@@ -344,6 +344,28 @@ async fn extra_environment_reaches_the_command_and_gantry_keeps_its_own_out() {
         }))
         .await;
     assert!(result["stdout"].as_str().unwrap().contains("visible"));
+    // An environment decides which program the command's words resolve to — PATH picks the `ls`,
+    // BASH_ENV sources a file first, an exported function replaces it outright — so a call that
+    // sets one is never reported as proven read-only, whatever the command says.
+    assert_eq!(result["checked_read_only"], false, "{result}");
+}
+
+#[tokio::test]
+async fn output_that_is_not_ascii_survives_the_read_boundaries() {
+    let f = fixture();
+    // Far more than one 8 KB read, all multi-byte: any read that ends mid-character would show
+    // as replacement marks if the reader converted each read on its own.
+    let result = f
+        .run(serde_json::json!({
+            "command": "i=0; while [ $i -lt 400 ]; do printf 'héllo wörld ✓ →\n'; i=$((i+1)); done"
+        }))
+        .await;
+    let stdout = result["stdout"].as_str().unwrap();
+    assert!(
+        !stdout.contains('\u{FFFD}'),
+        "a character was split across two reads"
+    );
+    assert!(stdout.contains("héllo wörld ✓ →"));
 }
 
 #[tokio::test]

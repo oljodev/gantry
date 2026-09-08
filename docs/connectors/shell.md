@@ -149,6 +149,15 @@ anywhere. Anything not proven read-only is `execute`. The list is short and deli
 conservative: file and directory inspection, the read-only subcommands of the common version
 control and package tools, and a handful of system queries.
 
+**A call that sets environment variables is never proven read-only** (added 2026-09-08, after an
+adversarial audit of the built connector demonstrated all three of these). The classifier reads
+the command *string*, and an environment decides what that string resolves to: `PATH` picks which
+`ls` runs, `BASH_ENV` names a file the shell sources before it, and an exported shell function
+replaces the command outright. Each turns a proven-read-only `ls` into arbitrary code that
+Auto-edit would have run without asking. So the verdict does not survive an `env`, in the
+connector's own result and in the permission engine, which apply the same rule for the same
+reason.
+
 **What this actually guarantees, and what it does not.** It proves a property of the *string*.
 It does not prove a property of the *execution*, because a shell can be made to resolve a name to
 something other than the program you expect. This is why D2 matters: by running commands in a

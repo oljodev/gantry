@@ -168,11 +168,23 @@ where
             return captured;
         };
         let mut buf = [0_u8; 8192];
+        // Bytes at the end of a read that are the start of a character whose remaining bytes are
+        // in the next read. Converting each read on its own would turn every such character into
+        // two replacement marks — in the captured text and in what the feed shows.
+        let mut partial: Vec<u8> = Vec::new();
         loop {
             match reader.read(&mut buf).await {
                 Ok(0) | Err(_) => break,
                 Ok(n) => {
-                    let chunk = &buf[..n];
+                    let mut bytes = std::mem::take(&mut partial);
+                    bytes.extend_from_slice(&buf[..n]);
+                    let good = complete_prefix(&bytes);
+                    partial = bytes[good..].to_vec();
+                    let chunk = &bytes[..good];
+                    let n = chunk.len();
+                    if n == 0 {
+                        continue;
+                    }
                     // The feed sees everything as it arrives, including the part past the cap:
                     // the live window is bounded by the interface, not by the capture.
                     sink.output(&call_id, stream, chunk);
@@ -241,6 +253,21 @@ async fn kill_tree(pid: Option<u32>) {
         .creation_flags(0x0800_0000)
         .status()
         .await;
+}
+
+/// How many bytes of `bytes` end on a character boundary. A read can stop in the middle of a
+/// multi-byte character; those trailing bytes wait for the rest rather than becoming `U+FFFD`.
+/// Bytes that are not the start of a valid character at all are kept in the prefix, so genuinely
+/// invalid output still comes through as replacement marks instead of being held for ever.
+fn complete_prefix(bytes: &[u8]) -> usize {
+    match std::str::from_utf8(bytes) {
+        Ok(_) => bytes.len(),
+        Err(err) => match err.error_len() {
+            // Invalid, not incomplete: let it through and be replaced.
+            Some(_) => bytes.len(),
+            None => err.valid_up_to(),
+        },
+    }
 }
 
 /// Keep the head and the tail, and say how much of the middle was dropped (D6).
@@ -347,6 +374,25 @@ mod tests {
     }
 
     #[test]
+    fn a_character_split_across_two_reads_survives() {
+        // "é" is two bytes. A read that ends between them must not produce a replacement mark.
+        let whole = "café".as_bytes();
+        let split = whole.len() - 1;
+        assert_eq!(
+            complete_prefix(&whole[..split]),
+            split - 1,
+            "the é waits for its second byte"
+        );
+        assert_eq!(
+            complete_prefix(whole),
+            whole.len(),
+            "a complete string is complete"
+        );
+        // Bytes that can never start a character are not held back for ever.
+        assert_eq!(complete_prefix(&[0xff, 0xfe]), 2);
+    }
+
+    #[test]
     fn capture_reports_what_it_dropped() {
         let captured = Captured {
             text: "kept".to_owned(),
@@ -354,71 +400,5 @@ mod tests {
         };
         assert!(captured.truncated());
         assert!(captured.for_model().contains("12 further bytes"));
-    }
-}
-
-#[cfg(test)]
-mod scratch_small {
-    use super::*;
-    use crate::env::ShellEnv;
-
-    async fn cat(content: &str, name: &str) -> Captured {
-        let dir = std::env::temp_dir().join("gantry-utf8-scratch");
-        std::fs::create_dir_all(&dir).unwrap();
-        let file = dir.join(name);
-        std::fs::write(&file, content).unwrap();
-        let env = ShellEnv::inherited();
-        run(
-            Job {
-                env: &env,
-                command: &format!("cat {}", file.display()),
-                cwd: &dir,
-                extra_env: &[],
-                timeout: Duration::from_secs(20),
-            },
-            &CallId::new(),
-            Arc::new(gantry_connectors::NoopToolEvents),
-            CancellationToken::new(),
-            CancellationToken::new(),
-        )
-        .await
-        .unwrap()
-        .stdout
-    }
-
-    #[tokio::test(flavor = "multi_thread")]
-    async fn under_the_model_cap_is_silent() {
-        // 12 KB: one 8192 boundary, output well under MODEL_CAP.
-        let mut content = String::from("a");
-        content.push_str(&"\u{e9}".repeat(6_000));
-        let c = cat(&content, "small.txt").await;
-        eprintln!(
-            "12KB: len={} replacements={} dropped={} truncated={} for_model_has_fffd={}",
-            c.text.len(),
-            c.text.matches('\u{FFFD}').count(),
-            c.dropped,
-            c.truncated(),
-            c.for_model().contains('\u{FFFD}')
-        );
-
-        // A realistic build log: mostly ASCII with a sprinkling of non-ASCII punctuation.
-        let mut log = String::new();
-        let mut i = 0usize;
-        while log.len() < 400_000 {
-            log.push_str(&format!(
-                "warning: unused variable `x` in module number {i}, consider \u{2018}_x\u{2019} \u{2192} see note \u{2713}\n"
-            ));
-            i += 1;
-        }
-        let c2 = cat(&log, "log.txt").await;
-        eprintln!(
-            "build-log-ish: bytes={} nonascii_chars={} boundaries={} replacements={} dropped={}",
-            log.len(),
-            log.chars().filter(|c| !c.is_ascii()).count(),
-            log.len() / 8192,
-            c2.text.matches('\u{FFFD}').count(),
-            c2.dropped
-        );
-        assert!(false, "print results");
     }
 }
