@@ -1,6 +1,6 @@
 # Gantry — architecture plan
 
-**Status:** draft v3, 2026-09-05. Session 1 produced documents 01–09; session 2 added 10–14 and folded them into the roadmap; session 3 designed and built the marketing site (14, `web/site/`); session 5 decided the application design system (15); session 7 planned the first-party connectors in `docs/connectors/` and split the app into two surfaces (16). This is the planning baseline for the from-scratch rebuild. It is a plan, not a spec frozen in stone: when implementation contradicts it, update the plan in the same commit.
+**Status:** draft v3, 2026-09-05. Session 1 produced documents 01–09; session 2 added 10–14 and folded them into the roadmap; session 3 designed and built the marketing site (14, `web/site/`); session 5 decided the application design system (15); session 7 planned the first-party connectors in `docs/connectors/` and split the app into two surfaces (16); session 8 researched the third-party catalogue and planned its rollout (17). This is the planning baseline for the from-scratch rebuild. It is a plan, not a spec frozen in stone: when implementation contradicts it, update the plan in the same commit.
 
 Gantry is a cross-platform desktop app (macOS, Windows, Linux) that combines a general AI chat client, a coding-agent environment, research tooling and an extensible connector (MCP) system in one Tauri/Rust/React application. Bring-your-own-key only. Local storage only in v1.
 
@@ -26,6 +26,7 @@ Read in order the first time. Each document is self-contained enough to be used 
 | 14  | [Marketing website](14-marketing-site.md)                      | The Astro site in `web/site/`: the design system, the sitemap (home, product tour, connectors and one page per connector, pricing, download, about, blog, changelog, docs, trust pages), the motion approach, the `oljo.dev` / `id.oljo.dev` split and release-linked download buttons |
 | 15  | [Application design system](15-app-design.md)                  | The desktop app's design table: the Linear-chrome / Claude-conversation read, both palettes, type scale, spacing and shape, elevation, the window layout, the component inventory, states, motion, the gallery route and the lint and contrast enforcement                            |
 | 16  | [The two surfaces](16-code-surface.md)                         | The Chat / Code split: the title-strip switch, what each surface changes, code sessions as chats with a surface, the workspace folder, the Changes pane, and how the three code connectors are turned on when the surface is first opened                                             |
+| 17  | [Connector catalogue](17-connector-catalog.md)                 | Which third-party MCP servers exist and are worth shipping (probed live), the batches they land in, the probe harness that verifies a batch without a human signing in to five services, the risk-tier rules and the site's `available`/`soon` split                                                                                    |
 
 ## Decision register
 

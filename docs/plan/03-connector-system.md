@@ -449,7 +449,7 @@ As built (M10, 2026-09-08):
 
 ### Curation
 
-The curated catalog is hand-authored. Vendor and community directories (mcpservers.org's official-server listings among them) are the *input*: a candidate is picked from a directory, tried against the real server, and turned into a folder under `desktop/connectors/<id>/` with a manifest, icon and README written by hand (§2, §3). Nothing is consumed from a directory at runtime. A catalog entry is therefore a tested artifact with the same review path as code, which is what makes the distribution decision below reasonable.
+The curated catalog is hand-authored. **Which servers it holds, in what order they land and how a batch is verified without a human signing in to each service is document 17.** Vendor and community directories (mcpservers.org's official-server listings among them) are the *input*: a candidate is picked from a directory, tried against the real server, and turned into a folder under `desktop/connectors/<id>/` with a manifest, icon and README written by hand (§2, §3). Nothing is consumed from a directory at runtime. A catalog entry is therefore a tested artifact with the same review path as code, which is what makes the distribution decision below reasonable.
 
 ### Nothing is installed by default
 
