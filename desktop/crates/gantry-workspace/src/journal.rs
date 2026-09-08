@@ -34,6 +34,8 @@ pub struct Entry<'a> {
     /// Absent when the file was deleted.
     pub after: Option<&'a [u8]>,
     pub diff: &'a Diff,
+    /// Where a moved or copied file came from.
+    pub from: Option<&'a str>,
 }
 
 pub struct Journal {
@@ -67,6 +69,7 @@ impl Journal {
             applied_at: now_ms(),
             reverted_at: None,
             reverted_by_edit_id: None,
+            from_path: entry.from.map(str::to_owned),
         };
         let id = record.id.clone();
         let sizes: Vec<(String, i64)> = before.into_iter().chain(after).collect();
@@ -127,7 +130,17 @@ impl Journal {
     }
 }
 
-/// The journal's own ids. Lexicographically ordered by time, like every other id in Gantry.
+/// The journal's own ids, monotonic within a millisecond.
+///
+/// Ordinary ULIDs are random inside the same millisecond, so two edits made in the same tick
+/// could come back in either order — and the order edits happened in is exactly what `undo` and
+/// the Changes pane read.
 fn ulid_string() -> String {
-    ulid::Ulid::new().to_string()
+    static GENERATOR: std::sync::Mutex<Option<ulid::Generator>> = std::sync::Mutex::new(None);
+    let mut guard = GENERATOR.lock().unwrap_or_else(|e| e.into_inner());
+    guard
+        .get_or_insert_with(ulid::Generator::new)
+        .generate()
+        .unwrap_or_else(|_| ulid::Ulid::new())
+        .to_string()
 }

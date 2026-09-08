@@ -22,6 +22,7 @@ const MIGRATIONS: &[M<'static>] = &[
     M::up(include_str!("../migrations/0007_tool_schemas.sql")),
     M::up(include_str!("../migrations/0008_surfaces.sql")),
     M::up(include_str!("../migrations/0009_file_edits.sql")),
+    M::up(include_str!("../migrations/0010_edit_origin.sql")),
 ];
 const READERS: usize = 3;
 

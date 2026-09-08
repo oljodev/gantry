@@ -143,7 +143,15 @@ impl Roots {
             }),
             1 => {
                 let root = matches[0];
-                let rel = path.strip_prefix(&root.path).unwrap_or(path).to_path_buf();
+                let rel = path.strip_prefix(&root.path).unwrap_or(path);
+                // The folder itself, named with or without a trailing separator, is the most
+                // common first call there is. Relative to the handle it is `.`, never the empty
+                // path, which every filesystem call refuses.
+                let rel = if rel.as_os_str().is_empty() {
+                    PathBuf::from(".")
+                } else {
+                    rel.to_path_buf()
+                };
                 Ok((root, rel))
             }
             _ => Err(ScopeError::Ambiguous(path.display().to_string())),
@@ -212,6 +220,72 @@ impl Scoped<'_> {
         Ok(())
     }
 
+    /// What a path is, without opening it as a file: `symlink_metadata`, so a link is reported
+    /// as a link rather than as whatever it points at.
+    pub fn stat(&self) -> Result<Stat, ScopeError> {
+        let meta = self
+            .dir
+            .symlink_metadata(&self.rel)
+            .map_err(|err| self.io(&err))?;
+        Ok(Stat {
+            is_dir: meta.is_dir(),
+            is_file: meta.is_file(),
+            is_symlink: meta.is_symlink(),
+            size: meta.len(),
+            modified: meta
+                .modified()
+                .ok()
+                .and_then(|t| t.into_std().duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_millis() as i64),
+            readonly: meta.permissions().readonly(),
+        })
+    }
+
+    /// The folder itself, and every folder above it that is missing.
+    pub fn create_dir_all(&self) -> Result<(), ScopeError> {
+        self.dir
+            .create_dir_all(&self.rel)
+            .map_err(|err| self.io(&err))
+    }
+
+    /// The parent folder, so a write to a path in a folder that does not exist yet works the way
+    /// every editor does rather than failing on a detail the model cannot see.
+    pub fn create_parent(&self) -> Result<(), ScopeError> {
+        match self.rel.parent() {
+            Some(parent) if !parent.as_os_str().is_empty() => {
+                self.dir.create_dir_all(parent).map_err(|err| self.io(&err))
+            }
+            _ => Ok(()),
+        }
+    }
+
+    pub fn remove_file(&self) -> Result<(), ScopeError> {
+        self.dir.remove_file(&self.rel).map_err(|err| self.io(&err))
+    }
+
+    pub fn remove_dir_all(&self) -> Result<(), ScopeError> {
+        self.dir
+            .remove_dir_all(&self.rel)
+            .map_err(|err| self.io(&err))
+    }
+
+    /// Moves within or between the chat's folders. Both ends went through every phase, so a
+    /// rename cannot be used to carry a file out of the boundary.
+    pub fn rename_to(&self, to: &Scoped<'_>) -> Result<(), ScopeError> {
+        to.create_parent()?;
+        self.dir
+            .rename(&self.rel, to.dir, &to.rel)
+            .map_err(|err| self.io(&err))
+    }
+
+    pub fn copy_to(&self, to: &Scoped<'_>) -> Result<(), ScopeError> {
+        to.create_parent()?;
+        self.dir
+            .copy(&self.rel, to.dir, &to.rel)
+            .map(|_| ())
+            .map_err(|err| self.io(&err))
+    }
+
     fn io(&self, err: &std::io::Error) -> ScopeError {
         if err.kind() == std::io::ErrorKind::NotFound {
             ScopeError::NotFound(self.path.display().to_string())
@@ -219,6 +293,18 @@ impl Scoped<'_> {
             ScopeError::Io(format!("{}: {err}", self.path.display()))
         }
     }
+}
+
+/// What a path is. Deliberately not `std::fs::Metadata`: nothing above this layer should be
+/// handed a value it could use to reach the file by another route.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Stat {
+    pub is_dir: bool,
+    pub is_file: bool,
+    pub is_symlink: bool,
+    pub size: u64,
+    pub modified: Option<i64>,
+    pub readonly: bool,
 }
 
 /// Phase 0 and phase 2: reject, never sanitise. What survives is an absolute path with no `..`

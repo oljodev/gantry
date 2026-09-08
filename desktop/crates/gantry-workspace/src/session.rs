@@ -62,6 +62,19 @@ impl Sessions {
         }
     }
 
+    /// Forgets one file: it was moved or deleted, and what this session read of it is no
+    /// longer true of anything on disk.
+    pub fn forget_path(&self, chat: ChatId, path: &Path) {
+        if let Some(files) = self
+            .seen
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .get_mut(&chat)
+        {
+            files.remove(path);
+        }
+    }
+
     /// Drops a chat's table: the chat was deleted, or its folders changed.
     pub fn forget(&self, chat: ChatId) {
         self.seen

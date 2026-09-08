@@ -11,7 +11,8 @@ use rusqlite::{Connection, OptionalExtension, Row, params};
 use crate::db::Result;
 
 const COLUMNS: &str = "id, tool_call_id, chat_id, path, op, before_blob_hash, after_blob_hash, \
-                       hunks_json, stats_json, applied_at, reverted_at, reverted_by_edit_id";
+                       hunks_json, stats_json, applied_at, reverted_at, reverted_by_edit_id, \
+                       from_path";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FileEditRecord {
@@ -27,13 +28,16 @@ pub struct FileEditRecord {
     pub applied_at: i64,
     pub reverted_at: Option<i64>,
     pub reverted_by_edit_id: Option<String>,
+    /// Where a moved or copied file came from; absent for an edit in place.
+    pub from_path: Option<String>,
 }
 
 pub fn insert(conn: &Connection, edit: &FileEditRecord) -> Result<()> {
     conn.execute(
         "INSERT INTO file_edits (id, tool_call_id, chat_id, path, op, before_blob_hash, \
-         after_blob_hash, hunks_json, stats_json, applied_at, reverted_at, reverted_by_edit_id) \
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+         after_blob_hash, hunks_json, stats_json, applied_at, reverted_at, reverted_by_edit_id, \
+         from_path) \
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
         params![
             edit.id,
             edit.tool_call_id,
@@ -47,6 +51,7 @@ pub fn insert(conn: &Connection, edit: &FileEditRecord) -> Result<()> {
             edit.applied_at,
             edit.reverted_at,
             edit.reverted_by_edit_id,
+            edit.from_path,
         ],
     )?;
     Ok(())
@@ -108,5 +113,6 @@ fn read(r: &Row<'_>) -> rusqlite::Result<FileEditRecord> {
         applied_at: r.get(9)?,
         reverted_at: r.get(10)?,
         reverted_by_edit_id: r.get(11)?,
+        from_path: r.get(12)?,
     })
 }
