@@ -147,8 +147,26 @@ pub enum CacheSupport {
     Explicit,
 }
 
+/// What a model takes in and gives back. `File` covers PDFs and documents.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "snake_case")]
+pub enum Modality {
+    Text,
+    Image,
+    Audio,
+    Video,
+    File,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 pub struct ModelCapabilities {
+    /// What the model accepts and what it produces. A model that produces something other than
+    /// text is a different kind of thing to talk to, which is what the picker sorts by; `vision`
+    /// and `pdf_input` below are the two input cases the composer already asks about by name.
+    #[serde(default)]
+    pub input: Vec<Modality>,
+    #[serde(default)]
+    pub output: Vec<Modality>,
     pub tools: bool,
     pub parallel_tools: bool,
     pub streams_tool_args: bool,
@@ -164,6 +182,8 @@ impl Default for ModelCapabilities {
     /// Conservative defaults for a model nobody described: tools on, everything else off.
     fn default() -> Self {
         Self {
+            input: vec![Modality::Text],
+            output: vec![Modality::Text],
             tools: true,
             parallel_tools: false,
             streams_tool_args: false,
@@ -177,12 +197,21 @@ impl Default for ModelCapabilities {
     }
 }
 
-/// US dollars per million tokens.
+/// US dollars per million tokens, plus the per-unit prices some models carry instead.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, specta::Type)]
 pub struct Pricing {
     pub input_per_mtok: f64,
     pub output_per_mtok: f64,
     pub cache_read_per_mtok: Option<f64>,
+    /// Dollars for one image sent to the model.
+    #[serde(default)]
+    pub image_input_usd: Option<f64>,
+    /// Dollars for one image the model produces, where it reports one.
+    #[serde(default)]
+    pub image_output_usd: Option<f64>,
+    /// Dollars per call, for models priced by the request rather than by the token.
+    #[serde(default)]
+    pub request_usd: Option<f64>,
 }
 
 /// One row of a provider's model list, as the UI and the catalog cache see it.

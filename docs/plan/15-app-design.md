@@ -44,7 +44,7 @@ Principles, in priority order:
 | A10 | Motion | 120–200 ms ease-out, only where it explains a change; nothing loops except the skeleton shimmer; off under reduced motion | Frames on WebKitGTK are finite and reading tool output must not be interrupted |
 | A11 | Icons | Phosphor, regular weight, one family | Consistent 1.5 px strokes and enough glyphs; Lucide is the shadcn default look this design avoids |
 | A12 | Surfaces | Sidebar one step darker than content, hairline between | Anchors the chrome; the conversation is the brightest thing on screen |
-| A13 | Composer | Floating card at the bottom of the chat column: text on top, one toolbar row below (`+`, mode chip, model picker, roots · thinking, Send) | Mode and model are visible without a separate bar; the eye lands there on every screen |
+| A13 | Composer | Floating card at the bottom of the chat column: text on top, one toolbar row below (`+`, mode chip, model button, roots · thinking, Send) | Mode and model are visible without a separate bar; the eye lands there on every screen |
 | A14 | Messages | User in a subtle tinted block, right-aligned, max 75 % of the measure; assistant plain text flush left with no bubble or avatar; model label on hover. Pictures the user sent sit **above** that block, not inside it, at up to 224 px tall (2026-09-08): a screenshot is a thing to look at, and a tinted bubble around it makes it read as decoration on the text | Markdown, code, diffs and activity rows share one clean column |
 | A15 | Palette | `Cmd/Ctrl+K` global palette: chats, messages, actions, settings sections, projects, connector install | Widens the M2 search into the thing that makes the app keyboard-first |
 | A16 | App icon | Orange portal-frame mark on a near-black rounded tile with a faint inner gradient | Reads at 16 px; dark tiles are the category norm |
@@ -210,6 +210,21 @@ A 1 px inner top highlight (`rgb(255 255 255 / 0.04)`) is allowed on level 2 and
 - **Composer.** Level 1 card at `r-4`, 12 px inner padding, sits 16 px above the bottom edge with the column's gutters. Text area in `chat` size with a `fg-3` placeholder ("Message Gantry…"; with a workspace: "Ask about or change *repo*…"). Toolbar row below at `control-sm`: `+` (icon button), mode chip, model picker, root chips; right side: thinking selector when the model supports it, Send as a `control-md` primary icon button that becomes Stop (square glyph, `bad` on hover) during a turn. `Enter` sends, `Shift+Enter` newlines, `Shift+Tab` cycles modes, `Esc` cancels a running turn after a confirmation toast.
 - **Right pane.** A level 1 card at `r-4`, floating 8 px in from the window's right and bottom edges under the title strip, the way Claude's artifact panel sits over the chat; the sandbox document inside it paints the same `bg-raised`. Opens from the right at 200 ms at half the window (A17), pushes the chat column; at window widths under 1100 px it overlays the chat instead (level 3, the card gains the float shadow). Tabs at the top in `ui` 500: artifacts by title with their type icon, a temporary detail tab (diff, command, tool call, guard) in `fg-2` italic-free with a dot, closed with `×` or `Esc`. A toolbar row under the tabs belongs to the content (artifact toolbar per 13 §4: view glyphs, version stepper, Copy and a menu; diff toolbar: unified/side-by-side, wrap, Revert).
 - **Settings and Customize.** Two dialogs on the same frame (`PrefsDialog`, A18): a level 3 panel `--prefs-width` × `--prefs-height` centred over the app, a `--settings-list` rail on `bg-base` (search box first in Settings, section rows with a Phosphor glyph, current in `bg-selected`), and the section itself scrolling on `bg-raised` with a `title` heading and stacked rows. A row: label in `ui` 500, explanation in `meta` `fg-2` underneath, the control at the right edge (switch, select, button, or a key status). Tables (Providers) are rows too, with the control column holding the actions. The rail's foot holds one link to the other dialog; the close button sits outside the scroller so it never leaves. Connectors, Skills and Memory live in Customize, connectors under Discover / Your connectors tabs.
+- **Model dialog** (added 2026-09-08; the composer's model button opened a popover until then).
+  A catalog, not a menu: four hundred models cannot be chosen from a drop-up, because the
+  questions people bring to the list — who made this, what does it produce, can it see a picture,
+  what does it cost, how much room does it have — need a column each. Same frame as Settings
+  (level 3, `--prefs-width` × `--prefs-height`), with a search box and the sort control in a
+  header, the facets down a `--settings-list` rail on `bg-base` (**Makes**: text · image · audio ·
+  video, counted; **Can**: reads images, reads files, calls tools, thinks first, caches prompts;
+  **Price**: free only; **Creator**: the makers present, most models first, the tail behind "Show
+  all"), and the rows beside it. A row is the model's name with its creator, its id in mono
+  underneath, capability glyphs, the context window and the price — dollars per million tokens in
+  and out, or dollars per picture for a model that draws, since token prices say nothing there.
+  Starring a model pins it to a **Favourites** section at the top (a settings field, so it
+  follows the user); **Recent** sits under it (the UI store, so it stays with the machine).
+  Typing narrows both away — a search is looking for something else. Which upstream serves the
+  model is OpenRouter's business and gets one quiet line in the footer, not a facet.
 - **Pages** (connector browse, connector detail, project, skills, memory) use the settings content column without the left list: `page` title, `body` intro, then content at `measure` or, for grids, the full width minus gutters.
 
 ## 8. Components
@@ -239,7 +254,7 @@ The reshape pass replaces every shadcn default with a token, removes the default
 | `PermissionsDialog` | The chat's Permissions panel (04 §8), from the chat row's menu: its mode and guard, then each standing grant as a row with what it allows, which connector it came from, when it was granted and a Revoke, plus Revoke all |
 | `InteractionCard` | The shared shell for permission, access request, connector suggestion, elicitation, auth required, skill and memory proposals (04 §7): level 1, `r-3`, a 2 px `accent` left bar, title in `ui` 500 with the connector mark, the request in `body`, a tier dot and label, then the actions row: primary action, secondary, Deny as ghost `bad`; a scope selector where grants apply. Pending cards also raise the sidebar count. As built it carries three: `PermissionCard`, `AccessRequestCard` ("GitHub in this chat?", the model's reason, **Attach for this chat** · **Attach and allow …** · **Not now**) and `ConnectorSuggestionCard` ("Install Cloudflare Workers?", the reason, badges for what it needs, **Install** · **Not now**) |
 | `AttachmentTray` | What is waiting to be sent: an image as a 56 px thumbnail that opens full size, everything else as a chip, each with a × to remove. A pasted image is attached from the clipboard, including on WebKitGTK where the webview hands over no file and the app asks the system clipboard itself |
-| `Composer`, `ModeChip`, `ModelPicker`, `RootChip`, `SlashMenu` | §7 composer; the mode chip is `control-sm`, `accent-subtle` fill with `accent-text` label when the mode is Auto, neutral otherwise; the guard state is a suffix ("Auto · guarded") |
+| `Composer`, `ModeChip`, `ModelPicker` (the button that opens the model dialog), `RootChip`, `SlashMenu` | §7 composer; the mode chip is `control-sm`, `accent-subtle` fill with `accent-text` label when the mode is Auto, neutral otherwise; the guard state is a suffix ("Auto · guarded") |
 | `PaneTabs`, `ArtifactPanel`, `DiffView`, `CommandOutput`, `ToolCallDetail`, `JudgeDetail` | §7 right pane; `DiffView` is CodeMirror merge in unified mode with the diff tokens; `CommandOutput` renders ANSI on `bg-inset` in `code` |
 | `SurfaceToggle` | Two Phosphor icons at 16 in a segmented control, 28 px tall, in the title strip above the sidebar's first row: a speech bubble for Chat, an angle bracket for Code, the active one on `bg-selected` with its icon in `fg` and the other in `fg-2`, each with a tooltip. `Cmd/Ctrl+Shift+K` toggles (16 §4) |
 | `SessionRow`, `FolderChip`, `ChangesPane`, `FirstRunNotice` | The code surface (16 §5): a session row is the title with its folder name in `micro` `fg-3` underneath; the folder chip sits where the root chips do and opens the add-or-switch menu; `ChangesPane` is the pane's home tab there, a file list over a `DiffView` with per-file and session-level Revert; `FirstRunNotice` is the one-time paragraph naming the three connectors the surface just turned on, dismissible for good |
@@ -264,7 +279,7 @@ Every icon button has a tooltip and an `aria-label`. Every destructive action (D
 | Disabled | `fg-disabled` and no hover; a tooltip explains why when the reason is not obvious (no key, runtime missing) |
 | Selected / current | `bg-selected`; text stays `fg` |
 | Focus | The `focus` ring, always, including on rows and cards that are focusable; `:focus-visible` only |
-| Offline provider | The model picker shows the provider dimmed with "No key" and links to Providers |
+| Offline provider | The model dialog lists nothing for a provider without a key, and says where to add one |
 | Interrupted | A chat closed mid-turn reopens with a notice row "Interrupted" and Retry (09 M2) |
 
 ## 10. Motion

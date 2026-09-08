@@ -162,6 +162,11 @@ fn apply_entries(entries: &[Entry], kind: ProviderKind, provider_id: &str, m: &m
                 cache_read_per_mtok: e
                     .cache_read_price_per_mtok
                     .or(current.and_then(|p| p.cache_read_per_mtok)),
+                // The override file speaks in token prices; whatever the provider said about
+                // per-image and per-call prices survives it.
+                image_input_usd: current.and_then(|p| p.image_input_usd),
+                image_output_usd: current.and_then(|p| p.image_output_usd),
+                request_usd: current.and_then(|p| p.request_usd),
             });
         } else if let Some(v) = e.cache_read_price_per_mtok
             && let Some(p) = m.pricing.as_mut()

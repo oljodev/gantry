@@ -5,7 +5,7 @@ use serde::Deserialize;
 use super::profiles::ModelsParser;
 use crate::{
     error::ProviderError,
-    provider::{CacheSupport, ModelCapabilities, ModelInfo, Pricing, ReasoningSupport},
+    provider::{CacheSupport, Modality, ModelCapabilities, ModelInfo, Pricing, ReasoningSupport},
 };
 
 #[derive(Debug, Deserialize)]
@@ -55,6 +55,10 @@ struct OrPricing {
     prompt: Option<String>,
     completion: Option<String>,
     input_cache_read: Option<String>,
+    /// Absolute dollars per unit, not per million: an image sent, an image produced, a call.
+    image: Option<String>,
+    image_output: Option<String>,
+    request: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -66,6 +70,8 @@ struct OrTopProvider {
 struct OrArchitecture {
     #[serde(default)]
     input_modalities: Vec<String>,
+    #[serde(default)]
+    output_modalities: Vec<String>,
 }
 
 pub fn parse(
@@ -103,11 +109,26 @@ pub fn parse(
 }
 
 fn per_mtok(s: &Option<String>) -> Option<f64> {
-    s.as_deref()?
-        .trim()
-        .parse::<f64>()
-        .ok()
-        .map(|v| v * 1_000_000.0)
+    per_unit(s).map(|v| v * 1_000_000.0)
+}
+
+/// A price OpenRouter reports per unit rather than per token; zero means "not priced this way".
+fn per_unit(s: &Option<String>) -> Option<f64> {
+    let v = s.as_deref()?.trim().parse::<f64>().ok()?;
+    (v > 0.0).then_some(v)
+}
+
+fn modality(name: &str) -> Option<Modality> {
+    match name {
+        "text" => Some(Modality::Text),
+        "image" => Some(Modality::Image),
+        "audio" => Some(Modality::Audio),
+        "video" => Some(Modality::Video),
+        "file" => Some(Modality::File),
+        // A modality nobody has taught the app about is left out rather than guessed at: the
+        // picker would otherwise file the model under a kind it cannot actually talk to.
+        _ => None,
+    }
 }
 
 fn from_xai(m: XaiModel) -> ModelInfo {
@@ -120,6 +141,9 @@ fn from_xai(m: XaiModel) -> ModelInfo {
             input_per_mtok: input,
             output_per_mtok: output,
             cache_read_per_mtok: per_mtok(m.cached_prompt_text_token_price),
+            image_input_usd: None,
+            image_output_usd: None,
+            request_usd: None,
         }),
         _ => None,
     };
@@ -129,6 +153,18 @@ fn from_xai(m: XaiModel) -> ModelInfo {
         max_output: None,
         pricing,
         capabilities: ModelCapabilities {
+            input: {
+                let mut input: Vec<Modality> = m
+                    .input_modalities
+                    .iter()
+                    .filter_map(|x| modality(x))
+                    .collect();
+                if input.is_empty() {
+                    input.push(Modality::Text);
+                }
+                input
+            },
+            output: vec![Modality::Text],
             vision: m.input_modalities.iter().any(|x| x == "image"),
             parallel_tools: true,
             streams_tool_args: true,
@@ -146,19 +182,39 @@ fn from_xai(m: XaiModel) -> ModelInfo {
 fn from_openrouter(m: OrModel) -> ModelInfo {
     let params = &m.supported_parameters;
     let has = |p: &str| params.iter().any(|x| x == p);
-    let modalities = m
-        .architecture
-        .as_ref()
+    let architecture = m.architecture.as_ref();
+    let modalities = architecture
         .map(|a| a.input_modalities.clone())
         .unwrap_or_default();
+    let input: Vec<Modality> = modalities.iter().filter_map(|x| modality(x)).collect();
+    // Only OpenRouter's newer rows carry output modalities. An older row is a text model: that
+    // is what every model on the list was when the field did not exist.
+    let output: Vec<Modality> = architecture
+        .map(|a| {
+            a.output_modalities
+                .iter()
+                .filter_map(|x| modality(x))
+                .collect::<Vec<_>>()
+        })
+        .filter(|o: &Vec<Modality>| !o.is_empty())
+        .unwrap_or_else(|| vec![Modality::Text]);
     let pricing = m.pricing.as_ref().and_then(|p| {
         Some(Pricing {
             input_per_mtok: per_mtok(&p.prompt)?,
             output_per_mtok: per_mtok(&p.completion)?,
             cache_read_per_mtok: per_mtok(&p.input_cache_read),
+            image_input_usd: per_unit(&p.image),
+            image_output_usd: per_unit(&p.image_output),
+            request_usd: per_unit(&p.request),
         })
     });
     let capabilities = ModelCapabilities {
+        input: if input.is_empty() {
+            vec![Modality::Text]
+        } else {
+            input
+        },
+        output,
         tools: has("tools"),
         parallel_tools: has("parallel_tool_calls"),
         streams_tool_args: has("tools"),
@@ -216,6 +272,49 @@ mod tests {
         assert_eq!(m.capabilities.reasoning, ReasoningSupport::Effort);
         assert!(!m.capabilities.vision);
         assert!(m.capabilities.structured_output);
+        assert_eq!(m.capabilities.input, vec![Modality::Text]);
+        assert_eq!(m.capabilities.output, vec![Modality::Text]);
+    }
+
+    #[test]
+    fn reads_the_modalities_and_the_per_image_prices_of_an_image_model() {
+        let json = serde_json::json!({ "data": [{
+            "id": "google/gemini-3-flash-image",
+            "name": "Google: Gemini 3 Flash Image",
+            "context_length": 32768,
+            "architecture": {
+                "input_modalities": ["text", "image"],
+                "output_modalities": ["text", "image"]
+            },
+            "pricing": {
+                "prompt": "0.0000003",
+                "completion": "0.0000025",
+                "image": "0.0001238",
+                "image_output": "0.03",
+                "request": "0"
+            },
+            "supported_parameters": ["max_tokens"]
+        }]});
+        let models = parse(ModelsParser::OpenRouter, &json).unwrap();
+        let m = &models[0];
+        assert_eq!(m.capabilities.input, vec![Modality::Text, Modality::Image]);
+        assert_eq!(m.capabilities.output, vec![Modality::Text, Modality::Image]);
+        assert!(m.capabilities.vision);
+        let p = m.pricing.unwrap();
+        assert_eq!(p.image_input_usd, Some(0.0001238));
+        assert_eq!(p.image_output_usd, Some(0.03));
+        // A zero price is "not priced this way", not "free".
+        assert_eq!(p.request_usd, None);
+    }
+
+    #[test]
+    fn a_row_without_output_modalities_is_a_text_model() {
+        let json = serde_json::json!({ "data": [{
+            "id": "old/model",
+            "architecture": { "input_modalities": ["text"] }
+        }]});
+        let models = parse(ModelsParser::OpenRouter, &json).unwrap();
+        assert_eq!(models[0].capabilities.output, vec![Modality::Text]);
     }
 
     #[test]

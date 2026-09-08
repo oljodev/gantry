@@ -19,6 +19,12 @@ interface UiState {
   lastRoute: Record<Surface, string | null>;
   setSurface: (surface: Surface) => void;
   rememberRoute: (surface: Surface, path: string) => void;
+  /**
+   * Models chosen lately, newest first, as `provider/model`. Kept here rather than in settings:
+   * favourites are a decision worth syncing, recents are a trace of this machine's use.
+   */
+  recentModels: string[];
+  rememberModel: (key: string) => void;
   /** The open section of each dialog, or null when it is closed (15 A18). */
   settings: Section | null;
   customize: CustomizeSection | null;
@@ -35,8 +41,18 @@ interface UiState {
 
 type Persisted = Pick<
   UiState,
-  'theme' | 'density' | 'sidebarWidth' | 'sidebarCollapsed' | 'paneWidth' | 'surface' | 'lastRoute'
+  | 'theme'
+  | 'density'
+  | 'sidebarWidth'
+  | 'sidebarCollapsed'
+  | 'paneWidth'
+  | 'surface'
+  | 'lastRoute'
+  | 'recentModels'
 >;
+
+/** Enough to hold the models in rotation without the list becoming a second favourites. */
+export const RECENT_MODELS = 8;
 
 export const SIDEBAR_MIN = 200;
 export const SIDEBAR_MAX = 320;
@@ -69,6 +85,11 @@ export const useUiStore = create<UiState>()(
       setSurface: (surface) => set({ surface }),
       rememberRoute: (surface, path) =>
         set((s) => ({ surface, lastRoute: { ...s.lastRoute, [surface]: path } })),
+      recentModels: [],
+      rememberModel: (key) =>
+        set((s) => ({
+          recentModels: [key, ...s.recentModels.filter((k) => k !== key)].slice(0, RECENT_MODELS),
+        })),
       settings: null,
       customize: null,
       // Only one of the two is ever open: they are the same kind of surface.
@@ -100,6 +121,7 @@ export const useUiStore = create<UiState>()(
         paneWidth: s.paneWidth,
         surface: s.surface,
         lastRoute: s.lastRoute,
+        recentModels: s.recentModels,
       }),
     },
   ),

@@ -139,6 +139,9 @@ pub struct ChatSettings {
     pub suggest_connectors: bool,
     /// Open the right pane the first time a turn creates an artifact (13 §4).
     pub open_artifact_panel: bool,
+    /// Models starred in the model dialog, newest first. Recents are not stored beside them:
+    /// they are what the chat list already says, and a second record of the same fact drifts.
+    pub favourite_models: Vec<ModelRef>,
 }
 
 impl Default for ChatSettings {
@@ -153,6 +156,7 @@ impl Default for ChatSettings {
             custom_instructions: String::new(),
             suggest_connectors: true,
             open_artifact_panel: true,
+            favourite_models: Vec::new(),
         }
     }
 }

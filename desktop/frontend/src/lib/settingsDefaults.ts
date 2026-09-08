@@ -16,6 +16,7 @@ export function chatDefaults(s: Settings | undefined): Required<ChatSettings> {
     custom_instructions: c.custom_instructions ?? '',
     suggest_connectors: c.suggest_connectors ?? true,
     open_artifact_panel: c.open_artifact_panel ?? true,
+    favourite_models: c.favourite_models ?? [],
   };
 }
 

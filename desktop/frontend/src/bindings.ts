@@ -534,6 +534,11 @@ export type ChatSettings = {
 	suggest_connectors?: boolean,
 	/**  Open the right pane the first time a turn creates an artifact (13 §4). */
 	open_artifact_panel?: boolean,
+	/**
+	 *  Models starred in the model dialog, newest first. Recents are not stored beside them:
+	 *  they are what the chat list already says, and a second record of the same fact drifts.
+	 */
+	favourite_models?: ModelRef[],
 };
 
 /**  A sidebar row. */
@@ -831,10 +836,20 @@ export type Message_Serialize = {
 	created_at: number,
 };
 
+/**  What a model takes in and gives back. `File` covers PDFs and documents. */
+export type Modality = "text" | "image" | "audio" | "video" | "file";
+
 /**  The permission mode of a chat (docs/plan/04 §3). */
 export type Mode = "manual" | "auto_edit" | "plan" | "auto";
 
 export type ModelCapabilities = {
+	/**
+	 *  What the model accepts and what it produces. A model that produces something other than
+	 *  text is a different kind of thing to talk to, which is what the picker sorts by; `vision`
+	 *  and `pdf_input` below are the two input cases the composer already asks about by name.
+	 */
+	input?: Modality[],
+	output?: Modality[],
 	tools: boolean,
 	parallel_tools: boolean,
 	streams_tool_args: boolean,
@@ -884,11 +899,17 @@ export type PermissionRequest = {
 	scopes: GrantScope[],
 };
 
-/**  US dollars per million tokens. */
+/**  US dollars per million tokens, plus the per-unit prices some models carry instead. */
 export type Pricing = {
 	input_per_mtok: number | null,
 	output_per_mtok: number | null,
 	cache_read_per_mtok: number | null,
+	/**  Dollars for one image sent to the model. */
+	image_input_usd?: number | null,
+	/**  Dollars for one image the model produces, where it reports one. */
+	image_output_usd?: number | null,
+	/**  Dollars per call, for models priced by the request rather than by the token. */
+	request_usd?: number | null,
 };
 
 /**  A named group of chats with shared instructions, knowledge and defaults. */
