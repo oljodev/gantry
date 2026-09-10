@@ -133,7 +133,7 @@ function json(parts: ResultPart[] | null): Record<string, unknown> | undefined {
  * The diff is produced once, in Rust, and travels as the text a person would recognise; this
  * only re-numbers it so the pane can show line numbers beside the change.
  */
-function hunksOf(value: unknown): Hunk[] {
+export function hunksOf(value: unknown): Hunk[] {
   if (!Array.isArray(value)) return [];
   const hunks: Hunk[] = [];
   for (const raw of value) {

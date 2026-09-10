@@ -7,8 +7,12 @@ import { Segmented } from '@/components/ui/radio-group';
 import type { DiffFile, HunkLine } from '@/fixtures/types';
 import { cn } from '@/lib/utils';
 
-/** Unified by default with line numbers, side-by-side on request, Revert (15 A19). CodeMirror merge comes in M6. */
-export function DiffView({ file }: { file: DiffFile }) {
+/**
+ * Unified by default with line numbers, side-by-side on request, Revert (15 A19). CodeMirror
+ * merge comes in M6. Revert is shown only where there is something to revert *to* — the gallery
+ * and any read-only use get the diff without a button that would do nothing.
+ */
+export function DiffView({ file, onRevert }: { file: DiffFile; onRevert?: () => void }) {
   const [view, setView] = useState<'unified' | 'split'>('unified');
   return (
     <div className="flex h-full flex-col">
@@ -25,10 +29,12 @@ export function DiffView({ file }: { file: DiffFile }) {
             ['split', 'Side by side'],
           ]}
         />
-        <Button variant="secondary" size="sm">
-          <ArrowCounterClockwiseIcon />
-          Revert
-        </Button>
+        {onRevert && (
+          <Button variant="secondary" size="sm" onClick={onRevert}>
+            <ArrowCounterClockwiseIcon />
+            Revert
+          </Button>
+        )}
       </div>
       <div className="min-h-0 flex-1 overflow-auto p-3">
         {view === 'unified' ? <HunkPreview hunks={file.hunks} full /> : <SplitDiff file={file} />}

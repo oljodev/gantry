@@ -211,6 +211,7 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn Error>> {
         tools,
         connectors: connectors.clone(),
         artifacts,
+        workspace,
         invalid_keys: Mutex::new(Default::default()),
     });
 

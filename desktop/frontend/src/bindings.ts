@@ -78,6 +78,17 @@ export const commands = {
 "chat" | 
 /**  Working inside a folder on this machine. */
 "code" | null) => typedError<ChatSummary[], ErrorDto>(__TAURI_INVOKE("list_chats", { surface })),
+	/**  Every file this session changed and has not put back, most recently changed first. */
+	sessionChanges: (chatId: ChatId) => typedError<FileChangeDto[], ErrorDto>(__TAURI_INVOKE("session_changes", { chatId })),
+	/**  One file's diff, from what it was before this session to what it is now. */
+	sessionFileDiff: (chatId: ChatId, path: string) => typedError<FileDiffDto, ErrorDto>(__TAURI_INVOKE("session_file_diff", { chatId, path })),
+	/**  Puts one file back to what it was before this session touched it. */
+	revertFile: (chatId: ChatId, path: string) => typedError<RevertedDto, ErrorDto>(__TAURI_INVOKE("revert_file", { chatId, path })),
+	/**
+	 *  Puts every file back. Each file is reverted on its own, and one that refuses — because
+	 *  something else has written it since — is reported rather than taking the rest down with it.
+	 */
+	revertSession: (chatId: ChatId) => typedError<RevertAllDto, ErrorDto>(__TAURI_INVOKE("revert_session", { chatId })),
 	/**
 	 *  Adds a folder to a session (16 §7). The path is taken as the user picked it; the workspace
 	 *  layer canonicalises it when the file tools arrive.
@@ -753,6 +764,8 @@ export type DeviceCodeNeeded = {
 	verification_uri: string,
 };
 
+export type EditOp = "create" | "modify" | "delete" | "rename";
+
 /**
  *  What the frontend receives when a command fails. Never carries secrets or paths the
  *  user did not choose. Rendered by the UI as an inline error row.
@@ -763,6 +776,32 @@ export type ExportFormat = "markdown" | "json";
 
 /**  The user's verdict on an assistant reply. */
 export type Feedback = "good" | "bad";
+
+/**  One file in the pane's list. */
+export type FileChangeDto = {
+	/**  Absolute, and the handle every other command here takes. */
+	path: string,
+	/**  The same path as the session sees it: relative to the folder it is working in. */
+	display: string,
+	op: EditOp,
+	added: number,
+	removed: number,
+	edits: number,
+	last_at: number,
+	/**  A file whose versions are not text: listed and revertible, with no diff to draw. */
+	binary: boolean,
+};
+
+/**  A file's whole-session diff, for the pane under the list. */
+export type FileDiffDto = {
+	path: string,
+	display: string,
+	op: EditOp,
+	added: number,
+	removed: number,
+	binary: boolean,
+	hunks: HunkDto[],
+};
 
 /**  A standing permission for one chat (04 §8). */
 export type GrantId = string;
@@ -782,6 +821,15 @@ export type GrantSource =
 "access_request" | 
 /**  Inherited from the project the chat belongs to. */
 "project_default";
+
+export type HunkDto = {
+	old_start: number,
+	old_lines: number,
+	new_start: number,
+	new_lines: number,
+	/**  The hunk as unified-diff text, prefixes included. */
+	text: string,
+};
 
 /**  An installed, configured connector. */
 export type InstanceId = string;
@@ -1098,6 +1146,30 @@ export type ResultPart = { kind: "text"; text: string } | { kind: "json"; json: 
 { kind: "image"; data: string; mime: string } | 
 /**  A large in-memory object parked by a native connector (01 §7). */
 { kind: "resource"; handle: string; summary: string };
+
+/**
+ *  The result of **Revert all**. A file that cannot go back does not stop the others: each is
+ *  its own decision, and the ones that failed are named with the reason.
+ */
+export type RevertAllDto = {
+	reverted: RevertedDto[],
+	failed: RevertFailureDto[],
+};
+
+export type RevertFailureDto = {
+	path: string,
+	display: string,
+	reason: string,
+};
+
+export type RevertedDto = {
+	path: string,
+	display: string,
+	op: EditOp,
+	added: number,
+	removed: number,
+	edits: number,
+};
 
 /**  What a tool can do to the world (docs/plan/04 §2). */
 export type RiskTier = 

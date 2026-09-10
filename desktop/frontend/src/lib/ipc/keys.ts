@@ -21,4 +21,7 @@ export const keys = {
   allArtifacts: ['artifacts', 'all'] as const,
   artifact: (artifactId: string, version: number | undefined) =>
     ['artifact', artifactId, version ?? 'current'] as const,
+  /** What a code session changed; the file diffs hang under the same prefix (16 §5). */
+  changes: (chatId: string) => ['changes', chatId] as const,
+  fileDiff: (chatId: string, path: string) => ['changes', chatId, path] as const,
 };

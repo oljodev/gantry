@@ -1,6 +1,7 @@
 pub mod app;
 pub mod artifacts;
 pub mod chats;
+pub mod code;
 pub mod connectors;
 pub mod interactions;
 pub mod providers;

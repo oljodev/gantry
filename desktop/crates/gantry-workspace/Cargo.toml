@@ -26,3 +26,4 @@ ulid.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros"] }

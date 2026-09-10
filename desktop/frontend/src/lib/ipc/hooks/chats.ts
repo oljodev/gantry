@@ -39,6 +39,8 @@ export function useChat(chatId: ChatId) {
 export function invalidateChat(qc: QueryClient, chatId: ChatId) {
   void qc.invalidateQueries({ queryKey: keys.chat(chatId) });
   void qc.invalidateQueries({ queryKey: keys.chats });
+  // A turn that ended may have left files changed behind it (16 §5).
+  void qc.invalidateQueries({ queryKey: keys.changes(chatId) });
 }
 
 /** The palette's search over titles and message text; empty queries return nothing. */

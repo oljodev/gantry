@@ -302,9 +302,16 @@ tools, and the feed.
   **Done** 2026-09-08; the control sits beside the logo, as 16 §4 now says.
 - ~~The code sidebar: sessions with their folder on the second line~~ **done**; the folder
   filter and Projects filtered to those with a workspace folder are still to come.
-- The right pane's home tab becomes **Changes**: every file the session touched, newest first,
+- ~~The right pane's home tab becomes **Changes**: every file the session touched, newest first,
   with net line counts, the selected file's unified diff, per-file **Revert** and session-level
-  **Revert all**, all through the journal.
+  **Revert all**, all through the journal.~~ **Done** 2026-09-10, with the three rules 16 §5 now
+  records: the diff is the session's net one rather than the last edit's; a file that is back —
+  edited and un-edited, or reverted — drops off the list, which is a comparison of the first
+  row's `before` with the last row's `after` rather than a filter on open rows; and Revert means
+  the session's starting point, because a per-edit undo already exists and is called `undo`. It
+  refuses a file something else has written since, exactly as `undo` does, and reverting a file
+  the session created removes it. The diff drawer's Revert button, which until now did nothing,
+  does this too.
 - ~~The two empty states, including the one-time disclosure of §8 naming the connectors the
   surface just turned on.~~ **Done**: the Code home picks the folder, names the connectors it
   turns on, and lists recent sessions. It named two until the shell was built on 2026-09-08 and

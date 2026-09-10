@@ -11,11 +11,20 @@ export interface PaneTab {
   icon?: ReactNode;
   /** Temporary detail tabs (diff, command, tool call) close back to the artifact (15 A17). */
   temporary?: boolean;
+  /** A home tab is not closable: it is derived from the session, so an X would do nothing. */
+  closable?: boolean;
   content: ReactNode;
   toolbar?: ReactNode;
 }
 
 const OVERLAY_BELOW = 1100;
+
+/** A tab shows an X when it is temporary, or when the screen closes all of them — unless it
+    says otherwise, which a home tab does. */
+function closable(tab: PaneTab, all: boolean | undefined): boolean {
+  if (tab.closable === false) return false;
+  return tab.temporary === true || all === true;
+}
 
 /**
  * The one right pane: a level 1 card floating 8 px in from the window's edge under the title
@@ -125,13 +134,13 @@ export function RightPane({
                   t.id === active?.id
                     ? 'border-fg text-fg'
                     : 'border-transparent text-fg-2 hover:text-fg',
-                  (t.temporary || allClosable) && 'pr-7',
+                  closable(t, allClosable) && 'pr-7',
                 )}
               >
                 {t.icon}
                 <span className="truncate">{t.title}</span>
               </button>
-              {(t.temporary || allClosable) && (
+              {closable(t, allClosable) && (
                 <button
                   type="button"
                   aria-label={`Close ${t.title}`}

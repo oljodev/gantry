@@ -163,6 +163,30 @@ underneath. Per-file **Revert** and a session-level **Revert all** both go throu
 journal. This is the single most useful thing the pane can show during a coding session: a
 running answer to "what has it actually done to my repository".
 
+**Built 2026-09-10.** Three rules settled while building it, all of them consequences of reading
+the journal rather than the conversation (`gantry-workspace/src/changes.rs`):
+
+- **Net, not per-edit.** A file four tool calls edited is one row with one diff, from what the
+  file was when the session first touched it to what it is now. Four hunks of the same function
+  is not the question anyone is asking, and the row's `4×` says how many edits made it.
+- **A file that is back is not a change.** The comparison is the first row's `before` against
+  the last row's `after`, by hash, so a file the model edited and then edited back drops off the
+  list — and so does a reverted one, which a list built from open rows could not do, because the
+  revert is itself a journal row.
+- **Revert means the session's starting point**, not one step. A per-edit undo already exists and
+  is called `code-editor__undo`; two meanings of one word on one screen would be worse than one.
+  It refuses when the file on disk is not what Gantry last wrote — something else has edited it,
+  and the old bytes would erase that — with the same check `undo` makes. Reverting a file the
+  session *created* removes it, through the trash where the platform has one.
+
+**Revert all** reverts each file on its own: one that refuses does not stop the rest, and the
+ones that failed are named with the reason. The same **Revert** sits on the diff drawer, where
+until now there was a button that did nothing.
+
+The pane opens by itself the first time a code session changes a file, once, the way the artifact
+panel opens on the first artifact. The list refreshes as each tool call completes, so it keeps up
+with a running turn rather than only at the end of one.
+
 Detail tabs are unchanged: diff, command, tool call, guard, opened temporarily and closed with
 `Esc`.
 

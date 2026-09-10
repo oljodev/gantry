@@ -135,6 +135,11 @@ function drain() {
           void queryClient.invalidateQueries({ queryKey: ['artifact', a.artifactId] });
           void queryClient.invalidateQueries({ queryKey: ['artifacts'] });
         }
+        // A finished tool call may have changed a file, and the Changes pane is worth nothing
+        // if it only catches up when the whole turn ends (16 §5).
+        if (batches.some((b) => b.events.some((e) => e.event.kind === 'tool_call.completed'))) {
+          void queryClient.invalidateQueries({ queryKey: ['changes', chatId] });
+        }
       }
     }
     return { byChat };

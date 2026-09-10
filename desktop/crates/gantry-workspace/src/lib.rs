@@ -10,6 +10,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod changes;
 pub mod edit;
 pub mod guard;
 pub mod journal;
@@ -23,6 +24,7 @@ use std::{path::PathBuf, sync::Arc};
 use gantry_core::{ChatId, EditOp};
 use gantry_store::{BlobStore, Store, repos};
 
+pub use changes::{FileChange, FileDiff, Reverted};
 pub use edit::{Anchor, Change, Diff, EditError, Hunk};
 pub use journal::{FileEditRecord, Journal, JournalError};
 pub use scope::{Roots, ScopeError, Scoped};
@@ -66,6 +68,9 @@ pub enum WorkspaceError {
     /// each adds its own next step after this sentence.
     #[error("this chat has no folder attached")]
     NoRoots,
+    /// Asked to revert, or to diff, a file this session never changed.
+    #[error("this session has not changed {path}, so there is nothing to put back")]
+    Unchanged { path: String },
     #[error("{0}")]
     Store(String),
 }

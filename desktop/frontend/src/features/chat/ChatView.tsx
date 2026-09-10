@@ -40,6 +40,8 @@ import { chatDefaults } from '@/lib/settingsDefaults';
 import { useRunStore } from '@/lib/stores/runStore';
 import { useUiStore } from '@/lib/stores/uiStore';
 import { toTurns } from '@/lib/view/toTurns';
+import { ChangesPane } from '@/components/gantry/pane/ChangesPane';
+import { useRevert, useSessionChanges } from '@/lib/ipc/hooks/changes';
 
 /**
  * The chat screen (15 §7): the scrolling column of turns at the measure, the floating composer,
@@ -57,6 +59,7 @@ export function ChatView({
   /** The code surface shows the work rather than folding it away (16 §6). */
   surface?: 'chat' | 'code';
 }) {
+  const code = surface === 'code';
   const chat = useChat(chatId);
   const live = useRunStore((s) => s.byChat[chatId]);
   const send = useRunStore((s) => s.send);
@@ -142,19 +145,33 @@ export function ChatView({
   useEffect(() => {
     if (openArtifactId) openArtifact(chatId, openArtifactId);
   }, [openArtifactId, chatId, openArtifact]);
+  // Revert from the diff drawer as well as from the Changes pane (16 §5). It puts the whole
+  // file back to what it was before the session, which is what the pane's button does too:
+  // a per-edit undo is `code-editor__undo`, and having two different meanings of one word in
+  // one screen would be worse than having one.
+  const revert = useRevert(chatId);
+  const revertPath = useCallback(
+    (path: string) => {
+      revert.file.mutate(path, {
+        onError: (err) =>
+          toast.add({ title: 'Could not revert', description: describe(err), type: 'error' }),
+      });
+    },
+    [revert.file],
+  );
   const openItem = useCallback(
     (item: ActivityItem) => {
       if (item.kind === 'artifact') {
         if (item.artifactId) showArtifact(item.artifactId);
         return;
       }
-      const tab = detailTab(item);
+      const tab = detailTab(item, revertPath);
       if (!tab) return;
       setDetailTabs((ts) => (ts.some((t) => t.id === tab.id) ? ts : [...ts, tab]));
       setActiveTab(tab.id);
       setPaneOpen(true);
     },
-    [showArtifact],
+    [showArtifact, revertPath],
   );
   const closeTab = useCallback(
     (id: string) => {
@@ -191,6 +208,16 @@ export function ChatView({
     seenArtifacts.current = liveArtifacts.length;
   }, [liveArtifacts, chatId, openArtifact, autoOpen]);
 
+  // The pane earns its place the moment there is something in it: a code session opens it on
+  // the first file the model changes, once, and closing it again is the user's business.
+  const changeCount = useSessionChanges(chatId, code).data?.length ?? 0;
+  const openedForChanges = useRef(false);
+  useEffect(() => {
+    if (!code || changeCount === 0 || openedForChanges.current) return;
+    openedForChanges.current = true;
+    setPaneOpen(true);
+  }, [code, changeCount]);
+
   // Ctrl/Cmd+Shift+A toggles the pane (13 §4).
   useEffect(() => {
     const toggle = () => setPaneOpen((o) => !o);
@@ -206,6 +233,21 @@ export function ChatView({
     },
     [chatId, send],
   );
+  // The code surface's home tab (16 §5). It is derived from the session rather than opened, so
+  // it is always first and never closable; artifacts still open here, they are simply not the
+  // default any more.
+  const changesTabs: PaneTab[] = code
+    ? [
+        {
+          id: 'changes',
+          title: 'Changes',
+          icon: <GitDiffIcon />,
+          temporary: false,
+          closable: false,
+          content: <ChangesPane chatId={chatId} />,
+        },
+      ]
+    : [];
   const artifactTabs: PaneTab[] = (openArtifacts ?? []).map((id) => ({
     id: `artifact-${id}`,
     title: artifacts[id]?.title ?? 'Artifact',
@@ -219,7 +261,7 @@ export function ChatView({
       />
     ),
   }));
-  const tabs = [...artifactTabs, ...detailTabs];
+  const tabs = [...changesTabs, ...artifactTabs, ...detailTabs];
 
   // Follow mode: while the user sits at the bottom, streaming keeps the newest text in view.
   const liveLength =
@@ -474,7 +516,7 @@ function describe(err: unknown): string {
   return String(err);
 }
 
-function detailTab(item: ActivityItem): PaneTab | null {
+function detailTab(item: ActivityItem, onRevert?: (path: string) => void): PaneTab | null {
   switch (item.kind) {
     case 'edit':
       return {
@@ -491,6 +533,7 @@ function detailTab(item: ActivityItem): PaneTab | null {
               added: item.added,
               removed: item.removed,
             }}
+            onRevert={onRevert ? () => onRevert(item.path) : undefined}
           />
         ),
       };
