@@ -1,11 +1,11 @@
 //! First-party connector: Shell (`docs/connectors/shell.md`).
 //!
-//! Two tools: run a command in an attached folder, and stop one that is running. It is the most
-//! capable and the most dangerous thing in Gantry — a command runs as the user, and once it is
-//! running nothing here constrains what it does — so the honest parts of that are built in
-//! rather than described: the working directory must resolve inside an attached folder, the
-//! classifier says whether the command line was *proved* read-only, output is capped with the
-//! loss counted, the deadline is real, and a kill takes the whole process tree.
+//! Two tools: run a command, and stop one that is running. It is the most capable and the most
+//! dangerous thing in Gantry — a command runs as the user, and once it is running nothing here
+//! constrains what it does — so the honest parts of that are built in rather than described:
+//! the working directory is an attached folder while the chat has one, the classifier says
+//! whether the command line was *proved* read-only, output is capped with the loss counted, the
+//! deadline is real, and a kill takes the whole process tree.
 
 #![forbid(unsafe_code)]
 
@@ -24,7 +24,7 @@ use gantry_connectors::{
     Connector, ConnectorDescriptor, ConnectorError, ToolCallRequest, ToolEventSink, ToolOutcome,
 };
 use gantry_core::{ChatId, CommandClass, InstanceId, PlanModePolicy, RiskTier, ToolDef};
-use gantry_workspace::Workspace;
+use gantry_workspace::{Workspace, WorkspaceError};
 use tokio_util::sync::CancellationToken;
 
 pub use env::ShellEnv;
@@ -68,13 +68,22 @@ impl Shell {
     /// Where the command runs: the `cwd` argument if it resolves inside an attached folder, and
     /// the chat's first folder otherwise (shell.md §2, open question 3 — defaulting, because a
     /// model that must name the folder every time names it wrongly).
+    ///
+    /// A chat with no folder attached runs in the home folder instead of refusing (shell.md D8,
+    /// corrected 2026-09-10). "What hardware is in this machine" is a real question, and it has
+    /// nothing to do with a project; sending the user off to attach a folder before `lscpu` may
+    /// run is a rule with no purpose behind it.
     fn working_directory(&self, chat: ChatId, cwd: Option<&str>) -> Result<PathBuf, String> {
-        let roots = self.workspace.roots(chat).map_err(|err| {
-            format!(
-                "{err}, so there is nowhere to run a command. Add one with the + button in the \
-                 composer."
-            )
-        })?;
+        let roots = match self.workspace.roots(chat) {
+            Ok(roots) => roots,
+            Err(WorkspaceError::NoRoots) => return self.home_directory(cwd),
+            Err(err) => {
+                return Err(format!(
+                    "{err}, so there is nowhere to run a command. Attach a folder with the + \
+                     button in the composer."
+                ));
+            }
+        };
         match cwd {
             Some(path) => {
                 let scoped = roots.resolve(path).map_err(|err| {
@@ -96,6 +105,33 @@ impl Shell {
                         .to_owned()
                 }),
         }
+    }
+
+    /// No folder is attached: the home folder, and an explicit `cwd` may name any directory that
+    /// exists. Nothing is weakened by that — with nothing attached there is no boundary to hold,
+    /// and a command line can `cd` wherever it likes in any case (shell.md §7).
+    fn home_directory(&self, cwd: Option<&str>) -> Result<PathBuf, String> {
+        let home = self.env.home().ok_or_else(|| {
+            "this chat has no folder attached and your home folder could not be found, so there \
+             is nowhere to run a command. Attach a folder with the + button in the composer."
+                .to_owned()
+        })?;
+        let Some(path) = cwd else { return Ok(home) };
+        // An absolute path replaces the home folder; a relative one is read from it, which is
+        // what the same words would mean in a terminal.
+        let candidate = home.join(path);
+        candidate
+            .canonicalize()
+            .ok()
+            .filter(|resolved| resolved.is_dir())
+            .ok_or_else(|| {
+                format!(
+                    "{} is not a directory that exists. This chat has no folder attached, so the \
+                     command would otherwise run in {}.",
+                    candidate.display(),
+                    home.display()
+                )
+            })
     }
 
     async fn run_command(
@@ -302,8 +338,8 @@ fn string(args: &serde_json::Value, key: &str) -> Option<String> {
 pub fn definitions() -> Vec<ToolDef> {
     let mut run = ToolDef::new(
         "run_command",
-        "Run one command line in an attached folder and wait for it to finish. Use it for \
-         builds, tests, git and scripts. Prefer the file tools for reading and editing files: \
+        "Run one command line and wait for it to finish. Use it for builds, tests, git and \
+         scripts. Prefer the file tools for reading and editing files: \
          their results are structured and their changes can be undone. Standard input is \
          closed, so interactive commands end instead of waiting, and long-running processes \
          such as development servers are not supported.",
@@ -313,7 +349,7 @@ pub fn definitions() -> Vec<ToolDef> {
                 "command": { "type": "string",
                              "description": "The command line, exactly as it would be typed." },
                 "cwd": { "type": "string",
-                         "description": "Directory to run in; must be inside an attached folder. Defaults to the chat's first folder." },
+                         "description": "Directory to run in. Defaults to the chat's first attached folder, or your home folder when the chat has none. While a folder is attached it must be inside one." },
                 "timeout_ms": { "type": "integer", "minimum": 1000, "maximum": MAX_TIMEOUT_MS,
                                 "default": DEFAULT_TIMEOUT_MS,
                                 "description": "How long to wait before the command and its children are stopped." },

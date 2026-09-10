@@ -27,7 +27,7 @@ document does not repeat it. Replaces the paragraph in `docs/plan/03-connector-s
 | D5 | **A non-zero exit code is a result, not an error.** | A failing test suite is exactly what the model asked to see. Only a command that could not be started is a tool error. Conflating the two teaches the model to treat real output as a malfunction. |
 | D6 | **Output is capped, and the model gets the beginning and the end with the middle elided and counted.** | Errors are at the end; the command and its early context are at the start. The middle of a build log is the least useful part, and a model handed two megabytes of it learns nothing. Nothing is ever cut silently. |
 | D7 | **The classifier proves a command string is read-only. It does not prove execution is.** Stated plainly in the interface. | §6. This is a real limit, and a guarantee that overstates itself is worse than one that does not. |
-| D8 | **The working directory must be inside an attached folder. What the command then does is not constrained.** | §7. The scope boundary is real for the connectors that go through it and does not extend to a subprocess. Saying so is the only honest position. |
+| D8 | **The working directory is an attached folder while the chat has one, and the home folder when it has none. What the command then does is not constrained.** | §7. The scope boundary is real for the connectors that go through it and does not extend to a subprocess. Saying so is the only honest position. *Corrected 2026-09-10*: refusing to run at all without a folder was a rule with nothing behind it — a question about the machine (`lscpu`, `free -h`) is not about a project, and the command could `cd` anywhere in any case. |
 | D9 | **Gantry's own secrets are never placed in a command's environment.** | Provider keys and connector credentials have no business in a subprocess. If a command needs a token the user puts it there themselves. |
 | D10 | **Long-running and background processes are deferred**, and the tool says so when a command hits the ceiling. | §9. Dev servers are a real use, and doing them properly needs machinery the first version does not have. |
 
@@ -40,7 +40,7 @@ Two, and the second exists only to stop the first.
 | Parameter | Type | Default | Notes |
 |-----------|------|---------|-------|
 | `command` | string | required | A single command line, as the user would type it |
-| `cwd` | string | the chat's primary folder | Must resolve inside an attached folder |
+| `cwd` | string | the chat's primary folder, or the home folder when none is attached | Must resolve inside an attached folder while the chat has one |
 | `timeout_ms` | integer | 120000 | Maximum 600000 |
 | `env` | map | — | Extra variables for this command only |
 
@@ -186,7 +186,10 @@ user's own privileges.
 ## 7. Scope, honestly
 
 The working directory must resolve inside an attached folder, using the same containment
-machinery as the filesystem connector.
+machinery as the filesystem connector. A chat with no folder attached runs in the user's home
+folder, and there names any directory that exists: with nothing attached there is no boundary to
+hold, and pretending otherwise would only cost the user the answer to a question about their own
+machine.
 
 That is the entire extent of it. Once a command is running it can touch anything the user can
 touch, in any directory, over the network. Gantry does not sandbox it, and the first version does
@@ -259,6 +262,7 @@ from both, since it is the one case where the output is incomplete.
 |-----------|------------------------|
 | Ran, exited non-zero | The exit code and both streams. Not an error (D5) |
 | Working directory outside the attached folders | Which folder would need adding, as the filesystem connector does |
+| No folder attached, and no home folder either | That there is nowhere to run, and how to attach one |
 | Program not found | That, plus a note that the environment came from the login shell, which is the usual cause |
 | Timed out | That it exceeded the limit, that it was killed, the output so far, and that long-running processes are not supported |
 | Killed by the user | That, plainly |
@@ -274,7 +278,7 @@ from both, since it is the one case where the output is incomplete.
 | `risk.network` | `internet`. A command can do anything, including reach the network |
 | `risk.local_system` | `execute` |
 | `risk.default_tool_tier` | `execute` |
-| `risk.notes` | That commands run as the user with the user's privileges, that the working directory is constrained but the command's behaviour is not, and that no terminal window is ever opened |
+| `risk.notes` | That commands run as the user with the user's privileges, where the working directory comes from and that the command's behaviour is not constrained, and that no terminal window is ever opened |
 | `tools` | `tools_generated: true`, as the other native connectors do (**revised**): the code defines `run_command` and `kill_command`, neither `parallel_safe`, `run_command` with `plan_mode: classify`, and the card reads them from there so it cannot describe a tool that does not exist |
 | `prompt.system_addendum` | Prefer the filesystem and editor tools over shell equivalents, because their results are structured and their changes are revertible; standard input is closed, so do not run interactive commands; long-running processes are not supported |
 
@@ -288,7 +292,7 @@ from both, since it is the one case where the output is incomplete.
 | Output caps | A script that prints far more than the cap, asserting the head and tail survive and the elision is counted correctly |
 | No window | Cannot be asserted from a test. It goes on the manual release checklist for Windows, where it is the one platform that gets it wrong by default |
 | The shell that runs commands | That it is bash or `sh` whatever the developer's login shell is — the test that would have caught the fish mistake before a user did |
-| Scope | That a working directory outside the attached folders is refused, reusing the filesystem corpus |
+| Scope | That a working directory outside the attached folders is refused, reusing the filesystem corpus; and that a chat with no folder runs in the home folder |
 
 ## 14. Changes this forces elsewhere
 
@@ -305,7 +309,8 @@ from both, since it is the one case where the output is incomplete.
 2. **The read-only allowlist's contents.** Short and conservative to begin with, extended from
    real use rather than guessed at now.
 3. ~~**Whether `cwd` should default to the chat's primary folder or be required.**~~ *Answered
-   2026-09-08: it defaults to the chat's first folder.* A model made to name the folder every
+   2026-09-08: it defaults to the chat's first folder, and to the home folder when the chat has
+   no folder at all (2026-09-10).* A model made to name the folder every
    time names it wrongly — and an audit trail of a folder the model guessed is worth less than
    one of the folder the user attached. The resolved directory is in the result either way, so
    nothing is hidden by defaulting.

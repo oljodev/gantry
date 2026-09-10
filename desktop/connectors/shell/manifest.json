@@ -18,7 +18,7 @@
     "network": "internet",
     "local_system": "execute",
     "default_tool_tier": "execute",
-    "notes": "Commands run as you, with your privileges. The working directory must be inside a folder attached to the chat; what the command then does is not constrained, on disk or over the network. No terminal window is ever opened, and Gantry's own keys and credentials are never placed in a command's environment."
+    "notes": "Commands run as you, with your privileges. The working directory is a folder attached to the chat, or your home folder when the chat has none attached; what the command then does is not constrained, on disk or over the network. No terminal window is ever opened, and Gantry's own keys and credentials are never placed in a command's environment."
   },
   "tools_generated": true,
   "prompt": {

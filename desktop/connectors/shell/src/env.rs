@@ -67,6 +67,21 @@ impl ShellEnv {
         }
     }
 
+    /// The folder a command runs in when the chat has no folder attached: the one a terminal
+    /// opens in. Taken from the captured environment rather than from this process, so it is the
+    /// home the user's shell would use. `None` when there is no such directory, which is a state
+    /// worth reporting rather than papering over with a guess.
+    #[must_use]
+    pub fn home(&self) -> Option<PathBuf> {
+        let key = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
+        let path = self
+            .vars
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case(key))
+            .map(|(_, v)| PathBuf::from(v))?;
+        path.is_dir().then_some(path)
+    }
+
     /// The `PATH` a command will see, for the "program not found" message.
     #[must_use]
     pub fn path(&self) -> Option<&str> {
@@ -234,6 +249,25 @@ mod tests {
     fn commands_run_without_reading_the_profile() {
         let env = ShellEnv::inherited();
         assert_eq!(env.args, vec![OsString::from("-c")], "no -l, no -i");
+    }
+
+    #[test]
+    fn the_home_folder_comes_from_the_captured_environment() {
+        let mut env = ShellEnv::inherited();
+        let dir = tempfile::tempdir().unwrap();
+        let key = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
+        env.vars
+            .insert(key.to_owned(), dir.path().display().to_string());
+        assert_eq!(env.home().as_deref(), Some(dir.path()));
+
+        env.vars.insert(
+            key.to_owned(),
+            dir.path().join("gone").display().to_string(),
+        );
+        assert!(
+            env.home().is_none(),
+            "a home that is not there is not a home"
+        );
     }
 
     #[cfg(unix)]

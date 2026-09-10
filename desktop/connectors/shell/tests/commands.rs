@@ -23,6 +23,7 @@ use tokio_util::sync::CancellationToken;
 struct Fixture {
     _dir: tempfile::TempDir,
     work: tempfile::TempDir,
+    workspace: Arc<Workspace>,
     shell: Shell,
     chat: ChatId,
     turn: TurnId,
@@ -84,16 +85,35 @@ fn fixture() -> Fixture {
         shell: Shell::new(
             "shell".into(),
             InstanceId::new(),
-            workspace,
+            workspace.clone(),
             // The inherited environment, never the developer's login shell: a test that reads
             // `~/.zshrc` passes or fails by whose machine it runs on.
             Arc::new(ShellEnv::inherited()),
         ),
         _dir: dir,
         work,
+        workspace,
         chat,
         turn: TurnId::new(),
     }
+}
+
+/// A fixture with no folder attached and a home folder of our own, so the test never runs in
+/// the developer's real home.
+fn homeless(home: &tempfile::TempDir) -> Fixture {
+    let mut f = fixture();
+    let mut env = ShellEnv::inherited();
+    let key = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
+    env.vars
+        .insert(key.to_owned(), home.path().display().to_string());
+    f.chat = ChatId::new(); // a chat the store has never heard of has no roots
+    f.shell = Shell::new(
+        "shell".into(),
+        InstanceId::new(),
+        f.workspace.clone(),
+        Arc::new(env),
+    );
+    f
 }
 
 impl Fixture {
@@ -214,43 +234,48 @@ async fn a_working_directory_outside_the_attached_folders_is_refused() {
 }
 
 #[tokio::test]
-async fn a_chat_with_no_folder_is_told_so_rather_than_running_anywhere() {
-    let dir = tempfile::tempdir().unwrap();
-    let store = Arc::new(Store::open(dir.path().join("t.db")).unwrap());
-    let blobs = Arc::new(BlobStore::open(dir.path().join("blobs")).unwrap());
-    let workspace = Arc::new(Workspace::new(store, blobs, dir.path().join("app-data")));
-    let shell = Shell::new(
-        "shell".into(),
-        InstanceId::new(),
-        workspace,
-        Arc::new(ShellEnv::inherited()),
+async fn a_chat_with_no_folder_runs_in_the_home_folder() {
+    // "What hardware does this machine have" is a question about the machine, not about a
+    // project. Before 2026-09-10 it was refused until the user attached a folder, which is a
+    // rule with nothing behind it: the command is unconstrained either way.
+    let home = tempfile::tempdir().unwrap();
+    let f = homeless(&home);
+    let result = f.run(serde_json::json!({ "command": "pwd" })).await;
+    assert_eq!(result["exit_code"], 0, "{result}");
+    assert_eq!(
+        std::fs::canonicalize(result["stdout"].as_str().unwrap().trim()).unwrap(),
+        std::fs::canonicalize(home.path()).unwrap()
     );
-    let outcome = shell
-        .call(
-            ToolCallRequest {
-                call_id: CallId::new(),
-                tool: "run_command".into(),
-                args: serde_json::json!({ "command": "ls" }),
-                scope: ChatScope {
-                    chat_id: ChatId::new(),
-                    turn_id: TurnId::new(),
-                    mode: Mode::AutoEdit,
-                },
-            },
-            Arc::new(gantry_connectors::NoopToolEvents),
-            CancellationToken::new(),
-        )
-        .await
-        .unwrap();
-    let ToolOutcome::Complete {
-        content, is_error, ..
-    } = outcome;
-    assert!(is_error);
-    let ResultPart::Text { text } = &content[0] else {
-        panic!("expected text")
-    };
-    assert!(text.contains("no folder attached"), "{text}");
-    assert!(text.contains("nowhere to run"), "{text}");
+}
+
+#[tokio::test]
+async fn without_a_folder_a_named_directory_is_taken_as_typed() {
+    let home = tempfile::tempdir().unwrap();
+    let elsewhere = tempfile::tempdir().unwrap();
+    let f = homeless(&home);
+    let result = f
+        .run(serde_json::json!({
+            "command": "pwd",
+            "cwd": elsewhere.path().display().to_string(),
+        }))
+        .await;
+    assert_eq!(result["exit_code"], 0, "{result}");
+    assert_eq!(
+        std::fs::canonicalize(result["stdout"].as_str().unwrap().trim()).unwrap(),
+        std::fs::canonicalize(elsewhere.path()).unwrap()
+    );
+
+    let missing = f
+        .run(serde_json::json!({ "command": "pwd", "cwd": "/no/such/place" }))
+        .await;
+    assert_eq!(missing["error"], true, "{missing}");
+    assert!(
+        missing["text"]
+            .as_str()
+            .unwrap()
+            .contains("not a directory that exists"),
+        "{missing}"
+    );
 }
 
 #[tokio::test]
