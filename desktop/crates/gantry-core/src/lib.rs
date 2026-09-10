@@ -53,8 +53,8 @@ pub use message::{
     ContentPart, MediaSource, Message, ProviderKind, ResultPart, Role, StopReason, Usage,
 };
 pub use settings::{
-    AdvancedSettings, AppearanceSettings, ChatSettings, Density, Mode, ModelRef, ProviderId,
-    ReasoningEffort, Settings, SettingsPatch, Theme,
+    AdvancedSettings, AppearanceSettings, ChatSettings, Density, MediaOptions, Mode, ModelRef,
+    ProviderId, ReasoningEffort, Settings, SettingsPatch, Theme,
 };
 pub use time::now_ms;
 pub use tool::{

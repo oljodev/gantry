@@ -73,7 +73,10 @@ fn to_record(provider_id: &str, m: &ModelInfo, fetched_at: i64) -> models::Model
         capabilities_json: serde_json::to_string(&m.capabilities).unwrap_or_else(|_| "{}".into()),
         context_window: m.context_window,
         max_output: m.max_output,
-        pricing_json: m.pricing.and_then(|p| serde_json::to_string(&p).ok()),
+        pricing_json: m
+            .pricing
+            .as_ref()
+            .and_then(|p| serde_json::to_string(p).ok()),
         created_at: m.created_at,
         fetched_at,
     }

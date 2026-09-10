@@ -63,6 +63,9 @@ pub struct CompatProfile {
     pub model_categories: &'static [&'static str],
     /// Whether this vendor has the image, speech and video endpoints beside the chat one.
     pub media_endpoints: bool,
+    /// Listings that say what a media model lets you choose and what a clip costs; the plain
+    /// model list carries neither. Merged into the models the categories above produced.
+    pub media_lists: &'static [&'static str],
     pub web_search: WebSearchParam,
     pub tool_id_quirk: ToolIdQuirk,
     pub key_check: KeyCheck,
@@ -90,6 +93,7 @@ impl CompatProfile {
             models_path: "models",
             model_categories: &["image", "speech", "video"],
             media_endpoints: true,
+            media_lists: &["videos/models", "images/models"],
             web_search: WebSearchParam::OpenRouterPlugin,
             tool_id_quirk: ToolIdQuirk::SynthesizeIfEmpty,
             key_check: KeyCheck::OpenRouterKey,
@@ -112,6 +116,7 @@ impl CompatProfile {
             models_path: "language-models",
             model_categories: &[],
             media_endpoints: false,
+            media_lists: &[],
             web_search: WebSearchParam::None,
             tool_id_quirk: ToolIdQuirk::None,
             key_check: KeyCheck::ListModels,
@@ -135,6 +140,7 @@ impl CompatProfile {
             models_path: "models",
             model_categories: &[],
             media_endpoints: false,
+            media_lists: &[],
             web_search: WebSearchParam::None,
             tool_id_quirk: ToolIdQuirk::SynthesizeIfEmpty,
             key_check: KeyCheck::ListModels,

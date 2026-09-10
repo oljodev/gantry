@@ -123,7 +123,7 @@ pub async fn image(
     headers: HeaderMap,
     req: &ChatRequest,
 ) -> Result<ChatStream, ProviderError> {
-    let body = serde_json::json!({ "model": req.model, "prompt": prompt(req) });
+    let body = image_body(req);
     let json = http::post_json(
         http,
         &http::join(base_url, "images"),
@@ -195,15 +195,7 @@ pub async fn speech(
     req: &ChatRequest,
     info: Option<&ModelInfo>,
 ) -> Result<ChatStream, ProviderError> {
-    let text = prompt(req);
-    let mut body = serde_json::json!({
-        "model": req.model,
-        "input": text,
-        "response_format": "mp3",
-    });
-    if let Some(voice) = info.and_then(|i| i.capabilities.voices.first()) {
-        body["voice"] = serde_json::Value::String(voice.clone());
-    }
+    let body = speech_body(req, info);
     let (mime, bytes) = http::post_bytes(
         http,
         &http::join(base_url, "audio/speech"),
@@ -274,6 +266,7 @@ struct VideoJob {
     headers: HeaderMap,
     model: String,
     prompt: String,
+    media: gantry_core::MediaOptions,
     phase: Phase,
     started: Instant,
     usage: Option<Usage>,
@@ -293,6 +286,7 @@ pub fn video(
         headers,
         model: req.model.clone(),
         prompt: prompt(req),
+        media: req.media.clone(),
         phase: Phase::Submit,
         started: Instant::now(),
         usage: None,
@@ -326,7 +320,7 @@ impl VideoJob {
     }
 
     async fn submit(&mut self) -> Result<StreamEvent, ProviderError> {
-        let body = serde_json::json!({ "model": self.model, "prompt": self.prompt });
+        let body = video_body(&self.model, &self.prompt, &self.media);
         let json = http::post_json(
             &self.http,
             &http::join(&self.base_url, "videos"),
@@ -424,6 +418,50 @@ impl VideoJob {
     }
 }
 
+/// The three request bodies. Only what the user actually chose is asked for: a model's own
+/// default beats a guess, and an aspect ratio a model does not support is an error rather than a
+/// near miss.
+fn image_body(req: &ChatRequest) -> serde_json::Value {
+    let mut body = serde_json::json!({ "model": req.model, "prompt": prompt(req) });
+    put(&mut body, "aspect_ratio", req.media.aspect_ratio.as_deref());
+    put(&mut body, "quality", req.media.quality.as_deref());
+    body
+}
+
+fn speech_body(req: &ChatRequest, info: Option<&ModelInfo>) -> serde_json::Value {
+    let mut body = serde_json::json!({
+        "model": req.model,
+        "input": prompt(req),
+        "response_format": "mp3",
+    });
+    // The voice the user picked, or the model's own first one — which is at least a voice this
+    // model has, unlike any name Gantry could invent.
+    let voice = req
+        .media
+        .voice
+        .clone()
+        .or_else(|| info.and_then(|i| i.capabilities.voices.first().cloned()));
+    put(&mut body, "voice", voice.as_deref());
+    body
+}
+
+fn video_body(model: &str, prompt: &str, media: &gantry_core::MediaOptions) -> serde_json::Value {
+    let mut body = serde_json::json!({ "model": model, "prompt": prompt });
+    put(&mut body, "aspect_ratio", media.aspect_ratio.as_deref());
+    put(&mut body, "resolution", media.resolution.as_deref());
+    if let Some(seconds) = media.duration_seconds {
+        body["duration"] = serde_json::json!(seconds);
+    }
+    body
+}
+
+/// Adds a field when there is one to add. An absent choice is absent from the request.
+fn put(body: &mut serde_json::Value, key: &str, value: Option<&str>) {
+    if let Some(value) = value.filter(|v| !v.is_empty()) {
+        body[key] = serde_json::Value::String(value.to_owned());
+    }
+}
+
 fn notice(detail: &str) -> StreamEvent {
     StreamEvent::Notice {
         kind: "media_progress".to_owned(),
@@ -479,6 +517,49 @@ mod tests {
         assert_eq!(route(Some(&info(vec![Modality::Text]))), None);
         // A model nobody described is a chat model: that is what it was before the list grew.
         assert_eq!(route(None), None);
+    }
+
+    #[test]
+    fn a_request_carries_the_choices_that_were_made_and_nothing_else() {
+        let mut req = ChatRequest::new("g/veo", "", vec![Message::user_text("a cat")]);
+        // Nothing chosen: nothing asked for.
+        let bare = video_body(&req.model, &prompt(&req), &req.media);
+        assert_eq!(bare["prompt"], "a cat");
+        assert!(bare.get("resolution").is_none());
+        assert!(bare.get("aspect_ratio").is_none());
+        assert!(bare.get("duration").is_none());
+
+        req.media.resolution = Some("720p".into());
+        req.media.aspect_ratio = Some("9:16".into());
+        req.media.duration_seconds = Some(8);
+        let chosen = video_body(&req.model, &prompt(&req), &req.media);
+        assert_eq!(chosen["resolution"], "720p");
+        assert_eq!(chosen["aspect_ratio"], "9:16");
+        assert_eq!(chosen["duration"], 8);
+
+        let mut picture = ChatRequest::new("o/img", "", vec![Message::user_text("a cat")]);
+        picture.media.aspect_ratio = Some("16:9".into());
+        let body = image_body(&picture);
+        assert_eq!(body["aspect_ratio"], "16:9");
+        assert!(body.get("quality").is_none(), "not chosen, not sent");
+    }
+
+    #[test]
+    fn a_voice_is_the_one_picked_then_the_model_s_own_first() {
+        let mut req = ChatRequest::new("d/tts", "", vec![Message::user_text("hello")]);
+        let mut model = info(vec![Modality::Speech]);
+        model.capabilities.voices = vec!["flux-bree-en".into(), "flux-cliff-en".into()];
+        assert_eq!(
+            speech_body(&req, Some(&model))["voice"],
+            "flux-bree-en",
+            "no choice made: the model's own first voice"
+        );
+        req.media.voice = Some("flux-cliff-en".into());
+        assert_eq!(speech_body(&req, Some(&model))["voice"], "flux-cliff-en");
+        // A model that names no voices is asked without one rather than with an invented name.
+        let voiceless = info(vec![Modality::Speech]);
+        let plain = ChatRequest::new("d/tts", "", vec![Message::user_text("hello")]);
+        assert!(speech_body(&plain, Some(&voiceless)).get("voice").is_none());
     }
 
     #[test]

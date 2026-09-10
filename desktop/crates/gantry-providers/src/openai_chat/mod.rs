@@ -145,6 +145,13 @@ impl Provider for OpenAiChatProvider {
                 Err(err) => log::warn!("the {category} model list could not be read: {err}"),
             }
         }
+        // What those models let you choose, and what a clip costs by the second.
+        for path in self.profile.media_lists {
+            match self.get_json(path).await {
+                Ok(json) => models::merge_media_details(&mut list, &json),
+                Err(err) => log::warn!("the {path} listing could not be read: {err}"),
+            }
+        }
         list.sort_by(|a, b| a.id.cmp(&b.id));
         overrides::apply_all(ProviderKind::OpenAiChat, self.id.as_str(), &mut list);
         *self.models.write().unwrap_or_else(|e| e.into_inner()) =

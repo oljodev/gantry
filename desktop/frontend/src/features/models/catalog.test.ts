@@ -6,6 +6,7 @@ import {
   contextLabel,
   creatorOf,
   creatorsOf,
+  clipEstimate,
   isFree,
   kindOf,
   matches,
@@ -247,7 +248,51 @@ describe('labels', () => {
     });
     // The text price of a model that answers aloud is not what the answer costs.
     expect(priceLabel(talker)).toBe('$64.00 / M spoken');
+    // A voice model is billed by the character it reads, not by the token it was sent.
+    const reader = model({
+      id: 'd/aura-2',
+      capabilities: caps({ output: ['speech'] }),
+      pricing: { input_per_mtok: 30, output_per_mtok: 0, cache_read_per_mtok: null },
+    });
+    expect(priceLabel(reader)).toBe('$30.00 / M chars');
     expect(priceLabel(model({ id: 'x/y' }))).toBe('—');
+  });
+});
+
+describe('video pricing', () => {
+  const veo = (rates: Record<string, number>, durations: number[] = [4, 8]) =>
+    model({
+      id: 'g/veo',
+      capabilities: caps({ output: ['video'], resolutions: ['720p', '1080p'], durations }),
+      pricing: {
+        input_per_mtok: 0,
+        output_per_mtok: 0,
+        cache_read_per_mtok: null,
+        video_per_second_usd: rates,
+      },
+    });
+
+  it('shows the span of per-second rates, and one rate when they agree', () => {
+    expect(priceLabel(veo({ '720p': 0.1, '1080p': 0.2 }))).toBe('$0.10–$0.20 / s');
+    expect(priceLabel(veo({ '': 0.08 }))).toBe('$0.08 / s');
+    expect(priceLabel(veo({}))).toBe('—');
+  });
+
+  it('works out what the clip as configured comes to', () => {
+    const m = veo({ '720p': 0.1, '1080p': 0.2 });
+    expect(clipEstimate(m, { duration_seconds: 8, resolution: '1080p' })).toBe(
+      '8 s at 1080p ≈ $1.60',
+    );
+    // No length chosen: the model's first, which is what it will use.
+    expect(clipEstimate(m, { resolution: '720p' })).toBe('4 s at 720p ≈ $0.40');
+    // A model priced by the token has nothing to estimate from, and says nothing.
+    expect(clipEstimate(veo({}), { duration_seconds: 8 })).toBe('');
+  });
+
+  it('is free only when the seconds themselves are free', () => {
+    expect(isFree(veo({ '720p': 0 }))).toBe(true);
+    expect(isFree(veo({ '720p': 0.1 }))).toBe(false);
+    expect(isFree(veo({}))).toBe(false);
   });
 });
 

@@ -23,10 +23,11 @@ import {
 } from '@/components/ui/select';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Switch } from '@/components/ui/switch';
-import type { ModelRef } from '@/bindings';
+import type { MediaOptions, ModelRef } from '@/bindings';
 import {
   ageLabel,
   AGES,
+  clipEstimate,
   contextLabel,
   creatorsOf,
   isFiltered,
@@ -110,10 +111,26 @@ export function ModelDialog({
   const toggle = <T,>(list: T[], item: T): T[] =>
     list.includes(item) ? list.filter((x) => x !== item) : [...list, item];
 
+  const options = chat.model_options ?? {};
+  const selected = models.find((m) => m.key === modelKey(value));
+  const chosenOptions: MediaOptions | undefined = options[modelKey(value)];
+
   const choose = (m: CatalogModel) => {
     onChange(m.ref);
     remember(m.key);
-    onClose();
+    // A model with something to choose keeps the dialog open, because what there is to choose
+    // is at the bottom of it: closing here would mean opening it again to set a voice.
+    if (!hasOptions(m)) onClose();
+  };
+
+  const setOption = (patch: Partial<MediaOptions>) => {
+    const key = modelKey(value);
+    update.mutate({
+      chat: {
+        ...chat,
+        model_options: { ...options, [key]: { ...options[key], ...patch } },
+      },
+    });
   };
 
   const star = (m: CatalogModel) => {
@@ -325,6 +342,10 @@ export function ModelDialog({
             </div>
           </div>
 
+          {selected && hasOptions(selected) && (
+            <MediaStrip model={selected} options={chosenOptions} onChange={setOption} />
+          )}
+
           {/* Which upstream serves the model is OpenRouter's business, and saying so once is all
               the app has to say about it. */}
           <footer className="shrink-0 border-t border-line-subtle px-4 py-2 text-meta text-fg-3">
@@ -337,6 +358,113 @@ export function ModelDialog({
         </DialogPrimitive.Popup>
       </DialogPrimitive.Portal>
     </DialogPrimitive.Root>
+  );
+}
+
+/** Whether a model has anything to choose beyond itself. */
+function hasOptions(m: CatalogModel): boolean {
+  const c = m.info.capabilities;
+  return (
+    (c?.voices?.length ?? 0) > 0 ||
+    (c?.aspect_ratios?.length ?? 0) > 0 ||
+    (c?.resolutions?.length ?? 0) > 0 ||
+    (c?.durations?.length ?? 0) > 0 ||
+    (c?.qualities?.length ?? 0) > 0
+  );
+}
+
+/**
+ * What the chosen model lets you decide: the voice it reads in, the shape and size of what it
+ * makes, how long the clip runs. Only what this model actually supports is offered — the lists
+ * come from the provider per model — and every choice is remembered against the model rather
+ * than the chat, because a voice is a property of the voice you picked.
+ */
+function MediaStrip({
+  model,
+  options,
+  onChange,
+}: {
+  model: CatalogModel;
+  options: MediaOptions | undefined;
+  onChange: (patch: Partial<MediaOptions>) => void;
+}) {
+  const c = model.info.capabilities;
+  const estimate = clipEstimate(model, options);
+  return (
+    <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-line-subtle bg-base px-4 py-2">
+      <span className="text-meta text-fg-3">{model.name}</span>
+      <Choice
+        label="Voice"
+        values={c?.voices ?? []}
+        value={options?.voice ?? null}
+        onChange={(voice) => onChange({ voice })}
+      />
+      <Choice
+        label="Shape"
+        values={c?.aspect_ratios ?? []}
+        value={options?.aspect_ratio ?? null}
+        onChange={(aspect_ratio) => onChange({ aspect_ratio })}
+      />
+      <Choice
+        label="Size"
+        values={c?.resolutions ?? []}
+        value={options?.resolution ?? null}
+        onChange={(resolution) => onChange({ resolution })}
+      />
+      <Choice
+        label="Length"
+        values={(c?.durations ?? []).map((d) => `${d}`)}
+        value={options?.duration_seconds ? `${options.duration_seconds}` : null}
+        format={(v) => `${v} s`}
+        onChange={(seconds) => onChange({ duration_seconds: seconds ? Number(seconds) : null })}
+      />
+      <Choice
+        label="Quality"
+        values={c?.qualities ?? []}
+        value={options?.quality ?? null}
+        onChange={(quality) => onChange({ quality })}
+      />
+      {estimate && <span className="ml-auto text-meta text-fg-2">{estimate}</span>}
+    </div>
+  );
+}
+
+/**
+ * One choice, or nothing at all when the model offers none. "Model's choice" is a real option
+ * and the default one: the model's own pick is better than a guess made on its behalf.
+ */
+function Choice({
+  label,
+  values,
+  value,
+  format,
+  onChange,
+}: {
+  label: string;
+  values: string[];
+  value: string | null;
+  format?: (value: string) => string;
+  onChange: (value: string | null) => void;
+}) {
+  if (values.length === 0) return null;
+  const show = (v: string) => (format ? format(v) : v);
+  return (
+    <label className="flex items-center gap-1.5">
+      <span className="text-meta text-fg-3">{label}</span>
+      <Select value={value ?? ''} onValueChange={(v) => onChange(v ? (v as string) : null)}>
+        <SelectTrigger aria-label={label} size="sm" className="min-w-24 shrink-0">
+          <SelectValue>{(v: string) => (v === '' ? "Model's choice" : show(v))}</SelectValue>
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="">Model&rsquo;s choice</SelectItem>
+          {values.map((v) => (
+            <SelectItem key={v} value={v}>
+              {show(v)}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </label>
   );
 }
 

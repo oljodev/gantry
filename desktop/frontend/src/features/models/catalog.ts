@@ -1,4 +1,4 @@
-import type { ModelCapabilities, ModelInfo, ModelRef } from '@/bindings';
+import type { MediaOptions, ModelCapabilities, ModelInfo, ModelRef } from '@/bindings';
 import type { CatalogProvider } from '@/lib/ipc/hooks/providers';
 
 /**
@@ -205,7 +205,10 @@ export function isFiltered(f: Filters): boolean {
 export function isFree(m: CatalogModel): boolean {
   const p = m.info.pricing;
   if (!p) return false;
-  if (m.kind === 'video') return false;
+  if (m.kind === 'video') {
+    const rates = rateList(p.video_per_second_usd);
+    return rates.length > 0 && rates.every((r) => r === 0);
+  }
   if (m.kind === 'image' && typeof p.image_output_usd === 'number') {
     return p.image_output_usd === 0;
   }
@@ -264,6 +267,46 @@ export function sortModels(models: CatalogModel[], sort: Sort): CatalogModel[] {
   });
 }
 
+/**
+ * A price in the range money is normally written in. `usd` keeps three and four decimals
+ * because a token price of $0.089 needs them; a clip that costs $0.10 a second does not, and
+ * "$0.100" reads like a rounding error rather than a price.
+ */
+function usdCents(value: number): string {
+  return value < 0.01 ? usd(value) : `$${value.toFixed(2)}`;
+}
+
+/** The per-second rates a model states, with the blanks dropped. */
+function rateList(rates: Record<string, number | null> | undefined | null): number[] {
+  return Object.values(rates ?? {}).filter((r): r is number => typeof r === 'number');
+}
+
+/** Dollars per second of video at a resolution, falling back to the model's flat rate. */
+export function perSecond(m: CatalogModel, resolution?: string | null): number | null {
+  const rates = m.info.pricing?.video_per_second_usd;
+  if (!rates) return null;
+  const at = resolution ? rates[resolution] : undefined;
+  const flat = rates[''];
+  const only = rateList(rates);
+  const price = at ?? flat ?? (only.length === 1 ? only[0] : undefined);
+  return price ?? null;
+}
+
+/**
+ * What the clip as configured will cost, in the words of the thing being bought. Shown next to
+ * the controls that decide it, because seconds × resolution is exactly where the money goes and
+ * a person setting 10 seconds of 1080p deserves to see the number before they send.
+ */
+export function clipEstimate(m: CatalogModel, options: MediaOptions | undefined): string {
+  if (m.kind !== 'video') return '';
+  const seconds = options?.duration_seconds ?? m.info.capabilities?.durations?.[0];
+  const resolution = options?.resolution ?? null;
+  const rate = perSecond(m, resolution);
+  if (!seconds || rate === null) return '';
+  const where = resolution ? ` at ${resolution}` : '';
+  return `${seconds} s${where} ≈ ${usdCents(rate * seconds)}`;
+}
+
 /** Creators present in a list, with how many models each has, most first. */
 export function creatorsOf(models: CatalogModel[]): { name: string; count: number }[] {
   const counts = new Map<string, number>();
@@ -298,11 +341,24 @@ export function usd(value: number): string {
 export function priceLabel(m: CatalogModel): string {
   const p = m.info.pricing;
   if (!p) return '—';
-  // A clip is priced by its seconds and its resolution, and the model list carries neither.
-  if (m.kind === 'video') return '—';
+  // A clip is priced by the second, at a rate that depends on the resolution, so the row shows
+  // the span and the options strip works out what the chosen clip comes to.
+  if (m.kind === 'video') {
+    const rates = rateList(p.video_per_second_usd).sort((a, b) => a - b);
+    if (rates.length === 0) return '—';
+    const low = rates[0] as number;
+    const high = rates[rates.length - 1] as number;
+    return low === high ? `${usdCents(low)} / s` : `${usdCents(low)}–${usdCents(high)} / s`;
+  }
   if (m.kind === 'image' && p.image_output_usd) return `${usd(p.image_output_usd)} / image`;
   if (m.kind === 'audio' && p.audio_output_per_mtok) {
     return `${usd(p.audio_output_per_mtok)} / M spoken`;
+  }
+  // A text-to-speech model is billed by the character it reads, not by the token it was sent:
+  // the provider reports it in the same field, and the unit matters when the two differ by an
+  // order of magnitude.
+  if (m.kind === 'speech' && p.input_per_mtok !== null) {
+    return `${usd(p.input_per_mtok)} / M chars`;
   }
   if (p.request_usd && !p.input_per_mtok && !p.output_per_mtok) {
     return `${usd(p.request_usd)} / call`;

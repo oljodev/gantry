@@ -404,6 +404,13 @@ message, get back what it makes.
 - **Speech is not audio**, and both were asked for: `Modality::Speech` is a text-to-speech model
   reading a passage, `Audio` a model that talks or writes music mid-conversation. OpenRouter
   draws the same line, and the dialog now files models under five kinds rather than four.
+- **Choosing the voice, the shape and the size** (2026-09-10, same day): two more listings —
+  `/videos/models` and `/images/models` — say what each model supports and what a clip costs by
+  the second, which the plain list does not. The dialog's options strip offers a model exactly
+  what that model takes, remembers it against the model rather than the chat, and shows what the
+  configured clip will cost before it is sent. Video prices are real now: `$0.05–$0.28 / s` on
+  the row, `8 s at 1080p ≈ $1.60` beside the controls; a model priced by the token still shows
+  nothing, because a per-second figure for it would be invented.
 - Not built, and the next piece: the connector that lets a *text* model call an image, video or
   speech model per tool call and place the result mid-answer. Speech-to-text stays out, as asked.
 

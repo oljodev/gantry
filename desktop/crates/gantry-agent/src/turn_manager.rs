@@ -380,6 +380,13 @@ impl TurnManager {
         let first_turn = input.first_turn;
         let user_text = input.messages.last().map(Message::text).unwrap_or_default();
         let model = input.model.clone();
+        // Per model, not per chat (11 §1): a voice belongs to the voice model you picked.
+        let media = settings
+            .chat
+            .model_options
+            .get(&format!("{}/{}", model.provider, model.model))
+            .cloned()
+            .unwrap_or_default();
         let mode = input.mode;
         let attached = input.connectors.clone();
         self.runtime.spawn(async move {
@@ -389,6 +396,7 @@ impl TurnManager {
                 provider: provider.clone(),
                 max_output_tokens: settings.advanced.max_output_tokens,
                 max_tool_rounds: settings.advanced.max_tool_rounds,
+                media,
                 active: active.clone(),
                 chats: chats.clone(),
                 tools: std::sync::RwLock::new(tools),

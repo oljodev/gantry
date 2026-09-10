@@ -149,26 +149,30 @@ fn apply_entries(entries: &[Entry], kind: ProviderKind, provider_id: &str, m: &m
             };
         }
         if e.input_price_per_mtok.is_some() || e.output_price_per_mtok.is_some() {
-            let current = m.pricing;
+            let current = m.pricing.clone();
             m.pricing = Some(Pricing {
                 input_per_mtok: e
                     .input_price_per_mtok
-                    .or(current.map(|p| p.input_per_mtok))
+                    .or(current.as_ref().map(|p| p.input_per_mtok))
                     .unwrap_or(0.0),
                 output_per_mtok: e
                     .output_price_per_mtok
-                    .or(current.map(|p| p.output_per_mtok))
+                    .or(current.as_ref().map(|p| p.output_per_mtok))
                     .unwrap_or(0.0),
                 cache_read_per_mtok: e
                     .cache_read_price_per_mtok
-                    .or(current.and_then(|p| p.cache_read_per_mtok)),
+                    .or(current.as_ref().and_then(|p| p.cache_read_per_mtok)),
                 // The override file speaks in token prices; whatever the provider said about
                 // per-image and per-call prices survives it.
-                image_input_usd: current.and_then(|p| p.image_input_usd),
-                image_output_usd: current.and_then(|p| p.image_output_usd),
-                request_usd: current.and_then(|p| p.request_usd),
-                audio_input_per_mtok: current.and_then(|p| p.audio_input_per_mtok),
-                audio_output_per_mtok: current.and_then(|p| p.audio_output_per_mtok),
+                image_input_usd: current.as_ref().and_then(|p| p.image_input_usd),
+                image_output_usd: current.as_ref().and_then(|p| p.image_output_usd),
+                request_usd: current.as_ref().and_then(|p| p.request_usd),
+                audio_input_per_mtok: current.as_ref().and_then(|p| p.audio_input_per_mtok),
+                audio_output_per_mtok: current.as_ref().and_then(|p| p.audio_output_per_mtok),
+                video_per_second_usd: current
+                    .as_ref()
+                    .map(|p| p.video_per_second_usd.clone())
+                    .unwrap_or_default(),
             });
         } else if let Some(v) = e.cache_read_price_per_mtok
             && let Some(p) = m.pricing.as_mut()

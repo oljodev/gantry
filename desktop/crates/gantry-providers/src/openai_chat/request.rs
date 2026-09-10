@@ -56,8 +56,11 @@ pub fn build_body(profile: &CompatProfile, req: &ChatRequest, info: Option<&Mode
         // A voice has to be named, and the lists have nothing in common between vendors, so the
         // model's own first voice is used where it lists any. `alloy` is the provider's
         // documented default and the only name that works when it lists none.
-        let voice = info
-            .and_then(|i| i.capabilities.voices.first().cloned())
+        let voice = req
+            .media
+            .voice
+            .clone()
+            .or_else(|| info.and_then(|i| i.capabilities.voices.first().cloned()))
             .unwrap_or_else(|| "alloy".to_owned());
         obj.insert(
             "audio".into(),

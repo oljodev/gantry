@@ -231,6 +231,12 @@ A 1 px inner top highlight (`rgb(255 255 255 / 0.04)`) is allowed on level 2 and
   `0` it does report is never shown as "Free".
   Starring a model pins it to a **Favourites** section at the top (a settings field, so it
   follows the user); **Recent** sits under it (the UI store, so it stays with the machine).
+  A model that makes something other than text gets an **options strip** above the footer —
+  voice, shape, size, length, quality — showing only what that model actually supports, with
+  "Model's choice" as the default and first option in each, and for a video model what the clip
+  as configured will cost (`8 s at 1080p ≈ $1.60`) at the right-hand end. Choosing such a model
+  leaves the dialog open rather than closing it, because what there is to choose is at the
+  bottom of the dialog and closing would mean opening it again to set a voice.
   Typing narrows both away — a search is looking for something else. Which upstream serves the
   model is OpenRouter's business and gets one quiet line in the footer, not a facet.
 - **Pages** (connector browse, connector detail, project, skills, memory) use the settings content column without the left list: `page` title, `body` intro, then content at `measure` or, for grids, the full width minus gutters.

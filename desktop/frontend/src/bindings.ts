@@ -557,6 +557,12 @@ export type ChatSettings = {
 	 *  they are what the chat list already says, and a second record of the same fact drifts.
 	 */
 	favourite_models?: ModelRef[],
+	/**
+	 *  What was chosen for a model that makes something other than text, by `provider/model`.
+	 *  Per model rather than per chat: a voice is a property of the voice you picked, and
+	 *  choosing it again in every new chat is the kind of work software should not ask for.
+	 */
+	model_options?: { [key in string]: MediaOptions },
 };
 
 /**  A sidebar row. */
@@ -835,6 +841,23 @@ export type KeyStatus = {
 	invalid: boolean,
 };
 
+/**
+ *  What a media model lets a person choose (docs/plan/02 §5). Every field is optional and
+ *  nothing is sent unless it was picked: a model's own default is better than Gantry's guess,
+ *  and an aspect ratio the model does not support is an error rather than a near miss.
+ */
+export type MediaOptions = {
+	/**  A named voice, for a model that reads text aloud. */
+	voice?: string | null,
+	aspect_ratio?: string | null,
+	/**  `720p`, `4K` — a video model's own spelling, whatever that is. */
+	resolution?: string | null,
+	/**  Seconds of finished video. */
+	duration_seconds?: number | null,
+	/**  An image model's quality tier, where it has them. */
+	quality?: string | null,
+};
+
 /**  Where the bytes of an image or document live. */
 export type MediaSource = 
 /**  Inline, base64-encoded. */
@@ -906,6 +929,18 @@ export type ModelCapabilities = {
 	 *  other kind of model, and for a speech model whose provider never listed them.
 	 */
 	voices?: string[],
+	/**
+	 *  What a model that makes a picture or a clip lets you choose, in its own spelling. These
+	 *  differ per model — one video model offers 480p and 768p, another 1080p and 4K — so they
+	 *  are read from the provider rather than listed here, and a model that offers none is
+	 *  simply asked without them.
+	 */
+	aspect_ratios?: string[],
+	resolutions?: string[],
+	/**  Lengths of video, in seconds. */
+	durations?: number[],
+	/**  An image model's quality tiers. */
+	qualities?: string[],
 };
 
 /**  One row of a provider's model list, as the UI and the catalog cache see it. */
@@ -969,6 +1004,12 @@ export type Pricing = {
 	 */
 	audio_input_per_mtok?: number | null,
 	audio_output_per_mtok?: number | null,
+	/**
+	 *  Dollars per second of finished video, by the resolution it applies to; the empty key is
+	 *  the model's flat rate. A clip is not priced by the token, and the token prices a video
+	 *  model reports are all zero, so this is the only real number it has.
+	 */
+	video_per_second_usd?: { [key in string]: number | null },
 };
 
 /**  A named group of chats with shared instructions, knowledge and defaults. */

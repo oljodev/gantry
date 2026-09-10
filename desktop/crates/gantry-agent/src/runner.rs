@@ -40,6 +40,8 @@ pub struct RunContext {
     pub provider: Option<Arc<dyn Provider>>,
     pub max_output_tokens: u32,
     pub max_tool_rounds: u32,
+    /// What the user chose for this chat's model, where it makes something other than text.
+    pub media: gantry_core::MediaOptions,
     pub active: Arc<ActiveTurn>,
     pub chats: Arc<ChatBook>,
     /// The tools of this turn. Behind a lock because attaching a connector mid-turn (04 §9)
@@ -313,6 +315,7 @@ async fn stream_round(ctx: &RunContext, transcript: &[Message]) -> Round {
     );
     req.max_output_tokens = ctx.max_output_tokens;
     req.reasoning = ctx.input.effort;
+    req.media = ctx.media.clone();
     req.tools = ctx.tools.read().unwrap_or_else(|e| e.into_inner()).specs();
     if ctx.input.web_search {
         req.server_tools = vec![ServerTool::WebSearch { max_uses: None }];

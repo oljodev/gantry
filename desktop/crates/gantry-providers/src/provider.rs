@@ -30,6 +30,9 @@ pub struct ChatRequest {
     pub metadata: RequestMetadata,
     /// Merged into the wire request last; an escape hatch, empty by default.
     pub provider_options: serde_json::Value,
+    /// What the user chose for a model that makes something other than text: the voice, the
+    /// shape, the length. Empty for a text model, and empty means "do not ask".
+    pub media: gantry_core::MediaOptions,
 }
 
 impl ChatRequest {
@@ -51,6 +54,7 @@ impl ChatRequest {
             server_tools: Vec::new(),
             metadata: RequestMetadata::default(),
             provider_options: serde_json::Value::Null,
+            media: gantry_core::MediaOptions::default(),
         }
     }
 }
@@ -194,6 +198,20 @@ pub struct ModelCapabilities {
     /// other kind of model, and for a speech model whose provider never listed them.
     #[serde(default)]
     pub voices: Vec<String>,
+    /// What a model that makes a picture or a clip lets you choose, in its own spelling. These
+    /// differ per model — one video model offers 480p and 768p, another 1080p and 4K — so they
+    /// are read from the provider rather than listed here, and a model that offers none is
+    /// simply asked without them.
+    #[serde(default)]
+    pub aspect_ratios: Vec<String>,
+    #[serde(default)]
+    pub resolutions: Vec<String>,
+    /// Lengths of video, in seconds.
+    #[serde(default)]
+    pub durations: Vec<u32>,
+    /// An image model's quality tiers.
+    #[serde(default)]
+    pub qualities: Vec<String>,
 }
 
 impl Default for ModelCapabilities {
@@ -212,12 +230,16 @@ impl Default for ModelCapabilities {
             structured_output: false,
             prompt_caching: CacheSupport::None,
             voices: Vec::new(),
+            aspect_ratios: Vec::new(),
+            resolutions: Vec::new(),
+            durations: Vec::new(),
+            qualities: Vec::new(),
         }
     }
 }
 
 /// US dollars per million tokens, plus the per-unit prices some models carry instead.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, specta::Type)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
 pub struct Pricing {
     pub input_per_mtok: f64,
     pub output_per_mtok: f64,
@@ -238,6 +260,11 @@ pub struct Pricing {
     pub audio_input_per_mtok: Option<f64>,
     #[serde(default)]
     pub audio_output_per_mtok: Option<f64>,
+    /// Dollars per second of finished video, by the resolution it applies to; the empty key is
+    /// the model's flat rate. A clip is not priced by the token, and the token prices a video
+    /// model reports are all zero, so this is the only real number it has.
+    #[serde(default)]
+    pub video_per_second_usd: std::collections::BTreeMap<String, f64>,
 }
 
 /// One row of a provider's model list, as the UI and the catalog cache see it.

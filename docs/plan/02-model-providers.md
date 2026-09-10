@@ -255,9 +255,33 @@ model that answers in sound, which is the case above.
 
 | Kind | Endpoint | Shape |
 |------|----------|-------|
-| Image, no text | `POST /images` | `{model, prompt}` → `data: [{b64_json, media_type}]`, `usage.cost` |
-| Speech | `POST /audio/speech` | `{model, input, voice, response_format}` → the audio file itself |
-| Video | `POST /videos` → `GET /videos/{id}` | a job id, polled to `completed`, then the clip downloaded |
+| Image, no text | `POST /images` | `{model, prompt, aspect_ratio?, quality?}` → `data: [{b64_json, media_type}]`, `usage.cost` |
+| Speech | `POST /audio/speech` | `{model, input, voice?, response_format}` → the audio file itself |
+| Video | `POST /videos` → `GET /videos/{id}` | `{model, prompt, aspect_ratio?, resolution?, duration?}` → a job id, polled to `completed`, then the clip downloaded |
+
+**What a model lets you choose, and what it charges**, come from two more listings —
+`GET /videos/models` and `GET /images/models` — which the plain list replaces with nothing:
+`supported_aspect_ratios`, `supported_resolutions`, `supported_durations` and `pricing_skus` on a
+video model, and a `supported_parameters` map of enums and ranges on an image one. They are
+merged onto the models the category queries produced, by id, and land in `ModelCapabilities`
+(`aspect_ratios`, `resolutions`, `durations`, `qualities`, beside `voices`) so the dialog can
+offer a model exactly what that model takes and nothing else.
+
+`pricing_skus` has some thirty key shapes across the 28 video models. Only the ones that really
+are per-second are read — `duration_seconds…` in dollars, `cents_per_second_output…` and
+`cents_per_video_output_second…` in cents — keyed by the resolution named in the rest of the key.
+A model priced by the token or by the megapixel-second cannot be turned into a per-second figure
+without knowing what it will produce, so it shows no price at all rather than an invented one.
+Everything else follows from that number: the row shows the span (`$0.05–$0.28 / s`), and the
+options strip shows what the clip as configured comes to (`8 s at 1080p ≈ $1.60`), which is the
+moment a person is deciding to spend it.
+
+Speech models are billed **per character read**, not per token sent — the provider reports it in
+the same `prompt` field, and Deepgram's `0.00003` is its published $0.030 per thousand characters
+— so the row says `/ M chars`. A choice made in the strip is remembered against the model
+(`ChatSettings.model_options`, keyed `provider/model`), not against the chat: a voice is a
+property of the voice model you picked, and choosing it again in every new chat is work software
+should not ask for. Nothing is sent unless it was picked — a model's own default beats a guess.
 
 `media::route` decides from the model's output modalities alone: video wins, then speech, then
 image *without* text — a model that answers with a picture and a paragraph is a chat model that

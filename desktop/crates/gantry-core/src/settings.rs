@@ -1,6 +1,8 @@
 //! The typed settings document (docs/plan/11 §1) and the small value types the rest of the
 //! app shares with it: permission modes, model references, reasoning effort.
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
 /// A provider account id: `anthropic`, `openai`, `google`, `xai`, `openrouter` or `custom:<ulid>`.
@@ -142,6 +144,27 @@ pub struct ChatSettings {
     /// Models starred in the model dialog, newest first. Recents are not stored beside them:
     /// they are what the chat list already says, and a second record of the same fact drifts.
     pub favourite_models: Vec<ModelRef>,
+    /// What was chosen for a model that makes something other than text, by `provider/model`.
+    /// Per model rather than per chat: a voice is a property of the voice you picked, and
+    /// choosing it again in every new chat is the kind of work software should not ask for.
+    pub model_options: BTreeMap<String, MediaOptions>,
+}
+
+/// What a media model lets a person choose (docs/plan/02 §5). Every field is optional and
+/// nothing is sent unless it was picked: a model's own default is better than Gantry's guess,
+/// and an aspect ratio the model does not support is an error rather than a near miss.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(default)]
+pub struct MediaOptions {
+    /// A named voice, for a model that reads text aloud.
+    pub voice: Option<String>,
+    pub aspect_ratio: Option<String>,
+    /// `720p`, `4K` — a video model's own spelling, whatever that is.
+    pub resolution: Option<String>,
+    /// Seconds of finished video.
+    pub duration_seconds: Option<u32>,
+    /// An image model's quality tier, where it has them.
+    pub quality: Option<String>,
 }
 
 impl Default for ChatSettings {
@@ -157,6 +180,7 @@ impl Default for ChatSettings {
             suggest_connectors: true,
             open_artifact_panel: true,
             favourite_models: Vec::new(),
+            model_options: BTreeMap::new(),
         }
     }
 }
