@@ -167,6 +167,8 @@ fn apply_entries(entries: &[Entry], kind: ProviderKind, provider_id: &str, m: &m
                 image_input_usd: current.and_then(|p| p.image_input_usd),
                 image_output_usd: current.and_then(|p| p.image_output_usd),
                 request_usd: current.and_then(|p| p.request_usd),
+                audio_input_per_mtok: current.and_then(|p| p.audio_input_per_mtok),
+                audio_output_per_mtok: current.and_then(|p| p.audio_output_per_mtok),
             });
         } else if let Some(v) = e.cache_read_price_per_mtok
             && let Some(p) = m.pricing.as_mut()

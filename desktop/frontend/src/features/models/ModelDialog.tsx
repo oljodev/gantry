@@ -54,7 +54,7 @@ import { chatDefaults } from '@/lib/settingsDefaults';
 import { useUiStore } from '@/lib/stores/uiStore';
 import { cn } from '@/lib/utils';
 
-const KINDS: ModelKind[] = ['text', 'image', 'audio', 'video'];
+const KINDS: ModelKind[] = ['text', 'image', 'speech', 'audio', 'video'];
 const NEEDS: Need[] = ['vision', 'files', 'tools', 'reasoning', 'caching'];
 const SORTS: Sort[] = ['newest', 'name', 'price', 'context'];
 /** Creators past this are behind "Show all": the tail is a long list of one-model names. */

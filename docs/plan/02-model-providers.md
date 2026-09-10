@@ -198,6 +198,8 @@ pub struct CompatProfile {
     pub supports_strict: bool,
     pub models_parser: ModelsParser,     // Plain | OpenRouter
     pub tool_id_quirk: ToolIdQuirk,      // None | SynthesizeIfEmpty
+    pub model_categories: &'static [&'static str],  // kinds the plain list leaves out (§5)
+    pub media_endpoints: bool,           // /images, /audio/speech, /videos beside the chat one
 }
 ```
 
@@ -228,6 +230,62 @@ answer at the point the model produced them. A hosted `http(s)` URL is *not* tur
 nothing in the app fetches it, and a part pointing at a picture the app never read would be a
 lie. Projection drops assistant images on the way back to the provider, so a chat full of
 generated pictures does not re-send them.
+
+**Sound** (built 2026-09-10) works the same way one layer down. A model whose row says it
+produces audio is asked for it with `modalities: ["audio", "text"]` and an `audio` object naming
+a voice and a format; MP3 is the format asked for, because the fragments have to concatenate and
+every webview plays it. The sound arrives as `delta.audio` in pieces, each separately
+base64-encoded — sticking the strings together would put padding in the middle of the file, so
+each is decoded and the *bytes* are joined, and the one file is emitted as a
+`ContentPart::Audio` when the message closes. The transcript that comes beside it is streamed as
+ordinary text, which is what makes the answer readable while it is still being said and
+searchable afterwards. A voice has to be named and no two vendors agree on the names, so the
+model's own first listed voice is used where the catalog has one and OpenRouter's documented
+`alloy` where it has none.
+
+### Media models: the endpoints that are not `chat/completions`
+
+A model that draws a picture, reads a passage aloud or renders a clip is not a chat model with
+an extra output modality. It takes a prompt rather than a conversation, and it answers with a
+file. OpenRouter puts each on its own endpoint and — this is the part that matters for the
+catalog — leaves all of them out of `GET /models`, which answers with the models its *chat*
+endpoint can serve. They are asked for by name instead: `?output_modality=image` (54 models),
+`speech` (18), `video` (28), against 437 for text. `audio` names something else again: a chat
+model that answers in sound, which is the case above.
+
+| Kind | Endpoint | Shape |
+|------|----------|-------|
+| Image, no text | `POST /images` | `{model, prompt}` → `data: [{b64_json, media_type}]`, `usage.cost` |
+| Speech | `POST /audio/speech` | `{model, input, voice, response_format}` → the audio file itself |
+| Video | `POST /videos` → `GET /videos/{id}` | a job id, polled to `completed`, then the clip downloaded |
+
+`media::route` decides from the model's output modalities alone: video wins, then speech, then
+image *without* text — a model that answers with a picture and a paragraph is a chat model that
+draws, and keeps the chat endpoint. All three answer on the same `ChatStream` the chat client
+returns, so a turn never learns which kind of model it is talking to.
+
+Three things follow from the shape rather than from taste:
+
+- **Only the last user message is sent.** These endpoints take one string. Pasting the
+  conversation into it would put the model's own past answers into its next picture.
+- **A clip takes from half a minute to several**, so the video route emits a `Notice` event
+  every ten seconds while it polls (05 §2: shown live, never persisted) and gives up after
+  fifteen minutes with the job id named. Dropping the stream — which is what cancelling a turn
+  does — stops the polling, because each poll is one step of the stream rather than a task
+  running beside it.
+- **What comes back is parked in the blob store**, not kept inside the message: the live event
+  carries the bytes so the answer appears at once, and what is written down carries a hash. A
+  transcript holding thirty megabytes of base64 is read whole, out of SQLite, every time the
+  chat is opened. The ceiling is 32 MB per file, refused with its size named.
+
+Neither sound nor video goes back to a provider: nothing accepts them as input, and a message
+whose only part was one would project to nothing at all, so projection replaces them with a
+sentence saying what happened.
+
+Two things are known to be unsettled until the first live run, both cheap to change: whether a
+music model (Lyria) accepts the `voice` the `audio` object carries, and whether the speech
+endpoint's error path really is JSON on a route that otherwise answers with a file — the client
+checks the content type and says so either way.
 
 ## 6. Transcript → request projection
 

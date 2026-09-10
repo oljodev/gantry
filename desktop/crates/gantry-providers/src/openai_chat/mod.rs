@@ -2,6 +2,7 @@
 //! [`CompatProfile`] per vendor (`openrouter`, `xai`, `custom`).
 
 mod key;
+pub mod media;
 mod models;
 mod profiles;
 mod request;
@@ -128,6 +129,23 @@ impl Provider for OpenAiChatProvider {
     async fn list_models(&self) -> Result<Vec<ModelInfo>, ProviderError> {
         let json = crate::retry::with_retry(|| self.get_json(self.profile.models_path)).await?;
         let mut list = models::parse(self.profile.models_parser, &json)?;
+        // The kinds the plain list leaves out. A category that fails is logged and skipped:
+        // losing the video models is a smaller loss than losing the whole list with them.
+        for category in self.profile.model_categories {
+            let path = format!("{}?output_modality={category}", self.profile.models_path);
+            match self.get_json(&path).await {
+                Ok(json) => match models::parse(self.profile.models_parser, &json) {
+                    Ok(extra) => {
+                        let known: std::collections::HashSet<String> =
+                            list.iter().map(|m| m.id.clone()).collect();
+                        list.extend(extra.into_iter().filter(|m| !known.contains(&m.id)));
+                    }
+                    Err(err) => log::warn!("the {category} model list did not parse: {err}"),
+                },
+                Err(err) => log::warn!("the {category} model list could not be read: {err}"),
+            }
+        }
+        list.sort_by(|a, b| a.id.cmp(&b.id));
         overrides::apply_all(ProviderKind::OpenAiChat, self.id.as_str(), &mut list);
         *self.models.write().unwrap_or_else(|e| e.into_inner()) =
             list.iter().map(|m| (m.id.clone(), m.clone())).collect();
@@ -150,6 +168,33 @@ impl Provider for OpenAiChatProvider {
     async fn stream(&self, req: ChatRequest) -> Result<ChatStream, ProviderError> {
         let headers = self.headers()?;
         let info = self.model_info(&req.model);
+        // A model that makes a picture, a voice or a clip answers somewhere else entirely.
+        if self.profile.media_endpoints {
+            match media::route(info.as_ref()) {
+                Some(media::MediaRoute::Image) => {
+                    return media::image(&self.http, &self.profile.base_url, headers, &req).await;
+                }
+                Some(media::MediaRoute::Speech) => {
+                    return media::speech(
+                        &self.http,
+                        &self.profile.base_url,
+                        headers,
+                        &req,
+                        info.as_ref(),
+                    )
+                    .await;
+                }
+                Some(media::MediaRoute::Video) => {
+                    return Ok(media::video(
+                        &self.http,
+                        &self.profile.base_url,
+                        headers,
+                        &req,
+                    ));
+                }
+                None => {}
+            }
+        }
         let body = request::build_body(&self.profile, &req, info.as_ref());
         if log::log_enabled!(log::Level::Trace) {
             log::trace!("chat request to {}: {}", self.profile.label, body);

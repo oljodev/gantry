@@ -7,13 +7,20 @@ import type { CatalogProvider } from '@/lib/ipc/hooks/providers';
  * much room it has and what it costs — so the dialog only filters and sorts.
  */
 
-/** What a model produces. The kinds Gantry means to support; speech-to-text is not one. */
-export type ModelKind = 'text' | 'image' | 'audio' | 'video';
+/**
+ * What a model produces. The kinds Gantry means to support; speech-to-text is not one.
+ *
+ * `speech` and `audio` are two different things and both were asked for: `speech` is a
+ * text-to-speech model that reads a passage aloud, `audio` a model that answers in sound or
+ * writes music as part of a conversation. The provider draws the same line.
+ */
+export type ModelKind = 'text' | 'image' | 'speech' | 'audio' | 'video';
 
 export const KIND_LABEL: Record<ModelKind, string> = {
   text: 'Text',
   image: 'Image',
-  audio: 'Audio',
+  speech: 'Speech',
+  audio: 'Music & audio',
   video: 'Video',
 };
 
@@ -43,6 +50,7 @@ export function modelKey(ref: ModelRef): string {
 export function kindOf(caps: ModelCapabilities | undefined): ModelKind {
   const out = caps?.output ?? [];
   if (out.includes('video')) return 'video';
+  if (out.includes('speech')) return 'speech';
   if (out.includes('image')) return 'image';
   if (out.includes('audio')) return 'audio';
   return 'text';
@@ -188,10 +196,23 @@ export function isFiltered(f: Filters): boolean {
   );
 }
 
-/** Priced, and priced at nothing. A model whose price nobody stated is unknown, not free. */
-export function isFree(info: ModelInfo): boolean {
-  const p = info.pricing;
-  if (!p || p.input_per_mtok === null || p.output_per_mtok === null) return false;
+/**
+ * Priced, and priced at nothing. A model whose price nobody stated is unknown, not free — and
+ * zero counts only when it is the price of the thing the model makes. Every video model reports
+ * nothing but `0` token prices and still bills by the second, so "Free" there would be a lie
+ * told by arithmetic.
+ */
+export function isFree(m: CatalogModel): boolean {
+  const p = m.info.pricing;
+  if (!p) return false;
+  if (m.kind === 'video') return false;
+  if (m.kind === 'image' && typeof p.image_output_usd === 'number') {
+    return p.image_output_usd === 0;
+  }
+  if (m.kind === 'audio' && typeof p.audio_output_per_mtok === 'number') {
+    return p.audio_output_per_mtok === 0;
+  }
+  if (p.input_per_mtok === null || p.output_per_mtok === null) return false;
   return p.input_per_mtok === 0 && p.output_per_mtok === 0;
 }
 
@@ -205,7 +226,7 @@ export function matches(m: CatalogModel, f: Filters): boolean {
   if (f.kinds.length > 0 && !f.kinds.includes(m.kind)) return false;
   if (f.creators.length > 0 && !f.creators.includes(m.creator)) return false;
   if (f.needs.some((need) => !meets(m.info.capabilities, need))) return false;
-  if (f.freeOnly && !isFree(m.info)) return false;
+  if (f.freeOnly && !isFree(m)) return false;
   if (!withinAge(m.info, f.maxAgeDays)) return false;
   return true;
 }
@@ -270,17 +291,23 @@ export function usd(value: number): string {
 }
 
 /**
- * What the row shows about price: token prices for a model that answers in text, and the price
- * of a picture for one that draws, because per-million-token pricing says nothing there.
+ * What the row shows about price: token prices for a model that answers in text, the price of a
+ * picture for one that draws, and the price of sound for one that talks, because a
+ * per-million-token text price says nothing about any of those.
  */
 export function priceLabel(m: CatalogModel): string {
   const p = m.info.pricing;
   if (!p) return '—';
+  // A clip is priced by its seconds and its resolution, and the model list carries neither.
+  if (m.kind === 'video') return '—';
   if (m.kind === 'image' && p.image_output_usd) return `${usd(p.image_output_usd)} / image`;
+  if (m.kind === 'audio' && p.audio_output_per_mtok) {
+    return `${usd(p.audio_output_per_mtok)} / M spoken`;
+  }
   if (p.request_usd && !p.input_per_mtok && !p.output_per_mtok) {
     return `${usd(p.request_usd)} / call`;
   }
-  if (isFree(m.info)) return 'Free';
+  if (isFree(m)) return 'Free';
   if (p.input_per_mtok === null && p.output_per_mtok === null) return '—';
   return `${usd(p.input_per_mtok ?? 0)} / ${usd(p.output_per_mtok ?? 0)}`;
 }

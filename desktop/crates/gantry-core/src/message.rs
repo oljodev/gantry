@@ -93,6 +93,18 @@ pub enum ContentPart {
         mime: String,
         name: String,
     },
+    /// Sound the model produced: a voice reading a passage, or music. What it says, where it
+    /// says anything, is the text part beside it — a model that talks writes the same words as
+    /// a transcript, and one copy of them is enough.
+    Audio {
+        source: MediaSource,
+        mime: String,
+    },
+    /// A clip the model rendered.
+    Video {
+        source: MediaSource,
+        mime: String,
+    },
     ToolCall {
         id: CallId,
         name: String,

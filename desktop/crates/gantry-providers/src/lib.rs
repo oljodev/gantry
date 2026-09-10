@@ -23,7 +23,7 @@ pub use anthropic::AnthropicProvider;
 pub use error::ProviderError;
 pub use gemini::GeminiProvider;
 pub use http::http_client;
-pub use openai_chat::{CompatProfile, OpenAiChatProvider};
+pub use openai_chat::{CompatProfile, OpenAiChatProvider, media::MAX_MEDIA_BYTES};
 pub use openai_responses::OpenAiResponsesProvider;
 pub use provider::{
     CacheSupport, ChatRequest, ChatStream, KeyInfo, ModelCapabilities, ModelInfo, Pricing,

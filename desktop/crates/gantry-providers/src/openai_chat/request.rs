@@ -36,10 +36,33 @@ pub fn build_body(profile: &CompatProfile, req: &ChatRequest, info: Option<&Mode
     });
     let obj = body.as_object_mut().expect("body is an object");
 
-    // A model that draws only draws when the request says it may: without the output modalities
-    // spelled out, an image model answers with a paragraph about the picture it would have made.
-    if info.is_some_and(|i| i.capabilities.output.contains(&Modality::Image)) {
-        obj.insert("modalities".into(), json!(["image", "text"]));
+    // A model that draws or talks only does so when the request says it may: without the output
+    // modalities spelled out, an image model answers with a paragraph about the picture it would
+    // have made, and a voice model with the text it would have said.
+    let draws = info.is_some_and(|i| i.capabilities.output.contains(&Modality::Image));
+    let talks = info.is_some_and(|i| i.capabilities.output.contains(&Modality::Audio));
+    if draws || talks {
+        let mut modalities: Vec<&str> = Vec::new();
+        if draws {
+            modalities.push("image");
+        }
+        if talks {
+            modalities.push("audio");
+        }
+        modalities.push("text");
+        obj.insert("modalities".into(), json!(modalities));
+    }
+    if talks {
+        // A voice has to be named, and the lists have nothing in common between vendors, so the
+        // model's own first voice is used where it lists any. `alloy` is the provider's
+        // documented default and the only name that works when it lists none.
+        let voice = info
+            .and_then(|i| i.capabilities.voices.first().cloned())
+            .unwrap_or_else(|| "alloy".to_owned());
+        obj.insert(
+            "audio".into(),
+            json!({ "voice": voice, "format": super::stream::AUDIO_FORMAT }),
+        );
     }
     if profile.supports_stream_usage {
         obj.insert("stream_options".into(), json!({ "include_usage": true }));
@@ -268,6 +291,28 @@ mod tests {
         let text = info(ReasoningSupport::None, None);
         let body = build_body(&CompatProfile::openrouter(), &req, Some(&text));
         assert!(body.get("modalities").is_none());
+    }
+
+    #[test]
+    fn a_model_that_talks_is_asked_for_sound_and_told_which_voice() {
+        let req = ChatRequest::new("openai/gpt-audio", "", vec![Message::user_text("hi")]);
+        let mut talker = info(ReasoningSupport::None, None);
+        talker.capabilities.output = vec![Modality::Text, Modality::Audio];
+        let body = build_body(&CompatProfile::openrouter(), &req, Some(&talker));
+        assert_eq!(body["modalities"], serde_json::json!(["audio", "text"]));
+        assert_eq!(body["audio"]["format"], "mp3");
+        assert_eq!(body["audio"]["voice"], "alloy", "the documented default");
+
+        // A model that lists its own voices is asked in one of them: `alloy` means nothing to
+        // a vendor whose voices are called something else entirely.
+        talker.capabilities.voices = vec!["flux-bree-en".to_owned()];
+        let body = build_body(&CompatProfile::openrouter(), &req, Some(&talker));
+        assert_eq!(body["audio"]["voice"], "flux-bree-en");
+
+        // A text model is asked for neither.
+        let text = info(ReasoningSupport::None, None);
+        let body = build_body(&CompatProfile::openrouter(), &req, Some(&text));
+        assert!(body.get("audio").is_none());
     }
 
     #[test]

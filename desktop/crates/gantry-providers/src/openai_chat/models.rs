@@ -53,6 +53,8 @@ struct OrModel {
     #[serde(default)]
     supported_parameters: Vec<String>,
     architecture: Option<OrArchitecture>,
+    /// Named voices, on a text-to-speech model. Null on everything else.
+    supported_voices: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -64,6 +66,9 @@ struct OrPricing {
     image: Option<String>,
     image_output: Option<String>,
     request: Option<String>,
+    /// Per token, like `prompt` and `completion`, and several times their rate.
+    audio: Option<String>,
+    audio_output: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -129,6 +134,7 @@ fn modality(name: &str) -> Option<Modality> {
         "text" => Some(Modality::Text),
         "image" => Some(Modality::Image),
         "audio" => Some(Modality::Audio),
+        "speech" => Some(Modality::Speech),
         "video" => Some(Modality::Video),
         "file" => Some(Modality::File),
         // A modality nobody has taught the app about is left out rather than guessed at: the
@@ -150,6 +156,8 @@ fn from_xai(m: XaiModel) -> ModelInfo {
             image_input_usd: None,
             image_output_usd: None,
             request_usd: None,
+            audio_input_per_mtok: None,
+            audio_output_per_mtok: None,
         }),
         _ => None,
     };
@@ -213,6 +221,8 @@ fn from_openrouter(m: OrModel) -> ModelInfo {
             image_input_usd: per_unit(&p.image),
             image_output_usd: per_unit(&p.image_output),
             request_usd: per_unit(&p.request),
+            audio_input_per_mtok: per_mtok(&p.audio),
+            audio_output_per_mtok: per_mtok(&p.audio_output),
         })
     });
     let capabilities = ModelCapabilities {
@@ -239,6 +249,7 @@ fn from_openrouter(m: OrModel) -> ModelInfo {
         } else {
             CacheSupport::None
         },
+        voices: m.supported_voices.unwrap_or_default(),
     };
     ModelInfo {
         display_name: m.name.clone().unwrap_or_else(|| m.id.clone()),

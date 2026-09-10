@@ -1,0 +1,10 @@
+: OPENROUTER PROCESSING
+
+data: {"id": "gen-audio-1", "object": "chat.completion.chunk", "created": 1788900000, "model": "openai/gpt-audio", "choices": [{"index": 0, "delta": {"role": "assistant", "audio": {"transcript": "Hello ", "data": "SUQzBAA="}}, "finish_reason": null}]}
+
+data: {"id": "gen-audio-1", "object": "chat.completion.chunk", "created": 1788900000, "model": "openai/gpt-audio", "choices": [{"index": 0, "delta": {"audio": {"transcript": "there.", "data": "YXVkaW8tYnl0ZXM="}}, "finish_reason": null}]}
+
+data: {"id": "gen-audio-1", "object": "chat.completion.chunk", "created": 1788900000, "model": "openai/gpt-audio", "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}], "usage": {"prompt_tokens": 9, "completion_tokens": 31, "cost": 0.002}}
+
+data: [DONE]
+

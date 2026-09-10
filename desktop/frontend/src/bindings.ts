@@ -66,6 +66,12 @@ export const commands = {
 	 *  picture rather than a file name. Only image types, only inside the size cap.
 	 */
 	blobImage: (hash: string, mime: string) => __TAURI_INVOKE<string | null>("blob_image", { hash, mime }),
+	/**
+	 *  A `data:` URL for a picture, a sound file or a clip the model produced. The bytes live in
+	 *  the blob store rather than in the transcript (`Chats::append_turn_message`), so a reopened
+	 *  chat has to ask for them; the live answer never comes through here.
+	 */
+	blobMedia: (hash: string, mime: string) => __TAURI_INVOKE<string | null>("blob_media", { hash, mime }),
 	/**  One surface's sessions. The two lists never mix (16 §6). */
 	listChats: (surface: 
 /**  Conversation, documents, research, connectors, artifacts. */
@@ -648,7 +654,15 @@ export type ConnectorsChanged = null;
 export type ContentPart = ContentPart_Serialize | ContentPart_Deserialize;
 
 /**  One block of a message. */
-export type ContentPart_Deserialize = ({ kind: "text"; text: string }) & { added?: never; args?: never; block_kind?: never; call_id?: never; content?: never; id?: never; is_error?: never; item_id?: never; json?: never; mime?: never; name?: never; provider?: never; removed?: never; signature?: never; source?: never } | ({ kind: "image"; source: MediaSource; mime: string }) & { added?: never; args?: never; block_kind?: never; call_id?: never; content?: never; id?: never; is_error?: never; item_id?: never; json?: never; name?: never; provider?: never; removed?: never; signature?: never; text?: never } | ({ kind: "document"; source: MediaSource; mime: string; name: string }) & { added?: never; args?: never; block_kind?: never; call_id?: never; content?: never; id?: never; is_error?: never; item_id?: never; json?: never; provider?: never; removed?: never; signature?: never; text?: never } | ({ kind: "tool_call"; id: CallId; name: string; args: unknown; 
+export type ContentPart_Deserialize = ({ kind: "text"; text: string }) & { added?: never; args?: never; block_kind?: never; call_id?: never; content?: never; id?: never; is_error?: never; item_id?: never; json?: never; mime?: never; name?: never; provider?: never; removed?: never; signature?: never; source?: never } | ({ kind: "image"; source: MediaSource; mime: string }) & { added?: never; args?: never; block_kind?: never; call_id?: never; content?: never; id?: never; is_error?: never; item_id?: never; json?: never; name?: never; provider?: never; removed?: never; signature?: never; text?: never } | ({ kind: "document"; source: MediaSource; mime: string; name: string }) & { added?: never; args?: never; block_kind?: never; call_id?: never; content?: never; id?: never; is_error?: never; item_id?: never; json?: never; provider?: never; removed?: never; signature?: never; text?: never } | 
+/**
+ *  Sound the model produced: a voice reading a passage, or music. What it says, where it
+ *  says anything, is the text part beside it — a model that talks writes the same words as
+ *  a transcript, and one copy of them is enough.
+ */
+({ kind: "audio"; source: MediaSource; mime: string }) & { added?: never; args?: never; block_kind?: never; call_id?: never; content?: never; id?: never; is_error?: never; item_id?: never; json?: never; name?: never; provider?: never; removed?: never; signature?: never; text?: never } | 
+/**  A clip the model rendered. */
+({ kind: "video"; source: MediaSource; mime: string }) & { added?: never; args?: never; block_kind?: never; call_id?: never; content?: never; id?: never; is_error?: never; item_id?: never; json?: never; name?: never; provider?: never; removed?: never; signature?: never; text?: never } | ({ kind: "tool_call"; id: CallId; name: string; args: unknown; 
 /**
  *  A provider token bound to the call that must be echoed on replay (Gemini thought
  *  signatures). Opaque; only the provider that produced it reads it.
@@ -669,7 +683,15 @@ item_id?: string | null }) & { added?: never; args?: never; block_kind?: never; 
 ({ kind: "tool_set_change"; added: string[]; removed: string[] }) & { args?: never; block_kind?: never; call_id?: never; content?: never; id?: never; is_error?: never; item_id?: never; json?: never; mime?: never; name?: never; provider?: never; signature?: never; source?: never; text?: never };
 
 /**  One block of a message. */
-export type ContentPart_Serialize = ({ kind: "text"; text: string }) & { added?: never; args?: never; block_kind?: never; call_id?: never; content?: never; id?: never; is_error?: never; item_id?: never; json?: never; mime?: never; name?: never; provider?: never; removed?: never; signature?: never; source?: never } | ({ kind: "image"; source: MediaSource; mime: string }) & { added?: never; args?: never; block_kind?: never; call_id?: never; content?: never; id?: never; is_error?: never; item_id?: never; json?: never; name?: never; provider?: never; removed?: never; signature?: never; text?: never } | ({ kind: "document"; source: MediaSource; mime: string; name: string }) & { added?: never; args?: never; block_kind?: never; call_id?: never; content?: never; id?: never; is_error?: never; item_id?: never; json?: never; provider?: never; removed?: never; signature?: never; text?: never } | ({ kind: "tool_call"; id: CallId; name: string; args: unknown; 
+export type ContentPart_Serialize = ({ kind: "text"; text: string }) & { added?: never; args?: never; block_kind?: never; call_id?: never; content?: never; id?: never; is_error?: never; item_id?: never; json?: never; mime?: never; name?: never; provider?: never; removed?: never; signature?: never; source?: never } | ({ kind: "image"; source: MediaSource; mime: string }) & { added?: never; args?: never; block_kind?: never; call_id?: never; content?: never; id?: never; is_error?: never; item_id?: never; json?: never; name?: never; provider?: never; removed?: never; signature?: never; text?: never } | ({ kind: "document"; source: MediaSource; mime: string; name: string }) & { added?: never; args?: never; block_kind?: never; call_id?: never; content?: never; id?: never; is_error?: never; item_id?: never; json?: never; provider?: never; removed?: never; signature?: never; text?: never } | 
+/**
+ *  Sound the model produced: a voice reading a passage, or music. What it says, where it
+ *  says anything, is the text part beside it — a model that talks writes the same words as
+ *  a transcript, and one copy of them is enough.
+ */
+({ kind: "audio"; source: MediaSource; mime: string }) & { added?: never; args?: never; block_kind?: never; call_id?: never; content?: never; id?: never; is_error?: never; item_id?: never; json?: never; name?: never; provider?: never; removed?: never; signature?: never; text?: never } | 
+/**  A clip the model rendered. */
+({ kind: "video"; source: MediaSource; mime: string }) & { added?: never; args?: never; block_kind?: never; call_id?: never; content?: never; id?: never; is_error?: never; item_id?: never; json?: never; name?: never; provider?: never; removed?: never; signature?: never; text?: never } | ({ kind: "tool_call"; id: CallId; name: string; args: unknown; 
 /**
  *  A provider token bound to the call that must be echoed on replay (Gemini thought
  *  signatures). Opaque; only the provider that produced it reads it.
@@ -848,8 +870,16 @@ export type Message_Serialize = {
 	created_at: number,
 };
 
-/**  What a model takes in and gives back. `File` covers PDFs and documents. */
-export type Modality = "text" | "image" | "audio" | "video" | "file";
+/**
+ *  What a model takes in and gives back. `File` covers PDFs and documents.
+ * 
+ *  `Audio` and `Speech` are both sound, and they are two different kinds of model: `Audio` is a
+ *  model that answers in sound as part of a conversation, or writes music, over the same chat
+ *  endpoint as text; `Speech` is a text-to-speech model, which reads a passage aloud over an
+ *  endpoint of its own. OpenRouter draws the same line and Olav asked for both, so the
+ *  distinction is kept rather than flattened into "audio".
+ */
+export type Modality = "text" | "image" | "audio" | "speech" | "video" | "file";
 
 /**  The permission mode of a chat (docs/plan/04 §3). */
 export type Mode = "manual" | "auto_edit" | "plan" | "auto";
@@ -871,6 +901,11 @@ export type ModelCapabilities = {
 	server_web_search: boolean,
 	structured_output: boolean,
 	prompt_caching: CacheSupport,
+	/**
+	 *  The voices a text-to-speech model can read in, where it names them. Empty for every
+	 *  other kind of model, and for a speech model whose provider never listed them.
+	 */
+	voices?: string[],
 };
 
 /**  One row of a provider's model list, as the UI and the catalog cache see it. */
@@ -927,6 +962,13 @@ export type Pricing = {
 	image_output_usd?: number | null,
 	/**  Dollars per call, for models priced by the request rather than by the token. */
 	request_usd?: number | null,
+	/**
+	 *  Sound is priced by the token too, and at a different rate from text: a model that
+	 *  answers aloud costs several times its own text price, so the text price alone is a
+	 *  misleading thing to show.
+	 */
+	audio_input_per_mtok?: number | null,
+	audio_output_per_mtok?: number | null,
 };
 
 /**  A named group of chats with shared instructions, knowledge and defaults. */

@@ -7,8 +7,15 @@ use futures_util::Stream;
 use gantry_core::{CallId, ContentPart, MediaSource, ProviderErrorKind, StopReason, Usage};
 use serde::Deserialize;
 
+use base64::Engine;
+
 use super::profiles::ToolIdQuirk;
 use crate::{error::ProviderError, provider::StreamEvent, pump::StreamParser, sse::SseEvent};
+
+/// What `audio.format` asks for in the request, and therefore what comes back. MP3 frames
+/// concatenate cleanly, which a stream delivered in fragments needs, and every webview plays it.
+pub const AUDIO_FORMAT: &str = "mp3";
+pub const AUDIO_MIME: &str = "audio/mpeg";
 
 #[derive(Debug, Deserialize)]
 struct Chunk {
@@ -37,6 +44,15 @@ struct Delta {
     /// Pictures an image model drew, as data URLs. They arrive whole rather than in deltas.
     #[serde(default)]
     images: Vec<ImageDelta>,
+    /// Sound, in pieces: a model that answers aloud sends base64 fragments of one file, with
+    /// the words it is saying beside them.
+    audio: Option<AudioDelta>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AudioDelta {
+    data: Option<String>,
+    transcript: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -125,6 +141,9 @@ pub struct ChunkParser {
     thinking_index: Option<u32>,
     text_index: Option<u32>,
     tools: BTreeMap<u32, ToolState>,
+    /// The sound so far, as bytes rather than as base64 text: the fragments are separately
+    /// encoded, so concatenating the strings would produce padding in the middle of the file.
+    audio: Option<(u32, Vec<u8>)>,
     finish: Option<StopReason>,
     usage: Option<Usage>,
     ended: bool,
@@ -140,6 +159,7 @@ impl ChunkParser {
             thinking_index: None,
             text_index: None,
             tools: BTreeMap::new(),
+            audio: None,
             finish: None,
             usage: None,
             ended: false,
@@ -242,6 +262,30 @@ impl ChunkParser {
                     },
                 });
             }
+            if let Some(audio) = d.audio {
+                // The words are streamed as text, which is what makes them readable while the
+                // sound is still arriving and searchable afterwards.
+                if let Some(text) = audio.transcript.filter(|t| !t.is_empty()) {
+                    let index = match self.text_index {
+                        Some(i) => i,
+                        None => {
+                            let i = self.alloc();
+                            self.text_index = Some(i);
+                            i
+                        }
+                    };
+                    out.push(StreamEvent::TextDelta { index, text });
+                }
+                if let Some(fragment) = audio.data.filter(|d| !d.is_empty())
+                    && let Ok(bytes) =
+                        base64::engine::general_purpose::STANDARD.decode(fragment.as_bytes())
+                {
+                    let (_, buffer) = self
+                        .audio
+                        .get_or_insert_with(|| (self.next_index, Vec::new()));
+                    buffer.extend_from_slice(&bytes);
+                }
+            }
             for tc in d.tool_calls {
                 let state = if let Some(s) = self.tools.get_mut(&tc.index) {
                     s
@@ -305,6 +349,20 @@ impl ChunkParser {
         if !self.started {
             out.push(StreamEvent::MessageStart {
                 provider_message_id: None,
+            });
+        }
+        // The sound is one file, and it is only a file once the last fragment has arrived.
+        if let Some((index, bytes)) = self.audio.take()
+            && !bytes.is_empty()
+        {
+            out.push(StreamEvent::ProviderBlock {
+                index,
+                part: ContentPart::Audio {
+                    source: MediaSource::Base64 {
+                        data: base64::engine::general_purpose::STANDARD.encode(&bytes),
+                    },
+                    mime: AUDIO_MIME.to_owned(),
+                },
             });
         }
         for (_, tool) in std::mem::take(&mut self.tools) {

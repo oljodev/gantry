@@ -204,6 +204,40 @@ fn the_decoder_survives_a_chunk_boundary_inside_a_utf8_character() {
     assert!(events[0].data.contains("héllo"));
 }
 
+/// A model that answers aloud sends the sound in fragments, each separately base64-encoded.
+/// Sticking the strings together would put padding in the middle of the file, so the decoder
+/// decodes each fragment and joins the bytes — and the words it speaks arrive as text, so the
+/// answer can be read while it is still being said.
+#[tokio::test]
+async fn spoken_audio_arrives_in_fragments_and_becomes_one_file() {
+    use base64::Engine;
+
+    let events = replay("audio-output.sse").await;
+    let sound: Vec<(String, Vec<u8>)> = events
+        .iter()
+        .filter_map(|e| match e {
+            Ok(StreamEvent::ProviderBlock {
+                part:
+                    gantry_core::ContentPart::Audio {
+                        source: gantry_core::MediaSource::Base64 { data },
+                        mime,
+                    },
+                ..
+            }) => Some((
+                mime.clone(),
+                base64::engine::general_purpose::STANDARD
+                    .decode(data.as_bytes())
+                    .expect("the part holds valid base64"),
+            )),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(sound.len(), 1, "one file, not one per fragment");
+    assert_eq!(sound[0].0, "audio/mpeg");
+    assert_eq!(sound[0].1, b"ID3\x04\x00audio-bytes");
+    assert_eq!(text_of(&events), "Hello there.");
+}
+
 /// An image model answers with pictures beside its text (02 §3). They arrive whole, as data
 /// URLs, and become image parts; a hosted URL is not a part, because nothing here fetches it.
 #[tokio::test]

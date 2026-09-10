@@ -256,6 +256,25 @@ pub fn blob_image(state: State<'_, AppState>, hash: String, mime: String) -> Opt
     Some(format!("data:{mime};base64,{data}"))
 }
 
+/// A `data:` URL for a picture, a sound file or a clip the model produced. The bytes live in
+/// the blob store rather than in the transcript (`Chats::append_turn_message`), so a reopened
+/// chat has to ask for them; the live answer never comes through here.
+#[tauri::command]
+#[specta::specta]
+pub fn blob_media(state: State<'_, AppState>, hash: String, mime: String) -> Option<String> {
+    use base64::Engine;
+    let kind = mime.split('/').next().unwrap_or_default();
+    if !matches!(kind, "image" | "audio" | "video") {
+        return None;
+    }
+    let bytes = state.blobs.get(&hash).ok()?;
+    if bytes.is_empty() || bytes.len() > gantry_providers::MAX_MEDIA_BYTES {
+        return None;
+    }
+    let data = base64::engine::general_purpose::STANDARD.encode(&bytes);
+    Some(format!("data:{mime};base64,{data}"))
+}
+
 /// A `data:` URL for an image on disk, so the composer can show what is attached before the
 /// message is sent. Anything that is not a supported image, or is over the image cap, answers
 /// with nothing rather than an error: a preview is a convenience, not a promise.

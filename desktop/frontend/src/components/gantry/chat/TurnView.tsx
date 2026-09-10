@@ -87,6 +87,10 @@ export function TurnView({
                   alt={block.alt}
                 />
               );
+            case 'audio':
+              return <AnswerAudio key={i} src={block.src} blob={block.blob} mime={block.mime} />;
+            case 'video':
+              return <AnswerVideo key={i} src={block.src} blob={block.blob} mime={block.mime} />;
             case 'steps':
               return (
                 <TurnSteps
@@ -198,6 +202,52 @@ export function TurnView({
 }
 
 /**
+ * The bytes to play or show: the ones the turn streamed while it ran, or — once the answer has
+ * been written down and the page reloaded — the blob they were parked in.
+ */
+function useMedia(src: string | undefined, blob: string | undefined, mime: string | undefined) {
+  const [loaded, setLoaded] = useState<string | null>(null);
+  useEffect(() => {
+    if (src || !isTauri() || !blob || !mime) return;
+    let cancelled = false;
+    void commands.blobMedia(blob, mime).then((data) => {
+      if (!cancelled && data) setLoaded(data);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [src, blob, mime]);
+  return src ?? loaded;
+}
+
+/** Sound the model made: a voice reading the answer, or music. The player is the browser's. */
+function AnswerAudio({ src, blob, mime }: { src?: string; blob?: string; mime?: string }) {
+  const url = useMedia(src, blob, mime);
+  if (!url) return null;
+  return (
+    <div className="my-2">
+      <audio src={url} controls className="w-full max-w-lg" />
+    </div>
+  );
+}
+
+/** A clip the model rendered. Not autoplaying: a video that starts talking on its own is rude. */
+function AnswerVideo({ src, blob, mime }: { src?: string; blob?: string; mime?: string }) {
+  const url = useMedia(src, blob, mime);
+  if (!url) return null;
+  return (
+    <div className="my-2">
+      <video
+        src={url}
+        controls
+        playsInline
+        className="max-h-96 w-auto max-w-full rounded-3 border border-line-subtle bg-inset"
+      />
+    </div>
+  );
+}
+
+/**
  * A picture the model drew, in the answer at the point it made it (15 §7). Bounded so a tall
  * image does not push the rest of the reply off the screen, and opened full size on a click,
  * the same way a picture the user sent opens.
@@ -214,18 +264,7 @@ function AnswerImage({
   alt: string;
 }) {
   const [open, setOpen] = useState(false);
-  const [loaded, setLoaded] = useState<string | null>(null);
-  useEffect(() => {
-    if (src || !isTauri() || !blob || !mime) return;
-    let cancelled = false;
-    void commands.blobImage(blob, mime).then((data) => {
-      if (!cancelled && data) setLoaded(data);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [src, blob, mime]);
-  const url = src ?? loaded;
+  const url = useMedia(src, blob, mime);
   if (!url) return null;
   return (
     <div className="my-2">

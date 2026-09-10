@@ -65,6 +65,20 @@ fn markdown(chat: &ChatDetail) -> String {
                         out.push_str(&format!("*Called `{name}` with `{args}`*\n\n"));
                         wrote = true;
                     }
+                    // A picture, a voice or a clip cannot go into a markdown file, but a reply
+                    // that was one is not "(no reply)".
+                    ContentPart::Image { mime, .. } => {
+                        out.push_str(&format!("*Made a picture ({mime})*\n\n"));
+                        wrote = true;
+                    }
+                    ContentPart::Audio { mime, .. } => {
+                        out.push_str(&format!("*Made a sound file ({mime})*\n\n"));
+                        wrote = true;
+                    }
+                    ContentPart::Video { mime, .. } => {
+                        out.push_str(&format!("*Made a video clip ({mime})*\n\n"));
+                        wrote = true;
+                    }
                     _ => {}
                 }
             }

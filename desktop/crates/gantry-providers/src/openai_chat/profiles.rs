@@ -56,6 +56,13 @@ pub struct CompatProfile {
     pub models_parser: ModelsParser,
     /// The path of the model list under `base_url`.
     pub models_path: &'static str,
+    /// Model kinds the plain list leaves out, fetched one query at a time
+    /// (`?output_modality=…`). OpenRouter's `GET /models` answers with the models its chat
+    /// endpoint can serve; the image, speech and video models live on endpoints of their own
+    /// and are invisible until asked for by name.
+    pub model_categories: &'static [&'static str],
+    /// Whether this vendor has the image, speech and video endpoints beside the chat one.
+    pub media_endpoints: bool,
     pub web_search: WebSearchParam,
     pub tool_id_quirk: ToolIdQuirk,
     pub key_check: KeyCheck,
@@ -81,6 +88,8 @@ impl CompatProfile {
             supports_strict: false,
             models_parser: ModelsParser::OpenRouter,
             models_path: "models",
+            model_categories: &["image", "speech", "video"],
+            media_endpoints: true,
             web_search: WebSearchParam::OpenRouterPlugin,
             tool_id_quirk: ToolIdQuirk::SynthesizeIfEmpty,
             key_check: KeyCheck::OpenRouterKey,
@@ -101,6 +110,8 @@ impl CompatProfile {
             supports_strict: false,
             models_parser: ModelsParser::XAi,
             models_path: "language-models",
+            model_categories: &[],
+            media_endpoints: false,
             web_search: WebSearchParam::None,
             tool_id_quirk: ToolIdQuirk::None,
             key_check: KeyCheck::ListModels,
@@ -122,6 +133,8 @@ impl CompatProfile {
             supports_strict: false,
             models_parser: ModelsParser::Plain,
             models_path: "models",
+            model_categories: &[],
+            media_endpoints: false,
             web_search: WebSearchParam::None,
             tool_id_quirk: ToolIdQuirk::SynthesizeIfEmpty,
             key_check: KeyCheck::ListModels,

@@ -145,6 +145,10 @@ export type Block =
   /** A picture an image model drew, in the answer where it produced it. Inline bytes carry a
       `src`; a picture kept in the blob store carries the hash to read it back with. */
   | { kind: 'image'; src?: string; blob?: string; mime?: string; alt: string }
+  /** Sound the model made — a voice reading the answer, or music — and a clip it rendered.
+      Both are held the same way as a picture: inline bytes while the turn runs, a blob after. */
+  | { kind: 'audio'; src?: string; blob?: string; mime?: string }
+  | { kind: 'video'; src?: string; blob?: string; mime?: string }
   /** The card for an artifact the turn created or changed, after the text (13 §10). */
   | {
       kind: 'artifact';

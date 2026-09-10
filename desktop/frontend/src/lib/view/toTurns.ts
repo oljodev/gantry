@@ -206,6 +206,16 @@ function messagesToBlocks(
           mime: part.mime,
           alt: 'Picture from the model',
         });
+      } else if (part.kind === 'audio' || part.kind === 'video') {
+        blocks.push({
+          kind: part.kind,
+          src:
+            part.source.kind === 'base64'
+              ? `data:${part.mime};base64,${part.source.data}`
+              : undefined,
+          blob: part.source.kind === 'blob' ? part.source.hash : undefined,
+          mime: part.mime,
+        });
       } else if (part.kind === 'tool_call') {
         pushItem(callItem(part, calls[part.id], titles, output[part.id]));
       }

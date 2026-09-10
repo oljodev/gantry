@@ -372,6 +372,7 @@ impl ChatBook {
         stop_reason: Option<StopReason>,
         usage: Option<Usage>,
     ) {
+        let message = store_media(&self.blobs, message);
         let result = self.store.write_blocking(move |conn| {
             messages::insert(
                 conn,
@@ -823,6 +824,44 @@ fn transcript(messages: &[MessageRecord]) -> Vec<Message> {
         .collect()
 }
 
+/// Media a model produced is parked in the blob store instead of being kept inside the message.
+/// A picture is a megabyte and a clip is tens of them, and a transcript that holds them is read
+/// whole, out of SQLite, every time the chat is opened. The live event still carries the bytes,
+/// so the answer appears the moment it arrives; only what is written down changes.
+fn store_media(blobs: &BlobStore, mut message: Message) -> Message {
+    use base64::Engine;
+
+    message.parts = message
+        .parts
+        .into_iter()
+        .map(|part| {
+            let source = match &part {
+                ContentPart::Image { source, .. }
+                | ContentPart::Audio { source, .. }
+                | ContentPart::Video { source, .. } => source,
+                _ => return part,
+            };
+            let MediaSource::Base64 { data } = source else {
+                return part;
+            };
+            let stored = base64::engine::general_purpose::STANDARD
+                .decode(data.as_bytes())
+                .ok()
+                .and_then(|bytes| blobs.put(&bytes).ok());
+            // A chat that cannot write a blob keeps the bytes in the message: worse, not broken.
+            let Some(hash) = stored else { return part };
+            let source = MediaSource::Blob { hash };
+            match part {
+                ContentPart::Image { mime, .. } => ContentPart::Image { source, mime },
+                ContentPart::Audio { mime, .. } => ContentPart::Audio { source, mime },
+                ContentPart::Video { mime, .. } => ContentPart::Video { source, mime },
+                other => other,
+            }
+        })
+        .collect();
+    message
+}
+
 /// Blob-backed parts become what a provider can consume: images inline as base64, text
 /// documents as tagged text (02 §3).
 fn inline_media(blobs: &BlobStore, messages: Vec<Message>) -> Vec<Message> {
@@ -846,6 +885,16 @@ fn inline_media(blobs: &BlobStore, messages: Vec<Message>) -> Vec<Message> {
                         Err(err) => ContentPart::Text {
                             text: format!("[image unavailable: {err}]"),
                         },
+                    },
+                    // No provider takes a sound file or a clip as input, and a message whose
+                    // only part was one would project to nothing at all. A sentence saying what
+                    // happened keeps the conversation readable — and the words a voice model
+                    // spoke are already in the text part beside it.
+                    ContentPart::Audio { .. } => ContentPart::Text {
+                        text: "[the assistant answered with a sound file]".to_owned(),
+                    },
+                    ContentPart::Video { .. } => ContentPart::Text {
+                        text: "[the assistant answered with a video clip]".to_owned(),
                     },
                     ContentPart::Document {
                         source: MediaSource::Blob { hash },
@@ -899,6 +948,46 @@ mod tests {
             })
             .unwrap();
         (dir, book, c.id)
+    }
+
+    #[test]
+    fn media_a_model_made_is_parked_in_the_blob_store() {
+        use base64::Engine;
+
+        let dir = tempfile::tempdir().unwrap();
+        let blobs = BlobStore::open(dir.path().join("blobs")).unwrap();
+        let bytes = b"ID3 pretend this is a song";
+        let data = base64::engine::general_purpose::STANDARD.encode(bytes);
+        let message = Message {
+            id: MessageId::new(),
+            role: Role::Assistant,
+            parts: vec![
+                ContentPart::Text {
+                    text: "here you go".into(),
+                },
+                ContentPart::Audio {
+                    source: MediaSource::Base64 { data },
+                    mime: "audio/mpeg".into(),
+                },
+            ],
+            origin: None,
+            created_at: now_ms(),
+        };
+
+        let stored = store_media(&blobs, message);
+        assert!(
+            matches!(&stored.parts[0], ContentPart::Text { .. }),
+            "text is left alone"
+        );
+        let ContentPart::Audio {
+            source: MediaSource::Blob { hash },
+            mime,
+        } = &stored.parts[1]
+        else {
+            panic!("the sound should be a blob now: {:?}", stored.parts[1]);
+        };
+        assert_eq!(mime, "audio/mpeg");
+        assert_eq!(blobs.get(hash).unwrap(), bytes, "byte for byte");
     }
 
     #[test]

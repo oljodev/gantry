@@ -372,6 +372,10 @@ fn apply(
     let message_id = round.message_id;
     match ev {
         StreamEvent::MessageStart { .. } => {}
+        // Live only: a video job's progress is worth showing and worth forgetting (05 §2).
+        StreamEvent::Notice { kind, detail } => {
+            batcher.push(AgentEventKind::ProviderNotice { kind, detail });
+        }
         StreamEvent::TextDelta { index, text } => {
             if let ContentPart::Text { text: t } =
                 round

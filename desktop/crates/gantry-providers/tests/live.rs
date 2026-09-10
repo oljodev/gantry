@@ -119,7 +119,7 @@ async fn run(
             }
             StreamEvent::Usage(u) => c.usage = Some(u),
             StreamEvent::MessageEnd { stop_reason } => c.stop = Some(stop_reason),
-            StreamEvent::MessageStart { .. } => {}
+            StreamEvent::MessageStart { .. } | StreamEvent::Notice { .. } => {}
         }
     }
     if !c.thinking.is_empty() {

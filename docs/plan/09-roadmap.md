@@ -377,11 +377,35 @@ in the composer that is used on every single chat.
   Anthropic dates its own in ISO strings this layer has no parser for, and Gemini not at all, so
   the age filter simply does not apply to those two.
 - **Image models answer with pictures** (02 §5): the request asks for them, the stream turns the
-  data URLs into image parts, and the answer shows them where the model produced them. Sending
-  straight to an image model works; the connector that lets a *text* model call an image, video
-  or speech model per tool call, and place the result mid-answer, is the next piece, along with
-  the audio, video and speech kinds themselves. The dialog already files and filters those kinds,
-  so they appear the day a provider serves them.
+  data URLs into image parts, and the answer shows them where the model produced them.
+
+### Then — sound and video (2026-09-10)
+
+Asked for in the same breath and finished two days later: pick any model in the picker, send it a
+message, get back what it makes.
+
+- **The picker was looking at a tenth of the catalogue.** `GET /models` answers with the models
+  OpenRouter's *chat* endpoint can serve — 437 of them — and leaves out 54 image models, 18
+  speech models and 28 video models, which are asked for by name (`?output_modality=…`). The
+  profile carries the list of kinds to ask for; a category that fails is logged and skipped
+  rather than taking the whole refresh down with it.
+- **Three endpoints that are not `chat/completions`** (02 §5): `POST /images`,
+  `POST /audio/speech`, and `POST /videos` polled to `completed` and downloaded. All three answer
+  on the same `ChatStream`, so the turn runner never learns which kind of model it is talking to.
+  A clip takes minutes, so the video route reports its progress every ten seconds through a new
+  live-only `Notice` event.
+- **A chat model that answers aloud** (gpt-audio, Lyria) stays on the chat endpoint with
+  `modalities: ["audio", "text"]`: the fragments are decoded and joined as bytes, and the
+  transcript streams as ordinary text beside the player.
+- **`ContentPart::Audio` and `ContentPart::Video`**, parked in the blob store on the way into the
+  transcript — as pictures now are too — with a 32 MB ceiling per file. Nothing sends them back
+  to a provider: a sentence saying what happened goes instead, so a message whose only part was a
+  clip does not project to nothing.
+- **Speech is not audio**, and both were asked for: `Modality::Speech` is a text-to-speech model
+  reading a passage, `Audio` a model that talks or writes music mid-conversation. OpenRouter
+  draws the same line, and the dialog now files models under five kinds rather than four.
+- Not built, and the next piece: the connector that lets a *text* model call an image, video or
+  speech model per tool call and place the result mid-answer. Speech-to-text stays out, as asked.
 
 ## M7 — Shell, Plan mode, guardrails (1–2 weeks)
 

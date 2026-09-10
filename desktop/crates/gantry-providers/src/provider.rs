@@ -123,6 +123,13 @@ pub enum StreamEvent {
         index: u32,
         part: ContentPart,
     },
+    /// Something worth saying while the answer is still coming, and not worth keeping
+    /// afterwards: a video job's progress, a fallback the provider took. Shown live, never
+    /// persisted (05 §2, `provider.notice`).
+    Notice {
+        kind: String,
+        detail: String,
+    },
     Usage(Usage),
     MessageEnd {
         stop_reason: StopReason,
@@ -148,12 +155,19 @@ pub enum CacheSupport {
 }
 
 /// What a model takes in and gives back. `File` covers PDFs and documents.
+///
+/// `Audio` and `Speech` are both sound, and they are two different kinds of model: `Audio` is a
+/// model that answers in sound as part of a conversation, or writes music, over the same chat
+/// endpoint as text; `Speech` is a text-to-speech model, which reads a passage aloud over an
+/// endpoint of its own. OpenRouter draws the same line and Olav asked for both, so the
+/// distinction is kept rather than flattened into "audio".
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "snake_case")]
 pub enum Modality {
     Text,
     Image,
     Audio,
+    Speech,
     Video,
     File,
 }
@@ -176,6 +190,10 @@ pub struct ModelCapabilities {
     pub server_web_search: bool,
     pub structured_output: bool,
     pub prompt_caching: CacheSupport,
+    /// The voices a text-to-speech model can read in, where it names them. Empty for every
+    /// other kind of model, and for a speech model whose provider never listed them.
+    #[serde(default)]
+    pub voices: Vec<String>,
 }
 
 impl Default for ModelCapabilities {
@@ -193,6 +211,7 @@ impl Default for ModelCapabilities {
             server_web_search: false,
             structured_output: false,
             prompt_caching: CacheSupport::None,
+            voices: Vec::new(),
         }
     }
 }
@@ -212,6 +231,13 @@ pub struct Pricing {
     /// Dollars per call, for models priced by the request rather than by the token.
     #[serde(default)]
     pub request_usd: Option<f64>,
+    /// Sound is priced by the token too, and at a different rate from text: a model that
+    /// answers aloud costs several times its own text price, so the text price alone is a
+    /// misleading thing to show.
+    #[serde(default)]
+    pub audio_input_per_mtok: Option<f64>,
+    #[serde(default)]
+    pub audio_output_per_mtok: Option<f64>,
 }
 
 /// One row of a provider's model list, as the UI and the catalog cache see it.

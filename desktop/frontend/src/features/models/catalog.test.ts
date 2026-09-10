@@ -104,6 +104,9 @@ describe('kind', () => {
     expect(kindOf(caps({ output: ['text'] }))).toBe('text');
     expect(kindOf(caps({ output: ['text', 'image'] }))).toBe('image');
     expect(kindOf(caps({ output: ['audio'] }))).toBe('audio');
+    // Speech and audio are different kinds of model, and the provider says which is which.
+    expect(kindOf(caps({ output: ['speech'] }))).toBe('speech');
+    expect(kindOf(caps({ output: ['video'] }))).toBe('video');
   });
 
   it('is text for a model the catalog never described', () => {
@@ -153,11 +156,22 @@ describe('matches', () => {
       id: 'c/d',
       pricing: { input_per_mtok: 0, output_per_mtok: 0, cache_read_per_mtok: null },
     });
-    expect(isFree(priced.info)).toBe(false);
-    expect(isFree(zero.info)).toBe(true);
-    expect(isFree(flash.info)).toBe(false);
+    expect(isFree(priced)).toBe(false);
+    expect(isFree(zero)).toBe(true);
+    expect(isFree(flash)).toBe(false);
     expect(matches(priced, { ...ALL, freeOnly: true })).toBe(false);
     expect(matches(zero, { ...ALL, freeOnly: true })).toBe(true);
+  });
+
+  it('never calls a video model free: it reports no token price and still bills by the second', () => {
+    const clip = model({
+      id: 'g/veo',
+      capabilities: caps({ output: ['video'] }),
+      pricing: { input_per_mtok: 0, output_per_mtok: 0, cache_read_per_mtok: null },
+    });
+    expect(isFree(clip)).toBe(false);
+    expect(matches(clip, { ...ALL, freeOnly: true })).toBe(false);
+    expect(priceLabel(clip)).toBe('—');
   });
 });
 
@@ -221,6 +235,18 @@ describe('labels', () => {
       },
     });
     expect(priceLabel(image)).toBe('$0.030 / image');
+    const talker = model({
+      id: 'o/gpt-audio',
+      capabilities: caps({ output: ['text', 'audio'] }),
+      pricing: {
+        input_per_mtok: 2.5,
+        output_per_mtok: 10,
+        cache_read_per_mtok: null,
+        audio_output_per_mtok: 64,
+      },
+    });
+    // The text price of a model that answers aloud is not what the answer costs.
+    expect(priceLabel(talker)).toBe('$64.00 / M spoken');
     expect(priceLabel(model({ id: 'x/y' }))).toBe('—');
   });
 });
