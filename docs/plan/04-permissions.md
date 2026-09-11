@@ -177,6 +177,18 @@ makes the call again and the override answers it. The block stays in the transcr
 `overridden`, because it happened. The override is deliberately not persisted: a decision about
 one action in one moment should not outlive a restart the user never connected it to.
 
+**What the guard is asked about matters more than how fast it answers** (2026-09-11, from the
+first live run). Six hardware probes in one batch produced six simultaneous requests to a cheap
+fast route, and one of them timed out — so the guard handed a `cat /proc/meminfo 2>/dev/null` to
+the user, which is a read. Three things came out of it, in the order they matter: the classifier
+now proves `2>/dev/null` and `>&1` read-only, because a redirection that discards writes nothing
+and refusing it escalated a read to a prompt; the `ls*` family and the other machine-description
+commands joined the read-only list, since every one of them reads whatever its flags; and only
+[`MAX_IN_FLIGHT`] decisions are in flight at once. The judge's request also asks for a single
+attempt (`ChatRequest::retries`): it has eight seconds and someone is waiting through them, so
+spending them on a rate limiter's backoff buys the same answer, late. A card in one second is a
+better failure than a card in eight.
+
 Two gaps, both recorded rather than hidden. **Dry-run diffs** are not among the judge's inputs: a
 dry run needs a connector that can compute one without performing it, and no connector offers
 that, so an edit reaches the judge as its path and its truncated arguments. **Project defaults**

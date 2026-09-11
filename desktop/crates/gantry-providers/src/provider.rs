@@ -28,6 +28,11 @@ pub struct ChatRequest {
     /// Tools the provider runs on its own servers (02 §3); ignored where none exist.
     pub server_tools: Vec<ServerTool>,
     pub metadata: RequestMetadata,
+    /// How many times to re-send before the first byte (02 §7). The default is the retry
+    /// policy's own; `1` means "do not wait around", which is what a request someone is sitting
+    /// in front of wants — the guard of 04 §6 has eight seconds in total, and spending them on
+    /// a rate limiter's backoff only turns a fast question into a slow one with the same answer.
+    pub retries: u32,
     /// Merged into the wire request last; an escape hatch, empty by default.
     pub provider_options: serde_json::Value,
     /// What the user chose for a model that makes something other than text: the voice, the
@@ -53,6 +58,7 @@ impl ChatRequest {
             reasoning: ReasoningEffort::Off,
             server_tools: Vec::new(),
             metadata: RequestMetadata::default(),
+            retries: crate::retry::ATTEMPTS,
             provider_options: serde_json::Value::Null,
             media: gantry_core::MediaOptions::default(),
         }

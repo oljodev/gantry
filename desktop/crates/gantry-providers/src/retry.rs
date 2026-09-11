@@ -11,17 +11,27 @@ pub const FIRST_TOKEN_TIMEOUT: Duration = Duration::from_secs(60);
 pub const IDLE_TIMEOUT: Duration = Duration::from_secs(120);
 
 /// Runs `attempt` up to [`ATTEMPTS`] times, sleeping between retryable failures.
-pub async fn with_retry<T, F, Fut>(mut attempt: F) -> Result<T, ProviderError>
+pub async fn with_retry<T, F, Fut>(attempt: F) -> Result<T, ProviderError>
 where
     F: FnMut() -> Fut,
     Fut: Future<Output = Result<T, ProviderError>>,
 {
+    with_attempts(ATTEMPTS, attempt).await
+}
+
+/// The same, for a caller that has its own idea of how long it is worth waiting.
+pub async fn with_attempts<T, F, Fut>(attempts: u32, mut attempt: F) -> Result<T, ProviderError>
+where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = Result<T, ProviderError>>,
+{
+    let attempts = attempts.max(1);
     let mut n = 0;
     loop {
         n += 1;
         match attempt().await {
             Ok(v) => return Ok(v),
-            Err(err) if err.is_retryable() && n < ATTEMPTS => {
+            Err(err) if err.is_retryable() && n < attempts => {
                 let delay = backoff(n, err.retry_after);
                 log::warn!(
                     "provider attempt {n} failed ({}); retrying in {delay:?}",
@@ -52,6 +62,22 @@ mod tests {
     use gantry_core::ProviderErrorKind;
 
     use super::*;
+
+    /// A request someone is sitting in front of asks for one attempt, and gets one (04 §6).
+    #[tokio::test]
+    async fn one_attempt_means_no_waiting_around() {
+        let calls = AtomicU32::new(0);
+        let result: Result<(), ProviderError> = with_attempts(1, || async {
+            calls.fetch_add(1, Ordering::SeqCst);
+            Err(ProviderError::new(
+                ProviderErrorKind::RateLimited,
+                "slow down",
+            ))
+        })
+        .await;
+        assert!(result.is_err());
+        assert_eq!(calls.load(Ordering::SeqCst), 1, "no backoff, no second try");
+    }
 
     #[tokio::test]
     async fn retries_retryable_failures_then_gives_up() {

@@ -169,14 +169,21 @@ impl Provider for AnthropicProvider {
     }
 
     async fn stream(&self, req: ChatRequest) -> Result<ChatStream, ProviderError> {
+        let retries = req.retries;
         let headers = self.headers()?;
         let info = self.model_info(&req.model);
         let body = request::build_body(&req, info.as_ref());
         if log::log_enabled!(log::Level::Trace) {
             log::trace!("messages request to Anthropic: {body}");
         }
-        let response =
-            http::post_stream(&self.http, &self.url("v1/messages"), headers, &body).await?;
+        let response = http::post_stream(
+            &self.http,
+            &self.url("v1/messages"),
+            headers,
+            &body,
+            retries,
+        )
+        .await?;
         let events = sse_stream(response.bytes_stream(), FIRST_TOKEN_TIMEOUT, IDLE_TIMEOUT);
         Ok(stream::into_chat_stream(events))
     }

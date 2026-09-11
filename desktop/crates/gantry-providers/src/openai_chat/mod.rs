@@ -173,6 +173,7 @@ impl Provider for OpenAiChatProvider {
     }
 
     async fn stream(&self, req: ChatRequest) -> Result<ChatStream, ProviderError> {
+        let retries = req.retries;
         let headers = self.headers()?;
         let info = self.model_info(&req.model);
         // A model that makes a picture, a voice or a clip answers somewhere else entirely.
@@ -207,7 +208,7 @@ impl Provider for OpenAiChatProvider {
             log::trace!("chat request to {}: {}", self.profile.label, body);
         }
         let url = self.url("chat/completions");
-        let response = http::post_stream(&self.http, &url, headers, &body).await?;
+        let response = http::post_stream(&self.http, &url, headers, &body, retries).await?;
         let bytes = response.bytes_stream();
         let events = sse_stream(bytes, FIRST_TOKEN_TIMEOUT, IDLE_TIMEOUT);
         Ok(stream::into_chat_stream(events, self.profile.tool_id_quirk))

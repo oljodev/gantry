@@ -92,7 +92,25 @@ const OBSERVERS: &[&str] = &[
     "nproc",
     "uptime",
     "free",
+    // What "what is this machine?" is actually made of (2026-09-11). Every one of these reads
+    // and only reads, whatever its flags — which is the bar for this list, and the reason
+    // neighbours that look similar are missing: `sysctl` writes with `-w`, `hostnamectl` with
+    // `set-hostname`, `nvidia-smi` with `-pm`, and `dmidecode` wants root. Those go through
+    // the mode like any other command.
     "lscpu",
+    "lspci",
+    "lsusb",
+    "lsblk",
+    "lsmod",
+    "lshw",
+    "vmstat",
+    "iostat",
+    "lsb_release",
+    "getconf",
+    "sw_vers",
+    "system_profiler",
+    "vm_stat",
+    "systeminfo",
     "jq",
     "yq",
 ];
@@ -247,6 +265,43 @@ pub fn classify(command: &str) -> CommandClass {
     CommandClass::ReadOnly
 }
 
+/// The two redirections that write nothing: to `/dev/null`, which discards, and to another
+/// file descriptor, which only says where output already going somewhere should go instead.
+///
+/// This is a narrow exception and it earns its place. `2>/dev/null` is how everybody — people
+/// and models alike — silences a probe that may not apply to this machine, and
+/// `>/dev/null 2>&1` is how everybody asks whether a command exists. Refusing them made a
+/// read-only question look like a write: `cat /proc/meminfo 2>/dev/null` was escalated to a
+/// prompt while the identical `cat /proc/meminfo` ran without one, which taught nobody
+/// anything and cost a decision every time. Nothing else is admitted: the target must be
+/// exactly `/dev/null`, or a bare descriptor number.
+///
+/// Returns the index to carry on from, or `None` when the redirection is an ordinary one.
+fn harmless_redirect(chars: &[char], at: usize) -> Option<usize> {
+    let mut i = at + 1;
+    // `>>` appends; to `/dev/null` that is the same nothing.
+    if chars.get(i) == Some(&'>') {
+        i += 1;
+    }
+    // `>&1`, `2>&1`: a descriptor, not a path.
+    if chars.get(i) == Some(&'&') {
+        let digits = chars[i + 1..]
+            .iter()
+            .take_while(|c| c.is_ascii_digit())
+            .count();
+        return (digits > 0).then_some(i + 1 + digits);
+    }
+    while chars.get(i) == Some(&' ') {
+        i += 1;
+    }
+    let end = i + chars[i..]
+        .iter()
+        .take_while(|c| !c.is_whitespace() && !matches!(c, '|' | ';' | '&' | '<' | '>'))
+        .count();
+    let target: String = chars[i..end].iter().collect();
+    (target == "/dev/null").then_some(end)
+}
+
 /// Syntax that can write a file or run something the tokens never name. Checked on the whole
 /// line, outside quotes, because a redirection in any segment writes just as well as in the first.
 fn dangerous_syntax(command: &str) -> Option<String> {
@@ -266,13 +321,27 @@ fn dangerous_syntax(command: &str) -> Option<String> {
             '$' if !single && !escaped && bytes.get(i + 1) == Some(&'(') => {
                 return Some("command substitution can run any command".to_owned());
             }
-            '>' if !single && !double && !escaped => {
-                return Some("a redirection writes a file".to_owned());
-            }
+            '>' if !single && !double && !escaped => match harmless_redirect(&bytes, i) {
+                Some(next) => {
+                    i = next;
+                    continue;
+                }
+                None => return Some("a redirection writes a file".to_owned()),
+            },
             '<' if !single && !double && !escaped => {
                 // `<` reads, but `<<<` and process substitution `<(` do more, and a here-doc
                 // feeds input a closed stdin cannot supply anyway.
                 return Some("a redirection is not read-only".to_owned());
+            }
+            // `&>` is a redirection spelled with an ampersand, so it is judged as one.
+            '&' if !single && !double && !escaped && bytes.get(i + 1) == Some(&'>') => {
+                match harmless_redirect(&bytes, i + 1) {
+                    Some(next) => {
+                        i = next;
+                        continue;
+                    }
+                    None => return Some("a redirection writes a file".to_owned()),
+                }
             }
             '&' if !single && !double && !escaped => {
                 let next = bytes.get(i + 1);
@@ -510,6 +579,35 @@ mod tests {
         assert!(!reads("sudo -u root cat /etc/shadow"));
         assert!(!reads("doas ls"));
         assert!(!reads("su - olav -c ls"));
+    }
+
+    /// The spellings people and models actually use to silence a probe (2026-09-11): these
+    /// write nothing, and refusing them escalated a read to a prompt.
+    #[test]
+    fn a_redirection_to_dev_null_is_still_read_only() {
+        for line in [
+            "cat /proc/meminfo 2>/dev/null | head -5",
+            "cat /proc/meminfo 2> /dev/null",
+            "lspci >/dev/null 2>&1",
+            "which nvidia-smi > /dev/null 2>&1",
+            "lscpu &>/dev/null",
+            "free -h >>/dev/null",
+            "ls 2>&1",
+        ] {
+            assert_eq!(classify(line), CommandClass::ReadOnly, "{line}");
+        }
+        // And nothing wider: a real file is still a write, and so is a near miss.
+        for line in [
+            "cat /proc/meminfo > notes.txt",
+            "lscpu 2>/dev/nullx",
+            "lscpu 2>/dev/sda",
+            "lscpu > /dev/null/x",
+        ] {
+            assert!(
+                matches!(classify(line), CommandClass::Effectful(_)),
+                "{line} must not be proven read-only"
+            );
+        }
     }
 
     #[test]

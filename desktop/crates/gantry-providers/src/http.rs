@@ -90,8 +90,9 @@ pub(crate) async fn post_stream(
     url: &str,
     headers: HeaderMap,
     body: &Value,
+    attempts: u32,
 ) -> Result<reqwest::Response, ProviderError> {
-    retry::with_retry(|| async {
+    retry::with_attempts(attempts, || async {
         let response = http
             .post(url)
             .headers(headers.clone())

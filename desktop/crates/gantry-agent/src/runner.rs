@@ -887,12 +887,17 @@ async fn run_calls(
     // the guard could not reach one, hands it to the user with the reason why.
     if !judged.is_empty() {
         let frame = guard_frame(ctx, assistant);
-        let verdicts = futures_util::future::join_all(
-            judged
-                .iter()
-                .map(|(i, entry)| ask_the_guard(ctx, &calls[*i], entry, &frame, guard)),
-        )
-        .await;
+        let mut verdicts = Vec::with_capacity(judged.len());
+        for chunk in judged.chunks(judge::MAX_IN_FLIGHT) {
+            verdicts.extend(
+                futures_util::future::join_all(
+                    chunk
+                        .iter()
+                        .map(|(i, entry)| ask_the_guard(ctx, &calls[*i], entry, &frame, guard)),
+                )
+                .await,
+            );
+        }
         for ((i, entry), outcome) in judged.into_iter().zip(verdicts) {
             let call = &calls[i];
             match outcome {

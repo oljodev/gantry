@@ -37,6 +37,14 @@ pub const TIMEOUT: Duration = Duration::from_secs(8);
 pub const DESTRUCTIVE_FLOOR: f32 = 0.7;
 /// The same tool with the same arguments failing this many times in one turn is a loop.
 pub const LOOP_FAILURES: u32 = 3;
+/// How many decisions may be in flight at once (04 §6).
+///
+/// A model can ask for eight commands in one breath, and eight simultaneous requests to the
+/// cheap fast route of a provider is how you find its rate limiter. Three keeps a batch's
+/// latency close to one decision's while staying well inside what any provider minds — and a
+/// throttled guard is not a slow guard, it is a guard that times out and hands every call to
+/// the user, which is the opposite of what Auto mode is for.
+pub const MAX_IN_FLIGHT: usize = 3;
 
 const FIRST_MESSAGE_CHARS: usize = 600;
 const LAST_MESSAGE_CHARS: usize = 600;
@@ -265,6 +273,10 @@ pub async fn decide(
     let mut req = ChatRequest::new(model.clone(), POLICY, vec![Message::user_text(input)]);
     req.max_output_tokens = MAX_OUTPUT_TOKENS;
     req.reasoning = ReasoningEffort::Off;
+    // One attempt. The whole decision has [`TIMEOUT`] and someone is waiting through it; a rate
+    // limiter's backoff would spend those seconds to arrive at the same answer, late. Failing
+    // now means the card appears in a second instead of in eight, which is the better failure.
+    req.retries = 1;
     if structured {
         req.provider_options = structured_output(provider.kind());
     }
