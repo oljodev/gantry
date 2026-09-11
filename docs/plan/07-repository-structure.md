@@ -127,7 +127,8 @@ gantry/
 │   │   │       ├── system_prompt.rs          # assembles the layers of 10 §2 and the mode note
 │   │   │       ├── context.rs                # the context budget, keep-tail compaction and the marker (02 §6)
 │   │   │       ├── tools.rs                  # the ToolSet of one turn: namespaced specs, mode filter, name map
-│   │   │       ├── permissions.rs            # the guardrail floor, the mode table and grants (M3, M7); the judge joins with M8
+│   │   │       ├── permissions.rs            # the guardrail floor, the mode table, grants and the question the guard answers (04 §3, §5, §6)
+│   │   │       ├── judge.rs                  # the guard: the input, the model, the verdict, the loop detector and the overrides (04 §6)
 │   │   │       ├── runtime_tools/{mod.rs, clock.rs, artifacts.rs, catalog.rs; later skills.rs, memory.rs}
 │   │   │       ├── skills/{mod.rs, index.rs, matcher.rs, import.rs, export.rs}
 │   │   │       ├── memory/{mod.rs, selector.rs, proposals.rs}

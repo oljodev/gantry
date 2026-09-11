@@ -215,6 +215,16 @@ impl Default for AdvancedSettings {
 }
 
 /// Every setting, with a default in code. Persisted one section per row (11 §1).
+/// The guard of docs/plan/04 §6: which model decides, when the guard decides at all.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, specta::Type)]
+#[serde(default)]
+pub struct GuardSettings {
+    /// The model the guard asks. `None` means the cheapest fast model of the chat's own
+    /// provider, from `assets/models/judge_defaults.toml` — which is what you want almost
+    /// always, and is why this is an override rather than a choice the user has to make.
+    pub judge_model: Option<ModelRef>,
+}
+
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, specta::Type)]
 #[serde(default)]
 pub struct Settings {
@@ -222,12 +232,14 @@ pub struct Settings {
     pub chat: ChatSettings,
     /// The floor of docs/plan/04 §5, as the user's deviation from the shipped list.
     pub guardrails: GuardrailSettings,
+    pub guard: GuardSettings,
     pub advanced: AdvancedSettings,
 }
 
 impl Settings {
     /// The keys of the `settings` table, one per section.
-    pub const SECTIONS: [&'static str; 4] = ["appearance", "chat", "guardrails", "advanced"];
+    pub const SECTIONS: [&'static str; 5] =
+        ["appearance", "chat", "guardrails", "guard", "advanced"];
 
     /// Where a new session on this surface starts (16 §9).
     #[must_use]
@@ -255,6 +267,7 @@ pub struct SettingsPatch {
     pub appearance: Option<AppearanceSettings>,
     pub chat: Option<ChatSettings>,
     pub guardrails: Option<GuardrailSettings>,
+    pub guard: Option<GuardSettings>,
     pub advanced: Option<AdvancedSettings>,
 }
 
@@ -279,6 +292,12 @@ impl SettingsPatch {
         {
             settings.guardrails = s;
             changed.push("guardrails");
+        }
+        if let Some(s) = self.guard
+            && s != settings.guard
+        {
+            settings.guard = s;
+            changed.push("guard");
         }
         if let Some(s) = self.advanced
             && s != settings.advanced
@@ -311,9 +330,16 @@ mod tests {
             }),
             chat: Some(ChatSettings::default()),
             guardrails: None,
+            guard: Some(GuardSettings {
+                judge_model: Some(ModelRef {
+                    provider: ProviderId("anthropic".into()),
+                    model: "claude-haiku-4-5".to_owned(),
+                }),
+            }),
             advanced: None,
         };
-        assert_eq!(patch.apply(&mut s), vec!["appearance"]);
+        assert_eq!(patch.apply(&mut s), vec!["appearance", "guard"]);
         assert_eq!(s.appearance.theme, Theme::Dark);
+        assert_eq!(s.guard.judge_model.unwrap().model, "claude-haiku-4-5");
     }
 }

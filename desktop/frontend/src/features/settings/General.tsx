@@ -62,7 +62,7 @@ export function General() {
         </SettingsRow>
         <SettingsRow
           label="Guard Auto mode"
-          hint="A judge model reviews risky tool calls in Auto mode (from M8)."
+          hint="In Auto mode, a small fast model decides each call that changes something, instead of asking you. It cannot reach past the guardrails."
         >
           <Switch
             aria-label="Guard Auto mode"

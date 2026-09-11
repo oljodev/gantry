@@ -50,10 +50,10 @@ pub struct RunContext {
     pub media: gantry_core::MediaOptions,
     /// The floor of 04 §5, compiled once for the turn: the rules no mode and no grant lifts.
     pub guardrails: Arc<gantry_core::Guardrails>,
-    /// The model the guard asks in Guarded Auto (04 §6): the cheapest fast model of the chat's
-    /// own provider, so no second key is needed. `None` when there is no provider to ask, and
-    /// then every guarded call falls back to the user.
-    pub judge_model: Option<String>,
+    /// Who the guard asks in Guarded Auto (04 §6): by default the cheapest fast model of the
+    /// chat's own provider, so no second key is needed. `None` when there is no provider to
+    /// ask, and then every guarded call falls back to the user.
+    pub judge: Option<(Arc<dyn Provider>, String)>,
     /// The blocks the user overrode with **Allow anyway** (04 §6), shared with the manager
     /// because the button is pressed after the turn that was blocked has ended.
     pub overrides: Arc<judge::Overrides>,
@@ -1217,7 +1217,7 @@ async fn ask_the_guard(
     if let Some(verdict) = guard.loops.verdict(&call.name, &call.args) {
         return Ok(verdict);
     }
-    let (Some(provider), Some(model)) = (ctx.provider.clone(), ctx.judge_model.clone()) else {
+    let Some((provider, model)) = ctx.judge.clone() else {
         return Err(judge::JudgeError::Unavailable);
     };
     let action = judge::Action {

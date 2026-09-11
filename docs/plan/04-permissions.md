@@ -33,7 +33,7 @@ Assignment: native manifests declare a tier per tool; the shell connector classi
 
 ¹ unless a standing grant for this chat matches (see §8). ² the tool is not even offered to the model in Plan mode (see §5). ³ `always_confirm` tools and guardrail patterns still ask (see §6). ⁴ never prompts, always logged; see T13 in 01 §8 for why Manual mode's "no exceptions" does not extend to tools whose only effect is Gantry's own UI or a card the user decides on.
 
-Status: the table's mode column, the guardrail floor of §5 and the grants of ¹ are implemented (`gantry-agent/src/permissions.rs`, `gantry-core/src/guardrail.rs`, §5 and §8). A card offers **Allow once**, **Deny** with an optional message the model sees as `{ "error": "denied_by_user", "message", "hint" }`, and the standing scopes of §8; a grant may only turn an **Ask** into an allow, so Plan mode's denials, `always_confirm` and the guardrails are untouched by it. Plan mode filters the tool set and its last turn offers **Switch to Auto-edit and execute**. Scope checks are the connectors' own (M6). The judge column is not built until M8; until then a call that would go to the judge asks the user, per the fail-closed rule of §1. `gantry__clock` is `read` tier rather than `app` so that Manual mode has a call to ask about before any connector exists.
+Status: the whole table is implemented, including the judge column (`gantry-agent/src/permissions.rs`, `gantry-agent/src/judge.rs`, `gantry-core/src/guardrail.rs`, §5, §6 and §8). A card offers **Allow once**, **Deny** with an optional message the model sees as `{ "error": "denied_by_user", "message", "hint" }`, and the standing scopes of §8; a grant may only turn an **Ask** into an allow, so Plan mode's denials, `always_confirm` and the guardrails are untouched by it — and it answers the guard, because a grant *is* the user having decided. Plan mode filters the tool set and its last turn offers **Switch to Auto-edit and execute**. Scope checks are the connectors' own (M6). `gantry__clock` is `read` tier rather than `app` so that Manual mode has a call to ask about before any connector exists.
 
 **Manual** asks before every call, reads included, exactly as the brief says. It stays usable because every prompt offers "Allow for this chat" with a scope, and that grant is the user's explicit decision.
 
@@ -128,6 +128,61 @@ Policy in the prompt: allow actions consistent with the stated task that are in 
 - **Judge failure** (timeout after 8 s, network error, unparseable output) → fall back to a blocking permission prompt. One interruption in a rare failure beats a silent allow.
 - Budget: target latency ≤ 1.5 s per decision; cost roughly a tenth of a cent per decision on Haiku 4.5 with the policy prompt cached, so a heavy coding turn costs cents.
 - Audit: `judge.decision` events; Settings → Guard shows recent decisions, override counts and a "this block was wrong" feedback toggle stored for later prompt tuning.
+
+### As built (M8, 2026-09-11)
+
+`gantry-agent/src/judge.rs` renders the input, asks the model and reads the answer;
+`permissions::decide` returns `Decision::Judge` where Guarded Auto reaches the guard, and the
+runner takes it from there. `desktop/assets/prompts/judge.md` is the policy. Six decisions shaped
+it.
+
+**The engine stops at the question.** `decide` is a pure function and deciding needs a network
+call and the turn's history, so the engine answers with `Judge` rather than an allow or a deny
+and the runner does the asking. That keeps the whole permission table testable without a model,
+which is what makes "a guardrail outranks the guard" a test rather than a claim.
+
+**Everything in front of the judge answers instead of it.** A hard-deny guardrail refuses, a
+guardrail question stays the user's, an `always_confirm` tool is confirmed by the user, and a
+standing grant allows — all before the judge is asked. So the judge is only asked where the
+answer is genuinely a judgement, and a model can never talk its way past `rm -rf /`, because the
+floor refused before anything was asked. The grant case is the one the plan did not spell out: a
+grant means the user already answered this question by hand and said to stop asking, and the
+judge is a stand-in for the asking.
+
+**Three passes, so nobody waits for an answer they did not need.** The rules decide the whole
+batch instantly; every guard question then goes out at once, so four calls cost one round trip
+rather than four; the cards are raised last, sorted back into the model's own order so they stack
+the way the calls were made.
+
+**Fail closed means "ask", not "deny".** A timeout, an unreachable provider or an answer that is
+not a verdict becomes a permission card carrying the reason it exists — "the guard's answer was
+unreadable, so this one is yours" — plus a `provider.notice` and a `judge.decision` event with
+source `unavailable`. The card says why, because in Auto mode being asked at all is the surprising
+part. The same path takes a `destructive` call the judge allowed below 0.7 confidence.
+
+**The answer is read leniently, the verdict strictly.** The decision and the reason must both be
+there — a verdict missing either is not a verdict — but the object is *found* rather than assumed:
+a small model told "JSON only" still fences it or introduces it, and turning a correct answer into
+a prompt over a code fence would interrupt the user for nothing. The structured-output shape is
+sent through `provider_options` where the wire key is ours to set (`response_format`, `text`,
+`output_config`) and the model's `capabilities.structured_output` says it is supported. Gemini is
+the exception: its response schema lives inside `generation_config`, which the client already
+fills in, and overwriting that key would drop the token limit with it — so Gemini is asked in the
+prompt, like every provider with no schema support at all.
+
+**An override is remembered, not stored.** **Allow anyway** cannot run the blocked call — its turn
+is over and the model already has `blocked_by_guard` — so the override is held in memory, the chat
+is told in a `SystemNote` what the user decided, and a new turn starts from that note: the model
+makes the call again and the override answers it. The block stays in the transcript, marked
+`overridden`, because it happened. The override is deliberately not persisted: a decision about
+one action in one moment should not outlive a restart the user never connected it to.
+
+Two gaps, both recorded rather than hidden. **Dry-run diffs** are not among the judge's inputs: a
+dry run needs a connector that can compute one without performing it, and no connector offers
+that, so an edit reaches the judge as its path and its truncated arguments. **Project defaults**
+wait for M11 — 09 said the `projects` table existed from M2 and it does not; only
+`chats.project_id` does, and a project default is unreachable until a chat can belong to a
+project.
 
 ## 7. Permission prompts
 

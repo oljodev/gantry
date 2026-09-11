@@ -920,6 +920,19 @@ export type GuardDecision = {
 	at: number,
 };
 
+/**
+ *  Every setting, with a default in code. Persisted one section per row (11 §1).
+ *  The guard of docs/plan/04 §6: which model decides, when the guard decides at all.
+ */
+export type GuardSettings = {
+	/**
+	 *  The model the guard asks. `None` means the cheapest fast model of the chat's own
+	 *  provider, from `assets/models/judge_defaults.toml` — which is what you want almost
+	 *  always, and is why this is an override rather than a choice the user has to make.
+	 */
+	judge_model?: ModelRef | null,
+};
+
 /**  The rule that matched, as the card and the model are told about it. */
 export type GuardrailHit = {
 	rule: string,
@@ -1454,12 +1467,12 @@ export type ServerInfo = {
 	protocol: string,
 };
 
-/**  Every setting, with a default in code. Persisted one section per row (11 §1). */
 export type Settings = {
 	appearance?: AppearanceSettings,
 	chat?: ChatSettings,
 	/**  The floor of docs/plan/04 §5, as the user's deviation from the shipped list. */
 	guardrails?: GuardrailSettings,
+	guard?: GuardSettings,
 	advanced?: AdvancedSettings,
 };
 
@@ -1470,6 +1483,7 @@ export type SettingsPatch = {
 	appearance?: AppearanceSettings | null,
 	chat?: ChatSettings | null,
 	guardrails?: GuardrailSettings | null,
+	guard?: GuardSettings | null,
 	advanced?: AdvancedSettings | null,
 };
 

@@ -16,6 +16,14 @@ import { Composer } from '@/components/gantry/composer/Composer';
 import { CommandOutput } from '@/components/gantry/pane/CommandOutput';
 import { DiffView } from '@/components/gantry/pane/DiffView';
 import { type PaneTab, RightPane } from '@/components/gantry/pane/RightPane';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { toast } from '@/components/ui/toast';
 import { ToolCallDetail } from '@/components/gantry/pane/ToolCallDetail';
 import { ArtifactPanel } from '@/features/artifacts/ArtifactPanel';
@@ -92,6 +100,11 @@ export function ChatView({
   /** The suggestion whose install is running, and the fallback dialog when one click was not
       enough (03 §11). */
   const [installingOffer, setInstallingOffer] = useState<string | null>(null);
+  // Turning the guard off is confirmed once per chat (04 §5), so the second time in the same
+  // conversation is not a second interruption about a decision already made.
+  const [unguarding, setUnguarding] = useState(false);
+  const unguardedOk = useUiStore((s) => s.unguarded.includes(chatId));
+  const rememberUnguarded = useUiStore((s) => s.rememberUnguarded);
   const [asking, setAsking] = useState<{
     entry: CatalogEntryDto;
     interactionId: string;
@@ -462,7 +475,11 @@ export function ChatView({
           }
           onBrowseConnectors={() => openCustomize('connectors')}
           onModeChange={(mode) => patch({ mode })}
-          onGuardChange={(guard) => patch({ guard })}
+          onGuardChange={(guard) => {
+            // 04 §5: turning the guard off is a real decision, and it is asked once per chat.
+            if (!guard && !unguardedOk) setUnguarding(true);
+            else patch({ guard });
+          }}
           onModelChange={(model: ModelRef) => patch({ model })}
           onSend={(text, attachments) => {
             // Sending is the one moment where jumping is what the user meant: their own message
@@ -479,6 +496,15 @@ export function ChatView({
           onStop={() => void stop(chatId)}
         />
       </div>
+      <UnguardDialog
+        open={unguarding}
+        onOpenChange={setUnguarding}
+        onConfirm={() => {
+          rememberUnguarded(chatId);
+          setUnguarding(false);
+          patch({ guard: false });
+        }}
+      />
       {asking && (
         <InstallDialog
           entry={asking.entry}
@@ -611,4 +637,42 @@ function detailTab(item: ActivityItem, onRevert?: (path: string) => void): PaneT
     default:
       return null;
   }
+}
+
+/**
+ * Turning the guard off in Auto mode, confirmed once per chat (04 §5). Auto without the guard
+ * runs everything the guardrail floor does not stop, which is a thing worth saying out loud the
+ * first time rather than a checkbox that quietly changes what the next hour does.
+ */
+function UnguardDialog({
+  open,
+  onOpenChange,
+  onConfirm,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Turn the guard off in this chat?</DialogTitle>
+          <DialogDescription>
+            Auto mode will run everything the model asks for — edits, commands, deletions, changes
+            to services outside this machine — without asking you and without a second opinion. The
+            guardrails in Settings still stop the few things they stop.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => onOpenChange(false)}>
+            Keep the guard
+          </Button>
+          <Button variant="primary" onClick={onConfirm}>
+            Turn it off
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
 }

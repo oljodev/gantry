@@ -25,6 +25,13 @@ interface UiState {
    */
   recentModels: string[];
   rememberModel: (key: string) => void;
+  /**
+   * Chats where the user has confirmed turning the guard off (04 §5). Once per chat, and here
+   * rather than in settings because it is a record of one answer on one machine, not a
+   * preference worth syncing.
+   */
+  unguarded: string[];
+  rememberUnguarded: (chatId: string) => void;
   /** The open section of each dialog, or null when it is closed (15 A18). */
   settings: Section | null;
   customize: CustomizeSection | null;
@@ -97,6 +104,9 @@ export const useUiStore = create<UiState>()(
       closeSettings: () => set({ settings: null }),
       openCustomize: (section = 'connectors') => set({ customize: section, settings: null }),
       closeCustomize: () => set({ customize: null }),
+      unguarded: [],
+      rememberUnguarded: (chatId) =>
+        set((s) => (s.unguarded.includes(chatId) ? s : { unguarded: [...s.unguarded, chatId] })),
       setTheme: (theme) => set({ theme }),
       setDensity: (density) => set({ density }),
       setSidebarWidth: (width) =>
@@ -122,6 +132,7 @@ export const useUiStore = create<UiState>()(
         surface: s.surface,
         lastRoute: s.lastRoute,
         recentModels: s.recentModels,
+        unguarded: s.unguarded,
       }),
     },
   ),

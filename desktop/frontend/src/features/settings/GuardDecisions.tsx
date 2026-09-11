@@ -5,13 +5,63 @@ import {
   ThumbsUpIcon,
 } from '@phosphor-icons/react';
 import { Link } from '@tanstack/react-router';
+import { useState } from 'react';
 
 import type { GuardDecision } from '@/bindings';
 import { Badge } from '@/components/ui/badge';
+import { SettingsRow } from '@/components/gantry/settings/SettingsRow';
 import { Button } from '@/components/ui/button';
+import { ModelDialog } from '@/features/models/ModelDialog';
 import { isTauri } from '@/lib/ipc/client';
-import { useGuardDecisions, useMarkGuardDecision } from '@/lib/ipc/hooks/settings';
+import {
+  useGuardDecisions,
+  useMarkGuardDecision,
+  useSettings,
+  useUpdateSettings,
+} from '@/lib/ipc/hooks/settings';
 import { cn } from '@/lib/utils';
+
+/**
+ * Which model the guard asks (04 §6). Empty means the cheapest fast model of whichever provider
+ * the chat is already using, from `judge_defaults.toml` — right for almost everybody, which is
+ * why this is an override to reach for rather than a choice to make.
+ */
+export function JudgeModelRow() {
+  const settings = useSettings();
+  const update = useUpdateSettings();
+  const [picking, setPicking] = useState(false);
+  const chosen = settings.data?.guard?.judge_model ?? null;
+  return (
+    <SettingsRow
+      label="Guard model"
+      hint="The model that decides in Auto mode. By default, the cheapest fast model of the provider the chat is already using, so no second key is needed."
+    >
+      <div className="flex items-center gap-2">
+        <Button variant="secondary" size="sm" onClick={() => setPicking(true)}>
+          {chosen ? chosen.model : 'Provider default'}
+        </Button>
+        {chosen && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => update.mutate({ guard: { judge_model: null } })}
+          >
+            Reset
+          </Button>
+        )}
+        <ModelDialog
+          open={picking}
+          onClose={() => setPicking(false)}
+          value={chosen ?? { provider: 'openrouter', model: '' }}
+          onChange={(model) => {
+            update.mutate({ guard: { judge_model: model } });
+            setPicking(false);
+          }}
+        />
+      </div>
+    </SettingsRow>
+  );
+}
 
 /**
  * Settings → Guard, the record (04 §6, §11): what the guard has decided on the user's behalf,

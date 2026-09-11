@@ -463,9 +463,19 @@ impl TurnManager {
         // table the title generator reads (04 §6). Resolved once, before the turn starts, so a
         // decision mid-turn costs nothing but the request.
         let overrides = self.overrides.clone();
-        let judge_model = provider
-            .as_ref()
-            .map(|p| title::judge_model(model.provider.as_str(), p.kind(), &model.model));
+        // The guard asks the cheapest fast model of the chat's own provider (04 §6), so no
+        // second key is needed; a user who wants a different one names it in Settings, provider
+        // and all, because a model id means nothing without the provider that serves it.
+        let judge = match &settings.guard.judge_model {
+            Some(chosen) => self
+                .providers
+                .provider(&chosen.provider)
+                .map(|p| (p, chosen.model.clone())),
+            None => provider.as_ref().map(|p| {
+                let m = title::judge_model(model.provider.as_str(), p.kind(), &model.model);
+                (p.clone(), m)
+            }),
+        };
         self.runtime.spawn(async move {
             let tools = ToolSet::assemble(&connectors, mode, &attached).await;
             runner::run_turn(RunContext {
@@ -476,7 +486,7 @@ impl TurnManager {
                 max_result_bytes: (settings.advanced.max_result_kb.max(1) as usize) * 1024,
                 media,
                 guardrails,
-                judge_model,
+                judge,
                 overrides,
                 active: active.clone(),
                 chats: chats.clone(),

@@ -4,7 +4,7 @@ import { SettingsRow } from '@/components/gantry/settings/SettingsRow';
 import { Advanced } from '@/features/settings/Advanced';
 import { Data } from '@/features/settings/Data';
 import { General } from '@/features/settings/General';
-import { GuardDecisions } from '@/features/settings/GuardDecisions';
+import { GuardDecisions, JudgeModelRow } from '@/features/settings/GuardDecisions';
 import { Guardrails } from '@/features/settings/Guardrails';
 import { Providers } from '@/features/settings/Providers';
 import { isSection, type Section } from '@/features/settings/sections';
@@ -47,6 +47,9 @@ function Guard() {
           the question comes to you instead. Turn it off per chat with the mode chip, or for new
           chats in General.
         </p>
+        <div className="mb-4 divide-y divide-line-subtle border-y border-line-subtle">
+          <JudgeModelRow />
+        </div>
         <p className="mb-4 text-meta text-fg-3">
           Marking a decision right or wrong is kept with it, for tuning the guard's instructions in
           a later release. It does not change what the guard does today.

@@ -462,14 +462,14 @@ which is a real gap and the reason M7 follows M6 immediately rather than M8.
 
 Done when: a coding task can be run in Manual, Auto-edit and Plan with the matrix in 04 §3 holding in every cell.
 
-## M8 — Auto mode and the judge (1–2 weeks)
+## M8 — Auto mode and the judge (1–2 weeks) — done 2026-09-11
 
-- **Auto** with Guard off; the guardrail floor still prompting.
-- The judge: rules-first pipeline, per-provider defaults, prompt with cached policy prefix, structured output, timeout and fail-closed fallback, loop detection, dry-run diffs as judge input.
-- Deny UX: "Blocked by guard" row, **Allow anyway**, toast and sidebar badge; `judge.decision` events; the **Guard** settings page with recent decisions and feedback.
-- Project-level default mode and guard (the `projects` table exists from M2 even though the UI arrives in M11).
+- ~~**Auto** with Guard off; the guardrail floor still prompting.~~ Done in M7 with the floor.
+- ~~The judge: rules-first pipeline, per-provider defaults, prompt with cached policy prefix, structured output, timeout and fail-closed fallback, loop detection~~ — all built (04 §6 "As built"). **Dry-run diffs as judge input** are not: a dry run needs a connector that can compute a change without performing it, and no connector offers that, so an edit reaches the judge as its path and its truncated arguments. It stays on M8's list until a connector can.
+- ~~Deny UX: "Blocked by guard" row, **Allow anyway**, toast and sidebar badge; `judge.decision` events; the **Guard** settings page with recent decisions and feedback.~~ Done, plus the judge-model override the settings table of 11 §2 asks for, and the one-time confirmation for switching a chat to Unguarded Auto that 04 §5 asks for.
+- **Project-level default mode and guard** — moved to M11. The premise of this line was wrong: the `projects` table does not exist and never did; M2 created only the `chats.project_id` column. A project default is unreachable until a chat can belong to a project, so building the table now would be M11's work with no way to exercise it.
 
-Done when: a multi-step task completes hands-off in Guarded Auto, with at least one sensible block and one override exercised.
+Done when: a multi-step task completes hands-off in Guarded Auto, with at least one sensible block and one override exercised. **Offline:** covered by `gantry-agent/tests/turns.rs` — the guard deciding a batch without a prompt, a guard that cannot decide asking the user, the loop detector stopping a repeat without asking, the floor outranking the guard, and **Allow anyway** carrying a blocked call through on the next turn. **Live:** Olav's to run.
 
 ## M9 — MCP connectors and the install flow (3 weeks) — first half done 2026-09-07
 
