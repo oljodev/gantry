@@ -33,7 +33,7 @@ Assignment: native manifests declare a tier per tool; the shell connector classi
 
 ¹ unless a standing grant for this chat matches (see §8). ² the tool is not even offered to the model in Plan mode (see §5). ³ `always_confirm` tools and guardrail patterns still ask (see §6). ⁴ never prompts, always logged; see T13 in 01 §8 for why Manual mode's "no exceptions" does not extend to tools whose only effect is Gantry's own UI or a card the user decides on.
 
-Status: the table's mode column and the grants of ¹ are implemented (`gantry-agent/src/permissions.rs`, §8). A card offers **Allow once**, **Deny** with an optional message the model sees as `{ "error": "denied_by_user", "message", "hint" }`, and the standing scopes of §8; a grant may only turn an **Ask** into an allow, so Plan mode's denials and `always_confirm` are untouched by it. Plan mode filters the tool set and its last turn offers **Switch to Auto-edit and execute**. Scope checks arrive with M6 and the guardrail floor with M7. The judge column is not built until M8; until then a call that would go to the judge asks the user, per the fail-closed rule of §1. `gantry__clock` is `read` tier rather than `app` so that Manual mode has a call to ask about before any connector exists.
+Status: the table's mode column, the guardrail floor of §5 and the grants of ¹ are implemented (`gantry-agent/src/permissions.rs`, `gantry-core/src/guardrail.rs`, §5 and §8). A card offers **Allow once**, **Deny** with an optional message the model sees as `{ "error": "denied_by_user", "message", "hint" }`, and the standing scopes of §8; a grant may only turn an **Ask** into an allow, so Plan mode's denials, `always_confirm` and the guardrails are untouched by it. Plan mode filters the tool set and its last turn offers **Switch to Auto-edit and execute**. Scope checks are the connectors' own (M6). The judge column is not built until M8; until then a call that would go to the judge asks the user, per the fail-closed rule of §1. `gantry__clock` is `read` tier rather than `app` so that Manual mode has a call to ask about before any connector exists.
 
 **Manual** asks before every call, reads included, exactly as the brief says. It stays usable because every prompt offers "Allow for this chat" with a scope, and that grant is the user's explicit decision.
 
@@ -58,7 +58,23 @@ Mode changes mid-chat append a `SystemNote` ("Permission mode is now Plan: propo
 
 Why not two modes: the four-mode mental model (Manual → Auto-edit → Plan → Auto) is the brief's and matches Claude Code; the guard is a safety property of Auto, not a fifth kind of workflow. Making it a setting also lets the guardrail floor and the judge be configured in one place.
 
-**Unguarded Auto** approves everything except the guardrail floor: a short default list of catastrophic patterns (`rm -rf` of `/`, `~` or a root; `git push --force` to a default branch; `mkfs`, `dd of=/dev/…`; piping a download into a shell; recursive deletes; reads or writes of sensitive-path patterns) plus any tool whose manifest sets `always_confirm`. These prompt even in Unguarded Auto. The list is editable in Settings → Guardrails and can be emptied; the default is safe and the off switch is explicit.
+**Unguarded Auto** approves everything except the guardrail floor: a short default list of catastrophic patterns (`rm -rf` of `/`, `~` or a root; `git push --force`; `mkfs`, `dd of=/dev/…`; piping a download into a shell; recursive deletes; reads or writes of sensitive-path patterns) plus any tool whose manifest sets `always_confirm`. These prompt even in Unguarded Auto. The list is editable in Settings → Guard & guardrails and can be emptied; the default is safe and the off switch is explicit.
+
+### As built (M7, 2026-09-11)
+
+The floor ships in `desktop/assets/guardrails/defaults.toml`, is matched by `gantry-core/src/guardrail.rs` and is applied by the permission engine before the mode table. Five decisions shaped it.
+
+**A guardrail reads text, and says so.** Like the command classifier next door, it matches patterns against a command line and against arguments. A command that runs has the user's privileges and any pattern can be spelled around by someone trying to; what the floor is for is the handful of spellings people reach by accident, which are few and well known. The interface says "Blocked by a guardrail", never "this cannot happen". The boundaries that hold are the modes, the roots and the operating system.
+
+**Four kinds, one file.** `deny` never runs, in any mode; `confirm` asks, in every mode including unguarded Auto; `path` is a glob for a file worth a question before it is read or written; `secret` is a key. Commands and secrets are regular expressions, paths are globs. Each rule carries a stable `id`, which is what a switched-off rule is remembered by, and a `reason` written for the person who reads it on the card.
+
+**Settings store the deviation, not a copy.** `guardrails.disabled` is a list of shipped ids the user turned off and `guardrails.custom` holds their own rules; `guardrails.enabled` is the whole floor's off switch. A stored copy of the list would freeze on the day it was made, and a release that adds a rule would never reach the machine that most needed it. `Settings::SECTIONS` gains a `guardrails` row; no migration, because the table is one JSON document per section.
+
+**A grant never answers a guardrail** — with one exception the plan already named. A grant is the user's answer to a question they were asked, not an answer to a different question, so a standing grant for `read_file` does not reach `~/.ssh/id_ed25519`. The exception is the sensitive path "without an explicit grant" above: a grant carrying an `ArgScope::PathPrefix` that covers the path *is* explicit, and lifts it. Command and secret rules have no such exception.
+
+**A path is found however it is named, and a key wherever it sits.** Path rules are matched against every short single-line string in the arguments — not an allowlist of argument names, because an MCP server calls its path `file`, `target` or `uri` — and against each word of a command, because `cat ~/.ssh/id_rsa` is the same request as reading the file by name. A file's contents cannot be mistaken for a path, because they are neither short nor single-line. Secret rules read the arguments whole, contents included: a key in a call is a key on its way into a repository or out to a stranger, and both are worth one question. `Guardrails::redact` is the same rules pointed the other way, for the log and for the memories of 12 §B3.
+
+A rule whose pattern does not compile is skipped, reported in Settings as "Not valid", and takes nothing else down with it: one bad regular expression of the user's own must not disable `rm -rf /`.
 
 ## 6. Guarded Auto: the judge
 
@@ -69,8 +85,8 @@ A small, fast model evaluates each non-read tool call and approves or blocks it 
 Rules run before the judge and are free:
 
 1. Scope violation → deny (no judge, no prompt).
-2. `read` tier → allow.
-3. Guardrail hard-deny pattern → deny; `always_confirm` → ask.
+2. Guardrail hard-deny pattern → deny; `confirm`, sensitive path, secret and `always_confirm` → ask. **Built (§5);** it runs first, so the reason the user reads is the rule's own.
+3. `read` tier → allow.
 4. Loop detection: the same tool with the same arguments has failed three times this turn → deny with reason "repeating a failing action".
 5. Everything else → judge.
 

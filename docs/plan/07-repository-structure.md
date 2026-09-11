@@ -126,7 +126,7 @@ gantry/
 │   │   │       ├── persist.rs  title.rs  attachments.rs  export.rs   # the persister (05 §3), the title generator, attachment ingest, chat export
 │   │   │       ├── transcript.rs  projection.rs  context.rs  system_prompt.rs   # system_prompt assembles the layers of 10 §2 and the mode note
 │   │   │       ├── tools.rs                  # the ToolSet of one turn: namespaced specs, mode filter, name map
-│   │   │       ├── permissions.rs            # the mode table (M3); grows into permissions/{engine, grants, guardrails, judge} with M7 and M8
+│   │   │       ├── permissions.rs            # the guardrail floor, the mode table and grants (M3, M7); the judge joins with M8
 │   │   │       ├── runtime_tools/{mod.rs, clock.rs, artifacts.rs, catalog.rs; later skills.rs, memory.rs}
 │   │   │       ├── skills/{mod.rs, index.rs, matcher.rs, import.rs, export.rs}
 │   │   │       ├── memory/{mod.rs, selector.rs, proposals.rs}
@@ -166,7 +166,7 @@ gantry/
 │   │   │   ├── judge.md                  # the judge policy prompt (04 §6)
 │   │   │   └── compaction.md             # summarizer instructions, including the artifact listing rule (13 §7)
 │   │   ├── models/{overrides.toml, judge_defaults.toml}   # capabilities and pricing the APIs do not expose; judge model per provider
-│   │   └── guardrails/defaults.toml      # hard-deny patterns, always-confirm patterns, sensitive path globs, secret patterns
+│   │   └── guardrails/defaults.toml      # the floor: deny and confirm patterns, sensitive path globs, secret patterns (04 §5); matched by gantry-core/src/guardrail.rs
 │   │
 │   ├── schemas/
 │   │   ├── connector-manifest.schema.json    # used by build.rs, xtask, the frontend test and editor validation

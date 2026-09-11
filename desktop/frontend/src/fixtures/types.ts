@@ -75,6 +75,8 @@ export type ActivityItem =
       tool: string;
       summary: string;
       status: 'done' | 'running' | 'failed' | 'waiting' | 'denied' | 'cancelled' | 'proposed';
+      /** Set when a guardrail refused the call (04 §5): the rule's reason, in its own words. */
+      blocked?: string;
       progress?: number;
       tier?: Tier;
       /** Raw input and output for the detail pane; absent on fixture rows. */
@@ -107,6 +109,8 @@ export interface Permission {
   title: string;
   args: Record<string, string>;
   note?: string;
+  /** The guardrail that raised this prompt, when one did (04 §5). */
+  guardrail?: { rule: string; reason: string };
   /** The assistant's last sentence before the call (04 §7). */
   why?: string;
   scopes: { id: string; label: string }[];

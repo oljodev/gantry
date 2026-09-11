@@ -15,6 +15,7 @@ pub mod error;
 pub mod event;
 pub mod file;
 pub mod grant;
+pub mod guardrail;
 pub mod ids;
 pub mod interaction;
 pub mod message;
@@ -40,6 +41,9 @@ pub use error::{ErrorDto, GantryError, ProviderErrorKind};
 pub use event::{AgentEvent, AgentEventBatch, AgentEventKind, TurnSnapshot};
 pub use file::{EditOp, FileEditDto};
 pub use grant::{ArgScope, ChatGrant, GrantScope, GrantSource};
+pub use guardrail::{
+    GuardrailHit, GuardrailKind, GuardrailRule, GuardrailSettings, GuardrailVerdict, Guardrails,
+};
 pub use ids::{
     ArtifactId, CallId, ChatId, EventId, GrantId, InstanceId, InteractionId, MessageId, ProjectId,
     TurnId,

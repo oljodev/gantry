@@ -42,6 +42,8 @@ pub struct RunContext {
     pub max_tool_rounds: u32,
     /// What the user chose for this chat's model, where it makes something other than text.
     pub media: gantry_core::MediaOptions,
+    /// The floor of 04 §5, compiled once for the turn: the rules no mode and no grant lifts.
+    pub guardrails: Arc<gantry_core::Guardrails>,
     pub active: Arc<ActiveTurn>,
     pub chats: Arc<ChatBook>,
     /// The tools of this turn. Behind a lock because attaching a connector mid-turn (04 §9)
@@ -720,6 +722,7 @@ async fn run_calls(
                 args: &call.args,
             },
             &grants,
+            &ctx.guardrails,
         );
         match decision {
             Decision::Allow(source) => allowed.push((i, entry, source)),
@@ -736,7 +739,7 @@ async fn run_calls(
                     }],
                 ));
             }
-            Decision::Ask => {
+            Decision::Ask { guardrail } => {
                 let interaction = Interaction::pending(
                     ctx.input.chat_id,
                     ctx.input.turn_id,
@@ -752,6 +755,7 @@ async fn run_calls(
                             display: display_for(Some(&entry.def), &call.args),
                             why: why.clone(),
                             description: entry.def.description.clone(),
+                            guardrail,
                             scopes: GrantScope::for_tier(entry.def.tier),
                         },
                     },

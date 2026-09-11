@@ -32,6 +32,7 @@ const interaction: Interaction = {
       tier: 'read',
       args: {},
       display: { kind: 'read', summary: '' },
+      guardrail: null,
       why: 'Let me check',
       description: 'The time',
       scopes: ['tool', 'all_reads'],

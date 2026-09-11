@@ -4,6 +4,7 @@ import { SettingsRow } from '@/components/gantry/settings/SettingsRow';
 import { Advanced } from '@/features/settings/Advanced';
 import { Data } from '@/features/settings/Data';
 import { General } from '@/features/settings/General';
+import { Guardrails } from '@/features/settings/Guardrails';
 import { Providers } from '@/features/settings/Providers';
 import { isSection, type Section } from '@/features/settings/sections';
 import { isTauri } from '@/lib/ipc/client';
@@ -11,8 +12,6 @@ import { useAppInfo } from '@/lib/ipc/hooks/useAppInfo';
 import { useSettings, useUpdateSettings } from '@/lib/ipc/hooks/settings';
 import { type Density, type ThemePref, useUiStore } from '@/lib/stores/uiStore';
 import { Segmented } from '@/components/ui/radio-group';
-
-const ARRIVES: Partial<Record<Section, string>> = { guard: 'M7' };
 
 /** One settings section's rows, inside the dialog that titles it (15 A18). */
 export function SettingsBody({ section }: { section: string }) {
@@ -22,13 +21,31 @@ export function SettingsBody({ section }: { section: string }) {
       {id === 'general' && <General />}
       {id === 'appearance' && <Appearance />}
       {id === 'providers' && <Providers />}
+      {id === 'guard' && <Guard />}
       {id === 'data' && <Data />}
       {id === 'advanced' && <Advanced />}
       {id === 'about' && <About />}
-      {ARRIVES[id] && (
-        <p className="text-body text-fg-2">This section arrives with milestone {ARRIVES[id]}.</p>
-      )}
     </>
+  );
+}
+
+/**
+ * Settings → Guard & guardrails (11 §2). The floor is built; the judge that reviews risky calls
+ * in Auto mode, and the record of what it decided, arrive with M8.
+ */
+function Guard() {
+  return (
+    <div className="flex flex-col gap-8">
+      <Guardrails />
+      <section>
+        <h2 className="mb-1 text-title font-medium text-fg">Guard</h2>
+        <p className="text-body text-fg-2">
+          In Auto mode a judge model will review each risky call and decide without interrupting
+          you. It arrives with milestone M8; until then Auto asks you about anything it would have
+          sent to the judge.
+        </p>
+      </section>
+    </div>
   );
 }
 

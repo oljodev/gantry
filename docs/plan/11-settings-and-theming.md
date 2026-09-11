@@ -2,7 +2,7 @@
 
 ## 1. Principles
 
-- Settings are backend truth: one typed `Settings` struct in `gantry-core` with `Default`, persisted as one JSON document per top-level section in the `settings` table (`appearance`, `chat`, `guard`, `providers`, `data`, `advanced`). `get_settings` returns the whole struct; `update_settings` takes a patch; `settings:changed` invalidates the UI.
+- Settings are backend truth: one typed `Settings` struct in `gantry-core` with `Default`, persisted as one JSON document per top-level section in the `settings` table (`appearance`, `chat`, `guardrails`, `advanced` as built; a section is a row, so adding one needs no migration — providers and their keys live in their own tables, 06 §3). `get_settings` returns the whole struct; `update_settings` takes a patch; `settings:changed` invalidates the UI.
 - Every setting has a default in code, a label, and a one-line explanation in the UI. There are no hidden settings and no settings that exist only in a config file.
 - The settings surface lives under `/settings/$section` in the router (01 §5). Search across settings is post-MVP.
 
@@ -20,7 +20,7 @@ chat, and a page loses your place.
 | **General** | Default permission mode and Guard, **per surface** (16 §9: Manual for chat, Auto-edit for code); "Confirm before switching a chat to Unguarded Auto" (arrives with Auto mode, M8); "Suggest connectors" toggle (03 §9); "Open artifacts automatically" (13 §4, `chat.open_artifact_panel`); global **Custom instructions** editor (10 §2) with a character and token count | Project defaults override these for chats inside the project. Built in M2 |
 | **Appearance** | Theme: Light / Dark / System; density: Comfortable / Compact | Font size follows the OS; accent colour is fixed in v1 |
 | **Providers & models** | The five providers plus custom endpoints: key status, Add/Replace/Remove key, Test, base URL where applicable, default model, model list refresh, pricing from the models cache; default model for new chats | Builds on 06 §5; keys are write-only |
-| **Guard & guardrails** | Judge model per provider (overrides `judge_defaults.toml`), judge timeout, recent decisions with feedback, the guardrail lists (hard-deny, always-confirm, sensitive paths) | 04 §5–§6 |
+| **Guard & guardrails** | The floor of 04 §5 as four switchable lists — never run, always ask, sensitive paths, secrets — each rule with its pattern and its reason, plus rules of the user's own and one switch for the whole floor; then the judge model per provider (overrides `judge_defaults.toml`), judge timeout, recent decisions with feedback | 04 §5–§6. The guardrail half is built (M7); the judge half arrives with M8. The `guardrails` settings section stores the **deviation** from the shipped list — ids switched off, rules added — not a copy of it, so a release that adds a rule reaches a machine that has customized its own |
 | **Connectors** *(Customize)* | Installed instances: status, auth state, enabled toggle, Reconnect, Remove; link to each instance's detail page; link to Browse | Installed under **Your connectors**, the catalog under **Discover**, in the Customize dialog (03 §10) |
 | **Skills** *(Customize)* | Installed skills, enabled toggles, New / Import / Export | The full page is `/skills` (12 §A6); Settings shows the list and links |
 | **Memory** *(Customize)* | Global on/off, per-project on/off, "Auto-save assistant memories" opt-in, link to the Memory page | The Memory page itself is `/memory` (12 §B5) |

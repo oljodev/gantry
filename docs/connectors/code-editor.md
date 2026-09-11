@@ -165,14 +165,15 @@ every change is journaled and revertible, which is exactly what the tier means (
 hides all four rather than denying them, so the model does not spend rounds on calls it cannot
 make.
 
-**Credential files are refused, not confirmed** (decided while building, 2026-09-08).
-`filesystem.md` D3 says sensitive files always ask, in every mode. That ask needs a per-call
-confirmation the permission engine cannot yet raise from inside a connector, and a static
+**Credential files were refused rather than confirmed, until there was somewhere to ask from**
+(decided while building, 2026-09-08; resolved 2026-09-11). `filesystem.md` D3 says sensitive
+files always ask, in every mode. That ask needs a per-call confirmation, and a static
 `always_confirm` on the tool would instead prompt for every edit in the session, which is the
-opposite of what D3 wants. Until the guardrail floor of M7 can raise it, these four tools refuse
-a path in the sensitive set and say which rule refused. Fail closed, and it costs only the rare
-case of a model editing a `.env` — the case D3 was written about. Reading one is unaffected: D3's
-argument for allowing that was an argument about reading.
+opposite of what D3 wants. So until the guardrail floor of M7 existed these four tools refused a
+path in the sensitive set outright and said which rule refused. The floor now raises the
+confirmation itself, before the call reaches the connector (04 §5), so the refusal is gone: it
+would have meant the user answering the card and the connector overruling them. The decision
+lives in one place, and the answer may now be yes.
 
 ## 9. Manifest
 

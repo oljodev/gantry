@@ -321,8 +321,14 @@ async fn a_path_outside_the_folder_asks_for_the_folder_instead_of_writing() {
     );
 }
 
+/// A credential file is decided *before* the call, by the guardrail floor, which asks in every
+/// mode and cannot be answered by a standing grant (04 §5). Until M7 there was nowhere to raise
+/// that question from, so these tools refused outright; now that there is, a refusal here would
+/// mean the user says yes on the card and the connector says no anyway. The rules themselves are
+/// tested in `gantry-core::guardrail`; what this asserts is that the connector has stopped
+/// second-guessing an answer it did not hear.
 #[tokio::test]
-async fn a_credential_file_is_never_edited_by_the_model() {
+async fn a_credential_file_is_edited_only_once_the_user_has_said_so() {
     let f = fixture();
     std::fs::write(f.work.path().join(".env"), "TOKEN=abc\n").unwrap();
     f.read(".env");
@@ -332,9 +338,8 @@ async fn a_credential_file_is_never_edited_by_the_model() {
             serde_json::json!({ "path": f.path(".env"), "old": "TOKEN=abc", "new": "TOKEN=xyz" }),
         )
         .await;
-    assert!(is_error, "{message}");
-    assert!(message.contains("holds credentials"), "{message}");
-    assert_eq!(f.on_disk(".env"), "TOKEN=abc\n");
+    assert!(!is_error, "{message}");
+    assert_eq!(f.on_disk(".env"), "TOKEN=xyz\n");
 }
 
 #[tokio::test]

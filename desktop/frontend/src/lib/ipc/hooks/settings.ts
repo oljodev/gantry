@@ -17,7 +17,21 @@ export function useUpdateSettings() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (patch: SettingsPatch) => unwrap(commands.updateSettings(patch)),
-    onSuccess: (settings) => qc.setQueryData(keys.settings, settings),
+    onSuccess: (settings) => {
+      qc.setQueryData(keys.settings, settings);
+      // A guardrail edit can make a pattern that does not compile; the backend is the one that
+      // finds out, so the page asks it again rather than guessing.
+      void qc.invalidateQueries({ queryKey: keys.guardrails });
+    },
+  });
+}
+
+/** The shipped guardrail floor (04 §5), beside which the settings hold only the deviations. */
+export function useGuardrails() {
+  return useQuery({
+    queryKey: keys.guardrails,
+    queryFn: () => unwrap(commands.getGuardrails()),
+    enabled: isTauri(),
   });
 }
 

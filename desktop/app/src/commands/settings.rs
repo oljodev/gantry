@@ -1,4 +1,4 @@
-use gantry_core::{ErrorDto, GantryError, Settings, SettingsPatch};
+use gantry_core::{ErrorDto, GantryError, GuardrailRule, Guardrails, Settings, SettingsPatch};
 use gantry_secrets::SecretStoreStatus;
 use gantry_store::repos;
 use serde::{Deserialize, Serialize};
@@ -62,6 +62,28 @@ pub async fn update_settings(
     }
     let _ = SettingsChanged.emit(&app);
     Ok(settings)
+}
+
+/// What Settings → Guard & guardrails needs beyond the settings document: the rules the app
+/// ships with (04 §5), so the page can list them beside the user's own and show which of them
+/// are switched off, and anything in force that will not compile.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+pub struct GuardrailInfo {
+    pub shipped: Vec<GuardrailRule>,
+    /// Rules in force that were skipped, as `id: what is wrong with the pattern`.
+    pub problems: Vec<String>,
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn get_guardrails(state: State<'_, AppState>) -> Result<GuardrailInfo, ErrorDto> {
+    let settings = state.settings.read().unwrap_or_else(|e| e.into_inner());
+    Ok(GuardrailInfo {
+        shipped: gantry_core::guardrail::shipped().to_vec(),
+        problems: Guardrails::compile(&settings.guardrails)
+            .problems()
+            .to_vec(),
+    })
 }
 
 #[tauri::command]

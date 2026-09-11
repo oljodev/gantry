@@ -144,6 +144,27 @@ function Cards() {
           )}
         </div>
       </State>
+      <State label="Permission · raised by a guardrail">
+        <div className="w-full max-w-(--measure)">
+          <PermissionCard
+            permission={{
+              id: 'i0',
+              connector: 'shell',
+              connectorName: 'Shell',
+              tool: 'run_command',
+              tier: 'execute',
+              title: 'Shell wants to run run_command',
+              args: { command: 'git push --force origin main' },
+              guardrail: {
+                rule: 'git-push-force',
+                reason: 'a force push rewrites history that other people may already have',
+              },
+              why: 'The remote has the old commits, so the branch needs replacing.',
+              scopes: [{ id: 'tool', label: 'Allow run_command for this chat' }],
+            }}
+          />
+        </div>
+      </State>
       <State label="Access request">
         <div className="w-full max-w-(--measure)">
           <AccessRequestCard

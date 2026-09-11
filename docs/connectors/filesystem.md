@@ -313,14 +313,16 @@ Three details make this work rather than merely exist:
 - The list is visible and editable in Settings → Guardrails, and lives with the other guardrails
   in `desktop/assets/guardrails/defaults.toml` rather than being compiled in.
 
-**As built (2026-09-08).** Reading a sensitive file is allowed; writing, moving or deleting one is
-**refused**, and the refusal names what kind of file it is. The reasoning is in
-`code-editor.md` §8 and applies identically here: the per-call confirmation D3 asks for needs the
-guardrail floor of M7, and a static always-confirm on the tool would prompt for every write in the
-session, which is the opposite of what D3 wants. Refusing the writes is fail-closed and costs only
-the rare case; allowing the reads is the case D3 was written to protect. The pattern list is in
-`gantry-workspace/src/guard.rs` until M7 moves it into `defaults.toml` with the Settings page that
-edits it.
+**As built.** Between 2026-09-08 and 2026-09-11 there was nowhere to raise a per-call
+confirmation from, so writing, moving or deleting a sensitive file was refused outright and the
+refusal named the kind of file — fail-closed, and costing only the rare case. With the guardrail
+floor of M7 (04 §5) the question can be asked, so it is: the permission engine matches the
+`path` rules of `desktop/assets/guardrails/defaults.toml` against every path-shaped argument and
+every word of a command, and prompts in **every** mode, unguarded Auto included. A standing
+grant does not answer it; only a grant scoped to the path itself does, which is the "explicit
+grant" D3 asks for. `gantry-workspace/src/guard.rs` and its second copy of the pattern list are
+gone: the connector no longer second-guesses an answer it did not hear, and the list lives in
+one file with the Settings page that edits it.
 
 ## 7. Ignored files
 

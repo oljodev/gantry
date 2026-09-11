@@ -117,6 +117,20 @@ export function ActivityRow({ item, onOpen, expandable, bare }: ActivityRowProps
         />
       );
     case 'connector':
+      // 04 §5: a guardrail refusal says which rule and why, rather than a bare "denied".
+      // There is no "Allow anyway" — a rule that can be waived in the moment is not a floor.
+      if (item.blocked) {
+        return (
+          <Row
+            icon={<ShieldWarningIcon className="text-bad" />}
+            title={<span className="text-bad">Blocked by a guardrail</span>}
+            summary={item.blocked}
+            status={<span className="text-meta text-fg-3">not run</span>}
+            onOpen={open}
+            className="bg-bad-subtle"
+          />
+        );
+      }
       return (
         <Row
           icon={<ConnectorMark id={item.connector} name={item.connectorName} size={16} />}

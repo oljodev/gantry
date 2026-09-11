@@ -12,7 +12,6 @@
 
 pub mod changes;
 pub mod edit;
-pub mod guard;
 pub mod journal;
 pub mod scope;
 pub mod session;
@@ -56,10 +55,6 @@ pub enum WorkspaceError {
          {why} Read the file again."
     )]
     Stale { path: String, why: String },
-    #[error(
-        "{path} holds credentials ({why}); Gantry does not let a model edit it. Change it yourself."
-    )]
-    Sensitive { path: String, why: &'static str },
     #[error("{path} already exists; move or delete it first, or choose another name")]
     Occupied { path: String },
     #[error("{path} is a folder, not a file: {why}")]
@@ -205,9 +200,6 @@ impl Workspace {
     ) -> Result<Applied, WorkspaceError> {
         let scoped = roots.resolve(path)?;
         let display = scoped.path.display().to_string();
-        if let Some(why) = guard::sensitive(&scoped.path) {
-            return Err(WorkspaceError::Sensitive { path: display, why });
-        }
         let before_bytes = scoped.read()?;
         let file = TextFile::decode(&display, &before_bytes)?;
         let current = text::hash(&before_bytes);
@@ -291,7 +283,6 @@ impl Workspace {
     ) -> Result<Wrote, WorkspaceError> {
         let scoped = roots.resolve(path)?;
         let display = scoped.path.display().to_string();
-        self.refuse_sensitive(&scoped)?;
         let before = scoped.read().ok();
         if let Some(before) = &before {
             let current = text::hash(before);
@@ -354,7 +345,6 @@ impl Workspace {
     ) -> Result<String, WorkspaceError> {
         let scoped = roots.resolve(path)?;
         let display = scoped.path.display().to_string();
-        self.refuse_sensitive(&scoped)?;
         scoped.create_dir_all()?;
         self.journal
             .record(journal::Entry {
@@ -384,8 +374,6 @@ impl Workspace {
     ) -> Result<Moved, WorkspaceError> {
         let source = roots.resolve(from)?;
         let destination = roots.resolve(to)?;
-        self.refuse_sensitive(&source)?;
-        self.refuse_sensitive(&destination)?;
         let from_display = source.path.display().to_string();
         let to_display = destination.path.display().to_string();
         if destination.exists() {
@@ -435,7 +423,6 @@ impl Workspace {
     ) -> Result<Deleted, WorkspaceError> {
         let scoped = roots.resolve(path)?;
         let display = scoped.path.display().to_string();
-        self.refuse_sensitive(&scoped)?;
         let stat = scoped.stat()?;
         if stat.is_dir && !recursive {
             return Err(WorkspaceError::Directory {
@@ -483,17 +470,5 @@ impl Workspace {
             trashed,
             directory: stat.is_dir,
         })
-    }
-
-    /// D3, as far as it can be honoured before M7: a credential file is never written by a
-    /// model. Reading one stays allowed, which is the case D3 was written to protect.
-    fn refuse_sensitive(&self, scoped: &Scoped<'_>) -> Result<(), WorkspaceError> {
-        match guard::sensitive(&scoped.path) {
-            Some(why) => Err(WorkspaceError::Sensitive {
-                path: scoped.path.display().to_string(),
-                why,
-            }),
-            None => Ok(()),
-        }
     }
 }

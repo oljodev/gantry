@@ -387,6 +387,11 @@ impl TurnManager {
             .get(&format!("{}/{}", model.provider, model.model))
             .cloned()
             .unwrap_or_default();
+        // Compiled once for the turn and then read by every call in it (04 §5).
+        let guardrails = Arc::new(gantry_core::Guardrails::compile(&settings.guardrails));
+        for problem in guardrails.problems() {
+            log::warn!("guardrail rule ignored — {problem}");
+        }
         let mode = input.mode;
         let attached = input.connectors.clone();
         self.runtime.spawn(async move {
@@ -397,6 +402,7 @@ impl TurnManager {
                 max_output_tokens: settings.advanced.max_output_tokens,
                 max_tool_rounds: settings.advanced.max_tool_rounds,
                 media,
+                guardrails,
                 active: active.clone(),
                 chats: chats.clone(),
                 tools: std::sync::RwLock::new(tools),

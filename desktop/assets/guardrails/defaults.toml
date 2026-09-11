@@ -1,13 +1,232 @@
-# Guardrails that hold in every mode, including unguarded Auto (docs/plan/04 §5). Filled in M7.
+# The guardrail floor (docs/plan/04 §5): the rules that hold in every mode, including
+# unguarded Auto, and that a standing grant cannot lift.
 #
-# [hard_deny]        # never runs; the user sees "Blocked by guardrail"
-# commands = ["rm -rf /", ...]
+# What this is, and is not. It is a short list of the spellings that end a working day badly,
+# written so that the catastrophic ones stop and the merely serious ones ask. It is *not* a
+# sandbox: a command that runs has the user's privileges and can do anything the user can, and
+# a pattern matched against text can always be spelled around. The boundaries that hold are the
+# permission modes, the workspace roots and the operating system. This is the floor beneath them.
 #
-# [always_confirm]   # prompts even in Auto
-# commands = ["git push --force", ...]
+# Each rule has a stable `id` (which is what Settings → Guard & guardrails switches off), a
+# `kind`, a `pattern` and a `reason` written for the person who sees it.
 #
-# [sensitive_paths]  # never read or written without an explicit grant
-# globs = ["**/.env", "**/.ssh/**", ...]
+#   deny     the call never runs, in any mode. The model is told it was blocked.
+#   confirm  the call asks, in every mode, even unguarded Auto.
+#   path     a path the model must ask about before reading or writing it.
+#   secret   a key. A call whose arguments carry one asks before it runs, wherever it was
+#            going; the same patterns keep a key out of the log and out of a saved memory.
 #
-# [secret_patterns]  # refused in memory proposals and redacted in logs
-# regex = ["sk-[A-Za-z0-9]{20,}", ...]
+# `deny`, `confirm` and `secret` patterns are regular expressions; `path` patterns are globs.
+# Command rules are matched against the `command` argument of any tool that takes one; path
+# rules are matched against every path-shaped argument, and against each word of a command.
+
+# ── Never runs ────────────────────────────────────────────────────────────────────────────
+
+[[rule]]
+id = "rm-root"
+kind = "deny"
+pattern = '(?i)\brm\b(?:\s+-{1,2}[\w-]+)*\s+(?:/|~|\$HOME|\$\{HOME\}|/\*|~/\*)(?:\s|$)'
+reason = "this deletes your whole home folder or the root of the disk"
+
+[[rule]]
+id = "rm-system-folder"
+kind = "deny"
+pattern = '(?i)\brm\b(?:\s+-{1,2}[\w-]+)*\s+/(?:etc|usr|var|bin|sbin|lib|lib64|boot|dev|sys|proc|opt|home|root|Users|System|Applications|Library|Volumes)(?:/\*)?(?:\s|$)'
+reason = "this deletes a folder the operating system needs"
+
+[[rule]]
+id = "windows-delete-drive"
+kind = "deny"
+pattern = '(?i)\b(?:del|rd|rmdir|Remove-Item)\b[^|;&]*\s[a-z]:\\(?:\*)?(?:\s|$)'
+reason = "this deletes the root of a drive"
+
+[[rule]]
+id = "format-drive"
+kind = "deny"
+pattern = '(?i)\b(?:mkfs(?:\.\w+)?|format)\b(?:\s+[^\s|;&]+)*\s(?:/dev/\w+|[a-z]:)(?:\s|$)'
+reason = "this erases a disk"
+
+[[rule]]
+id = "write-to-raw-device"
+kind = "deny"
+pattern = '(?i)(?:\bof=/dev/(?:sd|nvme|hd|disk|vd)|>\s*/dev/(?:sd|nvme|hd|disk|vd))'
+reason = "this writes over a disk directly, past the filesystem"
+
+[[rule]]
+id = "download-piped-to-shell"
+kind = "deny"
+pattern = '(?i)\b(?:curl|wget|fetch|Invoke-WebRequest|iwr)\b[^|]*\|\s*(?:sudo\s+)?(?:ba|z|k|da|fi|c)?sh\b'
+reason = "this runs code from the internet without either of us having read it"
+
+[[rule]]
+id = "fork-bomb"
+kind = "deny"
+pattern = ':\s*\(\s*\)\s*\{.*\|.*&.*\}\s*;\s*:'
+reason = "this is a fork bomb and will hang the machine"
+
+# ── Always asks, even in unguarded Auto ───────────────────────────────────────────────────
+
+[[rule]]
+id = "recursive-delete"
+kind = "confirm"
+pattern = '(?i)\brm\b(?:\s+-{1,2}[\w-]*(?:[rR]|-recursive)[\w-]*)'
+reason = "a recursive delete removes everything under that path"
+
+[[rule]]
+id = "git-push-force"
+kind = "confirm"
+pattern = '(?i)\bgit\s+push\b[^|;&]*(?:--force\b|\s-f\b)'
+reason = "a force push rewrites history that other people may already have"
+
+[[rule]]
+id = "git-reset-hard"
+kind = "confirm"
+pattern = '(?i)\bgit\s+reset\b[^|;&]*--hard\b'
+reason = "this throws away every uncommitted change"
+
+[[rule]]
+id = "git-clean-force"
+kind = "confirm"
+pattern = '(?i)\bgit\s+clean\b[^|;&]*\s-[\w]*f'
+reason = "this deletes files git never knew about, and they are not in the trash"
+
+[[rule]]
+id = "crontab-remove"
+kind = "confirm"
+pattern = '(?i)\bcrontab\s+-r\b'
+reason = "this deletes every scheduled job, and `-r` is one key from `-e`"
+
+[[rule]]
+id = "drop-database"
+kind = "confirm"
+pattern = '(?i)\bdrop\s+(?:table|database|schema)\b'
+reason = "this drops data that nothing here can put back"
+
+[[rule]]
+id = "publish-package"
+kind = "confirm"
+pattern = '(?i)\b(?:npm|pnpm|yarn|cargo|poetry|twine)\s+publish\b|\btwine\s+upload\b'
+reason = "publishing is public and a version number cannot be reused"
+
+[[rule]]
+id = "infrastructure-apply"
+kind = "confirm"
+pattern = '(?i)\b(?:terraform|tofu|pulumi)\s+(?:apply|destroy)\b|\bkubectl\s+delete\b'
+reason = "this changes real infrastructure, not a file on this machine"
+
+[[rule]]
+id = "power-off"
+kind = "confirm"
+pattern = '(?i)\b(?:shutdown|reboot|halt|poweroff)\b'
+reason = "this stops the machine you are working on"
+
+# ── Paths worth asking about ──────────────────────────────────────────────────────────────
+
+# `.env.example` and `.env.sample` are committed on purpose and hold nothing, so the variants
+# are listed rather than wildcarded. A floor that cries wolf is a floor people switch off.
+[[rule]]
+id = "dotenv"
+kind = "path"
+pattern = "**/.env"
+reason = "environment files usually hold the keys to something"
+
+[[rule]]
+id = "dotenv-variant"
+kind = "path"
+pattern = "**/.env.{local,development,production,dev,prod,test,staging,secret,secrets,live}"
+reason = "environment files usually hold the keys to something"
+
+[[rule]]
+id = "ssh"
+kind = "path"
+pattern = "**/{.ssh/**,id_rsa*,id_ed25519*,id_ecdsa*,*.ppk}"
+reason = "these are the keys to the machines you can reach"
+
+[[rule]]
+id = "cloud-credentials"
+kind = "path"
+pattern = "**/{.aws/**,.kube/config,.docker/config.json,.config/gcloud/**,.azure/**}"
+reason = "these sign requests to accounts that cost money"
+
+[[rule]]
+id = "package-credentials"
+kind = "path"
+pattern = "**/{.npmrc,.pypirc,.netrc,_netrc,.git-credentials,.config/gh/hosts.yml}"
+reason = "these are publishing and repository tokens"
+
+[[rule]]
+id = "private-keys"
+kind = "path"
+pattern = "**/*.{pem,p12,pfx,key,keystore,jks}"
+reason = "this looks like a private key or a certificate store"
+
+[[rule]]
+id = "keyrings"
+kind = "path"
+pattern = "**/{.gnupg/**,Library/Keychains/**,.local/share/keyrings/**,.password-store/**}"
+reason = "this is where the system keeps its secrets"
+
+[[rule]]
+id = "shell-history"
+kind = "path"
+pattern = "**/.{bash_history,zsh_history,sh_history,python_history,psql_history,mysql_history}"
+reason = "a shell history is full of things that were typed once and never meant to be read"
+
+[[rule]]
+id = "gantry-itself"
+kind = "path"
+pattern = "**/{gantry.db,gantry.db-wal,gantry.db-shm,master.key}"
+reason = "this is Gantry's own database or the key that encrypts your API keys"
+
+# ── Secrets, wherever they turn up ────────────────────────────────────────────────────────
+#
+# A key in a call's arguments is a key on its way somewhere: into a file that will be committed,
+# or into a request to a stranger. One question costs a keystroke; the alternative costs a key.
+
+[[rule]]
+id = "openai-style-key"
+kind = "secret"
+pattern = '\bsk-(?:ant-|proj-|or-|live-)?[A-Za-z0-9_-]{20,}'
+reason = "an API key"
+
+[[rule]]
+id = "github-token"
+kind = "secret"
+pattern = '\b(?:gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{22,})'
+reason = "a GitHub token"
+
+[[rule]]
+id = "aws-access-key"
+kind = "secret"
+pattern = '\b(?:AKIA|ASIA)[0-9A-Z]{16}\b'
+reason = "an AWS access key"
+
+[[rule]]
+id = "google-api-key"
+kind = "secret"
+pattern = '\bAIza[0-9A-Za-z_-]{35}\b'
+reason = "a Google API key"
+
+[[rule]]
+id = "slack-token"
+kind = "secret"
+pattern = '\bxox[baprs]-[A-Za-z0-9-]{10,}'
+reason = "a Slack token"
+
+[[rule]]
+id = "gitlab-token"
+kind = "secret"
+pattern = '\bglpat-[A-Za-z0-9_-]{20,}'
+reason = "a GitLab token"
+
+[[rule]]
+id = "private-key-block"
+kind = "secret"
+pattern = '-----BEGIN (?:[A-Z ]+ )?PRIVATE KEY-----'
+reason = "a private key"
+
+[[rule]]
+id = "json-web-token"
+kind = "secret"
+pattern = '\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}'
+reason = "a signed token"

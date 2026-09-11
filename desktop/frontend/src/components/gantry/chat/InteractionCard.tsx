@@ -1,5 +1,7 @@
 import { type ReactNode, useEffect, useState } from 'react';
 
+import { ShieldWarningIcon } from '@phosphor-icons/react';
+
 import { ConnectorMark } from '@/components/gantry/ConnectorMark';
 import { TierLabel } from '@/components/gantry/TierLabel';
 import { Button } from '@/components/ui/button';
@@ -56,8 +58,9 @@ export type PermissionAnswer =
 
 /**
  * A permission prompt (04 §7). `Y` allows once and `N` denies while `hotkeys` is set (the
- * first pending card of the open chat); typing in a field never triggers them. Grants
- * ("for this chat") arrive with M7; until then the only scope is "once".
+ * first pending card of the open chat); typing in a field never triggers them. A card raised by
+ * a guardrail (04 §5) says so and says why, because that is the part worth reading: the mode
+ * would have run this without asking.
  */
 export function PermissionCard({
   permission,
@@ -186,6 +189,17 @@ export function PermissionCard({
         </dl>
       ) : (
         <p className="text-ui text-fg-3">No arguments.</p>
+      )}
+      {permission.guardrail && (
+        <p className="mt-2 flex items-start gap-1.5 text-meta text-warn">
+          <ShieldWarningIcon className="mt-px size-3.5 shrink-0" />
+          <span>
+            Gantry always asks about this: {permission.guardrail.reason}.{' '}
+            <span className="text-fg-3">
+              Guardrail <code className="font-mono">{permission.guardrail.rule}</code>.
+            </span>
+          </span>
+        </p>
       )}
       {permission.why && (
         <p className="mt-2 text-meta text-fg-2">

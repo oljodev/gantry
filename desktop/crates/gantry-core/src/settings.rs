@@ -5,6 +5,8 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+use crate::guardrail::GuardrailSettings;
+
 /// A provider account id: `anthropic`, `openai`, `google`, `xai`, `openrouter` or `custom:<ulid>`.
 #[derive(
     Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, specta::Type,
@@ -212,12 +214,14 @@ impl Default for AdvancedSettings {
 pub struct Settings {
     pub appearance: AppearanceSettings,
     pub chat: ChatSettings,
+    /// The floor of docs/plan/04 §5, as the user's deviation from the shipped list.
+    pub guardrails: GuardrailSettings,
     pub advanced: AdvancedSettings,
 }
 
 impl Settings {
     /// The keys of the `settings` table, one per section.
-    pub const SECTIONS: [&'static str; 3] = ["appearance", "chat", "advanced"];
+    pub const SECTIONS: [&'static str; 4] = ["appearance", "chat", "guardrails", "advanced"];
 
     /// Where a new session on this surface starts (16 §9).
     #[must_use]
@@ -244,6 +248,7 @@ impl Settings {
 pub struct SettingsPatch {
     pub appearance: Option<AppearanceSettings>,
     pub chat: Option<ChatSettings>,
+    pub guardrails: Option<GuardrailSettings>,
     pub advanced: Option<AdvancedSettings>,
 }
 
@@ -262,6 +267,12 @@ impl SettingsPatch {
         {
             settings.chat = s;
             changed.push("chat");
+        }
+        if let Some(s) = self.guardrails
+            && s != settings.guardrails
+        {
+            settings.guardrails = s;
+            changed.push("guardrails");
         }
         if let Some(s) = self.advanced
             && s != settings.advanced
@@ -293,6 +304,7 @@ mod tests {
                 ..Default::default()
             }),
             chat: Some(ChatSettings::default()),
+            guardrails: None,
             advanced: None,
         };
         assert_eq!(patch.apply(&mut s), vec!["appearance"]);

@@ -22,6 +22,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::app::app_info,
             commands::settings::get_settings,
             commands::settings::update_settings,
+            commands::settings::get_guardrails,
             commands::settings::get_secret_store_status,
             commands::settings::get_data_info,
             commands::settings::open_data_dir,

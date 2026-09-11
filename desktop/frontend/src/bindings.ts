@@ -16,6 +16,7 @@ export const commands = {
 	 *  global custom instructions reaches every open chat as a `SystemNote` (10 §4).
 	 */
 	updateSettings: (patch: SettingsPatch) => typedError<Settings, ErrorDto>(__TAURI_INVOKE("update_settings", { patch })),
+	getGuardrails: () => typedError<GuardrailInfo, ErrorDto>(__TAURI_INVOKE("get_guardrails")),
 	getSecretStoreStatus: () => typedError<SecretStoreStatus, ErrorDto>(__TAURI_INVOKE("get_secret_store_status")),
 	getDataInfo: () => typedError<DataInfo, ErrorDto>(__TAURI_INVOKE("get_data_info")),
 	/**  Opens the data directory in the system file manager. */
@@ -822,6 +823,64 @@ export type GrantSource =
 /**  Inherited from the project the chat belongs to. */
 "project_default";
 
+/**  The rule that matched, as the card and the model are told about it. */
+export type GuardrailHit = {
+	rule: string,
+	kind: GuardrailKind,
+	reason: string,
+};
+
+/**
+ *  What Settings → Guard & guardrails needs beyond the settings document: the rules the app
+ *  ships with (04 §5), so the page can list them beside the user's own and show which of them
+ *  are switched off, and anything in force that will not compile.
+ */
+export type GuardrailInfo = {
+	shipped: GuardrailRule[],
+	/**  Rules in force that were skipped, as `id: what is wrong with the pattern`. */
+	problems: string[],
+};
+
+/**  What a rule does when it matches (04 §5). */
+export type GuardrailKind = 
+/**  The call never runs, in any mode. */
+"deny" | 
+/**  The call asks, in every mode, even unguarded Auto. */
+"confirm" | 
+/**  A path the model must ask about before reading or writing it. */
+"path" | 
+/**
+ *  Text that is a key. A call carrying one asks before it runs; the same patterns keep a
+ *  key out of a log and, from M12, out of a memory.
+ */
+"secret";
+
+/**
+ *  One rule. `pattern` is a regular expression for every kind but [`GuardrailKind::Path`],
+ *  which is a glob.
+ */
+export type GuardrailRule = {
+	/**  Stable, and what a switched-off rule is remembered by. */
+	id: string,
+	kind: GuardrailKind,
+	pattern: string,
+	/**  Why this rule exists, in the words the user sees when it fires. */
+	reason: string,
+};
+
+/**
+ *  The user's deviation from the shipped floor (11 §2). Storing the difference rather than a
+ *  copy is what lets an app update add a rule to a machine that has customized its list.
+ */
+export type GuardrailSettings = {
+	/**  The whole floor, off. Explicit, because 04 §5 says the off switch must be. */
+	enabled?: boolean,
+	/**  Ids of shipped rules the user switched off. */
+	disabled?: string[],
+	/**  Rules the user wrote. */
+	custom?: GuardrailRule[],
+};
+
 export type HunkDto = {
 	old_start: number,
 	old_lines: number,
@@ -1030,6 +1089,11 @@ export type PermissionRequest = {
 	why: string | null,
 	/**  The tool's description, shown on hover. */
 	description: string,
+	/**
+	 *  The guardrail that raised this prompt, when one did (04 §5). The card leads with its
+	 *  reason, because "Gantry always asks about this, and here is why" is the whole message.
+	 */
+	guardrail: GuardrailHit | null,
 	/**  The standing scopes this call may be granted, beyond "allow once" (04 §7, §8). */
 	scopes: GrantScope[],
 };
@@ -1230,6 +1294,8 @@ export type ServerInfo = {
 export type Settings = {
 	appearance?: AppearanceSettings,
 	chat?: ChatSettings,
+	/**  The floor of docs/plan/04 §5, as the user's deviation from the shipped list. */
+	guardrails?: GuardrailSettings,
 	advanced?: AdvancedSettings,
 };
 
@@ -1239,6 +1305,7 @@ export type SettingsChanged = null;
 export type SettingsPatch = {
 	appearance?: AppearanceSettings | null,
 	chat?: ChatSettings | null,
+	guardrails?: GuardrailSettings | null,
 	advanced?: AdvancedSettings | null,
 };
 

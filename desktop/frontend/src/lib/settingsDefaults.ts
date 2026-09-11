@@ -1,4 +1,4 @@
-import type { AdvancedSettings, ChatSettings, Settings } from '@/bindings';
+import type { AdvancedSettings, ChatSettings, GuardrailSettings, Settings } from '@/bindings';
 
 /**
  * Every settings field is optional on the wire (`#[serde(default)]`); these mirror the Rust
@@ -18,6 +18,15 @@ export function chatDefaults(s: Settings | undefined): Required<ChatSettings> {
     open_artifact_panel: c.open_artifact_panel ?? true,
     favourite_models: c.favourite_models ?? [],
     model_options: c.model_options ?? {},
+  };
+}
+
+export function guardrailDefaults(s: Settings | undefined): Required<GuardrailSettings> {
+  const g = s?.guardrails ?? {};
+  return {
+    enabled: g.enabled ?? true,
+    disabled: g.disabled ?? [],
+    custom: g.custom ?? [],
   };
 }
 

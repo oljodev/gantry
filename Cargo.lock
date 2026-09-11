@@ -1742,12 +1742,15 @@ dependencies = [
 name = "gantry-core"
 version = "0.1.0"
 dependencies = [
+ "globset",
+ "regex",
  "serde",
  "serde_json",
  "shell-words",
  "specta",
  "specta-typescript",
  "thiserror 2.0.20",
+ "toml 0.9.12+spec-1.1.0",
  "ulid",
 ]
 

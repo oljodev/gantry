@@ -3,6 +3,7 @@ export const keys = {
   appInfo: ['app_info'] as const,
   settings: ['settings'] as const,
   secretStore: ['secret_store_status'] as const,
+  guardrails: ['guardrails'] as const,
   dataInfo: ['data_info'] as const,
   providers: ['providers'] as const,
   catalog: ['catalog'] as const,

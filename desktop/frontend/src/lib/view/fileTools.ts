@@ -17,6 +17,10 @@ export function fileItem(call: ToolCallDto, liveOutput?: string[]): ActivityItem
   const done = call.status === 'completed' && !call.is_error;
   const id = call.id;
 
+  // A call that was refused never happened, so there is no read, no diff and no output to
+  // draw. It falls through to the connector row, which is the one that says who refused it.
+  if (call.status === 'denied') return undefined;
+
   switch (`${call.connector}__${call.tool}`) {
     case 'filesystem__read_file': {
       if (!done) return undefined;
@@ -55,8 +59,16 @@ export function fileItem(call: ToolCallDto, liveOutput?: string[]): ActivityItem
       const cwd = str(result?.cwd) ?? str(args.cwd) ?? '';
       if (!done) {
         // The lines that have arrived so far, so a long build is visibly alive rather than a
-        // spinner (05 §7, `docs/connectors/shell.md` §10).
-        return { kind: 'command', id, command, cwd, output: liveOutput ?? [], status: 'running' };
+        // spinner (05 §7, `docs/connectors/shell.md` §10). A call that has finished badly is
+        // not alive, and showing it as running left a spinner turning for ever.
+        return {
+          kind: 'command',
+          id,
+          command,
+          cwd,
+          output: liveOutput ?? [],
+          status: call.status === 'running' || call.status === 'proposed' ? 'running' : 'failed',
+        };
       }
       const exitCode = num(result?.exit_code);
       const streams = [str(result?.stdout), str(result?.stderr)]

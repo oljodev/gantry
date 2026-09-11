@@ -47,6 +47,9 @@ pub struct PermissionRequest {
     pub why: Option<String>,
     /// The tool's description, shown on hover.
     pub description: String,
+    /// The guardrail that raised this prompt, when one did (04 §5). The card leads with its
+    /// reason, because "Gantry always asks about this, and here is why" is the whole message.
+    pub guardrail: Option<crate::guardrail::GuardrailHit>,
     /// The standing scopes this call may be granted, beyond "allow once" (04 §7, §8).
     pub scopes: Vec<GrantScope>,
 }
@@ -216,6 +219,7 @@ mod tests {
                 },
                 why: None,
                 description: String::new(),
+                guardrail: None,
                 scopes: GrantScope::for_tier(RiskTier::Read),
             },
         };

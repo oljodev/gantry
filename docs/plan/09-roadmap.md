@@ -426,10 +426,11 @@ message, get back what it makes.
 Partly done ahead of its milestone (2026-09-07), because the modes are one policy function and
 the pieces that make Manual and Plan usable are small: **grants** (`chat_grants`, migration
 0005, the scope selector on the permission card, the chat's Permissions panel with revoke and
-revoke all), Plan mode's tool filtering and its **Switch to Auto-edit and execute** action.
-What is left here is the shell itself, the command classifier that fills Plan mode's execute
-row, the guardrail floor and its settings page, and the argument-scoped grants that need a path
-or a command to scope to.
+revoke all), Plan mode's tool filtering and its **Switch to Auto-edit and execute** action. The
+shell and its classifier landed on 2026-09-08 and the guardrail floor on 2026-09-11. What is
+left here is Plan mode's "Allow all reads" and the argument-scoped grants that now have a path
+or a command to scope to — the guardrails already match those scopes, so the card is the piece
+that is missing.
 
 The shell stays a catalog connector (16 C6 as revised) and joins the set the Code surface
 installs and attaches. Until this milestone lands, a code session can edit but not build or test,
@@ -456,8 +457,8 @@ which is a real gap and the reason M7 follows M6 immediately rather than M8.
   without its output until the call completes, and the full log as a blob.
 - **Plan** mode: filtered tool set, read prompts with "Allow all reads", the "Switch to Auto-edit and execute" action.
 - Argument-scoped grants: path prefix and command prefix, which now have arguments to scope to.
-- Guardrails from `desktop/assets/guardrails/defaults.toml` (hard-deny, always-confirm, sensitive paths, secret patterns) and the **Guardrails** settings page.
-- The untrusted-content rule in the core prompt, once file contents and command output can reach the model.
+- ~~Guardrails from `desktop/assets/guardrails/defaults.toml` (hard-deny, always-confirm, sensitive paths, secret patterns) and the **Guardrails** settings page.~~ **Done** 2026-09-11, with the file written rather than left a template and the matching in `gantry-core/src/guardrail.rs`, above the mode table in the permission engine (04 §5 "As built"). Four things the plan had not settled: the settings store the *deviation* from the shipped list rather than a copy, so a release that adds a rule reaches a machine that has customized its own; a grant never answers a guardrail, except the sensitive path that 04 §5 itself says an explicit — that is, argument-scoped — grant may reach; a path is matched against every short single-line argument under any name and against each word of a command, because an MCP server calls its path whatever it likes and `cat ~/.ssh/id_rsa` is the same request as reading the file; and the `secret` patterns got a live use rather than waiting for M12's memories — a key in a call's arguments is one question before it goes into a repository or out to a stranger.
+- ~~The untrusted-content rule in the core prompt, once file contents and command output can reach the model.~~ **Done** 2026-09-11: core version 5 (10 §3). The one bullet among the formatting conventions becomes a paragraph of its own that names every channel a tool result can arrive through, says what an injection looks like rather than only that content is data, and says what to do when one is found — finish the task, then report it in a line.
 
 Done when: a coding task can be run in Manual, Auto-edit and Plan with the matrix in 04 §3 holding in every cell.
 

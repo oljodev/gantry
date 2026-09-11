@@ -286,6 +286,7 @@ function callItem(
     tool,
     summary: call?.display.summary ?? '',
     status: rowStatus(call),
+    blocked: blockedBy(call),
     tier: call?.tier,
     args: call?.args ?? part?.args,
     result: call?.result ?? undefined,
@@ -359,12 +360,19 @@ function rowStatus(
   }
 }
 
+/** The guardrail's own reason, when a guardrail is what refused the call (04 §5). */
+function blockedBy(call: ToolCallDto | undefined): string | undefined {
+  if (call?.status !== 'denied' || call.decision_source !== 'guardrail') return undefined;
+  const message = resultJson(call)?.message;
+  return typeof message === 'string' ? message : 'A guardrail refused this call.';
+}
+
 function splitName(name: string): [string, string] {
   const i = name.indexOf('__');
   return i > 0 ? [name.slice(0, i), name.slice(i + 2)] : ['', name];
 }
 
-/** A pending permission interaction as the card renders it (04 §7). Grants arrive with M7. */
+/** A pending permission interaction as the card renders it (04 §7, §8). */
 export function permissionOf(i: Interaction): Permission {
   if (i.payload.kind !== 'permission') throw new Error('not a permission');
   const r = i.payload.request;
@@ -383,6 +391,7 @@ export function permissionOf(i: Interaction): Permission {
     title: `${r.connector_name} wants to run ${r.tool}`,
     args,
     note: r.description,
+    guardrail: r.guardrail ? { rule: r.guardrail.rule, reason: r.guardrail.reason } : undefined,
     why: r.why ?? undefined,
     scopes: [{ id: 'once', label: 'Allow once' }, ...r.scopes.map((s) => scopeOption(s, r.tool))],
   };

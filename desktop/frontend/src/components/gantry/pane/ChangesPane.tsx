@@ -39,7 +39,11 @@ export function ChangesPane({ chatId }: { chatId: string }) {
   const revertOne = (path: string, display: string) => {
     revert.file.mutate(path, {
       onError: (err) =>
-        toast.add({ title: `Could not revert ${display}`, description: describe(err), type: 'error' }),
+        toast.add({
+          title: `Could not revert ${display}`,
+          description: describe(err),
+          type: 'error',
+        }),
     });
   };
 

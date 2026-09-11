@@ -433,31 +433,26 @@ async fn deleting_keeps_the_file_in_the_journal_and_says_which_promise_it_kept()
     );
 }
 
+/// A credential file is a question the guardrail floor asks before the call ever reaches this
+/// connector, in every mode and past any standing grant (04 §5, `gantry-core::guardrail`).
+/// Refusing here as well would mean the user answers the card and the connector overrules them,
+/// so the connector does what it was told, and the decision stays in one place.
 #[tokio::test]
-async fn a_credential_file_is_read_but_never_written_by_the_model() {
+async fn a_credential_file_is_handled_once_the_decision_has_been_made() {
     let f = fixture();
     let read = f
         .ok("read_file", serde_json::json!({ "path": f.path(".env") }))
         .await;
     assert_eq!(read["content"], "TOKEN=abc");
 
-    for (tool, args) in [
-        (
-            "write_file",
-            serde_json::json!({ "path": f.path(".env"), "content": "TOKEN=stolen\n" }),
-        ),
-        ("delete_path", serde_json::json!({ "path": f.path(".env") })),
-        (
-            "move_path",
-            serde_json::json!({ "from": f.path(".env"), "to": f.path("src/.env") }),
-        ),
-    ] {
-        let message = f.refused(tool, args).await;
-        assert!(message.contains("holds credentials"), "{tool}: {message}");
-    }
+    f.ok(
+        "write_file",
+        serde_json::json!({ "path": f.path(".env"), "content": "TOKEN=xyz\n" }),
+    )
+    .await;
     assert_eq!(
         std::fs::read_to_string(f.work.path().join(".env")).unwrap(),
-        "TOKEN=abc\n"
+        "TOKEN=xyz\n"
     );
 }
 
