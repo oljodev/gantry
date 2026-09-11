@@ -512,10 +512,15 @@ asks for one. `ConnectorService::install` refuses on its own as well, so "no ins
 property of the service rather than a rule the dialog remembers to follow. B6 and B7 were waiting
 on this.
 
+**`user_config` done 2026-09-11** (03 §11 step 2): `${user_config.KEY}` substituted into every
+runtime string, sensitive answers to the vault and never into the config row, the form as the
+install dialog's second step, and `get_connector_config` / `set_connector_config`. B10's
+"host you supply" batch was waiting on this. The custom settings panel (`settings_ui`) is not
+built and is not blocking anything: no catalogue entry declares one.
+
 Not built yet, and what is left of M9: MRTR `input_required` as an
-`Interaction::Elicitation` with a form, per-instance `user_config` forms and custom settings
-panels, the stderr log view for stdio servers, tool-list caching against `ttlMs` and
-list-changed notifications, and the `add-connector` skill; then B1 and B2.
+`Interaction::Elicitation` with a form, the stderr log view for stdio servers, tool-list caching
+against `ttlMs` and list-changed notifications, and the `add-connector` skill; then B1 and B2.
 
 ## M9 — the rest (original scope)
 

@@ -8,6 +8,7 @@ use std::collections::BTreeMap;
 
 use gantry_core::{
     AuthType, CatalogEntryDto, ConnectorConfig, ConnectorKind, RiskTier, RuntimeRequirement,
+    UserConfigField, UserConfigKind,
 };
 use serde::Deserialize;
 
@@ -38,6 +39,11 @@ pub struct Manifest {
     #[serde(default)]
     pub auth_alternate: Option<Auth>,
     pub risk: Risk,
+    /// Keys the user fills in at install (03 §11 step 2), referenced from the runtime as
+    /// `${user_config.KEY}`. Ordered by key, because a form has to come out in *some* order and
+    /// the alternative — whatever order serde read the object in — changes between runs.
+    #[serde(default)]
+    pub user_config: BTreeMap<String, UserConfigFieldSpec>,
     #[serde(default)]
     pub tool_overrides: BTreeMap<String, ToolOverride>,
     #[serde(default)]
@@ -215,6 +221,23 @@ pub struct Risk {
     pub notes: Option<String>,
 }
 
+/// A `user_config` entry as the manifest writes it: the key is the map key, so it is not here.
+#[derive(Debug, Clone, Deserialize)]
+pub struct UserConfigFieldSpec {
+    #[serde(rename = "type")]
+    pub kind: UserConfigKind,
+    pub title: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub required: bool,
+    #[serde(default)]
+    pub sensitive: bool,
+    /// Whatever JSON the manifest wrote; the form shows it as text either way.
+    #[serde(default)]
+    pub default: Option<serde_json::Value>,
+}
+
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct ToolOverride {
     #[serde(default)]
@@ -233,6 +256,31 @@ pub struct CatalogMeta {
     pub sort_weight: f64,
     #[serde(default)]
     pub suggest_for: Vec<String>,
+}
+
+/// `${user_config.KEY}` replaced by what the user gave, everywhere it appears.
+///
+/// A key with no answer is left standing rather than blanked. `--host ${user_config.HOST}` with
+/// the placeholder still in it fails with a message naming the key; the same line with an empty
+/// string fails somewhere inside the server, later, saying something else.
+fn substitute(text: &str, values: &BTreeMap<&str, &str>) -> String {
+    const OPEN: &str = "${user_config.";
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(at) = rest.find(OPEN) {
+        let after = &rest[at + OPEN.len()..];
+        let Some(close) = after.find('}') else { break };
+        match values.get(&after[..close]) {
+            Some(value) => {
+                out.push_str(&rest[..at]);
+                out.push_str(value);
+            }
+            None => out.push_str(&rest[..at + OPEN.len() + close + 1]),
+        }
+        rest = &after[close + 1..];
+    }
+    out.push_str(rest);
+    out
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -286,6 +334,47 @@ impl Manifest {
         }
     }
 
+    /// The runtime as an installable configuration, with this platform's overrides applied and
+    /// the user's answers substituted into it (03 §11 step 2).
+    ///
+    /// A `sensitive` answer is not among them. Its value is a vault credential, and the config
+    /// row carries only the name of the environment variable or header it fills (06 §3), so a
+    /// database anybody can read never holds a token. Substituting it here would put it there.
+    #[must_use]
+    pub fn config_with(&self, values: &BTreeMap<String, String>) -> ConnectorConfig {
+        let public: BTreeMap<&str, &str> = values
+            .iter()
+            .filter(|(key, _)| !self.user_config.get(*key).is_some_and(|f| f.sensitive))
+            .map(|(k, v)| (k.as_str(), v.as_str()))
+            .collect();
+        let fill = |text: &String| substitute(text, &public);
+        match self.config() {
+            ConnectorConfig::Native => ConnectorConfig::Native,
+            ConnectorConfig::McpStdio {
+                command,
+                args,
+                env,
+                secret_env,
+                cwd,
+            } => ConnectorConfig::McpStdio {
+                command: fill(&command),
+                args: args.iter().map(fill).collect(),
+                env: env.iter().map(|(k, v)| (k.clone(), fill(v))).collect(),
+                secret_env,
+                cwd: cwd.as_ref().map(fill),
+            },
+            ConnectorConfig::McpRemote {
+                url,
+                headers,
+                secret_headers,
+            } => ConnectorConfig::McpRemote {
+                url: fill(&url),
+                headers: headers.iter().map(|(k, v)| (k.clone(), fill(v))).collect(),
+                secret_headers,
+            },
+        }
+    }
+
     /// The runtime as an installable configuration, with this platform's overrides applied.
     #[must_use]
     pub fn config(&self) -> ConnectorConfig {
@@ -322,6 +411,26 @@ impl Manifest {
                 secret_headers: Vec::new(),
             },
         }
+    }
+
+    /// The form the install dialog shows at step 2, in key order.
+    #[must_use]
+    pub fn user_config_fields(&self) -> Vec<UserConfigField> {
+        self.user_config
+            .iter()
+            .map(|(key, spec)| UserConfigField {
+                key: key.clone(),
+                kind: spec.kind,
+                title: spec.title.clone(),
+                description: spec.description.clone(),
+                required: spec.required,
+                sensitive: spec.sensitive,
+                default: spec.default.as_ref().map(|v| match v {
+                    serde_json::Value::String(s) => s.clone(),
+                    other => other.to_string(),
+                }),
+            })
+            .collect()
     }
 
     /// The runtimes that must be present before this can be installed (03 §11 step 1).
@@ -410,6 +519,77 @@ pub fn platform() -> &'static str {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn an_answer_reaches_every_place_the_runtime_names_it() {
+        let manifest = Manifest::parse(
+            r#"{"manifest_version":"1","id":"x","name":"X","description":"d","version":"1.0.0",
+                "icon":"icon.svg","category":"data","publisher":{"name":"p"},
+                "runtime":{"kind":"mcp-stdio","command":"npx",
+                  "args":["-y","srv","--host","${user_config.HOST}"],
+                  "env":{"SRV_URL":"https://${user_config.HOST}/api"}},
+                "auth":{"type":"none"},"risk":{"network":"any","local_system":"none",
+                  "default_tool_tier":"read"},
+                "user_config":{
+                  "HOST":{"type":"string","title":"Host","required":true},
+                  "TOKEN":{"type":"string","title":"Token","sensitive":true}}}"#,
+        )
+        .unwrap();
+        let answers = BTreeMap::from([
+            ("HOST".to_owned(), "metabase.example".to_owned()),
+            ("TOKEN".to_owned(), "s3cret".to_owned()),
+        ]);
+        let ConnectorConfig::McpStdio { args, env, .. } = manifest.config_with(&answers) else {
+            panic!("stdio")
+        };
+        assert_eq!(args.last().unwrap(), "metabase.example");
+        assert_eq!(env[0].1, "https://metabase.example/api");
+
+        // A sensitive answer is a vault credential (06 §3). Substituting it would write a token
+        // into a config row that anybody with the database can read.
+        let text = serde_json::to_string(&manifest.config_with(&answers)).unwrap();
+        assert!(!text.contains("s3cret"));
+    }
+
+    /// An unanswered key is left standing: the failure then names the key, where blanking it
+    /// produces a failure somewhere inside the server saying something else.
+    #[test]
+    fn a_key_with_no_answer_is_left_where_it_is() {
+        assert_eq!(
+            substitute("--host ${user_config.HOST}", &BTreeMap::new()),
+            "--host ${user_config.HOST}"
+        );
+        assert_eq!(
+            substitute(
+                "a${user_config.A}b${user_config.B}c",
+                &BTreeMap::from([("A", "1")])
+            ),
+            "a1b${user_config.B}c"
+        );
+        assert_eq!(
+            substitute("nothing to do", &BTreeMap::new()),
+            "nothing to do"
+        );
+    }
+
+    #[test]
+    fn the_form_comes_out_in_key_order_whatever_order_it_was_written_in() {
+        let manifest = Manifest::parse(
+            r#"{"manifest_version":"1","id":"x","name":"X","description":"d","version":"1.0.0",
+                "icon":"icon.svg","category":"data","publisher":{"name":"p"},
+                "runtime":{"kind":"mcp-remote","url":"https://x.test/mcp"},
+                "auth":{"type":"none"},"risk":{"network":"any","local_system":"none",
+                  "default_tool_tier":"read"},
+                "user_config":{
+                  "ZONE":{"type":"string","title":"Zone"},
+                  "ACCOUNT":{"type":"string","title":"Account","default":"main"}}}"#,
+        )
+        .unwrap();
+        let fields = manifest.user_config_fields();
+        assert_eq!(fields[0].key, "ACCOUNT");
+        assert_eq!(fields[0].default.as_deref(), Some("main"));
+        assert_eq!(fields[1].key, "ZONE");
+    }
+
     use super::*;
 
     const REMOTE: &str = r#"{

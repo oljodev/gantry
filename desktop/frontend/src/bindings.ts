@@ -174,8 +174,6 @@ export const commands = {
 	listConnectors: () => typedError<ConnectorInstanceDto[], ErrorDto>(__TAURI_INVOKE("list_connectors")),
 	getConnector: (instanceId: InstanceId) => typedError<ConnectorInstanceDto, ErrorDto>(__TAURI_INVOKE("get_connector", { instanceId })),
 	/**
-	 *  Installs a catalog entry. A server that needs nothing is connected straight away, so the
-	 *  tool list is on screen before the dialog closes; anything else waits for a credential.
 	 *  Step 1 of a local server's install (03 §11): what it needs, and what this machine has.
 	 * 
 	 *  Its own command rather than a field on the catalog entry, because the answer changes while
@@ -183,6 +181,15 @@ export const commands = {
 	 *  list that was fetched before the user installed Node would tell them it is still missing.
 	 */
 	checkRuntimes: (catalogId: string) => typedError<RuntimeStatus[], ErrorDto>(__TAURI_INVOKE("check_runtimes", { catalogId })),
+	/**
+	 *  Installs a catalog entry. A server that needs nothing is connected straight away, so the
+	 *  tool list is on screen before the dialog closes; anything else waits for a credential.
+	 *  Step 2 of the install (03 §11): the keys this connector asks the user to fill in, and what
+	 *  this instance answered last time. A sensitive answer is never among the values — it is in the
+	 *  vault, and a form that showed it back would be printing a token onto the screen.
+	 */
+	getConnectorConfig: (catalogId: string, instanceId: string | null) => typedError<ConnectorConfigForm, ErrorDto>(__TAURI_INVOKE("get_connector_config", { catalogId, instanceId })),
+	setConnectorConfig: (instanceId: InstanceId, values: { [key in string]: string }) => typedError<ConnectorInstanceDto, ErrorDto>(__TAURI_INVOKE("set_connector_config", { instanceId, values })),
 	installConnector: (catalogId: string) => typedError<ConnectorInstanceDto, ErrorDto>(__TAURI_INVOKE("install_connector", { catalogId })),
 	installCustomConnector: (server: CustomServer) => typedError<ConnectorInstanceDto, ErrorDto>(__TAURI_INVOKE("install_custom_connector", { server })),
 	/**  Connects and refreshes the tool list. */
@@ -674,6 +681,12 @@ export type ConnectorConfig = { kind: "native" } | { kind: "mcp-stdio"; command:
 env?: ([string, string])[]; secret_env?: string[]; cwd?: string | null } | { kind: "mcp-remote"; url: string; headers?: ([string, string])[]; 
 /**  Header names whose value comes from the vault, e.g. `Authorization`. */
 secret_headers?: string[] };
+
+export type ConnectorConfigForm = {
+	fields: UserConfigField[],
+	/**  What was answered before, by key; sensitive keys are absent by design. */
+	values: { [key in string]: string },
+};
 
 /**  An installed connector, as Settings → Customize and the composer show it. */
 export type ConnectorInstanceDto = {
@@ -1732,6 +1745,27 @@ export type Usage = {
 	/**  What the provider says the request cost, in US dollars, when it says so (OpenRouter does). */
 	cost_usd: number | null,
 };
+
+/**
+ *  One key a connector asks the user to fill in at install (03 §11 step 2), MCPB-compatible.
+ * 
+ *  Referenced from the runtime as `${user_config.KEY}`: a host for a self-hosted server, a
+ *  workspace id, a folder to work in. A `sensitive` field is a credential and never reaches this
+ *  table — it goes to the vault and the runtime carries only its name (06 §5).
+ */
+export type UserConfigField = {
+	/**  The key, as the manifest writes it: `SHOPIFY_STORE`, upper snake case. */
+	key: string,
+	type: UserConfigKind,
+	title: string,
+	description?: string | null,
+	required?: boolean,
+	sensitive?: boolean,
+	/**  The manifest's default, as a string the form can show. A field with one is never empty. */
+	default?: string | null,
+};
+
+export type UserConfigKind = "string" | "number" | "boolean" | "directory" | "file";
 
 /**  Who made a version (13 §7). */
 export type VersionSource = "model_create" | "model_update" | "model_edit" | "user_edit" | "user_restore";

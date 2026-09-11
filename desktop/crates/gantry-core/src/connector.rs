@@ -200,6 +200,39 @@ pub struct RuntimeRequirement {
     pub version: String,
 }
 
+/// One key a connector asks the user to fill in at install (03 §11 step 2), MCPB-compatible.
+///
+/// Referenced from the runtime as `${user_config.KEY}`: a host for a self-hosted server, a
+/// workspace id, a folder to work in. A `sensitive` field is a credential and never reaches this
+/// table — it goes to the vault and the runtime carries only its name (06 §5).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
+pub struct UserConfigField {
+    /// The key, as the manifest writes it: `SHOPIFY_STORE`, upper snake case.
+    pub key: String,
+    #[serde(rename = "type")]
+    pub kind: UserConfigKind,
+    pub title: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub required: bool,
+    #[serde(default)]
+    pub sensitive: bool,
+    /// The manifest's default, as a string the form can show. A field with one is never empty.
+    #[serde(default)]
+    pub default: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "snake_case")]
+pub enum UserConfigKind {
+    String,
+    Number,
+    Boolean,
+    Directory,
+    File,
+}
+
 /// A catalog entry as the Discover list shows it (03 §10).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 pub struct CatalogEntryDto {

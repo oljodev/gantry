@@ -13,6 +13,8 @@ use crate::{
     repos::{enum_from_str, id_from_str},
 };
 
+use std::collections::BTreeMap;
+
 const COLUMNS: &str = "id, catalog_id, namespace, display_name, kind, config_json, auth_type, \
                        auth_state, enabled, tools_cache_json, server_info_json, installed_at, \
                        last_connected_at, last_error";
@@ -107,6 +109,33 @@ pub fn credential_id(conn: &Connection, id: InstanceId) -> Result<Option<String>
         )
         .optional()?
         .flatten())
+}
+
+/// The answers to a connector's `user_config` form (03 §11 step 2), by key.
+///
+/// The non-sensitive ones only: a sensitive answer is a vault credential and never reaches this
+/// table (06 §5). They are kept beside the substituted config rather than only inside it, because
+/// the settings panel has to show the user what they typed last time, and a URL with the value
+/// already baked into it cannot be taken apart again.
+pub fn user_config(conn: &Connection, id: InstanceId) -> Result<BTreeMap<String, String>> {
+    let text: String = conn.query_row(
+        "SELECT user_config_json FROM connector_instances WHERE id = ?1",
+        params![id.to_string()],
+        |r| r.get(0),
+    )?;
+    Ok(serde_json::from_str(&text).unwrap_or_default())
+}
+
+pub fn set_user_config(
+    conn: &Connection,
+    id: InstanceId,
+    values: &BTreeMap<String, String>,
+) -> Result<()> {
+    conn.execute(
+        "UPDATE connector_instances SET user_config_json = ?2, updated_at = ?3 WHERE id = ?1",
+        params![id.to_string(), json(values)?, now_ms()],
+    )?;
+    Ok(())
 }
 
 pub fn set_config(conn: &Connection, id: InstanceId, config: &ConnectorConfig) -> Result<()> {

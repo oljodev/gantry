@@ -49,6 +49,47 @@ pub fn get_connector(
 
 /// Installs a catalog entry. A server that needs nothing is connected straight away, so the
 /// tool list is on screen before the dialog closes; anything else waits for a credential.
+/// Step 2 of the install (03 §11): the keys this connector asks the user to fill in, and what
+/// this instance answered last time. A sensitive answer is never among the values — it is in the
+/// vault, and a form that showed it back would be printing a token onto the screen.
+#[tauri::command]
+#[specta::specta]
+pub async fn get_connector_config(
+    state: State<'_, AppState>,
+    catalog_id: String,
+    instance_id: Option<InstanceId>,
+) -> Result<ConnectorConfigForm, ErrorDto> {
+    let fields = state.connectors.user_config_form(&catalog_id)?;
+    let values = match instance_id {
+        Some(id) => state.connectors.user_config(id)?,
+        None => Default::default(),
+    };
+    Ok(ConnectorConfigForm { fields, values })
+}
+
+#[derive(Debug, serde::Serialize, specta::Type)]
+pub struct ConnectorConfigForm {
+    pub fields: Vec<gantry_core::UserConfigField>,
+    /// What was answered before, by key; sensitive keys are absent by design.
+    pub values: std::collections::BTreeMap<String, String>,
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn set_connector_config(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    instance_id: InstanceId,
+    values: std::collections::BTreeMap<String, String>,
+) -> Result<ConnectorInstanceDto, ErrorDto> {
+    state
+        .connectors
+        .set_user_config(instance_id, values)
+        .await?;
+    let _ = ConnectorsChanged.emit(&app);
+    Ok(state.connectors.instance(instance_id)?)
+}
+
 /// Step 1 of a local server's install (03 §11): what it needs, and what this machine has.
 ///
 /// Its own command rather than a field on the catalog entry, because the answer changes while

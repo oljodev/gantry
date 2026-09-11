@@ -13,8 +13,14 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import type { AuthType, CatalogEntryDto, ConnectorInstanceDto } from '@/bindings';
+import { ConfigForm } from '@/features/connectors/ConfigForm';
+import { effectiveValues, missingRequired } from '@/features/connectors/config';
 import { RuntimeCheck } from '@/features/connectors/RuntimeCheck';
-import { useConnectorMutations, useRuntimeCheck } from '@/lib/ipc/hooks/connectors';
+import {
+  useConnectorConfig,
+  useConnectorMutations,
+  useRuntimeCheck,
+} from '@/lib/ipc/hooks/connectors';
 import { openExternal } from '@/lib/clipboard';
 import { describe } from '@/lib/errors';
 import { cn } from '@/lib/utils';
@@ -39,7 +45,7 @@ export function InstallDialog({
   reason?: string;
   onClose: () => void;
 }) {
-  const { install, authorize, setToken } = useConnectorMutations();
+  const { install, authorize, setToken, setConfig } = useConnectorMutations();
   const [current, setCurrent] = useState<ConnectorInstanceDto | undefined>(instance);
   const [method, setMethod] = useState<AuthType>(entry.auth_alternate ?? entry.auth);
   const [token, setTokenValue] = useState('');
@@ -51,6 +57,17 @@ export function InstallDialog({
   const runtimes = useRuntimeCheck(entry.requires.length > 0 ? entry.id : null);
   const statuses = runtimes.data ?? [];
   const blocked = statuses.some((r) => !r.ok);
+  // Step 2: the keys this connector asks for. Comes after the runtime check, because a form
+  // filled in for a server that cannot start is work thrown away.
+  const form = useConnectorConfig(entry.id, current?.id);
+  const fields = form.data?.fields ?? [];
+  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const saved = form.data?.values ?? {};
+  const values = effectiveValues(fields, saved, answers);
+  const configured = current !== undefined && Object.keys(saved).length > 0;
+  const needsConfig =
+    !blocked && fields.length > 0 && (!configured || Object.keys(answers).length > 0);
+  const missing = missingRequired(fields, values, configured);
 
   const busy = install.isPending || authorize.isPending || setToken.isPending;
   const connected = current?.auth_state === 'authorized' && current.tools.length > 0;
@@ -69,6 +86,14 @@ export function InstallDialog({
       setError(describe(err));
     }
   };
+
+  /** Save the answers, then let the ordinary path carry on from the connector it just made. */
+  const saveConfig = () =>
+    run(async (i) => {
+      const next = await setConfig.mutateAsync({ instanceId: i.id, values });
+      setAnswers({});
+      return next;
+    });
 
   const signIn = () =>
     run((i) => authorize.mutateAsync({ instanceId: i.id, clientId: clientId.trim() || undefined }));
@@ -93,9 +118,11 @@ export function InstallDialog({
           <DialogDescription>
             {blocked
               ? `${entry.name} runs as a program on this machine, and needs something that is not here yet.`
-              : connected
-                ? entry.description
-                : `${entry.name} will not let an application in on its own. Do one of these once; Gantry remembers it.`}
+              : needsConfig
+                ? `${entry.name} needs a few details before it can run.`
+                : connected
+                  ? entry.description
+                  : `${entry.name} will not let an application in on its own. Do one of these once; Gantry remembers it.`}
           </DialogDescription>
         </DialogHeader>
 
@@ -104,6 +131,13 @@ export function InstallDialog({
             statuses={statuses}
             checking={runtimes.isFetching}
             onCheckAgain={() => void runtimes.refetch()}
+          />
+        ) : needsConfig ? (
+          <ConfigForm
+            fields={fields}
+            values={values}
+            hasSaved={configured}
+            onChange={(key, value) => setAnswers((a) => ({ ...a, [key]: value }))}
           />
         ) : connected ? (
           <div className="flex items-start gap-2 rounded-3 border border-good/30 bg-good-subtle px-3 py-2 text-ui text-fg">
@@ -212,15 +246,26 @@ export function InstallDialog({
           <Button variant="secondary" onClick={onClose}>
             {connected ? 'Done' : 'Cancel'}
           </Button>
-          {!connected && !blocked && (
+          {needsConfig ? (
             <Button
-              disabled={
-                busy || (method === 'oauth2' ? clientId.trim() === '' : token.trim() === '')
-              }
-              onClick={() => (method === 'oauth2' ? void signIn() : void submitToken())}
+              disabled={busy || missing.length > 0}
+              title={missing.length > 0 ? `Still needed: ${missing.join(', ')}` : undefined}
+              onClick={() => void saveConfig()}
             >
-              {busy ? 'Connecting…' : method === 'oauth2' ? 'Sign in' : 'Connect'}
+              {setConfig.isPending ? 'Saving…' : 'Save and connect'}
             </Button>
+          ) : (
+            !connected &&
+            !blocked && (
+              <Button
+                disabled={
+                  busy || (method === 'oauth2' ? clientId.trim() === '' : token.trim() === '')
+                }
+                onClick={() => (method === 'oauth2' ? void signIn() : void submitToken())}
+              >
+                {busy ? 'Connecting…' : method === 'oauth2' ? 'Sign in' : 'Connect'}
+              </Button>
+            )
           )}
         </DialogFooter>
       </DialogContent>

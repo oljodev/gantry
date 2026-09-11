@@ -47,6 +47,18 @@ export function useRuntimeCheck(catalogId: string | null) {
   });
 }
 
+/**
+ * The `user_config` form a connector asks for, and what this instance answered (03 §11 step 2).
+ * Sensitive answers are never in the values: they are in the vault.
+ */
+export function useConnectorConfig(catalogId: string | null, instanceId?: InstanceId) {
+  return useQuery({
+    queryKey: keys.connectorConfig(catalogId ?? '', instanceId ?? ''),
+    queryFn: () => unwrap(commands.getConnectorConfig(catalogId ?? '', instanceId ?? null)),
+    enabled: isTauri() && catalogId !== null,
+  });
+}
+
 export function useConnectorMutations() {
   const qc = useQueryClient();
   const settle = () => {
@@ -63,6 +75,19 @@ export function useConnectorMutations() {
     mutationFn: (server: { name: string; config: ConnectorConfig }) =>
       unwrap(commands.installCustomConnector(server)),
     onSuccess: settle,
+  });
+  const setConfig = useMutation({
+    mutationFn: ({
+      instanceId,
+      values,
+    }: {
+      instanceId: InstanceId;
+      values: Record<string, string>;
+    }) => unwrap(commands.setConnectorConfig(instanceId, values)),
+    onSuccess: () => {
+      settle();
+      void qc.invalidateQueries({ queryKey: ['connector_config'] });
+    },
   });
   const connect = useMutation({
     mutationFn: (instanceId: InstanceId) => unwrap(commands.connectConnector(instanceId)),
@@ -101,5 +126,15 @@ export function useConnectorMutations() {
     onSuccess: settle,
   });
 
-  return { install, installCustom, connect, authorize, setToken, setEnabled, remove, attach };
+  return {
+    setConfig,
+    install,
+    installCustom,
+    connect,
+    authorize,
+    setToken,
+    setEnabled,
+    remove,
+    attach,
+  };
 }

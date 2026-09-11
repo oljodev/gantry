@@ -4,7 +4,10 @@
 //! service is what holds them together with the store, the vault and the registry the turn loop
 //! reads — and it is the only place that ever sees a decrypted token.
 
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{BTreeMap, HashMap},
+    sync::Arc,
+};
 
 use gantry_connector_shell::ShellEnv;
 use gantry_connectors::{
@@ -121,6 +124,87 @@ impl ConnectorService {
             .get(catalog_id)
             .ok_or_else(|| GantryError::not_found(format!("catalog entry {catalog_id}")))?;
         Ok(gantry_connectors::runtime::detect(&manifest.requires(), &self.shell_env.vars).await)
+    }
+
+    /// The form a connector asks for at install (03 §11 step 2), and what this instance already
+    /// answered. Empty for everything that asks for nothing, which is most of the catalogue.
+    pub fn user_config_form(
+        &self,
+        catalog_id: &str,
+    ) -> Result<Vec<gantry_core::UserConfigField>, GantryError> {
+        Ok(self
+            .catalog
+            .get(catalog_id)
+            .map(|m| m.user_config_fields())
+            .unwrap_or_default())
+    }
+
+    pub fn user_config(&self, id: InstanceId) -> Result<BTreeMap<String, String>, GantryError> {
+        Ok(self
+            .store
+            .read(move |c| repos::connectors::user_config(c, id))?)
+    }
+
+    /// Writes the answers and rebuilds the runtime from them.
+    ///
+    /// Both, together, because they are one fact seen twice: the answers are what the user typed
+    /// and the config is where they end up, and a config rebuilt from stale answers — or answers
+    /// saved without rebuilding — is a connector that runs against the host it used to have.
+    /// A sensitive answer goes to the vault instead and is injected at call time (06 §5).
+    pub async fn set_user_config(
+        &self,
+        id: InstanceId,
+        values: BTreeMap<String, String>,
+    ) -> Result<(), GantryError> {
+        let instance = self.instance(id)?;
+        let Some(manifest) = instance
+            .catalog_id
+            .as_deref()
+            .and_then(|c| self.catalog.get(c))
+        else {
+            return Err(GantryError::invalid(
+                "a server you added by hand has no form to fill in; edit it instead",
+            ));
+        };
+        for field in manifest.user_config_fields() {
+            let given = values.get(&field.key).map(|v| v.trim()).unwrap_or("");
+            if field.required && given.is_empty() {
+                return Err(GantryError::invalid(format!("{} is required", field.title)));
+            }
+        }
+        for field in manifest.user_config_fields().iter().filter(|f| f.sensitive) {
+            if let Some(value) = values.get(&field.key).filter(|v| !v.trim().is_empty()) {
+                self.secrets
+                    .set(
+                        OwnerKind::Instance,
+                        &id.to_string(),
+                        CredentialKind::UserConfigSecret,
+                        Some(&field.key),
+                        value,
+                    )
+                    .await?;
+            }
+        }
+        let public: BTreeMap<String, String> = values
+            .iter()
+            .filter(|(key, _)| {
+                !manifest
+                    .user_config_fields()
+                    .iter()
+                    .any(|f| &f.key == *key && f.sensitive)
+            })
+            .map(|(k, v)| (k.clone(), v.trim().to_owned()))
+            .collect();
+        let config = manifest.config_with(&values);
+        let saved = public.clone();
+        self.store
+            .write(move |c| {
+                repos::connectors::set_user_config(c, id, &saved)?;
+                repos::connectors::set_config(c, id, &config)
+            })
+            .await?;
+        self.rebuild().await?;
+        Ok(())
     }
 
     pub async fn install(&self, catalog_id: &str) -> Result<InstanceId, GantryError> {

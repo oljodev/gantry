@@ -36,7 +36,7 @@ pub use chat::{
 pub use command::{CommandClass, classify};
 pub use connector::{
     AuthState, AuthType, CatalogEntryDto, ConnectorConfig, ConnectorInstanceDto, ConnectorKind,
-    RuntimeRequirement, ServerInfo, ToolInfo,
+    RuntimeRequirement, ServerInfo, ToolInfo, UserConfigField, UserConfigKind,
 };
 pub use error::{ErrorDto, GantryError, ProviderErrorKind};
 pub use event::{AgentEvent, AgentEventBatch, AgentEventKind, TurnSnapshot};
