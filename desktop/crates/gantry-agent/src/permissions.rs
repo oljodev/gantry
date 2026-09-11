@@ -180,7 +180,16 @@ fn classified(call: &Call<'_>) -> Option<CommandClass> {
 pub fn mode_policy(mode: Mode, guard: bool, def: &ToolDef) -> Decision {
     use RiskTier::*;
     if def.tier == App {
-        return Decision::Allow(DecisionSource::Mode);
+        // Attaching a connector is Gantry's own state, so `App` is the right tier and no mode
+        // prompts for the call. It is also the one App call that widens what the chat can reach,
+        // and in Auto nobody else is looking, so the guard answers it (04 §9). Unguarded Auto
+        // has no guard by definition, and every other mode shows the card the tool raises for
+        // itself — this branch decides the call, not the attaching.
+        return if def.widens_access && mode == Mode::Auto && guard {
+            Decision::Judge
+        } else {
+            Decision::Allow(DecisionSource::Mode)
+        };
     }
     let policy = match (mode, def.tier) {
         (Mode::Manual, _) => Decision::ask(),
@@ -555,6 +564,47 @@ mod tests {
 
     /// Everything that answers before the judge does, answers instead of it. Guarded Auto is
     /// the only mode that ever reaches it.
+    /// 04 §9. Attaching a connector is `App` — Gantry's own state, never a prompt for the call
+    /// itself — but it is the one App call that widens what the chat can reach, and the mode is
+    /// the only thing standing behind it.
+    #[test]
+    fn the_guard_decides_whether_the_model_may_widen_its_own_reach() {
+        let mut widening = def(RiskTier::App);
+        widening.widens_access = true;
+        let plain = def(RiskTier::App);
+        let args = serde_json::json!({ "connector": "shell", "reason": "to read the CPU" });
+        let go = |def: &ToolDef, mode, guard| {
+            super::decide(mode, guard, &call(def, &args), &[], &Guardrails::none())
+        };
+
+        assert_eq!(
+            go(&widening, Mode::Auto, true),
+            Decision::Judge,
+            "guarded Auto is the one place nobody else is looking"
+        );
+        assert_eq!(
+            go(&widening, Mode::Auto, false),
+            Decision::Allow(DecisionSource::Mode),
+            "unguarded Auto has no guard to ask; the mode answers, as it does for every call"
+        );
+        // Not an allow of the attaching: the tool raises its own card, and these modes let it.
+        for mode in [Mode::Manual, Mode::AutoEdit, Mode::Plan] {
+            assert_eq!(
+                go(&widening, mode, true),
+                Decision::Allow(DecisionSource::Mode),
+                "{mode:?} lets the call run so the user can answer the card it raises"
+            );
+        }
+        // Every other App tool stays out of the guard's way, in every mode. Asking it about
+        // `clock` costs a model call and an eight-second budget to learn nothing.
+        for guard in [true, false] {
+            assert_eq!(
+                go(&plain, Mode::Auto, guard),
+                Decision::Allow(DecisionSource::Mode)
+            );
+        }
+    }
+
     #[test]
     fn the_guard_is_asked_last_and_only_in_guarded_auto() {
         use gantry_core::GrantScope;

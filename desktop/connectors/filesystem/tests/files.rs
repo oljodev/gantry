@@ -99,6 +99,7 @@ impl Fixture {
                         chat_id: self.chat,
                         turn_id: self.turn,
                         mode: Mode::AutoEdit,
+                        attach_decided: false,
                     },
                 },
                 Arc::new(NoopToolEvents),

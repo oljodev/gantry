@@ -133,6 +133,7 @@ fn request(tool: &str, args: serde_json::Value) -> ToolCallRequest {
             chat_id: ChatId::new(),
             turn_id: TurnId::new(),
             mode: Mode::AutoEdit,
+            attach_decided: false,
         },
     }
 }

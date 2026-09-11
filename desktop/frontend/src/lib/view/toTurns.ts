@@ -309,7 +309,7 @@ function callItem(
     connector,
     connectorName: call?.connector_name,
     tool,
-    title: runtimeTitle(connector, tool, call?.args ?? part?.args),
+    title: runtimeTitle(connector, tool, call?.args ?? part?.args, resultJson(call)),
     summary: rowSummary(connector, tool, call, part),
     status: rowStatus(call),
     blocked: blockedBy(call),
@@ -392,7 +392,12 @@ function rowStatus(
  * Gantry's own state). Every other connector is named by its name, which is the useful thing to
  * say about it; ours is called Gantry, and "Using Gantry" is not.
  */
-function runtimeTitle(connector: string, tool: string, args: unknown): string | undefined {
+function runtimeTitle(
+  connector: string,
+  tool: string,
+  args: unknown,
+  result?: Record<string, unknown>,
+): string | undefined {
   if (connector !== 'gantry') return undefined;
   const named = (key: string) => {
     const v = args && typeof args === 'object' ? (args as Record<string, unknown>)[key] : undefined;
@@ -400,8 +405,12 @@ function runtimeTitle(connector: string, tool: string, args: unknown): string | 
   };
   switch (tool) {
     case 'request_access': {
-      const name = named('connector');
-      return name ? `Asked to attach ${name}` : 'Asked to attach a connector';
+      const name = named('connector') ?? 'a connector';
+      // In Auto nobody is asked (04 §9), so the row says what happened rather than what was
+      // requested: the request and its answer are the same moment once it has one.
+      if (result?.attached === true) return `Attached ${name}`;
+      if (result?.attached === false) return `Did not attach ${name}`;
+      return `Asked to attach ${name}`;
     }
     case 'suggest_connector': {
       const name = named('catalog_id');

@@ -94,6 +94,12 @@ pub struct ToolDef {
     pub plan_mode: PlanModePolicy,
     /// Arguments are worth showing while they stream (file contents, patches).
     pub stream_args: bool,
+    /// The call widens what this chat can reach rather than acting inside it (04 §9). Attaching
+    /// an installed connector is Gantry's own state, so `App` is the right tier and no mode
+    /// prompts for the call itself — but the reach it grants is the model's own to ask for, and
+    /// in Auto nobody else is looking, so it is the one `App` decision the guard is asked about.
+    #[serde(default)]
+    pub widens_access: bool,
 }
 
 impl ToolDef {
@@ -119,6 +125,7 @@ impl ToolDef {
                 PlanModePolicy::Deny
             },
             stream_args: false,
+            widens_access: false,
         }
     }
 }

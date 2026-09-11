@@ -41,6 +41,12 @@ pub struct ChatScope {
     /// raise an interaction against it.
     pub turn_id: TurnId,
     pub mode: Mode,
+    /// Whether attaching an installed connector to this chat has already been decided (04 §9),
+    /// so the tool attaches instead of raising a card. In Auto it has been: by the mode when the
+    /// guard is off, by the guard before the call ran when it is on. It covers attaching and
+    /// nothing else — installing a connector that is not there runs third-party code, and that
+    /// is the user's in every mode.
+    pub attach_decided: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]

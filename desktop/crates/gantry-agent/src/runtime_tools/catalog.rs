@@ -276,6 +276,23 @@ impl ConnectorAccess {
             }));
         }
 
+        // 04 §9: in Auto the answer is already in — from the mode when the guard is off, from
+        // the guard before this call was allowed to run when it is on — and a card would be
+        // asking a question that has been answered. Attaching still grants nothing by itself:
+        // every call the new tools make comes back through the same engine this one came
+        // through, guardrails, mode and guard alike.
+        if req.scope.attach_decided {
+            return self
+                .attach_and_report(
+                    req.scope.chat_id,
+                    instance,
+                    "Attached without asking, because the chat is in Auto mode. The tools are \
+                     available from your next call, and permission for each of them still \
+                     follows the mode.",
+                )
+                .await;
+        }
+
         let payload = InteractionPayload::AccessRequest {
             request: AccessRequest {
                 instance_id: instance.id,
@@ -294,23 +311,16 @@ impl ConnectorAccess {
                 decision: AccessDecision::Attach { allow_tools },
                 ..
             } => {
-                if let Err(err) = self.attach(req.scope.chat_id, instance.id) {
-                    return ToolOutcome::error(format!(
-                        "could not attach {}: {err}",
-                        instance.name
-                    ));
-                }
                 if allow_tools {
                     self.grant(req.scope.chat_id, instance, &tools);
                 }
-                let names = self.tool_names(instance).await;
-                ToolOutcome::json(json!({
-                    "attached": true,
-                    "connector": instance.namespace,
-                    "tools": names,
-                    "note": "The tools are available from your next call. Permission still \
-                             follows the chat's mode.",
-                }))
+                self.attach_and_report(
+                    req.scope.chat_id,
+                    instance,
+                    "The tools are available from your next call. Permission still follows the \
+                     chat's mode.",
+                )
+                .await
             }
             InteractionResolution::AccessRequest { message, .. } => ToolOutcome::json(json!({
                 "attached": false,
@@ -325,6 +335,27 @@ impl ConnectorAccess {
                 "message": "The request was cancelled.",
             })),
         }
+    }
+
+    /// Attaches the instance to the chat and reports it to the model, whichever of the two
+    /// decisions got here. The grant, when there is one, is made by the caller: only the user
+    /// pre-approves tools, so only the card's branch has one to make.
+    async fn attach_and_report(
+        &self,
+        chat_id: ChatId,
+        instance: &ConnectorInstanceDto,
+        note: &str,
+    ) -> ToolOutcome {
+        if let Err(err) = self.attach(chat_id, instance.id) {
+            return ToolOutcome::error(format!("could not attach {}: {err}", instance.name));
+        }
+        let names = self.tool_names(instance).await;
+        ToolOutcome::json(json!({
+            "attached": true,
+            "connector": instance.namespace,
+            "tools": names,
+            "note": note,
+        }))
     }
 
     /// Offers to install something that is not installed at all (03 §9).
@@ -591,11 +622,12 @@ fn search_def() -> ToolDef {
 
 #[must_use]
 fn request_access_def() -> ToolDef {
-    ToolDef::new(
+    let mut def = ToolDef::new(
         REQUEST_ACCESS,
-        "Ask the user to let this chat use a connector that is installed but not attached. It \
-         shows a card; if the user agrees, the connector's tools join your tool list from your \
-         next call. Use it instead of telling the user to attach something by hand.",
+        "Ask to let this chat use a connector that is installed but not attached. The user \
+         answers on a card, unless the chat is in Auto mode, where the decision is made without \
+         them. If it is allowed, the connector's tools join your tool list from your next call. \
+         Use it instead of telling the user to attach something by hand.",
         json!({
             "type": "object",
             "properties": {
@@ -617,7 +649,9 @@ fn request_access_def() -> ToolDef {
             "additionalProperties": false
         }),
         RiskTier::App,
-    )
+    );
+    def.widens_access = true;
+    def
 }
 
 #[must_use]
@@ -672,5 +706,15 @@ mod tests {
         let names: HashSet<&str> = defs.iter().map(|d| d.name.as_str()).collect();
         assert_eq!(names.len(), 3);
         assert!(NAMES.iter().all(|n| names.contains(n)));
+    }
+
+    /// 04 §9. Attaching is a decision Auto may take; installing never is, in any mode. The
+    /// difference is what each one costs if it is wrong: attaching hands the chat tools that
+    /// still ask before every call, and installing runs somebody else's code.
+    #[test]
+    fn only_attaching_is_a_decision_a_mode_can_take() {
+        assert!(request_access_def().widens_access);
+        assert!(!suggest_def().widens_access);
+        assert!(!search_def().widens_access);
     }
 }

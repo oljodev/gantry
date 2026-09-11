@@ -244,6 +244,7 @@ async fn the_runtime_tools_create_read_and_edit_with_events() {
             chat_id,
             turn_id: TurnId::new(),
             mode: Mode::AutoEdit,
+            attach_decided: false,
         },
     };
     let created = tools

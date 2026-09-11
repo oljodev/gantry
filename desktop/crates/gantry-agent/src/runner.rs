@@ -797,7 +797,10 @@ async fn run_calls(
 ) -> (Vec<ContentPart>, bool) {
     let batcher = ctx.active.batcher.clone();
     let mut results: Vec<Option<ContentPart>> = (0..calls.len()).map(|_| None).collect();
-    let mut allowed: Vec<(usize, ToolEntry, DecisionSource)> = Vec::new();
+    // Index, tool, who allowed it, and whether the attaching a `widens_access` call exists to
+    // ask about has already been answered (04 §9) — by the mode, by the guard, or by **Allow
+    // anyway**. Only `Decision::Ask`, which is the user being asked, leaves it unanswered.
+    let mut allowed: Vec<(usize, ToolEntry, DecisionSource, bool)> = Vec::new();
     let mut judged: Vec<(usize, ToolEntry)> = Vec::new();
     let mut asking: Vec<(
         usize,
@@ -854,7 +857,14 @@ async fn run_calls(
             &ctx.guardrails,
         );
         match decision {
-            Decision::Allow(source) => allowed.push((i, entry, source)),
+            // Every mode allows an `App` call on the `Mode` source; only unguarded Auto means
+            // nobody else was ever going to look at it.
+            Decision::Allow(source) => {
+                let decided = source == DecisionSource::Mode
+                    && ctx.input.mode == gantry_core::Mode::Auto
+                    && !ctx.input.guard;
+                allowed.push((i, entry, source, decided));
+            }
             Decision::Deny { source, reason } => {
                 guard.denials += 1;
                 guard.recent.push(recent_of(call, "refused", "by a rule"));
@@ -876,7 +886,9 @@ async fn run_calls(
                     .overrides
                     .take(ctx.input.chat_id, &call.name, &call.args) =>
             {
-                allowed.push((i, entry, DecisionSource::UserOnce));
+                // **Allow anyway** is the user answering this exact question by hand; asking
+                // them again on the tool's own card would be asking twice for one click.
+                allowed.push((i, entry, DecisionSource::UserOnce, true));
             }
             Decision::Judge => judged.push((i, entry)),
             Decision::Ask { guardrail } => asking.push((i, entry, guardrail, None)),
@@ -918,7 +930,7 @@ async fn run_calls(
                             )),
                         ));
                     } else if verdict.allows() {
-                        allowed.push((i, entry, DecisionSource::Judge));
+                        allowed.push((i, entry, DecisionSource::Judge, true));
                     } else {
                         guard.denials += 1;
                         guard
@@ -954,12 +966,20 @@ async fn run_calls(
                             Vec::new(),
                         )),
                     });
-                    asking.push((
-                        i,
-                        entry,
-                        None,
-                        Some(format!("{detail}, so this one is yours.")),
-                    ));
+                    // A call whose own tool asks the user is already the fallback (04 §9).
+                    // Putting a permission card in front of it asks the same question twice —
+                    // once about the call, once about what the call is for — so it runs, and
+                    // the card it raises for itself is the question.
+                    if entry.def.widens_access {
+                        allowed.push((i, entry, DecisionSource::Mode, false));
+                    } else {
+                        asking.push((
+                            i,
+                            entry,
+                            None,
+                            Some(format!("{detail}, so this one is yours.")),
+                        ));
+                    }
                 }
             }
         }
@@ -1050,7 +1070,7 @@ async fn run_calls(
                     resolution,
                     source,
                 });
-                allowed.push((i, entry, source));
+                allowed.push((i, entry, source, false));
             }
             InteractionResolution::Cancelled => {
                 cancelled = true;
@@ -1101,7 +1121,7 @@ async fn run_calls(
     }
 
     if cancelled {
-        for (i, _, _) in allowed {
+        for (i, _, _, _) in allowed {
             results[i] = Some(complete_call(
                 ctx,
                 &calls[i].id,
@@ -1115,8 +1135,8 @@ async fn run_calls(
         }
     } else {
         // Parallel when every call of the batch says it is safe; otherwise in the model's order.
-        let parallel = allowed.iter().all(|(_, e, _)| e.def.parallel_safe);
-        for (i, entry, source) in &allowed {
+        let parallel = allowed.iter().all(|(_, e, _, _)| e.def.parallel_safe);
+        for (i, entry, source, _) in &allowed {
             update_call(ctx, &calls[*i].id, |c| {
                 c.status = ToolCallStatus::Running;
                 c.decision_source = Some(*source);
@@ -1131,21 +1151,21 @@ async fn run_calls(
         if parallel {
             let futures = allowed
                 .iter()
-                .map(|(i, entry, _)| execute(ctx, &calls[*i], entry.clone()));
+                .map(|(i, entry, _, decided)| execute(ctx, &calls[*i], entry.clone(), *decided));
             let outcomes = futures_util::future::join_all(futures).await;
-            for ((i, _, _), part) in allowed.iter().zip(outcomes) {
+            for ((i, _, _, _), part) in allowed.iter().zip(outcomes) {
                 results[*i] = Some(part);
             }
         } else {
-            for (i, entry, _) in &allowed {
-                results[*i] = Some(execute(ctx, &calls[*i], entry.clone()).await);
+            for (i, entry, _, decided) in &allowed {
+                results[*i] = Some(execute(ctx, &calls[*i], entry.clone(), *decided).await);
             }
         }
         cancelled = ctx.active.cancel.is_cancelled();
         // What the guard is told about this batch when it decides the next one. A failure is
         // also a strike against the call: three of the same and the loop detector answers
         // without asking anyone (04 §6).
-        for (i, _, source) in &allowed {
+        for (i, _, source, _) in &allowed {
             let call = &calls[*i];
             let failed = matches!(
                 &results[*i],
@@ -1250,7 +1270,13 @@ fn recent_of(call: &Call, outcome: &'static str, decision: &str) -> judge::Recen
 }
 
 /// Runs one allowed call to its result part; cancellation yields an error result.
-async fn execute(ctx: &RunContext, call: &Call, entry: ToolEntry) -> ContentPart {
+async fn execute(
+    ctx: &RunContext,
+    call: &Call,
+    entry: ToolEntry,
+    // 04 §9: whether the attaching this call exists to ask about already has its answer.
+    attach_decided: bool,
+) -> ContentPart {
     let started = Instant::now();
     let req = ToolCallRequest {
         call_id: call.id.clone(),
@@ -1260,6 +1286,7 @@ async fn execute(ctx: &RunContext, call: &Call, entry: ToolEntry) -> ContentPart
             chat_id: ctx.input.chat_id,
             turn_id: ctx.input.turn_id,
             mode: ctx.input.mode,
+            attach_decided,
         },
     };
     let cancel = ctx.active.cancel.child_token();

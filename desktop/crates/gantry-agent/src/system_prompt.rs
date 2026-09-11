@@ -147,8 +147,9 @@ pub fn connector_inventory(
     );
     if let Some(list) = describe(usable.iter().copied().filter(|i| !is_attached(i))) {
         lines.push(format!(
-            "installed, not attached: {list} — call gantry__request_access to use one; the \
-             user decides."
+            "installed, not attached: {list} — call gantry__request_access to use one. The \
+             user answers, unless the chat is in Auto mode, where the answer comes without \
+             them."
         ));
     }
     lines.push(if can_suggest {

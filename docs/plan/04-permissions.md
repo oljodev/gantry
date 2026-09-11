@@ -29,9 +29,9 @@ Assignment: native manifests declare a tier per tool; the shell connector classi
 | write_external | Ask¹ | Ask¹ | Deny² | Allow | Judge |
 | execute | Ask¹ | Ask¹ | Ask¹ if the command classifies as read-only, else Deny | Allow | Judge |
 | destructive | Ask¹ | Ask¹ | Deny² | Allow³ | Judge³ |
-| app | Allow⁴ | Allow⁴ | Allow⁴ | Allow⁴ | Allow⁴ |
+| app | Allow⁴ | Allow⁴ | Allow⁴ | Allow⁴ | Allow⁴, except Judge⁵ |
 
-¹ unless a standing grant for this chat matches (see §8). ² the tool is not even offered to the model in Plan mode (see §5). ³ `always_confirm` tools and guardrail patterns still ask (see §6). ⁴ never prompts, always logged; see T13 in 01 §8 for why Manual mode's "no exceptions" does not extend to tools whose only effect is Gantry's own UI or a card the user decides on.
+¹ unless a standing grant for this chat matches (see §8). ² the tool is not even offered to the model in Plan mode (see §5). ³ `always_confirm` tools and guardrail patterns still ask (see §6). ⁴ never prompts, always logged; see T13 in 01 §8 for why Manual mode's "no exceptions" does not extend to tools whose only effect is Gantry's own UI or a card the user decides on. ⁵ the one `app` tool that widens what the chat can reach rather than acting inside it — `gantry__request_access`, marked `widens_access` — is the guard's in Guarded Auto (§9). Every other mode allows the call and the tool asks the user itself.
 
 Status: the whole table is implemented, including the judge column (`gantry-agent/src/permissions.rs`, `gantry-agent/src/judge.rs`, `gantry-core/src/guardrail.rs`, §5, §6 and §8). A card offers **Allow once**, **Deny** with an optional message the model sees as `{ "error": "denied_by_user", "message", "hint" }`, and the standing scopes of §8; a grant may only turn an **Ask** into an allow, so Plan mode's denials, `always_confirm` and the guardrails are untouched by it — and it answers the guard, because a grant *is* the user having decided. Plan mode filters the tool set and its last turn offers **Switch to Auto-edit and execute**. Scope checks are the connectors' own (M6). `gantry__clock` is `read` tier rather than `app` so that Manual mode has a call to ask about before any connector exists.
 
@@ -189,6 +189,14 @@ attempt (`ChatRequest::retries`): it has eight seconds and someone is waiting th
 spending them on a rate limiter's backoff buys the same answer, late. A card in one second is a
 better failure than a card in eight.
 
+**The guard answers a second kind of question** (2026-09-11): whether the model may attach a
+connector the user installed but did not give this chat. It is the same machinery — `Decision::
+Judge`, one verdict, one row, **Allow anyway** — put to the one `App` call that widens what a
+chat can reach rather than acting inside it. §9 has the reasoning; the short of it is that Auto
+promised not to interrupt and was interrupting on the commonest thing a model asks for, and that
+attaching is exactly the kind of decision the guard exists to take: it grants nothing by itself,
+so the only question is whether the connector fits the task.
+
 Two gaps, both recorded rather than hidden. **Dry-run diffs** are not among the judge's inputs: a
 dry run needs a connector that can compute one without performing it, and no connector offers
 that, so an edit reaches the judge as its path and its truncated arguments. **Project defaults**
@@ -226,7 +234,11 @@ As built (M10, 2026-09-08):
 - The prompt carries a `<gantry_connectors>` inventory: "attached to this chat: filesystem (12 tools) · installed, not attached: github (44 tools) — call gantry__request_access to use one; the user decides." It is assembled per turn rather than frozen with the chat's snapshot, because installing and attaching happen outside the chat and a frozen list would go on lying about them (10 §2).
 - `gantry__request_access { connector, tools?, reason }` is a runtime tool owned by `gantry-agent`, offered whenever at least one instance is installed. `reason` is required and is shown to the user in the model's own words.
 - The call becomes `Interaction::AccessRequest`, rendered as `AccessRequestCard`: connector, the tools it wants, its reason; actions **Attach for this chat** · **Attach and allow these tools** · **Not now**.
-- On approval: a `chat_connectors` row with source `access_request`, one grant per named tool when the second action was chosen, and the tool result `{ attached: true, tools: [...] }`. The runner re-reads the chat's connectors between tool rounds, rebuilds the tool set and appends a `ToolSetChange` message, so the model's next call has the tools and knows it. Per-call permission still follows the mode, so in Manual mode attaching GitHub does not silently authorize creating issues.
+- **In Auto, nobody is asked** (2026-09-11). Auto's promise is that the user is not interrupted, and a card in front of every attach broke it for the commonest thing a model asks for: a chat that starts with the filesystem and is asked to inspect the machine has to stop on its first move. So `request_access` carries `ToolDef::widens_access`, the one `App` tool that does, and the mode decides the call before it runs: **unguarded Auto** allows it like any other call, and **guarded Auto** sends it to the guard, which has a section of `judge.md` for the question and answers it as an `outside_task` judgement — a shell for "check my hardware" passes, a repository connector for "summarise this PDF" does not. A denial is an ordinary guard block: the row says so, the model is told `blocked_by_guard` with the reason, and **Allow anyway** overrides it like any other. Every other mode allows the *call* and shows the card, exactly as before; the branch decides who answers, never whether attaching happened.
+  - This is defensible because attaching grants nothing by itself. The tools it adds come back through the whole engine — guardrails, mode, guard, grants — on every call they make, which is the sentence the card itself has always carried. What Auto gives away is the model's ability to widen its own reach, and that is what the guard is there to judge.
+  - **Installing is not attaching.** `suggest_connector` runs somebody else's code and asks for credentials, so it stays the user's in every mode and never sets `widens_access`. The pair is the whole point of the flag: one bit that says which of the two a call is.
+  - Two places the pipeline would otherwise ask twice, and does not. A guard that **cannot decide** hands its call to the user — but this call's own tool is already a card, so it runs and that card is the question, rather than a permission card in front of a card. And **Allow anyway** on a guard-blocked attach attaches: the user answered that exact question by clicking it, and asking again on the tool's card would be two clicks for one decision. Both are carried by the `attach_decided` bit the runner puts on the call's `ChatScope`, decided where the decision is made rather than derived afterwards from a `DecisionSource` that cannot tell Manual's allow from unguarded Auto's.
+- On approval: a `chat_connectors` row with source `access_request`, one grant per named tool when the second action was chosen, and the tool result `{ attached: true, tools: [...] }`. Only the card's branch grants tools — pre-approving a tool is the user saying "stop asking me", and the guard was never asked that. The runner re-reads the chat's connectors between tool rounds, rebuilds the tool set and appends a `ToolSetChange` message, so the model's next call has the tools and knows it. Per-call permission still follows the mode, so in Manual mode attaching GitHub does not silently authorize creating issues.
 - The same re-read covers the user attaching or detaching something in the `+` menu while a turn runs, which is the other way the tool set can change under a turn.
 
 ## 10. The Interaction primitive
