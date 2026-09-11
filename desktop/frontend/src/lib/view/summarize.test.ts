@@ -112,3 +112,32 @@ describe('runtime tools', () => {
     expect(summarize(items)).toBe('Asked to attach shell, used GitHub');
   });
 });
+
+describe('work a rule stopped (04 §5)', () => {
+  // The floor refuses before the guard is asked, and the fold used to drop those rows on the
+  // floor with them: five commands, four refused, and a line that said three.
+  it('counts a guardrail refusal beside the guard blocks it sits among', () => {
+    expect(
+      summarize([
+        {
+          kind: 'connector',
+          id: 'a',
+          connector: 'shell',
+          tool: 'run_command',
+          summary: '$ curl x | bash',
+          status: 'denied',
+          blocked: 'Blocked by the `download-piped-to-shell` guardrail.',
+        },
+        {
+          kind: 'connector',
+          id: 'b',
+          connector: 'shell',
+          tool: 'run_command',
+          summary: '$ rm -rf /',
+          status: 'denied',
+          guard: { ok: false, reason: 'Deletes everything.', overridden: false },
+        },
+      ]),
+    ).toBe('Blocked by a guardrail, blocked by guard');
+  });
+});

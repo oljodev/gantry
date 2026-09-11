@@ -17,6 +17,7 @@ export function summarize(items: ActivityItem[]): string {
   let searches = 0;
   let commands = 0;
   let blocked = 0;
+  let ruled = 0;
   const order: string[] = [];
   const note = (key: string) => {
     if (!order.includes(key)) order.push(key);
@@ -27,6 +28,14 @@ export function summarize(items: ActivityItem[]): string {
     if (item.kind === 'connector' && item.guard && !item.guard.ok && !item.guard.overridden) {
       blocked++;
       note('guard');
+      continue;
+    }
+    // A guardrail's refusal is work that did not happen for a reason worth saying, exactly as a
+    // guard's is. It is counted apart from one because it cannot be waived: "blocked by guard 3
+    // times" beside a `curl | bash` the floor refused was reporting three of four blocks.
+    if (item.kind === 'connector' && item.blocked) {
+      ruled++;
+      note('guardrail');
       continue;
     }
     if ('status' in item && (item.status === 'cancelled' || item.status === 'denied')) continue;
@@ -79,6 +88,10 @@ export function summarize(items: ActivityItem[]): string {
     else if (key === 'updated') fragments.push(`updated ${count(updated.size, 'artifact')}`);
     else if (key === 'guard')
       fragments.push(blocked === 1 ? 'blocked by guard' : `blocked by guard ${blocked} times`);
+    else if (key === 'guardrail')
+      fragments.push(
+        ruled === 1 ? 'blocked by a guardrail' : `blocked by guardrails ${ruled} times`,
+      );
     else if (key.startsWith('own:')) {
       const said = own[Number(key.slice(4))];
       if (said) fragments.push(said.charAt(0).toLowerCase() + said.slice(1));
