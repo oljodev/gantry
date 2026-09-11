@@ -165,6 +165,20 @@ function Cards() {
           />
         </div>
       </State>
+      <State label="Compaction marker">
+        <div className="w-full max-w-(--measure)">
+          <ActivityRow
+            item={{
+              kind: 'compacted',
+              id: 'k1',
+              replaced: 42,
+              summary:
+                '**Goal.** Port the importer to the new schema.\n\n**Decisions.** Keep the old\ncolumn for one release; migration 0012 does the backfill.\n\n**State.** `src/import.rs`\nrewritten and passing; `tests/import.rs` has two ignored cases.\n\n**Open.** The CSV\ndialect for the Danish export is still unknown.',
+              artifacts: ['Schema diagram'],
+            }}
+          />
+        </div>
+      </State>
       <State label="Access request">
         <div className="w-full max-w-(--measure)">
           <AccessRequestCard

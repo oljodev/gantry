@@ -1,4 +1,5 @@
 import {
+  ArchiveIcon,
   ArrowSquareOutIcon,
   CaretRightIcon,
   CheckIcon,
@@ -192,6 +193,8 @@ export function ActivityRow({ item, onOpen, expandable, bare }: ActivityRowProps
           className="bg-bad-subtle"
         />
       );
+    case 'compacted':
+      return <CompactedRow item={item} />;
     case 'notice':
       return (
         <div className="flex min-h-6 items-center gap-1.5 px-1 text-meta text-fg-2">
@@ -326,6 +329,46 @@ function Block({ label, body, tone }: { label: string; body: string; tone?: 'bad
       >
         {body}
       </pre>
+    </div>
+  );
+}
+
+/**
+ * The compaction marker (02 §6): the point where the earlier conversation stopped being in the
+ * model's context and became a summary. The messages above it are still there to read, which is
+ * exactly why the row has to exist — without it, a model that "forgot" something written three
+ * rows up looks broken rather than compacted. Opening it shows what the model kept.
+ */
+function CompactedRow({ item }: { item: Extract<ActivityItem, { kind: 'compacted' }> }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="my-1 rounded-2 border border-line-subtle">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+        className="flex h-(--row) w-full items-center gap-2 px-2 text-left text-meta text-fg-2 transition-colors duration-(--dur-1) hover:bg-hover"
+      >
+        <ArchiveIcon className="size-3.5 shrink-0 text-fg-3" />
+        <span className="min-w-0 flex-1 truncate">
+          Earlier conversation summarized to keep it inside the model’s context
+        </span>
+        <span className="shrink-0 text-fg-3 tnum">{item.replaced} messages</span>
+        <CaretRightIcon
+          className={cn(
+            'size-3.5 shrink-0 text-fg-3 transition-transform duration-(--dur-1)',
+            open && 'rotate-90',
+          )}
+        />
+      </button>
+      {open && (
+        <div className="border-t border-line-subtle px-3 py-2">
+          <p className="whitespace-pre-wrap text-body text-fg-2">{item.summary}</p>
+          {item.artifacts.length > 0 && (
+            <p className="mt-2 text-meta text-fg-3">Artifacts kept: {item.artifacts.join(', ')}</p>
+          )}
+        </div>
+      )}
     </div>
   );
 }

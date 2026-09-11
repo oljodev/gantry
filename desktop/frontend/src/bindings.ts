@@ -235,6 +235,13 @@ export type AdvancedSettings = {
 	developer_mode?: boolean,
 	/**  How many tool rounds one reply may take before Gantry stops it (01 §3 step 6). */
 	max_tool_rounds?: number,
+	/**
+	 *  What one tool result contributes to the transcript, in kilobytes (05 §8, 02 §6). The
+	 *  head and the tail are kept with a marker between them; the whole output stays in the
+	 *  activity row, which reads from the call record rather than from the transcript. Capping
+	 *  at ingestion is not an edit to history — the message is written down capped.
+	 */
+	max_result_kb?: number,
 };
 
 export type AgentEvent = AgentEvent_Serialize | AgentEvent_Deserialize;
@@ -672,62 +679,102 @@ export type ConnectorsChanged = null;
 export type ContentPart = ContentPart_Serialize | ContentPart_Deserialize;
 
 /**  One block of a message. */
-export type ContentPart_Deserialize = ({ kind: "text"; text: string }) & { added?: never; args?: never; block_kind?: never; call_id?: never; content?: never; id?: never; is_error?: never; item_id?: never; json?: never; mime?: never; name?: never; provider?: never; removed?: never; signature?: never; source?: never } | ({ kind: "image"; source: MediaSource; mime: string }) & { added?: never; args?: never; block_kind?: never; call_id?: never; content?: never; id?: never; is_error?: never; item_id?: never; json?: never; name?: never; provider?: never; removed?: never; signature?: never; text?: never } | ({ kind: "document"; source: MediaSource; mime: string; name: string }) & { added?: never; args?: never; block_kind?: never; call_id?: never; content?: never; id?: never; is_error?: never; item_id?: never; json?: never; provider?: never; removed?: never; signature?: never; text?: never } | 
+export type ContentPart_Deserialize = ({ kind: "text"; text: string }) & { added?: never; args?: never; artifacts?: never; block_kind?: never; call_id?: never; content?: never; id?: never; is_error?: never; item_id?: never; json?: never; mime?: never; name?: never; provider?: never; removed?: never; replaced?: never; signature?: never; source?: never; summary?: never; up_to?: never } | ({ kind: "image"; source: MediaSource; mime: string }) & { added?: never; args?: never; artifacts?: never; block_kind?: never; call_id?: never; content?: never; id?: never; is_error?: never; item_id?: never; json?: never; name?: never; provider?: never; removed?: never; replaced?: never; signature?: never; summary?: never; text?: never; up_to?: never } | ({ kind: "document"; source: MediaSource; mime: string; name: string }) & { added?: never; args?: never; artifacts?: never; block_kind?: never; call_id?: never; content?: never; id?: never; is_error?: never; item_id?: never; json?: never; provider?: never; removed?: never; replaced?: never; signature?: never; summary?: never; text?: never; up_to?: never } | 
 /**
  *  Sound the model produced: a voice reading a passage, or music. What it says, where it
  *  says anything, is the text part beside it — a model that talks writes the same words as
  *  a transcript, and one copy of them is enough.
  */
-({ kind: "audio"; source: MediaSource; mime: string }) & { added?: never; args?: never; block_kind?: never; call_id?: never; content?: never; id?: never; is_error?: never; item_id?: never; json?: never; name?: never; provider?: never; removed?: never; signature?: never; text?: never } | 
+({ kind: "audio"; source: MediaSource; mime: string }) & { added?: never; args?: never; artifacts?: never; block_kind?: never; call_id?: never; content?: never; id?: never; is_error?: never; item_id?: never; json?: never; name?: never; provider?: never; removed?: never; replaced?: never; signature?: never; summary?: never; text?: never; up_to?: never } | 
 /**  A clip the model rendered. */
-({ kind: "video"; source: MediaSource; mime: string }) & { added?: never; args?: never; block_kind?: never; call_id?: never; content?: never; id?: never; is_error?: never; item_id?: never; json?: never; name?: never; provider?: never; removed?: never; signature?: never; text?: never } | ({ kind: "tool_call"; id: CallId; name: string; args: unknown; 
+({ kind: "video"; source: MediaSource; mime: string }) & { added?: never; args?: never; artifacts?: never; block_kind?: never; call_id?: never; content?: never; id?: never; is_error?: never; item_id?: never; json?: never; name?: never; provider?: never; removed?: never; replaced?: never; signature?: never; summary?: never; text?: never; up_to?: never } | ({ kind: "tool_call"; id: CallId; name: string; args: unknown; 
 /**
  *  A provider token bound to the call that must be echoed on replay (Gemini thought
  *  signatures). Opaque; only the provider that produced it reads it.
  */
-signature?: string | null }) & { added?: never; block_kind?: never; call_id?: never; content?: never; is_error?: never; item_id?: never; json?: never; mime?: never; provider?: never; removed?: never; source?: never; text?: never } | ({ kind: "tool_result"; call_id: CallId; content: ResultPart[]; is_error: boolean }) & { added?: never; args?: never; block_kind?: never; id?: never; item_id?: never; json?: never; mime?: never; name?: never; provider?: never; removed?: never; signature?: never; source?: never; text?: never } | 
+signature?: string | null }) & { added?: never; artifacts?: never; block_kind?: never; call_id?: never; content?: never; is_error?: never; item_id?: never; json?: never; mime?: never; provider?: never; removed?: never; replaced?: never; source?: never; summary?: never; text?: never; up_to?: never } | ({ kind: "tool_result"; call_id: CallId; content: ResultPart[]; is_error: boolean }) & { added?: never; args?: never; artifacts?: never; block_kind?: never; id?: never; item_id?: never; json?: never; mime?: never; name?: never; provider?: never; removed?: never; replaced?: never; signature?: never; source?: never; summary?: never; text?: never; up_to?: never } | 
 /**  Model reasoning. Opaque: replayed only to the provider that produced it. */
 ({ kind: "thinking"; text: string; signature: string | null; provider: ProviderKind; 
 /**
  *  The provider's own id for the block when replay needs it (OpenAI Responses reasoning
  *  items carry an `rs_…` id next to their encrypted content).
  */
-item_id?: string | null }) & { added?: never; args?: never; block_kind?: never; call_id?: never; content?: never; id?: never; is_error?: never; json?: never; mime?: never; name?: never; removed?: never; source?: never } | 
+item_id?: string | null }) & { added?: never; args?: never; artifacts?: never; block_kind?: never; call_id?: never; content?: never; id?: never; is_error?: never; json?: never; mime?: never; name?: never; removed?: never; replaced?: never; source?: never; summary?: never; up_to?: never } | 
 /**  Server-tool blocks, citations and other vendor content persisted and replayed verbatim. */
-({ kind: "provider_opaque"; provider: ProviderKind; block_kind: string; json: unknown }) & { added?: never; args?: never; call_id?: never; content?: never; id?: never; is_error?: never; item_id?: never; mime?: never; name?: never; removed?: never; signature?: never; source?: never; text?: never } | 
+({ kind: "provider_opaque"; provider: ProviderKind; block_kind: string; json: unknown }) & { added?: never; args?: never; artifacts?: never; call_id?: never; content?: never; id?: never; is_error?: never; item_id?: never; mime?: never; name?: never; removed?: never; replaced?: never; signature?: never; source?: never; summary?: never; text?: never; up_to?: never } | 
 /**  An instruction change mid-chat (role `System`). */
-({ kind: "system_note"; text: string }) & { added?: never; args?: never; block_kind?: never; call_id?: never; content?: never; id?: never; is_error?: never; item_id?: never; json?: never; mime?: never; name?: never; provider?: never; removed?: never; signature?: never; source?: never } | 
+({ kind: "system_note"; text: string }) & { added?: never; args?: never; artifacts?: never; block_kind?: never; call_id?: never; content?: never; id?: never; is_error?: never; item_id?: never; json?: never; mime?: never; name?: never; provider?: never; removed?: never; replaced?: never; signature?: never; source?: never; summary?: never; up_to?: never } | 
 /**  Connectors attached or detached mid-chat (role `System`). */
-({ kind: "tool_set_change"; added: string[]; removed: string[] }) & { args?: never; block_kind?: never; call_id?: never; content?: never; id?: never; is_error?: never; item_id?: never; json?: never; mime?: never; name?: never; provider?: never; signature?: never; source?: never; text?: never };
+({ kind: "tool_set_change"; added: string[]; removed: string[] }) & { args?: never; artifacts?: never; block_kind?: never; call_id?: never; content?: never; id?: never; is_error?: never; item_id?: never; json?: never; mime?: never; name?: never; provider?: never; replaced?: never; signature?: never; source?: never; summary?: never; text?: never; up_to?: never } | 
+/**
+ *  Everything before this point, summarized (docs/plan/02 §6, role `System`).
+ * 
+ *  The messages it stands for are still in the database and still drawn in the chat — the
+ *  transcript is append-only and nothing is ever edited out of it (02 §6). Only the request
+ *  skips them, which is why this is a marker and not a deletion.
+ */
+({ kind: "compacted"; summary: string; 
+/**
+ *  The last message the summary covers. Projection drops everything up to and
+ *  including it, wherever this marker itself happens to sit.
+ */
+up_to: MessageId; 
+/**  How many messages that was, for the row the reader sees. */
+replaced: number; 
+/**
+ *  Artifacts made in the summarized span (13 §7). They outlive the messages that made
+ *  them, so the model is told their ids and can read one back when it needs it.
+ */
+artifacts?: string[] }) & { added?: never; args?: never; block_kind?: never; call_id?: never; content?: never; id?: never; is_error?: never; item_id?: never; json?: never; mime?: never; name?: never; provider?: never; removed?: never; signature?: never; source?: never; text?: never };
 
 /**  One block of a message. */
-export type ContentPart_Serialize = ({ kind: "text"; text: string }) & { added?: never; args?: never; block_kind?: never; call_id?: never; content?: never; id?: never; is_error?: never; item_id?: never; json?: never; mime?: never; name?: never; provider?: never; removed?: never; signature?: never; source?: never } | ({ kind: "image"; source: MediaSource; mime: string }) & { added?: never; args?: never; block_kind?: never; call_id?: never; content?: never; id?: never; is_error?: never; item_id?: never; json?: never; name?: never; provider?: never; removed?: never; signature?: never; text?: never } | ({ kind: "document"; source: MediaSource; mime: string; name: string }) & { added?: never; args?: never; block_kind?: never; call_id?: never; content?: never; id?: never; is_error?: never; item_id?: never; json?: never; provider?: never; removed?: never; signature?: never; text?: never } | 
+export type ContentPart_Serialize = ({ kind: "text"; text: string }) & { added?: never; args?: never; artifacts?: never; block_kind?: never; call_id?: never; content?: never; id?: never; is_error?: never; item_id?: never; json?: never; mime?: never; name?: never; provider?: never; removed?: never; replaced?: never; signature?: never; source?: never; summary?: never; up_to?: never } | ({ kind: "image"; source: MediaSource; mime: string }) & { added?: never; args?: never; artifacts?: never; block_kind?: never; call_id?: never; content?: never; id?: never; is_error?: never; item_id?: never; json?: never; name?: never; provider?: never; removed?: never; replaced?: never; signature?: never; summary?: never; text?: never; up_to?: never } | ({ kind: "document"; source: MediaSource; mime: string; name: string }) & { added?: never; args?: never; artifacts?: never; block_kind?: never; call_id?: never; content?: never; id?: never; is_error?: never; item_id?: never; json?: never; provider?: never; removed?: never; replaced?: never; signature?: never; summary?: never; text?: never; up_to?: never } | 
 /**
  *  Sound the model produced: a voice reading a passage, or music. What it says, where it
  *  says anything, is the text part beside it — a model that talks writes the same words as
  *  a transcript, and one copy of them is enough.
  */
-({ kind: "audio"; source: MediaSource; mime: string }) & { added?: never; args?: never; block_kind?: never; call_id?: never; content?: never; id?: never; is_error?: never; item_id?: never; json?: never; name?: never; provider?: never; removed?: never; signature?: never; text?: never } | 
+({ kind: "audio"; source: MediaSource; mime: string }) & { added?: never; args?: never; artifacts?: never; block_kind?: never; call_id?: never; content?: never; id?: never; is_error?: never; item_id?: never; json?: never; name?: never; provider?: never; removed?: never; replaced?: never; signature?: never; summary?: never; text?: never; up_to?: never } | 
 /**  A clip the model rendered. */
-({ kind: "video"; source: MediaSource; mime: string }) & { added?: never; args?: never; block_kind?: never; call_id?: never; content?: never; id?: never; is_error?: never; item_id?: never; json?: never; name?: never; provider?: never; removed?: never; signature?: never; text?: never } | ({ kind: "tool_call"; id: CallId; name: string; args: unknown; 
+({ kind: "video"; source: MediaSource; mime: string }) & { added?: never; args?: never; artifacts?: never; block_kind?: never; call_id?: never; content?: never; id?: never; is_error?: never; item_id?: never; json?: never; name?: never; provider?: never; removed?: never; replaced?: never; signature?: never; summary?: never; text?: never; up_to?: never } | ({ kind: "tool_call"; id: CallId; name: string; args: unknown; 
 /**
  *  A provider token bound to the call that must be echoed on replay (Gemini thought
  *  signatures). Opaque; only the provider that produced it reads it.
  */
-signature?: string | null }) & { added?: never; block_kind?: never; call_id?: never; content?: never; is_error?: never; item_id?: never; json?: never; mime?: never; provider?: never; removed?: never; source?: never; text?: never } | ({ kind: "tool_result"; call_id: CallId; content: ResultPart[]; is_error: boolean }) & { added?: never; args?: never; block_kind?: never; id?: never; item_id?: never; json?: never; mime?: never; name?: never; provider?: never; removed?: never; signature?: never; source?: never; text?: never } | 
+signature?: string | null }) & { added?: never; artifacts?: never; block_kind?: never; call_id?: never; content?: never; is_error?: never; item_id?: never; json?: never; mime?: never; provider?: never; removed?: never; replaced?: never; source?: never; summary?: never; text?: never; up_to?: never } | ({ kind: "tool_result"; call_id: CallId; content: ResultPart[]; is_error: boolean }) & { added?: never; args?: never; artifacts?: never; block_kind?: never; id?: never; item_id?: never; json?: never; mime?: never; name?: never; provider?: never; removed?: never; replaced?: never; signature?: never; source?: never; summary?: never; text?: never; up_to?: never } | 
 /**  Model reasoning. Opaque: replayed only to the provider that produced it. */
 ({ kind: "thinking"; text: string; signature: string | null; provider: ProviderKind; 
 /**
  *  The provider's own id for the block when replay needs it (OpenAI Responses reasoning
  *  items carry an `rs_…` id next to their encrypted content).
  */
-item_id?: string | null }) & { added?: never; args?: never; block_kind?: never; call_id?: never; content?: never; id?: never; is_error?: never; json?: never; mime?: never; name?: never; removed?: never; source?: never } | 
+item_id?: string | null }) & { added?: never; args?: never; artifacts?: never; block_kind?: never; call_id?: never; content?: never; id?: never; is_error?: never; json?: never; mime?: never; name?: never; removed?: never; replaced?: never; source?: never; summary?: never; up_to?: never } | 
 /**  Server-tool blocks, citations and other vendor content persisted and replayed verbatim. */
-({ kind: "provider_opaque"; provider: ProviderKind; block_kind: string; json: unknown }) & { added?: never; args?: never; call_id?: never; content?: never; id?: never; is_error?: never; item_id?: never; mime?: never; name?: never; removed?: never; signature?: never; source?: never; text?: never } | 
+({ kind: "provider_opaque"; provider: ProviderKind; block_kind: string; json: unknown }) & { added?: never; args?: never; artifacts?: never; call_id?: never; content?: never; id?: never; is_error?: never; item_id?: never; mime?: never; name?: never; removed?: never; replaced?: never; signature?: never; source?: never; summary?: never; text?: never; up_to?: never } | 
 /**  An instruction change mid-chat (role `System`). */
-({ kind: "system_note"; text: string }) & { added?: never; args?: never; block_kind?: never; call_id?: never; content?: never; id?: never; is_error?: never; item_id?: never; json?: never; mime?: never; name?: never; provider?: never; removed?: never; signature?: never; source?: never } | 
+({ kind: "system_note"; text: string }) & { added?: never; args?: never; artifacts?: never; block_kind?: never; call_id?: never; content?: never; id?: never; is_error?: never; item_id?: never; json?: never; mime?: never; name?: never; provider?: never; removed?: never; replaced?: never; signature?: never; source?: never; summary?: never; up_to?: never } | 
 /**  Connectors attached or detached mid-chat (role `System`). */
-({ kind: "tool_set_change"; added: string[]; removed: string[] }) & { args?: never; block_kind?: never; call_id?: never; content?: never; id?: never; is_error?: never; item_id?: never; json?: never; mime?: never; name?: never; provider?: never; signature?: never; source?: never; text?: never };
+({ kind: "tool_set_change"; added: string[]; removed: string[] }) & { args?: never; artifacts?: never; block_kind?: never; call_id?: never; content?: never; id?: never; is_error?: never; item_id?: never; json?: never; mime?: never; name?: never; provider?: never; replaced?: never; signature?: never; source?: never; summary?: never; text?: never; up_to?: never } | 
+/**
+ *  Everything before this point, summarized (docs/plan/02 §6, role `System`).
+ * 
+ *  The messages it stands for are still in the database and still drawn in the chat — the
+ *  transcript is append-only and nothing is ever edited out of it (02 §6). Only the request
+ *  skips them, which is why this is a marker and not a deletion.
+ */
+({ kind: "compacted"; summary: string; 
+/**
+ *  The last message the summary covers. Projection drops everything up to and
+ *  including it, wherever this marker itself happens to sit.
+ */
+up_to: MessageId; 
+/**  How many messages that was, for the row the reader sees. */
+replaced: number; 
+/**
+ *  Artifacts made in the summarized span (13 §7). They outlive the messages that made
+ *  them, so the model is told their ids and can read one back when it needs it.
+ */
+artifacts?: string[] }) & { added?: never; args?: never; block_kind?: never; call_id?: never; content?: never; id?: never; is_error?: never; item_id?: never; json?: never; mime?: never; name?: never; provider?: never; removed?: never; signature?: never; source?: never; text?: never };
 
 export type CustomEndpoint = {
 	label: string,

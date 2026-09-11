@@ -148,6 +148,23 @@ pub enum ContentPart {
         added: Vec<String>,
         removed: Vec<String>,
     },
+    /// Everything before this point, summarized (docs/plan/02 §6, role `System`).
+    ///
+    /// The messages it stands for are still in the database and still drawn in the chat — the
+    /// transcript is append-only and nothing is ever edited out of it (02 §6). Only the request
+    /// skips them, which is why this is a marker and not a deletion.
+    Compacted {
+        summary: String,
+        /// The last message the summary covers. Projection drops everything up to and
+        /// including it, wherever this marker itself happens to sit.
+        up_to: MessageId,
+        /// How many messages that was, for the row the reader sees.
+        replaced: u32,
+        /// Artifacts made in the summarized span (13 §7). They outlive the messages that made
+        /// them, so the model is told their ids and can read one back when it needs it.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        artifacts: Vec<String>,
+    },
 }
 
 impl ContentPart {
@@ -174,6 +191,30 @@ impl ContentPart {
                     ));
                 }
                 (!lines.is_empty()).then(|| lines.join(" "))
+            }
+            ContentPart::Compacted {
+                summary,
+                replaced,
+                artifacts,
+                ..
+            } => {
+                let mut text = format!(
+                    "The earlier part of this conversation ({replaced} messages) is no longer \
+                     in your context. Here is what happened in it:\n\n{summary}"
+                );
+                if !artifacts.is_empty() {
+                    text.push_str(&format!(
+                        "\n\nArtifacts made in that part, still readable with \
+                         `gantry__read_artifact`: {}.",
+                        artifacts.join(", ")
+                    ));
+                }
+                text.push_str(
+                    "\n\nEverything after this point is the conversation verbatim. If you need \
+                     a detail from before it that the summary does not have, say so rather than \
+                     inventing one.",
+                );
+                Some(text)
             }
             _ => None,
         }

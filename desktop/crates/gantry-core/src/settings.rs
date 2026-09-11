@@ -196,6 +196,11 @@ pub struct AdvancedSettings {
     pub developer_mode: bool,
     /// How many tool rounds one reply may take before Gantry stops it (01 §3 step 6).
     pub max_tool_rounds: u32,
+    /// What one tool result contributes to the transcript, in kilobytes (05 §8, 02 §6). The
+    /// head and the tail are kept with a marker between them; the whole output stays in the
+    /// activity row, which reads from the call record rather than from the transcript. Capping
+    /// at ingestion is not an edit to history — the message is written down capped.
+    pub max_result_kb: u32,
 }
 
 impl Default for AdvancedSettings {
@@ -204,6 +209,7 @@ impl Default for AdvancedSettings {
             max_output_tokens: 8192,
             developer_mode: false,
             max_tool_rounds: 50,
+            max_result_kb: 50,
         }
     }
 }

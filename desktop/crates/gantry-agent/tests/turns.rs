@@ -37,6 +37,8 @@ struct Scripted {
     delay: Duration,
     /// Requests seen, newest last (the title generator sends one more).
     requests: Mutex<Vec<ChatRequest>>,
+    /// What this provider says the model's window is, for the context budget (02 §6).
+    window: Option<u32>,
 }
 
 #[async_trait]
@@ -53,18 +55,36 @@ impl Provider for Scripted {
     async fn list_models(&self) -> Result<Vec<ModelInfo>, ProviderError> {
         Ok(Vec::new())
     }
+    fn model_info(&self, model: &str) -> Option<ModelInfo> {
+        let window = self.window?;
+        Some(ModelInfo {
+            id: model.to_owned(),
+            display_name: model.to_owned(),
+            created_at: None,
+            context_window: Some(window),
+            max_output: None,
+            pricing: None,
+            capabilities: gantry_providers::ModelCapabilities::default(),
+        })
+    }
     async fn check_key(&self) -> Result<KeyInfo, ProviderError> {
         Ok(KeyInfo::default())
     }
     async fn stream(&self, req: ChatRequest) -> Result<ChatStream, ProviderError> {
         let title_request = req.system.starts_with("You name conversations");
+        let summary_request = req.system.starts_with("You are summarizing");
         self.requests.lock().unwrap().push(req);
         let delay = self.delay;
-        let events = if title_request {
+        let events = if title_request || summary_request {
+            let reply = if title_request {
+                "\"A generated title.\""
+            } else {
+                "**Goal.** Ship the thing."
+            };
             vec![
                 Ok(StreamEvent::TextDelta {
                     index: 0,
-                    text: "\"A generated title.\"".into(),
+                    text: reply.into(),
                 }),
                 Ok(StreamEvent::MessageEnd {
                     stop_reason: StopReason::EndTurn,
@@ -262,11 +282,21 @@ fn attach_fake(store: &Arc<gantry_store::Store>, chat_id: gantry_core::ChatId) {
 }
 
 fn manager_with(rounds: Vec<Script>, delay: Duration, settings: Settings) -> Harness {
+    manager_windowed(rounds, delay, settings, None)
+}
+
+fn manager_windowed(
+    rounds: Vec<Script>,
+    delay: Duration,
+    settings: Settings,
+    window: Option<u32>,
+) -> Harness {
     let provider = Arc::new(Scripted {
         id: ProviderId::openrouter(),
         rounds: Mutex::new(rounds.into()),
         delay,
         requests: Mutex::new(Vec::new()),
+        window,
     });
     let fake = Arc::new(Fake {
         descriptor: ConnectorDescriptor {
@@ -1182,4 +1212,158 @@ async fn a_chat_sees_only_the_connectors_it_attached() {
         system.contains("installed, not attached: fake (0 tools)"),
         "{system}"
     );
+}
+
+/// Context management, end to end (02 §6): a chat that grows past three quarters of the model's
+/// window gets its older turns summarized, and the next request carries the summary instead of
+/// the messages. Nothing is deleted — the chat still shows every one of them.
+#[tokio::test]
+async fn a_long_chat_is_summarized_and_the_next_request_carries_the_summary() {
+    // A small window, so a handful of ordinary turns is enough to cross the threshold, and a
+    // usage report the provider makes, which is what the budget prefers to counting characters.
+    let heavy = || -> Script {
+        vec![
+            text("ok"),
+            Ok(StreamEvent::Usage(Usage {
+                input: 900,
+                output: 10,
+                ..Default::default()
+            })),
+            end(),
+        ]
+    };
+    let m = manager_windowed(
+        (0..8).map(|_| heavy()).collect(),
+        Duration::ZERO,
+        Settings::default(),
+        Some(1_000),
+    );
+    let chat = m.chat();
+
+    // Six exchanges. Keep-tail leaves the last three turns alone, so it takes more than three
+    // before there is anything old enough — and long enough — to be worth summarizing.
+    for i in 0..6 {
+        let sink = Arc::new(Collect::default());
+        m.start(chat.id, format!("question {i}"), Vec::new(), sink.clone())
+            .unwrap();
+        wait_for(|| sink.completed() == Some(TurnStatus::Completed)).await;
+    }
+    wait_for(|| {
+        m.requests()
+            .iter()
+            .any(|r| r.system.starts_with("You are summarizing"))
+    })
+    .await;
+
+    // The summarizer was asked with the cheap model and saw what happened, not the raw window.
+    let summary_req = m
+        .requests()
+        .into_iter()
+        .find(|r| r.system.starts_with("You are summarizing"))
+        .expect("the budget asked for a summary");
+    assert_eq!(summary_req.model, "deepseek/deepseek-v4-flash");
+    assert!(summary_req.messages[0].text().contains("question 0"));
+
+    // The marker is in the transcript, and it is a system message, so the chat still shows
+    // every message it stands for.
+    wait_for(|| {
+        m.chats()
+            .get(chat.id)
+            .unwrap()
+            .unwrap()
+            .turns
+            .iter()
+            .any(|t| {
+                t.messages.iter().any(|msg| {
+                    msg.parts
+                        .iter()
+                        .any(|p| matches!(p, ContentPart::Compacted { .. }))
+                })
+            })
+    })
+    .await;
+    let detail = m.chats().get(chat.id).unwrap().unwrap();
+    assert_eq!(detail.turns.len(), 6, "every turn is still in the chat");
+    let asked: Vec<String> = detail.turns.iter().map(|t| t.user.text()).collect();
+    assert_eq!(
+        asked,
+        (0..6).map(|i| format!("question {i}")).collect::<Vec<_>>(),
+        "including the ones the summary stands for: compaction is a marker, not a delete"
+    );
+
+    // The next request sends the summary and the kept tail, not the summarized messages.
+    let before = m.requests().len();
+    let sink = Arc::new(Collect::default());
+    m.start(chat.id, "question 4".into(), Vec::new(), sink.clone())
+        .unwrap();
+    wait_for(|| sink.completed().is_some()).await;
+    let next = m.requests()[before].clone();
+    let sent: String = next
+        .messages
+        .iter()
+        .map(gantry_core::Message::text)
+        .collect();
+    assert!(
+        next.messages.iter().any(|msg| msg
+            .parts
+            .iter()
+            .any(|p| matches!(p, ContentPart::Compacted { .. }))),
+        "the summary goes first"
+    );
+    assert!(
+        !sent.contains("question 0"),
+        "the summarized messages are not sent again: {sent}"
+    );
+    assert!(sent.contains("question 4"), "and the new one is: {sent}");
+}
+
+/// A tool result too large for the transcript is cut at ingestion, keeping both ends, and the
+/// cut is what gets written down (05 §8). The setting is in Settings → Advanced.
+#[tokio::test]
+async fn a_huge_tool_result_is_cut_to_the_configured_size() {
+    let mut settings = Settings::default();
+    settings.advanced.max_result_kb = 1;
+    let m = manager_with(
+        vec![
+            vec![
+                Ok(StreamEvent::ToolCallStart {
+                    index: 0,
+                    id: CallId("c1".into()),
+                    name: "fake__echo".into(),
+                }),
+                Ok(StreamEvent::ToolCallEnd {
+                    index: 0,
+                    args: serde_json::json!({ "text": "x".repeat(20_000) }),
+                }),
+                end(),
+            ],
+            vec![text("done"), end()],
+        ],
+        Duration::ZERO,
+        settings,
+    );
+    let chat = m.chat();
+    let sink = Arc::new(Collect::default());
+    m.start(chat.id, "echo a lot".into(), Vec::new(), sink.clone())
+        .unwrap();
+    wait_for(|| sink.completed() == Some(TurnStatus::Completed)).await;
+
+    let second = m.requests()[1].clone();
+    let result = second
+        .messages
+        .iter()
+        .flat_map(|msg| msg.parts.iter())
+        .find_map(|p| match p {
+            ContentPart::ToolResult { content, .. } => {
+                Some(gantry_core::result_preview(content, usize::MAX))
+            }
+            _ => None,
+        })
+        .expect("the result reached the next request");
+    assert!(
+        result.len() < 4_000,
+        "cut to about a kilobyte: {}",
+        result.len()
+    );
+    assert!(result.contains("characters omitted"), "and says so");
 }

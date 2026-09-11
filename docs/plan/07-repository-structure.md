@@ -124,7 +124,8 @@ gantry/
 │   │   │   └── src/
 │   │   │       ├── lib.rs  chats.rs  events.rs  turn_manager.rs  runner.rs   # chats.rs: the ChatBook on the store; events.rs: EventSink, FanoutSink, Batcher
 │   │   │       ├── persist.rs  title.rs  attachments.rs  export.rs   # the persister (05 §3), the title generator, attachment ingest, chat export
-│   │   │       ├── transcript.rs  projection.rs  context.rs  system_prompt.rs   # system_prompt assembles the layers of 10 §2 and the mode note
+│   │   │       ├── system_prompt.rs          # assembles the layers of 10 §2 and the mode note
+│   │   │       ├── context.rs                # the context budget, keep-tail compaction and the marker (02 §6)
 │   │   │       ├── tools.rs                  # the ToolSet of one turn: namespaced specs, mode filter, name map
 │   │   │       ├── permissions.rs            # the guardrail floor, the mode table and grants (M3, M7); the judge joins with M8
 │   │   │       ├── runtime_tools/{mod.rs, clock.rs, artifacts.rs, catalog.rs; later skills.rs, memory.rs}

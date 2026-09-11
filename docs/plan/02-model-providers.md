@@ -326,6 +326,49 @@ checks the content type and says so either way.
 - Anthropic: server-side context editing (`clear_tool_uses_20250919`) first; server-side compaction when available; client-side "simple compaction" as the last resort (a summary produced by the judge model replaces the whole history, then the transcript continues append-only from a compaction marker message). Never keep-tail compaction.
 - Others: keep-tail compaction (summarize older turns, keep the last N turns verbatim). The compaction marker is a `System` message so the UI can show "Earlier conversation summarized".
 
+### As built (2026-09-11)
+
+`gantry-agent/src/context.rs`, with the summarizer's instructions in
+`desktop/assets/prompts/compaction.md`. Five things the paragraph above did not settle.
+
+**A marker, never a deletion.** Compaction appends one `System` message carrying
+`ContentPart::Compacted { summary, up_to, replaced, artifacts }`. `up_to` names the last message
+the summary covers; `context::live` drops everything up to it when a turn loads the transcript,
+and nothing else in the app changes. The rows stay in the database and stay on the screen, which
+is what the append-only rule of §1 requires and also what a person needs — a model that "forgot"
+something written three rows above looks broken unless the reason is on screen between them.
+
+**The marker is appended last and projected first.** A summary of the beginning belongs at the
+beginning, but an append-only transcript can only grow at the end. `live` resolves this: it
+returns the marker, then the messages the marker does not cover. So the database ordering and
+the request ordering can both be right.
+
+**Compaction runs between turns, never inside one.** A turn's tool calls and their results have
+to reach the model together, and summarizing a conversation the assistant is in the middle of is
+how a tool loop loses the thread. The check runs when a turn finishes and sizes the request the
+*next* turn will make, after the answer is on screen — so it costs the user no waiting, and the
+marker arrives with the chat's next refresh. What defends a single runaway turn is the tool
+result cap and `max_tool_rounds`, not this.
+
+**The estimate prefers what the provider charged for.** At the end of a turn the last round's
+`usage` is a measurement, not a guess: `input + cache_read + output` is very close to the next
+request's prefix. Counting characters at four per token, plus the system prompt and the tool
+schemas, is the fallback for a provider that reported nothing — good to perhaps ±25%, which is
+why the threshold is three quarters of the window rather than the edge of it. A model whose
+window nobody knows is assumed to have 128k.
+
+**The cut lands on a turn boundary.** Keep-tail keeps the last three turns; the cut is always
+before a user message, so a tool call never ends up inside the summary while its result stays in
+the transcript. Anthropic keeps none, per the rule above, which makes "simple compaction" the
+same code with `keep = 0`. A span shorter than four messages is not worth a model call.
+
+Two things are deliberately not built. **Anthropic's server-side context editing and server-side
+compaction** are beta request shapes that cannot be verified without an Anthropic key, and
+writing unverifiable JSON against a beta API is worse than not writing it: Anthropic gets simple
+compaction, which is the documented last resort and is provider-neutral code. **The full tool
+output as a blob** is still missing, so a capped result is capped everywhere rather than capped
+for the model and whole in the drawer; the activity row keeps what streamed.
+
 ## 7. Errors, retries, timeouts
 
 ```rust

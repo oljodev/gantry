@@ -86,6 +86,14 @@ export type ActivityItem =
       durationMs?: number;
     }
   | { kind: 'guard'; id: string; ok: boolean; reason?: string }
+  | {
+      /** Everything before this point, summarized (02 §6). The messages are still above it. */
+      kind: 'compacted';
+      id: string;
+      replaced: number;
+      summary: string;
+      artifacts: string[];
+    }
   | { kind: 'notice'; id: string; text: string }
   | {
       kind: 'artifact';

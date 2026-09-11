@@ -178,6 +178,21 @@ function messagesToBlocks(
     return parts.length > 0 && parts[parts.length - 1]?.kind === 'thinking';
   };
   for (const m of messages) {
+    // A compaction marker is a system message, and the one system message worth drawing: it is
+    // the reason the model no longer knows what is written a few rows above it (02 §6).
+    if (m.role === 'system') {
+      for (const part of m.parts) {
+        if (part?.kind !== 'compacted') continue;
+        pushItem({
+          kind: 'compacted',
+          id: m.id,
+          replaced: part.replaced,
+          summary: part.summary,
+          artifacts: part.artifacts ?? [],
+        });
+      }
+      continue;
+    }
     if (m.role !== 'assistant') continue;
     for (const part of m.parts) {
       if (!part) continue;

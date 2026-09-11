@@ -816,12 +816,16 @@ fn detail(
 }
 
 /// Every message of the chat in order, minus assistant messages that kept nothing.
+/// The stored rows as a turn sees them: empty assistant messages dropped, and everything a
+/// compaction marker stands for left behind (02 §6). The rows themselves are untouched — the
+/// chat still shows all of them; this is only what the next request carries.
 fn transcript(messages: &[MessageRecord]) -> Vec<Message> {
-    messages
+    let all: Vec<Message> = messages
         .iter()
         .filter(|m| !(m.message.role == Role::Assistant && m.message.parts.is_empty()))
         .map(|m| m.message.clone())
-        .collect()
+        .collect();
+    crate::context::live(&all)
 }
 
 /// Media a model produced is parked in the blob store instead of being kept inside the message.

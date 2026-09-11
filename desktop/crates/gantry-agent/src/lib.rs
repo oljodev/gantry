@@ -7,6 +7,7 @@
 pub mod artifacts;
 pub mod attachments;
 pub mod chats;
+pub mod context;
 pub mod events;
 pub mod export;
 pub mod interactions;

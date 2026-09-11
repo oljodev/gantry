@@ -57,7 +57,7 @@ Types are indicative; the migrations are the source of truth.
 - **messages** — `id, chat_id, turn_id NULL, seq, role (user|assistant|tool|system), parts_json` (the `ContentPart[]` of 02 §2; media parts reference blobs), `text` (the concatenated text parts, for search), `origin_provider NULL, stop_reason NULL, usage_json NULL, created_at`. `turn_id` is `NULL` for the `SystemNote` messages appended between turns (10 §4).
 - **attachments** — `id, message_id, chat_id, name, mime, size, blob_hash, extracted_text NULL, created_at`
 
-The transcript is `messages` ordered by `seq`. It is append-only; edits to history are never made in place (02 §6). Compaction inserts a `system` message with the summary and a marker; older rows stay for the UI.
+The transcript is `messages` ordered by `seq`. It is append-only; edits to history are never made in place (02 §6). Compaction inserts a `system` message whose `ContentPart::Compacted` carries the summary and the id of the last message it covers; older rows stay for the UI, and a turn's projection is the only thing that skips them. No migration was needed for it: a content part is JSON inside the row it already had.
 
 ### Activity (append-only log plus projections)
 

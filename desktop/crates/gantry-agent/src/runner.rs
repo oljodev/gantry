@@ -24,6 +24,7 @@ use serde_json::json;
 
 use crate::{
     chats::{ChatBook, TurnInput, TurnOutcome},
+    context,
     interactions::Interactions,
     permissions::{self, Decision},
     tools::{ToolEntry, ToolSet, display_for},
@@ -32,7 +33,8 @@ use crate::{
 
 /// Result previews in rows and the projection stop here.
 pub const PREVIEW_CHARS: usize = 2_000;
-/// What the model receives of one result, at most (05 §8).
+/// What the model receives of one result when nobody has said otherwise (05 §8); the setting
+/// that overrides it is `advanced.max_result_kb`.
 pub const RESULT_MAX_BYTES: usize = 50 * 1024;
 
 pub struct RunContext {
@@ -40,6 +42,8 @@ pub struct RunContext {
     pub provider: Option<Arc<dyn Provider>>,
     pub max_output_tokens: u32,
     pub max_tool_rounds: u32,
+    /// What one tool result may contribute to the transcript (05 §8).
+    pub max_result_bytes: usize,
     /// What the user chose for this chat's model, where it makes something other than text.
     pub media: gantry_core::MediaOptions,
     /// The floor of 04 §5, compiled once for the turn: the rules no mode and no grant lifts.
@@ -92,10 +96,16 @@ pub async fn run_turn(ctx: RunContext) {
         });
     }
     let mut usage_total: Option<Usage> = None;
+    // The *last* round's usage, not the sum: it is the size of the prompt the provider just
+    // charged for, which is what the next request's prefix will be (02 §6).
+    let mut last_usage: Option<Usage> = None;
     let mut rounds: u32 = 0;
     let mut call_count: u32 = 0;
     let (status, stop_reason, error) = loop {
         let round = stream_round(&ctx, &transcript).await;
+        if round.usage.is_some() {
+            last_usage = round.usage;
+        }
         usage_total = match (usage_total, round.usage) {
             (Some(a), Some(b)) => Some(a.plus(b)),
             (a, b) => a.or(b),
@@ -180,6 +190,7 @@ pub async fn run_turn(ctx: RunContext) {
                     );
                 }
                 if calls.is_empty() {
+                    transcript.push(assistant.clone());
                     break (TurnStatus::Completed, Some(reason), None);
                 }
                 rounds += 1;
@@ -279,6 +290,70 @@ pub async fn run_turn(ctx: RunContext) {
         tool_calls: call_count,
     });
     batcher.close();
+
+    // After the answer is on screen, not before it (02 §6). The turn is finished and its events
+    // are closed; the marker this may append reaches the interface with the chat's next refresh,
+    // where it reads as the row it is rather than as a pause at the end of a reply.
+    if status == TurnStatus::Completed {
+        compact_if_needed(&ctx, &transcript, last_usage.as_ref()).await;
+    }
+}
+
+/// Summarizes the older part of the chat when the next request would come too close to the
+/// model's window (02 §6). Nothing is removed: one `System` message is appended saying what the
+/// summary stands for, and the projection of every later turn skips those messages.
+///
+/// Every failure here is survivable and none of them is worth telling the user about at the end
+/// of an answer that worked: without a marker the next turn simply sends more, and if that is
+/// genuinely too much the provider says so with a `ContextTooLong` the user can act on.
+async fn compact_if_needed(ctx: &RunContext, transcript: &[Message], last: Option<&Usage>) {
+    let Some(provider) = ctx.provider.clone() else {
+        return;
+    };
+    let specs = ctx.tools.read().unwrap_or_else(|e| e.into_inner()).specs();
+    let overhead = context::overhead(&ctx.input.system, &specs);
+    let estimate = context::estimate(transcript, overhead, last);
+    let window = provider
+        .model_info(&ctx.input.model.model)
+        .and_then(|m| m.context_window);
+    if !context::over_budget(estimate, window) {
+        return;
+    }
+    let keep = context::keep_turns(provider.kind());
+    let Some(span) = context::span(transcript, keep) else {
+        log::info!(
+            "chat {} is at ~{estimate} tokens but has nothing older to summarize",
+            ctx.input.chat_id
+        );
+        return;
+    };
+    let messages = &transcript[span.clone()];
+    let Some(up_to) = messages.last().map(|m| m.id) else {
+        return;
+    };
+    let artifacts = context::artifacts_in(messages);
+    let model = crate::title::judge_model(
+        ctx.input.model.provider.as_str(),
+        provider.kind(),
+        &ctx.input.model.model,
+    );
+    log::info!(
+        "compacting chat {}: ~{estimate} tokens, summarizing {} of {} messages",
+        ctx.input.chat_id,
+        messages.len(),
+        transcript.len()
+    );
+    match context::summarize(provider, model, messages, &artifacts).await {
+        Ok(summary) => {
+            let marker = context::marker(summary, up_to, messages.len(), artifacts);
+            ctx.chats
+                .append_turn_message(ctx.input.chat_id, ctx.input.turn_id, marker, None, None);
+            if let Some(notifier) = &ctx.notifier {
+                notifier.chats_changed(vec![ctx.input.chat_id]);
+            }
+        }
+        Err(err) => log::warn!("could not summarize chat {}: {err}", ctx.input.chat_id),
+    }
 }
 
 /// One model request: streams until the message ends, cancel trips, or the provider fails.
@@ -977,7 +1052,11 @@ async fn execute(ctx: &RunContext, call: &Call, entry: ToolEntry) -> ContentPart
         ),
         Some(Ok(ToolOutcome::Complete {
             content, is_error, ..
-        })) => (ToolCallStatus::Completed, is_error, cap_result(content)),
+        })) => (
+            ToolCallStatus::Completed,
+            is_error,
+            cap_result(content, ctx.max_result_bytes),
+        ),
     };
     complete_call(ctx, &call.id, status, is_error, elapsed, content)
 }
@@ -1079,7 +1158,12 @@ impl ToolEventSink for TurnToolEvents {
 }
 
 /// Keeps a result under the transcript limit: head and tail with a marker between (05 §8).
-fn cap_result(content: Vec<ResultPart>) -> Vec<ResultPart> {
+///
+/// This happens at ingestion, so the capped form is what is written down and what every later
+/// request carries. That is deliberate: a cap applied at projection time would make the same
+/// message mean different things on different turns, and 02 §6 forbids history that changes
+/// under the model. The whole output is still in the activity row and its drawer.
+fn cap_result(content: Vec<ResultPart>, max: usize) -> Vec<ResultPart> {
     let size: usize = content
         .iter()
         .map(|p| match p {
@@ -1089,11 +1173,11 @@ fn cap_result(content: Vec<ResultPart>) -> Vec<ResultPart> {
             ResultPart::Resource { summary, .. } => summary.len(),
         })
         .sum();
-    if size <= RESULT_MAX_BYTES {
+    if size <= max {
         return content;
     }
     let text = result_preview(&content, usize::MAX);
-    let half = RESULT_MAX_BYTES / 2;
+    let half = (max / 2).max(1);
     let head: String = text.chars().take(half).collect();
     let tail: String = text
         .chars()
@@ -1151,7 +1235,7 @@ mod tests {
     #[test]
     fn oversized_results_keep_head_and_tail() {
         let big = "x".repeat(RESULT_MAX_BYTES + 100);
-        let capped = cap_result(vec![ResultPart::Text { text: big }]);
+        let capped = cap_result(vec![ResultPart::Text { text: big }], RESULT_MAX_BYTES);
         let ResultPart::Text { text } = &capped[0] else {
             panic!()
         };

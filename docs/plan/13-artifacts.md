@@ -178,7 +178,7 @@ artifacts_fts      FTS5 over title, summary and the current version's text
 Model-made versions need no extra bookkeeping: the tool calls that produced them are in the transcript, so the model knows the content it wrote. The two cases where the model's knowledge would drift are handled with appended `SystemNote`s, never with edits to earlier messages (02 §6, T5):
 
 - **User edit or restore.** Right after the save, a `SystemNote` states "The user edited artifact `…` (now v4)" followed by the full content when it is under about 8,000 tokens (32 KB), otherwise a sentence pointing at `gantry__read_artifact` (a unified diff replaces that sentence once M6's diff engine exists).
-- **Compaction.** The compaction prompt (02 §6) is instructed to list the ids, titles and types of artifacts in the summarized span, so the model can `gantry__read_artifact` when it needs one.
+- **Compaction.** The compaction prompt (02 §6) is instructed to list the ids, titles and types of artifacts in the summarized span, so the model can `gantry__read_artifact` when it needs one. **Built 2026-09-11:** `context::artifacts_in` collects them from the `create_artifact` and `update_artifact` calls in the span, the marker carries them, and `system_text` names them to the model beside the sentence that says they are still readable.
 
 The model can always call `gantry__read_artifact` to refresh its view; the core prompt tells it to do so before editing an artifact it did not write in the current turn.
 

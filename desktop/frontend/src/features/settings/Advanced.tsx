@@ -56,6 +56,19 @@ export function Advanced() {
             onCommit={(v) => patch({ max_tool_rounds: v })}
           />
         </SettingsRow>
+        <SettingsRow
+          label="Tool result size"
+          hint="How much of one tool result the model is given, in kilobytes. Both ends are kept; the whole output stays in the activity row."
+        >
+          <NumberInput
+            aria-label="Tool result size in kilobytes"
+            value={advanced.max_result_kb}
+            min={1}
+            max={1024}
+            step={1}
+            onCommit={(v) => patch({ max_result_kb: v })}
+          />
+        </SettingsRow>
       </SettingsGroup>
       <SettingsGroup title="Developer">
         <SettingsRow

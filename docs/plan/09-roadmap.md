@@ -575,7 +575,7 @@ Done when: a skill written in the editor is injected for a matching message and 
 
 ## M13 — Hardening and release (2 weeks)
 
-- Context management: tool-result caps, Anthropic server-side context editing and compaction (with the artifact-listing rule), client-side simple compaction, keep-tail compaction for other providers, the "summarized" notice.
+- ~~Context management: tool-result caps, client-side simple compaction, keep-tail compaction for other providers, the "summarized" notice.~~ **Done** 2026-09-11, pulled forward out of M13 because it is what bites first in ordinary use: a long chat simply stopped working. `gantry-agent/src/context.rs` with the summarizer prompt in `assets/prompts/compaction.md`, the decisions recorded in 02 §6 "As built". The tool-result cap became a setting (Settings → Advanced). Still in M13: Anthropic's **server-side** context editing and compaction, which are beta request shapes no test here can verify, and the full tool output as a blob.
 - The Anthropic append-only conformance check (the three-step check with `prefix_mismatch_behavior: "error"` in a test, `drop_block` in production where a tool set had to be rebuilt); prompt-cache hit verification in usage; the memory and instruction `SystemNote` paths included.
 - The automated sandbox conformance test for artifacts (13 §5).
 - Performance pass on WebKitGTK and WebView2: batching thresholds, virtualization, markdown memoization, long outputs, artifact mount time.
