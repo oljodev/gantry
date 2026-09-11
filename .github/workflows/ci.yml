@@ -16,6 +16,12 @@ env:
 jobs:
   checks:
     name: Checks
+    # Skipped while the repository is private, because the account's Actions minutes are spent
+    # and every job GitHub refuses to start is a failed run and an email about it. A skipped job
+    # is a clean run and costs nothing. Making the repository public turns CI back on by itself:
+    # Actions is free on standard runners for public repositories, so there is nothing to
+    # remember to flip back (docs/plan/09 M0).
+    if: ${{ !github.event.repository.private }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -75,6 +81,8 @@ jobs:
   # nothing more, so it is also the fastest job here.
   deny:
     name: Dependencies
+    # See the `checks` job: skipped while the repository is private.
+    if: ${{ !github.event.repository.private }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4

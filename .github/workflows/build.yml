@@ -22,6 +22,11 @@ env:
 jobs:
   matrix:
     name: Matrix
+    # Skipped while the repository is private: the account's Actions minutes are spent, so every
+    # job GitHub refuses to start is a failed run and an email about it. A skipped job is a clean
+    # run and costs nothing, and making the repository public turns this back on by itself —
+    # Actions is free on standard runners for public repositories (docs/plan/09 M0).
+    if: ${{ !github.event.repository.private }}
     runs-on: ubuntu-24.04
     outputs:
       include: ${{ steps.set.outputs.include }}
