@@ -18,6 +18,7 @@ pub mod grant;
 pub mod guardrail;
 pub mod ids;
 pub mod interaction;
+pub mod judge;
 pub mod message;
 pub mod settings;
 pub mod time;
@@ -53,6 +54,7 @@ pub use interaction::{
     InteractionPayload, InteractionResolution, InteractionStatus, PermissionDecision,
     PermissionRequest, SuggestionOutcome,
 };
+pub use judge::{JudgeDecision, JudgeFlag, JudgeSource, JudgeVerdict};
 pub use message::{
     ContentPart, MediaSource, Message, ProviderKind, ResultPart, Role, StopReason, Usage,
 };

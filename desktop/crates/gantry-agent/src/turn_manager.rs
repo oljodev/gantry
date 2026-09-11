@@ -394,6 +394,12 @@ impl TurnManager {
         }
         let mode = input.mode;
         let attached = input.connectors.clone();
+        // The guard asks the cheapest fast model of the chat's own provider, which is the same
+        // table the title generator reads (04 §6). Resolved once, before the turn starts, so a
+        // decision mid-turn costs nothing but the request.
+        let judge_model = provider
+            .as_ref()
+            .map(|p| title::judge_model(model.provider.as_str(), p.kind(), &model.model));
         self.runtime.spawn(async move {
             let tools = ToolSet::assemble(&connectors, mode, &attached).await;
             runner::run_turn(RunContext {
@@ -404,6 +410,7 @@ impl TurnManager {
                 max_result_bytes: (settings.advanced.max_result_kb.max(1) as usize) * 1024,
                 media,
                 guardrails,
+                judge_model,
                 active: active.clone(),
                 chats: chats.clone(),
                 tools: std::sync::RwLock::new(tools),

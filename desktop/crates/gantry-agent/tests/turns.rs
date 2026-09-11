@@ -39,6 +39,11 @@ struct Scripted {
     requests: Mutex<Vec<ChatRequest>>,
     /// What this provider says the model's window is, for the context budget (02 §6).
     window: Option<u32>,
+    /// What the guard answers, in order (04 §6); when it runs out it allows. Each entry is the
+    /// model's whole reply, so a test can also script an unreadable one.
+    guard: Mutex<VecDeque<String>>,
+    /// What the guard was asked about, newest last.
+    guard_inputs: Mutex<Vec<String>>,
 }
 
 #[async_trait]
@@ -73,9 +78,31 @@ impl Provider for Scripted {
     async fn stream(&self, req: ChatRequest) -> Result<ChatStream, ProviderError> {
         let title_request = req.system.starts_with("You name conversations");
         let summary_request = req.system.starts_with("You are summarizing");
+        let guard_request = req.system.starts_with("You are the guard in Gantry");
+        if guard_request {
+            self.guard_inputs.lock().unwrap().push(
+                req.messages
+                    .last()
+                    .map(gantry_core::Message::text)
+                    .unwrap_or_default(),
+            );
+        }
         self.requests.lock().unwrap().push(req);
         let delay = self.delay;
-        let events = if title_request || summary_request {
+        let events = if guard_request {
+            let reply = self.guard.lock().unwrap().pop_front().unwrap_or_else(|| {
+                r#"{"decision":"allow","confidence":0.9,"reason":"Part of the task"}"#.into()
+            });
+            vec![
+                Ok(StreamEvent::TextDelta {
+                    index: 0,
+                    text: reply,
+                }),
+                Ok(StreamEvent::MessageEnd {
+                    stop_reason: StopReason::EndTurn,
+                }),
+            ]
+        } else if title_request || summary_request {
             let reply = if title_request {
                 "\"A generated title.\""
             } else {
@@ -136,6 +163,12 @@ impl Connector for Fake {
             echo,
             ToolDef::new("write", "Writes", serde_json::json!({}), RiskTier::Write),
             ToolDef::new("boom", "Fails", serde_json::json!({}), RiskTier::Read),
+            ToolDef::new(
+                "crash",
+                "Writes, badly",
+                serde_json::json!({}),
+                RiskTier::Write,
+            ),
         ])
     }
     async fn call(
@@ -150,7 +183,7 @@ impl Connector for Fake {
                 serde_json::json!({ "echo": req.args["text"] }),
             )),
             "write" => Ok(ToolOutcome::text("written")),
-            "boom" => Err(ConnectorError::Failed("kaboom".into())),
+            "boom" | "crash" => Err(ConnectorError::Failed("kaboom".into())),
             other => Err(ConnectorError::UnknownTool(other.into())),
         }
     }
@@ -236,6 +269,28 @@ impl Harness {
         self.provider.requests.lock().unwrap().clone()
     }
 
+    /// Guarded Auto, which is what the guard of 04 §6 decides in.
+    fn guarded(&self, chat: ChatId) {
+        self.m
+            .update_chat(
+                chat,
+                ChatPatch {
+                    mode: Some(Mode::Auto),
+                    guard: Some(true),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+    }
+
+    fn guard_says(&self, replies: &[&str]) {
+        *self.provider.guard.lock().unwrap() = replies.iter().map(|r| (*r).to_owned()).collect();
+    }
+
+    fn guard_inputs(&self) -> Vec<String> {
+        self.provider.guard_inputs.lock().unwrap().clone()
+    }
+
     /// A chat with the fake connector installed and attached, which is what a chat looks like
     /// once the user has added a connector to it (03 §11). A chat with nothing attached sees
     /// only the runtime tools, which is what `a_chat_sees_only_what_it_attached` checks.
@@ -297,6 +352,8 @@ fn manager_windowed(
         delay,
         requests: Mutex::new(Vec::new()),
         window,
+        guard: Mutex::new(VecDeque::new()),
+        guard_inputs: Mutex::new(Vec::new()),
     });
     let fake = Arc::new(Fake {
         descriptor: ConnectorDescriptor {
@@ -439,6 +496,7 @@ async fn a_text_turn_completes_and_is_recorded() {
             "fake__echo",
             "fake__write",
             "fake__boom",
+            "fake__crash",
             "gantry__clock",
             "gantry__search_connectors",
             "gantry__request_access",
@@ -1366,4 +1424,247 @@ async fn a_huge_tool_result_is_cut_to_the_configured_size() {
         result.len()
     );
     assert!(result.contains("characters omitted"), "and says so");
+}
+
+// ── The guard (04 §6) ────────────────────────────────────────────────────────────────────
+
+/// Guarded Auto, hands off: the guard allows the work and blocks what the user did not ask
+/// for, and the user is never interrupted for either.
+#[tokio::test]
+async fn the_guard_decides_in_auto_mode_without_asking_the_user() {
+    let m = manager_with(
+        vec![
+            tool_round(
+                "c1",
+                "fake__write",
+                serde_json::json!({ "path": "src/lib.rs" }),
+            ),
+            tool_round(
+                "c2",
+                "fake__write",
+                serde_json::json!({ "path": "/etc/passwd" }),
+            ),
+            vec![text("Done."), end()],
+        ],
+        Duration::ZERO,
+        Settings::default(),
+    );
+    let chat = m.chat();
+    m.guarded(chat.id);
+    m.guard_says(&[
+        r#"{"decision":"allow","confidence":0.9,"reason":"Edits the file the task is about","flags":[]}"#,
+        r#"{"decision":"deny","confidence":0.95,"reason":"Writes outside the workspace, which the task never mentioned","flags":["outside_task"]}"#,
+    ]);
+    let sink = Arc::new(Collect::default());
+    m.start(chat.id, "Fix the parser".into(), Vec::new(), sink.clone())
+        .unwrap();
+    wait_for(|| sink.completed().is_some()).await;
+
+    assert_eq!(sink.completed(), Some(TurnStatus::Completed));
+    assert!(
+        !sink.names().contains(&"decision.requested"),
+        "the guard never opens a blocking prompt: {:?}",
+        sink.names()
+    );
+    assert_eq!(
+        sink.names()
+            .iter()
+            .filter(|n| **n == "judge.decision")
+            .count(),
+        2,
+        "every decision is audited, the allow as well as the block"
+    );
+
+    let calls = &m.chats().get(chat.id).unwrap().unwrap().turns[0].tool_calls;
+    let allowed = calls.iter().find(|c| c.id.as_str() == "c1").unwrap();
+    assert_eq!(allowed.status, ToolCallStatus::Completed);
+    assert_eq!(allowed.decision_source, Some(DecisionSource::Judge));
+    let verdict = allowed.judge.as_ref().expect("the allow is kept too");
+    assert!(verdict.allows());
+    assert_eq!(verdict.reason, "Edits the file the task is about");
+    assert_eq!(verdict.model, "deepseek/deepseek-v4-flash");
+
+    let blocked = calls.iter().find(|c| c.id.as_str() == "c2").unwrap();
+    assert_eq!(blocked.status, ToolCallStatus::Denied);
+    assert_eq!(blocked.decision_source, Some(DecisionSource::Judge));
+    assert!(!blocked.judge.as_ref().unwrap().allows());
+    assert_eq!(
+        blocked.judge.as_ref().unwrap().flags,
+        vec![gantry_core::JudgeFlag::OutsideTask]
+    );
+
+    // Only the allowed call reached the connector, and the model was told why the other
+    // did not.
+    let ran: Vec<String> = m
+        .fake
+        .calls
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|c| c.args.to_string())
+        .collect();
+    assert_eq!(ran, [r#"{"path":"src/lib.rs"}"#]);
+    let result = m.chats().get(chat.id).unwrap().unwrap().turns[0]
+        .messages
+        .iter()
+        .flat_map(|msg| msg.parts.clone())
+        .find_map(|p| match p {
+            ContentPart::ToolResult {
+                call_id, content, ..
+            } if call_id.as_str() == "c2" => Some(content),
+            _ => None,
+        })
+        .expect("the model gets a result for a blocked call too");
+    let json = format!("{result:?}");
+    assert!(json.contains("blocked_by_guard"), "{json}");
+    assert!(json.contains("Writes outside the workspace"), "{json}");
+
+    // What the guard was told: the task in the user's words, the action, and the history.
+    let asked = m.guard_inputs();
+    assert!(
+        asked[0].contains("What the user first asked: Fix the parser"),
+        "{}",
+        asked[0]
+    );
+    assert!(asked[0].contains("This is the first tool call of the turn."));
+    assert!(asked[1].contains("/etc/passwd"), "{}", asked[1]);
+    assert!(
+        asked[1].contains("allowed by the guard"),
+        "the second decision knows how the first went: {}",
+        asked[1]
+    );
+}
+
+/// Fail closed (04 §1): a guard that cannot answer hands the question to the user, with the
+/// reason it could not, rather than guessing either way.
+#[tokio::test]
+async fn a_guard_that_cannot_decide_asks_the_user() {
+    let m = manager_with(
+        vec![
+            tool_round("c1", "fake__write", serde_json::json!({})),
+            vec![text("Fine."), end()],
+        ],
+        Duration::ZERO,
+        Settings::default(),
+    );
+    let chat = m.chat();
+    m.guarded(chat.id);
+    m.guard_says(&["Sure, that looks fine to me!"]);
+    let sink = Arc::new(Collect::default());
+    m.start(chat.id, "go".into(), Vec::new(), sink.clone())
+        .unwrap();
+
+    wait_for(|| !m.interactions().list_pending(Some(chat.id)).is_empty()).await;
+    let pending = m.interactions().list_pending(Some(chat.id));
+    let gantry_core::InteractionPayload::Permission { request } = &pending[0].payload else {
+        panic!("a permission card");
+    };
+    let note = request
+        .guard
+        .as_deref()
+        .expect("the card says why it exists");
+    assert!(note.contains("unreadable"), "{note}");
+    assert!(note.contains("yours"), "{note}");
+
+    m.resolve_interaction(
+        pending[0].id,
+        InteractionResolution::Permission {
+            decision: PermissionDecision::AllowOnce,
+            message: None,
+        },
+    )
+    .unwrap();
+    wait_for(|| sink.completed().is_some()).await;
+    assert_eq!(sink.completed(), Some(TurnStatus::Completed));
+    assert_eq!(m.fake.calls.lock().unwrap().len(), 1);
+    let names = sink.names();
+    assert!(names.contains(&"provider.notice"), "{names:?}");
+}
+
+/// Rule 4 of the pipeline: the same call failing over and over is refused without a model
+/// being asked, because the answer cannot depend on judgement.
+#[tokio::test]
+async fn a_call_that_keeps_failing_is_stopped_without_asking_the_guard() {
+    let round = || tool_round("c", "fake__crash", serde_json::json!({ "n": 1 }));
+    let m = manager_with(
+        vec![
+            round(),
+            round(),
+            round(),
+            round(),
+            vec![text("Giving up."), end()],
+        ],
+        Duration::ZERO,
+        Settings::default(),
+    );
+    let chat = m.chat();
+    m.guarded(chat.id);
+    let sink = Arc::new(Collect::default());
+    m.start(chat.id, "build it".into(), Vec::new(), sink.clone())
+        .unwrap();
+    wait_for(|| sink.completed().is_some()).await;
+
+    assert_eq!(
+        m.guard_inputs().len(),
+        3,
+        "the fourth attempt costs nothing: the loop detector already knows"
+    );
+    assert_eq!(
+        m.fake.calls.lock().unwrap().len(),
+        3,
+        "and it never reaches the connector again"
+    );
+    let verdicts: Vec<_> = sink
+        .kinds()
+        .iter()
+        .filter_map(|k| match k {
+            AgentEventKind::JudgeDecision { verdict, .. } => Some((**verdict).clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(verdicts.len(), 4);
+    let last = verdicts.last().unwrap();
+    assert_eq!(last.source, gantry_core::JudgeSource::Loop);
+    assert!(
+        last.reason.contains("already failed 3 times"),
+        "{}",
+        last.reason
+    );
+    assert_eq!(last.flags, vec![gantry_core::JudgeFlag::Loop]);
+}
+
+/// The floor is above the guard, not under it: what a guardrail asks about stays the user's
+/// question, and what it refuses is refused before any model is asked.
+#[tokio::test]
+async fn the_floor_outranks_the_guard() {
+    let m = manager_with(
+        vec![
+            tool_round(
+                "c1",
+                "fake__write",
+                serde_json::json!({ "path": "/home/olav/.ssh/id_ed25519" }),
+            ),
+            vec![text("ok"), end()],
+        ],
+        Duration::ZERO,
+        Settings::default(),
+    );
+    let chat = m.chat();
+    m.guarded(chat.id);
+    let sink = Arc::new(Collect::default());
+    m.start(chat.id, "read my key".into(), Vec::new(), sink.clone())
+        .unwrap();
+
+    wait_for(|| !m.interactions().list_pending(Some(chat.id)).is_empty()).await;
+    let pending = m.interactions().list_pending(Some(chat.id));
+    let gantry_core::InteractionPayload::Permission { request } = &pending[0].payload else {
+        panic!("a permission card");
+    };
+    assert_eq!(request.guardrail.as_ref().unwrap().rule, "ssh");
+    assert!(
+        m.guard_inputs().is_empty(),
+        "no model is asked about a question that is the user's"
+    );
+    assert!(m.cancel(pending[0].turn_id));
+    wait_for(|| sink.completed().is_some()).await;
 }

@@ -1,7 +1,7 @@
-//! The permission engine (docs/plan/04 §3, §5): the guardrail floor first, then mode and tier,
-//! then a standing grant that can answer a prompt the user already answered once, and the user
-//! is asked for everything else. Scope checks (M6) are the connectors' own; the judge (M8)
-//! slots in where Guarded Auto now asks, which until then is the "fail closed" rule of 04 §1.
+//! The permission engine (docs/plan/04 §3, §5, §6): the guardrail floor first, then mode and
+//! tier, then a standing grant that can answer a prompt the user already answered once. What is
+//! left is a prompt, or — in Guarded Auto — a question for the guard, which the runner puts to
+//! the judge model of `crate::judge`. Scope checks (M6) are the connectors' own.
 
 use gantry_core::{
     ChatGrant, CommandClass, DecisionSource, GuardrailHit, GuardrailKind, GuardrailVerdict,
@@ -11,6 +11,10 @@ use gantry_core::{
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Decision {
     Allow(DecisionSource),
+    /// Guarded Auto, and nothing in front of the judge answered it: the guard decides (04 §6).
+    /// The engine stops here because deciding needs a network call and a turn's history, and
+    /// this function is pure; the runner takes it from here.
+    Judge,
     Ask {
         /// The guardrail that raised this prompt, when one did (04 §5). A call that the mode
         /// would have asked about anyway carries it too, because the reason is worth reading.
@@ -33,6 +37,11 @@ impl Decision {
     pub fn is_ask(&self) -> bool {
         matches!(self, Decision::Ask { .. })
     }
+
+    #[must_use]
+    pub fn is_judge(&self) -> bool {
+        matches!(self, Decision::Judge)
+    }
 }
 
 /// What one call is: the tool, who owns it, and the arguments a grant may be scoped to.
@@ -51,10 +60,14 @@ pub struct Call<'a> {
 /// 2. **The mode decides**, as the table in 04 §3 does.
 /// 3. **A guardrail ask beats an allow.** That is the whole point of a floor: `rm -rf build`
 ///    prompts in unguarded Auto, where the mode would have run it without a word.
-/// 4. **A grant may only turn an ordinary Ask into an allow.** It never lifts a denial, so Plan
-///    mode still refuses what it refuses; it never overrides `always_confirm`; and it never
-///    answers a guardrail — except for a sensitive *path*, which 04 §5 says may be reached with
-///    an explicit grant, and an explicit grant is one scoped to the argument.
+/// 4. **`always_confirm` is the user's, always.** A tool whose manifest asks for a confirmation
+///    gets one from the user, not from the judge and not from a grant.
+/// 5. **A grant may only turn an ordinary Ask into an allow, and it answers the guard.** It
+///    never lifts a denial, so Plan mode still refuses what it refuses; it never answers a
+///    guardrail — except for a sensitive *path*, which 04 §5 says may be reached with an
+///    explicit grant, and an explicit grant is one scoped to the argument. Where the guard
+///    would have decided, a grant means the user already did: they answered this question by
+///    hand once and said to stop asking, and the judge is a stand-in for the asking.
 #[must_use]
 pub fn decide(
     mode: Mode,
@@ -95,19 +108,24 @@ pub fn decide(
         },
         _ => mode_policy(mode, guard, call.def),
     };
+    let guarded_auto = policy.is_judge();
     let policy = match (policy, floor) {
         (Decision::Deny { source, reason }, _) => return Decision::Deny { source, reason },
+        // A guardrail outranks the guard as it outranks the mode: the question is the user's,
+        // and the reason they read is the rule's own.
         (_, Some(hit)) => Decision::Ask {
             guardrail: Some(hit),
         },
         (policy, None) => policy,
     };
-    let Decision::Ask { guardrail } = policy else {
-        return policy;
+    let guardrail = match policy {
+        Decision::Allow(_) | Decision::Deny { .. } => return policy,
+        // A tool that asks for a confirmation is not one the guard may wave through.
+        Decision::Judge if call.def.always_confirm => return Decision::ask(),
+        Decision::Judge => None,
+        Decision::Ask { .. } if call.def.always_confirm => return policy,
+        Decision::Ask { guardrail } => guardrail,
     };
-    if call.def.always_confirm {
-        return Decision::Ask { guardrail };
-    }
     // A guardrail is never answered by a grant the user gave for something else. A sensitive
     // path is the one exception 04 §5 makes, and only for a grant that names the path itself.
     let needs_arg_scope = match &guardrail {
@@ -121,7 +139,10 @@ pub fn decide(
     {
         return Decision::Allow(DecisionSource::UserChatGrant);
     }
-    Decision::Ask { guardrail }
+    match guardrail {
+        None if guarded_auto => Decision::Judge,
+        guardrail => Decision::Ask { guardrail },
+    }
 }
 
 fn covers(grant: &ChatGrant, call: &Call<'_>) -> bool {
@@ -177,10 +198,11 @@ pub fn mode_policy(mode: Mode, guard: bool, def: &ToolDef) -> Decision {
         },
         (Mode::Auto, Read) => Decision::Allow(DecisionSource::Mode),
         (Mode::Auto, _) if !guard => Decision::Allow(DecisionSource::Mode),
-        // The judge arrives with M8; until then a guarded call is the user's to decide.
-        (Mode::Auto, _) => Decision::ask(),
+        (Mode::Auto, _) => Decision::Judge,
     };
-    if def.always_confirm && matches!(policy, Decision::Allow(_)) {
+    // A tool that always confirms is never allowed outright and never handed to the guard; a
+    // denial stands, because `always_confirm` raises the bar and does not lower it.
+    if def.always_confirm && matches!(policy, Decision::Allow(_) | Decision::Judge) {
         return Decision::ask();
     }
     policy
@@ -227,7 +249,8 @@ mod tests {
             decide(Mode::Auto, false, &def(Destructive)),
             Decision::Allow(DecisionSource::Mode)
         );
-        assert_eq!(decide(Mode::Auto, true, &def(Write)), Decision::ask());
+        assert_eq!(decide(Mode::Auto, true, &def(Write)), Decision::Judge);
+        assert_eq!(decide(Mode::Auto, true, &def(Destructive)), Decision::Judge);
         assert_eq!(
             decide(Mode::Auto, true, &def(Read)),
             Decision::Allow(DecisionSource::Mode)
@@ -370,8 +393,8 @@ mod tests {
         );
         assert_eq!(
             decide_with(Mode::Auto, true, &writes),
-            Decision::ask(),
-            "guarded Auto asks until the judge exists"
+            Decision::Judge,
+            "guarded Auto puts it to the guard"
         );
     }
 
@@ -526,6 +549,91 @@ mod tests {
             floor(Mode::Auto, false, &read, &ordinary),
             Decision::Allow(DecisionSource::Mode)
         );
+    }
+
+    // ── The guard (04 §6) ────────────────────────────────────────────────────────────────
+
+    /// Everything that answers before the judge does, answers instead of it. Guarded Auto is
+    /// the only mode that ever reaches it.
+    #[test]
+    fn the_guard_is_asked_last_and_only_in_guarded_auto() {
+        use gantry_core::GrantScope;
+        let write = def(RiskTier::Write);
+        let args = serde_json::json!({ "path": "/home/olav/dev/gantry/src/lib.rs" });
+        let guarded = |grants: &[ChatGrant]| {
+            super::decide(
+                Mode::Auto,
+                true,
+                &call(&write, &args),
+                grants,
+                &Guardrails::shipped(),
+            )
+        };
+        assert_eq!(guarded(&[]), Decision::Judge);
+
+        // A standing grant is the user's own answer to this question, given by hand once.
+        assert_eq!(
+            guarded(&[grant(GrantScope::Tool, "t")]),
+            Decision::Allow(DecisionSource::UserChatGrant),
+            "a grant answers the guard, because the user already did"
+        );
+
+        // Every other mode decides for itself; none of them consults a guard.
+        for mode in [Mode::Manual, Mode::AutoEdit, Mode::Plan] {
+            assert!(
+                !super::decide(mode, true, &call(&write, &args), &[], &Guardrails::none())
+                    .is_judge(),
+                "{mode:?} decides for itself"
+            );
+        }
+        assert!(
+            !super::decide(
+                Mode::Auto,
+                false,
+                &call(&write, &args),
+                &[],
+                &Guardrails::none()
+            )
+            .is_judge(),
+            "unguarded Auto has no guard to ask"
+        );
+    }
+
+    /// The two things in front of the judge that are the user's alone: a guardrail's question,
+    /// and a tool whose manifest says to confirm every time.
+    #[test]
+    fn the_guard_never_answers_for_the_user() {
+        let run = shell();
+        let force = serde_json::json!({ "command": "git push --force origin main" });
+        let Decision::Ask { guardrail } = floor(Mode::Auto, true, &run, &force) else {
+            panic!("a guardrail's question is the user's, guard or no guard");
+        };
+        assert_eq!(guardrail.expect("a rule raised it").rule, "git-push-force");
+
+        let mut confirm = def(RiskTier::Write);
+        confirm.always_confirm = true;
+        assert_eq!(
+            super::decide(
+                Mode::Auto,
+                true,
+                &call(&confirm, &serde_json::json!({})),
+                &[],
+                &Guardrails::none()
+            ),
+            Decision::ask(),
+            "a tool that always confirms is not the guard's to wave through"
+        );
+        // And `always_confirm` still does not soften a denial.
+        assert!(matches!(
+            super::decide(
+                Mode::Plan,
+                true,
+                &call(&confirm, &serde_json::json!({})),
+                &[],
+                &Guardrails::none()
+            ),
+            Decision::Deny { .. }
+        ));
     }
 
     /// A grant is the user's answer to a question they were asked; it is not an answer to a

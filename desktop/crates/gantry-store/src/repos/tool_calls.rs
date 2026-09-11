@@ -12,7 +12,7 @@ use crate::{
     repos::{enum_from_str, enum_to_str, id_from_str},
 };
 
-const COLUMNS: &str = "id, chat_id, turn_id, message_id, instance_id, connector_name, tool_name, model_tool_name, args_json, tier, status, decision_source, display_json, result_preview, is_error, created_at, started_at, ended_at, duration_ms";
+const COLUMNS: &str = "id, chat_id, turn_id, message_id, instance_id, connector_name, tool_name, model_tool_name, args_json, tier, status, decision_source, display_json, result_preview, is_error, created_at, started_at, ended_at, duration_ms, judge_json";
 
 fn from_row(r: &Row<'_>) -> rusqlite::Result<ToolCallDto> {
     let args: String = r.get(8)?;
@@ -34,6 +34,12 @@ fn from_row(r: &Row<'_>) -> rusqlite::Result<ToolCallDto> {
             .map(|s| serde_json::from_value::<DecisionSource>(serde_json::Value::String(s)))
             .transpose()
             .map_err(|e| conv(11, e))?,
+        judge: r
+            .get::<_, Option<String>>(19)?
+            .as_deref()
+            .map(serde_json::from_str)
+            .transpose()
+            .map_err(|e| conv(19, e))?,
         display: serde_json::from_str::<ToolDisplay>(&display).map_err(|e| conv(12, e))?,
         result_preview: r.get(13)?,
         result: None,
@@ -53,7 +59,7 @@ fn conv(idx: usize, e: serde_json::Error) -> rusqlite::Error {
 pub fn insert(conn: &Connection, c: &ToolCallDto, created_at: i64) -> Result<()> {
     conn.execute(
         &format!(
-            "INSERT INTO tool_calls ({COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)"
+            "INSERT INTO tool_calls ({COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)"
         ),
         params![
             c.id.as_str(),
@@ -75,16 +81,23 @@ pub fn insert(conn: &Connection, c: &ToolCallDto, created_at: i64) -> Result<()>
             c.started_at,
             c.ended_at,
             c.duration_ms.map(|d| i64::try_from(d).unwrap_or(i64::MAX)),
+            judge_json(c),
         ],
     )?;
     Ok(())
+}
+
+/// The guard's verdict as the column stores it (04 §11), and `NULL` when no guard was asked.
+fn judge_json(c: &ToolCallDto) -> Option<String> {
+    c.judge.as_ref().and_then(|j| serde_json::to_string(j).ok())
 }
 
 /// Rewrites every mutable column of an existing call.
 pub fn update(conn: &Connection, c: &ToolCallDto) -> Result<()> {
     conn.execute(
         "UPDATE tool_calls SET args_json = ?2, tier = ?3, status = ?4, decision_source = ?5, display_json = ?6,
-           result_preview = ?7, is_error = ?8, started_at = ?9, ended_at = ?10, duration_ms = ?11
+           result_preview = ?7, is_error = ?8, started_at = ?9, ended_at = ?10, duration_ms = ?11,
+           judge_json = ?12
          WHERE id = ?1",
         params![
             c.id.as_str(),
@@ -98,6 +111,7 @@ pub fn update(conn: &Connection, c: &ToolCallDto) -> Result<()> {
             c.started_at,
             c.ended_at,
             c.duration_ms.map(|d| i64::try_from(d).unwrap_or(i64::MAX)),
+            judge_json(c),
         ],
     )?;
     Ok(())

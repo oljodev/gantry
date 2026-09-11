@@ -94,6 +94,14 @@ pub enum AgentEventKind {
         resolution: InteractionResolution,
         source: DecisionSource,
     },
+    /// The guard decided about a call (04 §6, §11). Emitted whether it allowed, blocked, or
+    /// could not decide and handed the question to the user, because the audit is of the
+    /// deciding and not only of the blocking.
+    #[serde(rename = "judge.decision")]
+    JudgeDecision {
+        call_id: CallId,
+        verdict: Box<crate::judge::JudgeVerdict>,
+    },
     /// The call was allowed and is running; `source` says who allowed it.
     #[serde(rename = "tool_call.executing")]
     ToolCallExecuting {
@@ -115,6 +123,10 @@ pub enum AgentEventKind {
     ToolCallCompleted {
         call_id: CallId,
         status: crate::tool::ToolCallStatus,
+        /// Who decided, for a call that never ran: a guardrail, the guard, the user, Plan mode.
+        /// `None` on a call that did run, because `tool_call.executing` already said so.
+        #[serde(default)]
+        decision_source: Option<DecisionSource>,
         is_error: bool,
         #[specta(type = specta_typescript::Number)]
         duration_ms: u64,
@@ -179,6 +191,7 @@ impl AgentEventKind {
             AgentEventKind::ToolCallReady { .. } => "tool_call.ready",
             AgentEventKind::DecisionRequested { .. } => "decision.requested",
             AgentEventKind::DecisionResolved { .. } => "decision.resolved",
+            AgentEventKind::JudgeDecision { .. } => "judge.decision",
             AgentEventKind::ToolCallExecuting { .. } => "tool_call.executing",
             AgentEventKind::ToolCallOutput { .. } => "tool_call.output",
             AgentEventKind::ToolCallCompleted { .. } => "tool_call.completed",

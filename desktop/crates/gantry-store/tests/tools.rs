@@ -117,6 +117,7 @@ fn the_projection_follows_a_call_from_start_to_completion() {
                         why: None,
                         description: String::new(),
                         guardrail: None,
+                        guard: None,
                         scopes: Vec::new(),
                     },
                 },
@@ -180,6 +181,7 @@ fn the_projection_follows_a_call_from_start_to_completion() {
                     AgentEventKind::ToolCallCompleted {
                         call_id: call_id.clone(),
                         status: ToolCallStatus::Completed,
+                        decision_source: None,
                         is_error: false,
                         duration_ms: 3,
                         result_preview: "2026".into(),
@@ -244,6 +246,7 @@ fn recovery_closes_calls_prompts_and_transcripts() {
                         why: None,
                         description: String::new(),
                         guardrail: None,
+                        guard: None,
                         scopes: Vec::new(),
                     },
                 },

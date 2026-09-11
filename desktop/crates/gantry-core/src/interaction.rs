@@ -50,6 +50,11 @@ pub struct PermissionRequest {
     /// The guardrail that raised this prompt, when one did (04 §5). The card leads with its
     /// reason, because "Gantry always asks about this, and here is why" is the whole message.
     pub guardrail: Option<crate::guardrail::GuardrailHit>,
+    /// Why the guard did not answer this one itself (04 §6): it timed out, it could not be
+    /// reached, or it allowed a `destructive` call without being sure enough. The card leads
+    /// with this for the same reason it leads with a guardrail: in Auto mode, being asked at
+    /// all is the surprising part, so the first thing to say is why.
+    pub guard: Option<String>,
     /// The standing scopes this call may be granted, beyond "allow once" (04 §7, §8).
     pub scopes: Vec<GrantScope>,
 }
@@ -220,6 +225,7 @@ mod tests {
                 why: None,
                 description: String::new(),
                 guardrail: None,
+                guard: None,
                 scopes: GrantScope::for_tier(RiskTier::Read),
             },
         };

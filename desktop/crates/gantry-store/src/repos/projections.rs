@@ -41,6 +41,7 @@ pub fn apply(conn: &Connection, chat_id: ChatId, e: &AgentEvent) -> Result<()> {
                     tier: gantry_core::RiskTier::Read,
                     status: ToolCallStatus::Proposed,
                     decision_source: None,
+                    judge: None,
                     display: ToolDisplay {
                         kind: ToolDisplayKind::Connector,
                         summary: String::new(),
@@ -95,6 +96,13 @@ pub fn apply(conn: &Connection, chat_id: ChatId, e: &AgentEvent) -> Result<()> {
             interactions::resolve(conn, *interaction_id, status, resolution, e.ts)?;
             Ok(())
         }
+        AgentEventKind::JudgeDecision { call_id, verdict } => {
+            if let Some(mut c) = tool_calls::get(conn, call_id)? {
+                c.judge = Some((**verdict).clone());
+                tool_calls::update(conn, &c)?;
+            }
+            Ok(())
+        }
         AgentEventKind::ToolCallExecuting { call_id, source } => {
             if let Some(mut c) = tool_calls::get(conn, call_id)? {
                 c.status = ToolCallStatus::Running;
@@ -107,6 +115,7 @@ pub fn apply(conn: &Connection, chat_id: ChatId, e: &AgentEvent) -> Result<()> {
         AgentEventKind::ToolCallCompleted {
             call_id,
             status,
+            decision_source,
             is_error,
             duration_ms,
             result_preview,
@@ -114,6 +123,9 @@ pub fn apply(conn: &Connection, chat_id: ChatId, e: &AgentEvent) -> Result<()> {
         } => {
             if let Some(mut c) = tool_calls::get(conn, call_id)? {
                 c.status = *status;
+                if let Some(source) = decision_source {
+                    c.decision_source = Some(*source);
+                }
                 c.is_error = *is_error;
                 c.result_preview = Some(result_preview.clone());
                 c.ended_at = Some(e.ts);

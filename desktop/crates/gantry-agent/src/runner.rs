@@ -15,9 +15,10 @@ use gantry_connectors::{
 };
 use gantry_core::{
     AgentEventKind, CallId, ContentPart, DecisionSource, GrantScope, GrantSource, Interaction,
-    InteractionPayload, InteractionResolution, Message, MessageId, PermissionDecision,
-    PermissionRequest, ProviderErrorKind, ProviderKind, ResultPart, RiskTier, Role, StopReason,
-    ToolCallDto, ToolCallStatus, TurnStatus, Usage, now_ms, result_preview,
+    InteractionPayload, InteractionResolution, JudgeDecision, JudgeSource, JudgeVerdict, Message,
+    MessageId, PermissionDecision, PermissionRequest, ProviderErrorKind, ProviderKind, ResultPart,
+    RiskTier, Role, StopReason, ToolCallDto, ToolCallStatus, TurnStatus, Usage, now_ms,
+    result_preview,
 };
 use gantry_providers::{ChatRequest, Provider, ProviderError, ServerTool, StreamEvent};
 use serde_json::json;
@@ -26,6 +27,7 @@ use crate::{
     chats::{ChatBook, TurnInput, TurnOutcome},
     context,
     interactions::Interactions,
+    judge,
     permissions::{self, Decision},
     tools::{ToolEntry, ToolSet, display_for},
     turn_manager::{ActiveTurn, ChatNotifier, LiveMessage},
@@ -48,6 +50,10 @@ pub struct RunContext {
     pub media: gantry_core::MediaOptions,
     /// The floor of 04 §5, compiled once for the turn: the rules no mode and no grant lifts.
     pub guardrails: Arc<gantry_core::Guardrails>,
+    /// The model the guard asks in Guarded Auto (04 §6): the cheapest fast model of the chat's
+    /// own provider, so no second key is needed. `None` when there is no provider to ask, and
+    /// then every guarded call falls back to the user.
+    pub judge_model: Option<String>,
     pub active: Arc<ActiveTurn>,
     pub chats: Arc<ChatBook>,
     /// The tools of this turn. Behind a lock because attaching a connector mid-turn (04 §9)
@@ -77,6 +83,17 @@ struct Call {
     args: serde_json::Value,
 }
 
+/// What the guard remembers across the rounds of one turn (04 §6): the failures that make a
+/// loop, the calls it has already seen, and how many it has refused. It lives for the turn and
+/// no longer — the next turn is a new task, and a call that failed three times before the user
+/// last spoke deserves to be tried once more.
+#[derive(Default)]
+struct GuardState {
+    loops: judge::LoopTracker,
+    recent: Vec<judge::Recent>,
+    denials: u32,
+}
+
 pub async fn run_turn(ctx: RunContext) {
     let started = Instant::now();
     let batcher = ctx.active.batcher.clone();
@@ -101,6 +118,7 @@ pub async fn run_turn(ctx: RunContext) {
     let mut last_usage: Option<Usage> = None;
     let mut rounds: u32 = 0;
     let mut call_count: u32 = 0;
+    let mut guard = GuardState::default();
     let (status, stop_reason, error) = loop {
         let round = stream_round(&ctx, &transcript).await;
         if round.usage.is_some() {
@@ -205,7 +223,7 @@ pub async fn run_turn(ctx: RunContext) {
                     close_unrun_calls(&ctx, &calls, ToolCallStatus::Cancelled, &detail);
                     (synthetic_results(&calls, &detail), false)
                 } else {
-                    run_calls(&ctx, &assistant, &calls).await
+                    run_calls(&ctx, &assistant, &calls, &mut guard).await
                 };
                 let tool_message = Message {
                     id: MessageId::new(),
@@ -542,6 +560,7 @@ fn apply(
                 tier: entry.as_ref().map_or(RiskTier::Read, |e| e.def.tier),
                 status: ToolCallStatus::Proposed,
                 decision_source: None,
+                judge: None,
                 display: display_for(entry.as_ref().map(|e| &e.def), &serde_json::Value::Null),
                 result_preview: None,
                 result: None,
@@ -706,8 +725,26 @@ fn complete_call(
     duration_ms: u64,
     result: Vec<ResultPart>,
 ) -> ContentPart {
+    complete_decided(ctx, id, status, None, is_error, duration_ms, result)
+}
+
+/// The same, for a call that never ran, naming who refused it. A call that *did* run said so in
+/// `tool_call.executing`; one that did not has nowhere else to record the decision, and "what
+/// ran, and who allowed it" has to stay a single query (04 §11).
+fn complete_decided(
+    ctx: &RunContext,
+    id: &CallId,
+    status: ToolCallStatus,
+    decision_source: Option<DecisionSource>,
+    is_error: bool,
+    duration_ms: u64,
+    result: Vec<ResultPart>,
+) -> ContentPart {
     let preview = result_preview(&result, PREVIEW_CHARS);
     update_call(ctx, id, |c| {
+        if let Some(source) = decision_source {
+            c.decision_source = Some(source);
+        }
         c.status = status;
         c.is_error = is_error;
         c.result_preview = Some(preview.clone());
@@ -718,6 +755,7 @@ fn complete_call(
     ctx.active.batcher.push(AgentEventKind::ToolCallCompleted {
         call_id: id.clone(),
         status,
+        decision_source,
         is_error,
         duration_ms,
         result_preview: preview,
@@ -740,17 +778,30 @@ fn denied_result(message: Option<String>) -> Vec<ResultPart> {
     }]
 }
 
-/// Steps 4 and 5 of 01 §3 for one batch of calls: decide each (asking the user where the mode
-/// says so, all prompts at once so they stack), execute the allowed ones, and return one
-/// result per call in the model's order plus whether the user cancelled meanwhile.
+/// Steps 4 and 5 of 01 §3 for one batch of calls: decide each, execute the allowed ones, and
+/// return one result per call in the model's order plus whether the user cancelled meanwhile.
+///
+/// Deciding happens in three passes, because the three kinds of answer take different amounts
+/// of time and the user should never wait for one they did not need. The rules answer first and
+/// instantly; the guard's questions all go out at once, so a batch of four costs one round trip
+/// rather than four; and only then are the prompts raised, in the model's own order, so the
+/// cards stack the way the calls were made.
 async fn run_calls(
     ctx: &RunContext,
     assistant: &Message,
     calls: &[Call],
+    guard: &mut GuardState,
 ) -> (Vec<ContentPart>, bool) {
     let batcher = ctx.active.batcher.clone();
     let mut results: Vec<Option<ContentPart>> = (0..calls.len()).map(|_| None).collect();
     let mut allowed: Vec<(usize, ToolEntry, DecisionSource)> = Vec::new();
+    let mut judged: Vec<(usize, ToolEntry)> = Vec::new();
+    let mut asking: Vec<(
+        usize,
+        ToolEntry,
+        Option<gantry_core::GuardrailHit>,
+        Option<String>,
+    )> = Vec::new();
     let mut waiting: Vec<(
         usize,
         ToolEntry,
@@ -802,11 +853,13 @@ async fn run_calls(
         match decision {
             Decision::Allow(source) => allowed.push((i, entry, source)),
             Decision::Deny { source, reason } => {
-                update_call(ctx, &call.id, |c| c.decision_source = Some(source));
-                results[i] = Some(complete_call(
+                guard.denials += 1;
+                guard.recent.push(recent_of(call, "refused", "by a rule"));
+                results[i] = Some(complete_decided(
                     ctx,
                     &call.id,
                     ToolCallStatus::Denied,
+                    Some(source),
                     true,
                     0,
                     vec![ResultPart::Json {
@@ -814,41 +867,125 @@ async fn run_calls(
                     }],
                 ));
             }
-            Decision::Ask { guardrail } => {
-                let interaction = Interaction::pending(
-                    ctx.input.chat_id,
-                    ctx.input.turn_id,
-                    InteractionPayload::Permission {
-                        request: PermissionRequest {
-                            call_id: call.id.clone(),
-                            connector: entry.connector_id().to_owned(),
-                            connector_name: entry.connector_name().to_owned(),
-                            tool: entry.def.name.clone(),
-                            model_tool_name: entry.model_name.clone(),
-                            tier: entry.def.tier,
-                            args: call.args.clone(),
-                            display: display_for(Some(&entry.def), &call.args),
-                            why: why.clone(),
-                            description: entry.def.description.clone(),
-                            guardrail,
-                            scopes: GrantScope::for_tier(entry.def.tier),
-                        },
-                    },
-                );
-                let rx = ctx.interactions.request(interaction.clone());
-                update_call(ctx, &call.id, |c| {
-                    c.status = ToolCallStatus::AwaitingDecision
-                });
-                {
-                    let mut s = ctx.active.state.lock().unwrap_or_else(|e| e.into_inner());
-                    s.pending.push(interaction.clone());
+            Decision::Judge => judged.push((i, entry)),
+            Decision::Ask { guardrail } => asking.push((i, entry, guardrail, None)),
+        }
+    }
+
+    // The guard's questions, all at once (04 §6). A verdict either settles the call or, when
+    // the guard could not reach one, hands it to the user with the reason why.
+    if !judged.is_empty() {
+        let frame = guard_frame(ctx, assistant);
+        let verdicts = futures_util::future::join_all(
+            judged
+                .iter()
+                .map(|(i, entry)| ask_the_guard(ctx, &calls[*i], entry, &frame, guard)),
+        )
+        .await;
+        for ((i, entry), outcome) in judged.into_iter().zip(verdicts) {
+            let call = &calls[i];
+            match outcome {
+                Ok(verdict) => {
+                    batcher.push(AgentEventKind::JudgeDecision {
+                        call_id: call.id.clone(),
+                        verdict: Box::new(verdict.clone()),
+                    });
+                    update_call(ctx, &call.id, |c| c.judge = Some(verdict.clone()));
+                    if judge::needs_the_user(&verdict, entry.def.tier) {
+                        asking.push((
+                            i,
+                            entry,
+                            None,
+                            Some(format!(
+                                "The guard was not sure enough to allow something irreversible: {}",
+                                verdict.reason
+                            )),
+                        ));
+                    } else if verdict.allows() {
+                        allowed.push((i, entry, DecisionSource::Judge));
+                    } else {
+                        guard.denials += 1;
+                        guard
+                            .recent
+                            .push(recent_of(call, "blocked", "by the guard"));
+                        results[i] = Some(complete_decided(
+                            ctx,
+                            &call.id,
+                            ToolCallStatus::Denied,
+                            Some(DecisionSource::Judge),
+                            true,
+                            0,
+                            vec![ResultPart::Json {
+                                json: verdict.blocked_result(),
+                            }],
+                        ));
+                    }
                 }
-                batcher.push(AgentEventKind::DecisionRequested {
-                    interaction: Box::new(interaction.clone()),
-                });
-                waiting.push((i, entry, interaction, rx));
+                // Fail closed (04 §1): a guard that cannot decide is not an allow.
+                Err(err) => {
+                    let detail = err.to_string();
+                    log::warn!("the guard could not decide about {}: {detail}", call.name);
+                    batcher.push(AgentEventKind::ProviderNotice {
+                        kind: "guard_unavailable".into(),
+                        detail: format!("{detail}; asking you instead."),
+                    });
+                    batcher.push(AgentEventKind::JudgeDecision {
+                        call_id: call.id.clone(),
+                        verdict: Box::new(JudgeVerdict::from_rule(
+                            JudgeDecision::Deny,
+                            JudgeSource::Unavailable,
+                            &detail,
+                            Vec::new(),
+                        )),
+                    });
+                    asking.push((
+                        i,
+                        entry,
+                        None,
+                        Some(format!("{detail}, so this one is yours.")),
+                    ));
+                }
             }
         }
+    }
+
+    // The cards, in the model's order however the answers arrived at them.
+    asking.sort_by_key(|(i, _, _, _)| *i);
+    for (i, entry, guardrail, guard_note) in asking {
+        let call = &calls[i];
+        let interaction = Interaction::pending(
+            ctx.input.chat_id,
+            ctx.input.turn_id,
+            InteractionPayload::Permission {
+                request: PermissionRequest {
+                    call_id: call.id.clone(),
+                    connector: entry.connector_id().to_owned(),
+                    connector_name: entry.connector_name().to_owned(),
+                    tool: entry.def.name.clone(),
+                    model_tool_name: entry.model_name.clone(),
+                    tier: entry.def.tier,
+                    args: call.args.clone(),
+                    display: display_for(Some(&entry.def), &call.args),
+                    why: why.clone(),
+                    description: entry.def.description.clone(),
+                    guardrail,
+                    guard: guard_note,
+                    scopes: GrantScope::for_tier(entry.def.tier),
+                },
+            },
+        );
+        let rx = ctx.interactions.request(interaction.clone());
+        update_call(ctx, &call.id, |c| {
+            c.status = ToolCallStatus::AwaitingDecision
+        });
+        {
+            let mut s = ctx.active.state.lock().unwrap_or_else(|e| e.into_inner());
+            s.pending.push(interaction.clone());
+        }
+        batcher.push(AgentEventKind::DecisionRequested {
+            interaction: Box::new(interaction.clone()),
+        });
+        waiting.push((i, entry, interaction, rx));
     }
 
     if !waiting.is_empty() {
@@ -933,13 +1070,11 @@ async fn run_calls(
                     },
                     source: DecisionSource::UserOnce,
                 });
-                update_call(ctx, &call.id, |c| {
-                    c.decision_source = Some(DecisionSource::UserOnce)
-                });
-                results[i] = Some(complete_call(
+                results[i] = Some(complete_decided(
                     ctx,
                     &call.id,
                     ToolCallStatus::Denied,
+                    Some(DecisionSource::UserOnce),
                     true,
                     0,
                     denied_result(message),
@@ -991,6 +1126,30 @@ async fn run_calls(
             }
         }
         cancelled = ctx.active.cancel.is_cancelled();
+        // What the guard is told about this batch when it decides the next one. A failure is
+        // also a strike against the call: three of the same and the loop detector answers
+        // without asking anyone (04 §6).
+        for (i, _, source) in &allowed {
+            let call = &calls[*i];
+            let failed = matches!(
+                &results[*i],
+                Some(ContentPart::ToolResult { is_error: true, .. })
+            );
+            if failed {
+                guard.loops.failed(&call.name, &call.args);
+            }
+            guard.recent.push(recent_of(
+                call,
+                if failed { "failed" } else { "ok" },
+                match source {
+                    DecisionSource::Judge => "allowed by the guard",
+                    DecisionSource::UserOnce | DecisionSource::UserChatGrant => {
+                        "allowed by the user"
+                    }
+                    _ => "allowed by the mode",
+                },
+            ));
+        }
     }
 
     let results = results
@@ -1007,6 +1166,71 @@ async fn run_calls(
         })
         .collect();
     (results, cancelled)
+}
+
+/// The task as the guard sees it (04 §6): what the user asked for, where the work may happen,
+/// and what the assistant said it was about to do. Built once per batch, because every call in
+/// a batch shares it.
+fn guard_frame(ctx: &RunContext, assistant: &Message) -> judge::Frame {
+    let user_texts: Vec<String> = ctx
+        .input
+        .messages
+        .iter()
+        .filter(|m| m.role == Role::User)
+        .map(|m| m.text())
+        .filter(|t| !t.trim().is_empty())
+        .collect();
+    judge::Frame {
+        // Projects arrive with M11; until then a chat belongs to nothing and the guard is told
+        // so rather than told a name that would be a guess.
+        project: None,
+        first_user: user_texts.first().cloned().unwrap_or_default(),
+        last_user: user_texts.last().cloned().unwrap_or_default(),
+        intent: last_sentence(&assistant.text()),
+        roots: ctx.input.roots.clone(),
+        mode: ctx.input.mode,
+    }
+}
+
+/// One call put to the guard, with the loop detector in front of it (04 §6, rule 4). The loop
+/// is answered here rather than by the model because the answer cannot depend on judgement: the
+/// same call has already failed three times, and asking a model about it a fourth time costs
+/// money to be told what we know.
+async fn ask_the_guard(
+    ctx: &RunContext,
+    call: &Call,
+    entry: &ToolEntry,
+    frame: &judge::Frame,
+    guard: &GuardState,
+) -> Result<JudgeVerdict, judge::JudgeError> {
+    if let Some(verdict) = guard.loops.verdict(&call.name, &call.args) {
+        return Ok(verdict);
+    }
+    let (Some(provider), Some(model)) = (ctx.provider.clone(), ctx.judge_model.clone()) else {
+        return Err(judge::JudgeError::Unavailable);
+    };
+    let action = judge::Action {
+        connector: entry.connector_name().to_owned(),
+        tool: entry.def.name.clone(),
+        description: entry.def.description.clone(),
+        tier: entry.def.tier,
+        args: call.args.clone(),
+        // A dry run of the change is not available yet: it needs a connector that can compute
+        // one without performing it, which no connector offers (04 §6, recorded as a gap).
+        preview: None,
+    };
+    let input = judge::render(frame, &action, &guard.recent, guard.denials);
+    judge::decide(provider, model, input).await
+}
+
+/// One line of the turn's history, as the guard reads it back on the next call.
+fn recent_of(call: &Call, outcome: &'static str, decision: &str) -> judge::Recent {
+    judge::Recent {
+        tool: call.name.clone(),
+        args: display_for(None, &call.args).summary,
+        outcome,
+        decision: decision.to_owned(),
+    }
 }
 
 /// Runs one allowed call to its result part; cancellation yields an error result.

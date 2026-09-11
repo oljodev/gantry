@@ -1,6 +1,7 @@
 //! The agent: chats, turns, the tool loop, permissions, interactions, events and the system
-//! prompt (docs/plan/01 §3, 04, 05 §3, 10). M3 runs the tool round loop with the mode policy
-//! and permission prompts; grants, guardrails, scope and the judge arrive with M6 to M8.
+//! prompt (docs/plan/01 §3, 04, 05 §3, 10): the tool round loop with the mode policy, the
+//! guardrail floor, standing grants, the guard of 04 §6 and the permission prompts everything
+//! else falls back to.
 
 #![forbid(unsafe_code)]
 
@@ -11,6 +12,7 @@ pub mod context;
 pub mod events;
 pub mod export;
 pub mod interactions;
+pub mod judge;
 pub mod permissions;
 pub mod persist;
 pub mod runner;

@@ -212,6 +212,9 @@ pub struct ToolCallDto {
     pub tier: RiskTier,
     pub status: ToolCallStatus,
     pub decision_source: Option<DecisionSource>,
+    /// What the guard decided, when the guard was asked (04 §6). Present on an allow as well
+    /// as on a block: the row shows a "guard ✓" mark with the reason on hover.
+    pub judge: Option<crate::judge::JudgeVerdict>,
     pub display: ToolDisplay,
     /// The first part of the result as text, for the row and the projection.
     pub result_preview: Option<String>,
