@@ -4,6 +4,7 @@ export const keys = {
   settings: ['settings'] as const,
   secretStore: ['secret_store_status'] as const,
   guardrails: ['guardrails'] as const,
+  guardDecisions: ['guard-decisions'] as const,
   dataInfo: ['data_info'] as const,
   providers: ['providers'] as const,
   catalog: ['catalog'] as const,

@@ -54,6 +54,9 @@ pub struct RunContext {
     /// own provider, so no second key is needed. `None` when there is no provider to ask, and
     /// then every guarded call falls back to the user.
     pub judge_model: Option<String>,
+    /// The blocks the user overrode with **Allow anyway** (04 §6), shared with the manager
+    /// because the button is pressed after the turn that was blocked has ended.
+    pub overrides: Arc<judge::Overrides>,
     pub active: Arc<ActiveTurn>,
     pub chats: Arc<ChatBook>,
     /// The tools of this turn. Behind a lock because attaching a connector mid-turn (04 §9)
@@ -866,6 +869,14 @@ async fn run_calls(
                         json: json!({ "error": "denied_by_policy", "message": reason }),
                     }],
                 ));
+            }
+            // The user already answered this one, by hand, after the guard blocked it.
+            Decision::Judge
+                if ctx
+                    .overrides
+                    .take(ctx.input.chat_id, &call.name, &call.args) =>
+            {
+                allowed.push((i, entry, DecisionSource::UserOnce));
             }
             Decision::Judge => judged.push((i, entry)),
             Decision::Ask { guardrail } => asking.push((i, entry, guardrail, None)),

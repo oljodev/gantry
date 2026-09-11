@@ -127,6 +127,18 @@ pub fn get(conn: &Connection, id: &CallId) -> Result<Option<ToolCallDto>> {
         .optional()?)
 }
 
+/// The guard's last decisions across every chat, newest first (04 §6, §11). Settings → Guard
+/// shows them, so the user can see what the guard has been doing on their behalf.
+pub fn recent_judged(conn: &Connection, limit: u32) -> Result<Vec<ToolCallDto>> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {COLUMNS} FROM tool_calls WHERE judge_json IS NOT NULL
+         ORDER BY created_at DESC LIMIT ?1"
+    ))?;
+    let rows = stmt.query_map(params![limit], from_row)?;
+    rows.collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(Into::into)
+}
+
 pub fn list_for_turn(conn: &Connection, turn_id: TurnId) -> Result<Vec<ToolCallDto>> {
     let mut stmt = conn.prepare(&format!(
         "SELECT {COLUMNS} FROM tool_calls WHERE turn_id = ?1 ORDER BY created_at, rowid"

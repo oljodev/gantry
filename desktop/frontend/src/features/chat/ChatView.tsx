@@ -67,6 +67,7 @@ export function ChatView({
   const attach = useRunStore((s) => s.attach);
   const clear = useRunStore((s) => s.clear);
   const retry = useRunStore((s) => s.retry);
+  const allowBlocked = useRunStore((s) => s.allowBlocked);
   const resolve = useRunStore((s) => s.resolve);
   const { update, rate, addRoot, removeRoot } = useChatMutations();
   const { providers } = useModelCatalog();
@@ -385,6 +386,15 @@ export function ChatView({
                 detailed={surface === 'code'}
                 isLast={i === turns.length - 1}
                 onOpenItem={openItem}
+                onAllowAnyway={(callId) => {
+                  void allowBlocked(chatId, callId).catch((err: unknown) => {
+                    toast.add({
+                      title: 'Could not allow that call',
+                      description: describe(err),
+                      type: 'error',
+                    });
+                  });
+                }}
                 onDecide={decide}
                 onAccess={answerAccess}
                 onOffer={answerOffer}

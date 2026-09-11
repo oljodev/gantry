@@ -119,6 +119,8 @@ pub struct TurnManager {
     runtime: tokio::runtime::Handle,
     active: Mutex<HashMap<TurnId, Arc<ActiveTurn>>>,
     notifier: RwLock<Option<Arc<dyn ChatNotifier>>>,
+    /// **Allow anyway**, from the last turn to the next one (04 §6).
+    overrides: Arc<crate::judge::Overrides>,
 }
 
 impl TurnManager {
@@ -141,6 +143,7 @@ impl TurnManager {
             runtime,
             active: Mutex::new(HashMap::new()),
             notifier: RwLock::new(None),
+            overrides: Arc::default(),
         })
     }
 
@@ -312,6 +315,68 @@ impl TurnManager {
         self.start_message(chat_id, user, attachments, sink)
     }
 
+    /// **Allow anyway** (04 §6): the user overrules a block the guard made.
+    ///
+    /// The blocked call cannot simply be run — its turn is over, and its result already went
+    /// back to the model as `blocked_by_guard`. So the override is remembered, the chat is told
+    /// in a system note what the user decided, and a new turn starts from that note. The model
+    /// makes the call again, the override answers it, and the work continues from where the
+    /// block stopped it. Nothing is rewritten: the block stays in the transcript, marked as
+    /// overridden, because it did happen.
+    pub fn allow_blocked(
+        self: &Arc<Self>,
+        chat_id: ChatId,
+        call_id: gantry_core::CallId,
+        sink: Arc<dyn EventSink>,
+    ) -> Result<TurnId, GantryError> {
+        let call = self
+            .chats
+            .tool_call(&call_id)?
+            .ok_or_else(|| GantryError::invalid("that call is not in this chat's history"))?;
+        if call.chat_id != chat_id {
+            return Err(GantryError::invalid("that call belongs to another chat"));
+        }
+        let blocked = call.status == gantry_core::ToolCallStatus::Denied
+            && call.judge.as_ref().is_some_and(|j| !j.allows());
+        if !blocked {
+            return Err(GantryError::invalid("the guard did not block that call"));
+        }
+        self.overrides
+            .add(chat_id, &call.model_tool_name, &call.args);
+        self.chats
+            .amend_verdict(&call_id, |v| v.overridden = true)?;
+        let reason = call
+            .judge
+            .as_ref()
+            .map_or(String::new(), |j| j.reason.clone());
+        let note = Message {
+            id: MessageId::new(),
+            role: Role::System,
+            parts: vec![ContentPart::SystemNote {
+                text: format!(
+                    "The guard blocked your call to `{}` ({reason}). The user has looked at \
+                     it and allowed it. Make exactly that call again and carry on; do not ask \
+                     about it and do not change it.",
+                    call.model_tool_name
+                ),
+            }],
+            origin: None,
+            created_at: now_ms(),
+        };
+        self.start_message(chat_id, note, Vec::new(), sink)
+    }
+
+    /// The Guard page's "this block was wrong" toggle (04 §6). It is stored with the decision
+    /// and read by nothing yet: it is there for the prompt tuning the plan says it is for, and
+    /// saying so out loud is better than a toggle that pretends to do something now.
+    pub fn mark_verdict(
+        &self,
+        call_id: &gantry_core::CallId,
+        wrong: Option<bool>,
+    ) -> Result<(), GantryError> {
+        self.chats.amend_verdict(call_id, move |v| v.wrong = wrong)
+    }
+
     fn start_message(
         self: &Arc<Self>,
         chat_id: ChatId,
@@ -397,6 +462,7 @@ impl TurnManager {
         // The guard asks the cheapest fast model of the chat's own provider, which is the same
         // table the title generator reads (04 §6). Resolved once, before the turn starts, so a
         // decision mid-turn costs nothing but the request.
+        let overrides = self.overrides.clone();
         let judge_model = provider
             .as_ref()
             .map(|p| title::judge_model(model.provider.as_str(), p.kind(), &model.model));
@@ -411,6 +477,7 @@ impl TurnManager {
                 media,
                 guardrails,
                 judge_model,
+                overrides,
                 active: active.clone(),
                 chats: chats.clone(),
                 tools: std::sync::RwLock::new(tools),

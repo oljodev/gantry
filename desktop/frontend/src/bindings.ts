@@ -17,6 +17,8 @@ export const commands = {
 	 */
 	updateSettings: (patch: SettingsPatch) => typedError<Settings, ErrorDto>(__TAURI_INVOKE("update_settings", { patch })),
 	getGuardrails: () => typedError<GuardrailInfo, ErrorDto>(__TAURI_INVOKE("get_guardrails")),
+	/**  The guard's last decisions, newest first (04 §6, §11). */
+	listGuardDecisions: (limit: number) => typedError<GuardDecision[], ErrorDto>(__TAURI_INVOKE("list_guard_decisions", { limit })),
 	getSecretStoreStatus: () => typedError<SecretStoreStatus, ErrorDto>(__TAURI_INVOKE("get_secret_store_status")),
 	getDataInfo: () => typedError<DataInfo, ErrorDto>(__TAURI_INVOKE("get_data_info")),
 	/**  Opens the data directory in the system file manager. */
@@ -115,6 +117,16 @@ export const commands = {
 	sendMessage: (chatId: ChatId, text: string, attachments: AttachmentInput[], onEvent: Channel<AgentEventBatch_Deserialize>) => typedError<TurnId, ErrorDto>(__TAURI_INVOKE("send_message", { chatId, text, attachments, onEvent })),
 	/**  Drops the chat's last turn and sends its user message again over a fresh channel. */
 	retryTurn: (chatId: ChatId, turnId: TurnId, onEvent: Channel<AgentEventBatch_Deserialize>) => typedError<TurnId, ErrorDto>(__TAURI_INVOKE("retry_turn", { chatId, turnId, onEvent })),
+	/**
+	 *  **Allow anyway** on a call the guard blocked (04 §6): the override is remembered and a new
+	 *  turn starts, telling the model to make the call again.
+	 */
+	allowBlockedCall: (chatId: ChatId, callId: CallId, onEvent: Channel<AgentEventBatch_Deserialize>) => typedError<TurnId, ErrorDto>(__TAURI_INVOKE("allow_blocked_call", { chatId, callId, onEvent })),
+	/**
+	 *  Marks a guard decision right or wrong, or takes the mark back (04 §6). Stored with the
+	 *  decision for later prompt tuning; nothing reads it yet.
+	 */
+	markJudgeDecision: (callId: CallId, wrong: boolean | null) => typedError<null, ErrorDto>(__TAURI_INVOKE("mark_judge_decision", { callId, wrong })),
 	/**  Whether the turn was running. */
 	cancelTurn: (turnId: TurnId) => typedError<boolean, ErrorDto>(__TAURI_INVOKE("cancel_turn", { turnId })),
 	/**  Reattaches to a running turn: one snapshot, then live batches (05 §3). */
@@ -891,6 +903,22 @@ export type GrantSource =
 "access_request" | 
 /**  Inherited from the project the chat belongs to. */
 "project_default";
+
+/**
+ *  One decision the guard made, as Settings → Guard lists it (04 §6). The chat's title comes
+ *  with it so a row can say where the decision happened; the page links back to it.
+ */
+export type GuardDecision = {
+	call_id: CallId,
+	chat_id: ChatId,
+	chat_title: string,
+	connector_name: string,
+	tool: string,
+	tier: RiskTier,
+	summary: string,
+	verdict: JudgeVerdict,
+	at: number,
+};
 
 /**  The rule that matched, as the card and the model are told about it. */
 export type GuardrailHit = {

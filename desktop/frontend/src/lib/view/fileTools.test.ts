@@ -17,6 +17,7 @@ function call(status: ToolCallStatus, extra: Partial<ToolCallDto> = {}): ToolCal
     tier: 'execute',
     status,
     decision_source: null,
+    judge: null,
     display: { kind: 'command', summary: '$ rm -rf build' },
     result_preview: null,
     result: null,

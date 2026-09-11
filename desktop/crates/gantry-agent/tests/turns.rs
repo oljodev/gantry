@@ -1668,3 +1668,82 @@ async fn the_floor_outranks_the_guard() {
     assert!(m.cancel(pending[0].turn_id));
     wait_for(|| sink.completed().is_some()).await;
 }
+
+/// **Allow anyway** (04 §6): the block stands in the transcript, marked as overridden, and the
+/// work carries on from where it stopped.
+#[tokio::test]
+async fn allow_anyway_lets_the_blocked_call_through_on_the_next_turn() {
+    let blocked = || tool_round("c1", "fake__write", serde_json::json!({ "path": "out" }));
+    let m = manager_with(
+        vec![
+            blocked(),
+            vec![text("I was blocked."), end()],
+            // The next turn: the model makes the same call again, as the note tells it to.
+            tool_round("c2", "fake__write", serde_json::json!({ "path": "out" })),
+            vec![text("Written."), end()],
+        ],
+        Duration::ZERO,
+        Settings::default(),
+    );
+    let chat = m.chat();
+    m.guarded(chat.id);
+    m.guard_says(&[r#"{"decision":"deny","confidence":0.9,"reason":"Not part of the task"}"#]);
+    let sink = Arc::new(Collect::default());
+    m.start(chat.id, "write it".into(), Vec::new(), sink.clone())
+        .unwrap();
+    wait_for(|| sink.completed().is_some()).await;
+    assert!(m.fake.calls.lock().unwrap().is_empty(), "the block held");
+
+    let second = Arc::new(Collect::default());
+    m.allow_blocked(chat.id, CallId("c1".into()), second.clone())
+        .unwrap();
+    wait_for(|| second.completed().is_some()).await;
+
+    assert_eq!(
+        m.fake.calls.lock().unwrap().len(),
+        1,
+        "the call the user allowed ran, and it was not put to the guard again"
+    );
+    assert_eq!(
+        m.guard_inputs().len(),
+        1,
+        "the override answers instead of the guard"
+    );
+    let detail = m.chats().get(chat.id).unwrap().unwrap();
+    let first = detail.turns[0]
+        .tool_calls
+        .iter()
+        .find(|c| c.id.as_str() == "c1")
+        .unwrap();
+    assert_eq!(
+        first.status,
+        ToolCallStatus::Denied,
+        "the block is not rewritten"
+    );
+    assert!(first.judge.as_ref().unwrap().overridden);
+    let allowed = detail.turns[1]
+        .tool_calls
+        .iter()
+        .find(|c| c.id.as_str() == "c2")
+        .unwrap();
+    assert_eq!(allowed.status, ToolCallStatus::Completed);
+    assert_eq!(allowed.decision_source, Some(DecisionSource::UserOnce));
+    // The model was told, in a system note, what the user decided.
+    let opener: String = detail.turns[1]
+        .user
+        .parts
+        .iter()
+        .filter_map(gantry_core::ContentPart::system_text)
+        .collect();
+    assert!(
+        opener.contains("The user has looked at it and allowed it"),
+        "{opener}"
+    );
+
+    // And the override is spent: a call the guard has not blocked is still the guard's.
+    assert!(
+        m.allow_blocked(chat.id, CallId("c2".into()), Arc::new(Collect::default()))
+            .is_err(),
+        "only a call the guard blocked can be allowed anyway"
+    );
+}

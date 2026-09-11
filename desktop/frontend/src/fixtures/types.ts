@@ -28,6 +28,8 @@ export interface ChatSummary {
   lastMessageAt: number;
   running?: boolean;
   pending?: number;
+  /** Calls the guard blocked in the running turn and nobody has looked at yet (04 §6). */
+  blocked?: number;
   archived?: boolean;
   /** A code session's folder, under the title (16 §5). */
   subtitle?: string;
@@ -77,6 +79,8 @@ export type ActivityItem =
       status: 'done' | 'running' | 'failed' | 'waiting' | 'denied' | 'cancelled' | 'proposed';
       /** Set when a guardrail refused the call (04 §5): the rule's reason, in its own words. */
       blocked?: string;
+      /** What the guard decided about the call (04 §6), when a guard decided it. */
+      guard?: GuardMark;
       progress?: number;
       tier?: Tier;
       /** Raw input and output for the detail pane; absent on fixture rows. */
@@ -85,7 +89,6 @@ export type ActivityItem =
       isError?: boolean;
       durationMs?: number;
     }
-  | { kind: 'guard'; id: string; ok: boolean; reason?: string }
   | {
       /** Everything before this point, summarized (02 §6). The messages are still above it. */
       kind: 'compacted';
@@ -108,6 +111,19 @@ export type ActivityItem =
     }
   | { kind: 'context'; id: string; skills: string[]; memories: number };
 
+/**
+ * The guard's verdict as a row shows it (04 §6). An allow is a small mark with the reason on
+ * hover; a block replaces the row and offers **Allow anyway**.
+ */
+export interface GuardMark {
+  ok: boolean;
+  reason: string;
+  /** The user pressed **Allow anyway**: the block happened, and was then overruled. */
+  overridden: boolean;
+  /** The user said the decision was wrong, or right, or has said nothing. */
+  wrong?: boolean;
+}
+
 export interface Permission {
   id: string;
   connector: string;
@@ -119,6 +135,8 @@ export interface Permission {
   note?: string;
   /** The guardrail that raised this prompt, when one did (04 §5). */
   guardrail?: { rule: string; reason: string };
+  /** Why the guard did not answer this one itself (04 §6). */
+  guard?: string;
   /** The assistant's last sentence before the call (04 §7). */
   why?: string;
   scopes: { id: string; label: string }[];
@@ -184,7 +202,9 @@ export interface SentAttachment {
 
 export interface Turn {
   id: string;
-  user: { text: string; attachments?: SentAttachment[] };
+  /** A turn opened by Gantry rather than by the user (04 §6, **Allow anyway**) sets `system`,
+   *  and the view renders a note instead of words the user did not say. */
+  user: { text: string; attachments?: SentAttachment[]; system?: boolean };
   blocks: Block[];
   footer?: { model: string; durationMs: number; tokensIn: number; tokensOut: number };
   status: 'done' | 'running' | 'waiting' | 'failed' | 'cancelled' | 'interrupted';

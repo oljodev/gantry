@@ -4,6 +4,7 @@ import { SettingsRow } from '@/components/gantry/settings/SettingsRow';
 import { Advanced } from '@/features/settings/Advanced';
 import { Data } from '@/features/settings/Data';
 import { General } from '@/features/settings/General';
+import { GuardDecisions } from '@/features/settings/GuardDecisions';
 import { Guardrails } from '@/features/settings/Guardrails';
 import { Providers } from '@/features/settings/Providers';
 import { isSection, type Section } from '@/features/settings/sections';
@@ -30,8 +31,8 @@ export function SettingsBody({ section }: { section: string }) {
 }
 
 /**
- * Settings → Guard & guardrails (11 §2). The floor is built; the judge that reviews risky calls
- * in Auto mode, and the record of what it decided, arrive with M8.
+ * Settings → Guard & guardrails (11 §2): the floor of 04 §5, then the record of what the guard
+ * of 04 §6 has decided on the user's behalf.
  */
 function Guard() {
   return (
@@ -39,11 +40,18 @@ function Guard() {
       <Guardrails />
       <section>
         <h2 className="mb-1 text-title font-medium text-fg">Guard</h2>
-        <p className="text-body text-fg-2">
-          In Auto mode a judge model will review each risky call and decide without interrupting
-          you. It arrives with milestone M8; until then Auto asks you about anything it would have
-          sent to the judge.
+        <p className="mb-3 text-body text-fg-2">
+          In Auto mode, a small fast model of the provider your chat already uses decides each call
+          that changes something, so a long task runs without interrupting you. It cannot reach past
+          the guardrails above, and when it cannot decide — a timeout, an answer it could not give —
+          the question comes to you instead. Turn it off per chat with the mode chip, or for new
+          chats in General.
         </p>
+        <p className="mb-4 text-meta text-fg-3">
+          Marking a decision right or wrong is kept with it, for tuning the guard's instructions in
+          a later release. It does not change what the guard does today.
+        </p>
+        <GuardDecisions />
       </section>
     </div>
   );

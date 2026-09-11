@@ -5,8 +5,8 @@ use std::sync::Arc;
 
 use gantry_core::{
     ChatDetail, ChatGrant, ChatId, ChatSummary, ContentPart, Feedback, GantryError, MediaSource,
-    Message, MessageId, Mode, ModelRef, ReasoningEffort, Role, StopReason, Surface, TurnDto,
-    TurnId, TurnStatus, Usage, now_ms,
+    Message, MessageId, Mode, ModelRef, ReasoningEffort, Role, StopReason, Surface, ToolCallDto,
+    TurnDto, TurnId, TurnStatus, Usage, now_ms,
 };
 use gantry_store::{
     BlobStore, Store,
@@ -505,6 +505,39 @@ impl ChatBook {
             .map_err(store_err)
     }
 
+    /// One tool call by id, for the parts of the app that act on a call after its turn ended:
+    /// **Allow anyway** and the guard's feedback toggle (04 §6).
+    pub fn tool_call(&self, id: &gantry_core::CallId) -> Result<Option<ToolCallDto>, GantryError> {
+        let id = id.clone();
+        self.store
+            .read(move |conn| tool_calls::get(conn, &id))
+            .map_err(store_err)
+    }
+
+    /// Rewrites the guard's verdict on one call: the user overrode it, or said it was wrong
+    /// (04 §6). The decision itself is never rewritten — only what the user said about it.
+    pub fn amend_verdict(
+        &self,
+        id: &gantry_core::CallId,
+        f: impl FnOnce(&mut gantry_core::JudgeVerdict) + Send + 'static,
+    ) -> Result<(), GantryError> {
+        let id = id.clone();
+        self.store
+            .write_blocking(move |conn| {
+                let Some(mut call) = tool_calls::get(conn, &id)? else {
+                    return Err(gantry_store::StoreError::Other(format!("no call {id}")));
+                };
+                let Some(verdict) = call.judge.as_mut() else {
+                    return Err(gantry_store::StoreError::Other(
+                        "no guard decided this call".into(),
+                    ));
+                };
+                f(verdict);
+                tool_calls::update(conn, &call)
+            })
+            .map_err(store_err)
+    }
+
     /// Appends a `SystemNote` between turns (10 §4).
     pub fn append_system_note(&self, chat_id: ChatId, text: String) -> Result<(), GantryError> {
         self.store
@@ -733,16 +766,15 @@ fn detail(
     let turn_dtos = turns
         .iter()
         .map(|t| {
-            let user = messages
-                .iter()
-                .find(|m| m.turn_id == Some(t.id) && m.message.role == Role::User)
+            // The turn's opening message, whatever its role. Almost always the user's; a turn
+            // started by **Allow anyway** opens with a `System` note instead, and the view
+            // renders that as a note rather than as words the user did not say (04 §6).
+            let mut turn_messages = messages.iter().filter(|m| m.turn_id == Some(t.id));
+            let user = turn_messages
+                .next()
                 .map(|m| m.message.clone())
                 .unwrap_or_else(|| Message::user_text(""));
-            let replies: Vec<Message> = messages
-                .iter()
-                .filter(|m| m.turn_id == Some(t.id) && m.message.role != Role::User)
-                .map(|m| m.message.clone())
-                .collect();
+            let replies: Vec<Message> = turn_messages.map(|m| m.message.clone()).collect();
             // Results live in the transcript's tool messages; the row keeps only a preview.
             let results: std::collections::HashMap<
                 &gantry_core::CallId,

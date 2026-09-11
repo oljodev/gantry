@@ -72,7 +72,19 @@ const extra: ActivityItem[] = [
     summary: 'query="roadmap"',
     status: 'failed',
   },
-  { kind: 'guard', id: 'x5', ok: false, reason: 'The task did not ask for a force push.' },
+  {
+    kind: 'connector',
+    id: 'x5',
+    connector: 'github',
+    tool: 'create_release',
+    summary: 'tag="v2.0.0"',
+    status: 'denied',
+    guard: {
+      ok: false,
+      reason: 'Publishes a release, which the task never asked for.',
+      overridden: false,
+    },
+  },
   { kind: 'notice', id: 'x6', text: 'Earlier conversation summarized.' },
   { kind: 'context', id: 'x7', skills: ['rust-idioms'], memories: 2 },
 ];

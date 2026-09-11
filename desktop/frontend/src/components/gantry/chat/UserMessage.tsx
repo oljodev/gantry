@@ -1,4 +1,4 @@
-import { FileIcon, ImageIcon } from '@phosphor-icons/react';
+import { FileIcon, ImageIcon, ShieldCheckIcon } from '@phosphor-icons/react';
 import { useEffect, useState } from 'react';
 
 import { ImageLightbox } from '@/components/gantry/ImageLightbox';
@@ -7,6 +7,24 @@ import { commands, isTauri } from '@/lib/ipc/client';
 
 /** The user's message: a tinted block, right-aligned, max 75 % of the measure (15 A14). */
 export function UserMessage({ user }: { user: Turn['user'] }) {
+  // A turn Gantry opened, not the user: **Allow anyway** starts one from a system note
+  // (04 §6). It is centred and quiet, because it is a record of what happened, not speech.
+  if (user.system) return <SystemOpener />;
+  return <SentMessage user={user} />;
+}
+
+function SystemOpener() {
+  return (
+    <div className="flex items-center gap-2 py-1 text-meta text-fg-3">
+      <span className="h-px flex-1 bg-line-subtle" />
+      <ShieldCheckIcon className="size-3.5 shrink-0 text-good" />
+      <span className="max-w-[75%] text-center">You allowed a call the guard had blocked.</span>
+      <span className="h-px flex-1 bg-line-subtle" />
+    </div>
+  );
+}
+
+function SentMessage({ user }: { user: Turn['user'] }) {
   const attachments = user.attachments ?? [];
   const images = attachments.filter((a) => a.kind === 'image');
   const files = attachments.filter((a) => a.kind !== 'image');

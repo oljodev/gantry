@@ -40,7 +40,6 @@ describe('summarize', () => {
 
   it('counts connector uses by name and ignores passing guards', () => {
     const items: ActivityItem[] = [
-      { kind: 'guard', id: 'g', ok: true },
       {
         kind: 'connector',
         id: '1',

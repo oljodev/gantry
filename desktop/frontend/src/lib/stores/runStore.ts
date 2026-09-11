@@ -85,6 +85,8 @@ interface RunState {
   attach: (chatId: ChatId, turnId: TurnId) => Promise<void>;
   /** Drops the chat's last turn and runs its message again. */
   retry: (chatId: ChatId, turnId: TurnId) => Promise<TurnId>;
+  /** **Allow anyway** on a call the guard blocked (04 §6): a new turn makes it again. */
+  allowBlocked: (chatId: ChatId, callId: string) => Promise<TurnId>;
   /** Answers a permission card; the turn continues. */
   resolve: (chatId: ChatId, id: string, resolution: InteractionResolution) => Promise<void>;
   clear: (chatId: ChatId) => void;
@@ -117,6 +119,7 @@ function drain() {
   const pending = new Map(queue);
   queue.clear();
   const finished: ChatId[] = [];
+  const blocked: GuardBlock[] = [];
   useRunStore.setState((state) => {
     const byChat = { ...state.byChat };
     for (const [chatId, batches] of pending) {
@@ -126,7 +129,7 @@ function drain() {
       const before = live.artifacts.length;
       for (const batch of batches) {
         if (batch.turn_id !== live.turnId) continue;
-        live = applyBatch(live, batch, chatId);
+        live = applyBatch(live, batch, chatId, blocked);
       }
       byChat[chatId] = live;
       if (live.status !== 'running') finished.push(chatId);
@@ -145,6 +148,16 @@ function drain() {
     return { byChat };
   });
   for (const chatId of finished) if (queryClient) invalidateChat(queryClient, chatId);
+  // The guard never interrupts, so a block is announced rather than asked (04 §6). The toast
+  // is the only notification; the sidebar's own dot is what says which chat it was in.
+  for (const b of blocked) onGuardBlock?.(b);
+}
+
+let onGuardBlock: ((block: GuardBlock) => void) | undefined;
+
+/** Where a block is announced. The app sets this once, at startup; the tests leave it unset. */
+export function bindGuardBlocks(f: (block: GuardBlock) => void) {
+  onGuardBlock = f;
 }
 
 function messageOf(next: LiveTurn, id: string): LiveMessage {
@@ -159,7 +172,23 @@ function fromMessage(m: Message): LiveMessage {
   return { id: m.id, role: m.role, parts: [...m.parts] };
 }
 
-export function applyBatch(live: LiveTurn, batch: AgentEventBatch, chatId?: ChatId): LiveTurn {
+/**
+ * Blocks the guard made while this batch was applied (04 §6). Collected rather than announced
+ * from inside the reducer, so that `applyBatch` stays a pure function of its inputs and the
+ * tests can read what it would have announced.
+ */
+export interface GuardBlock {
+  chatId?: ChatId;
+  callId: string;
+  reason: string;
+}
+
+export function applyBatch(
+  live: LiveTurn,
+  batch: AgentEventBatch,
+  chatId?: ChatId,
+  blocked: GuardBlock[] = [],
+): LiveTurn {
   const next: LiveTurn = {
     ...live,
     messages: live.messages.map((m) => ({ ...m, parts: [...m.parts] })),
@@ -238,6 +267,7 @@ export function applyBatch(live: LiveTurn, batch: AgentEventBatch, chatId?: Chat
           args: null,
           tier: 'read',
           status: 'proposed',
+          judge: null,
           decision_source: null,
           display: { kind: 'connector', summary: '' },
           result_preview: null,
@@ -352,12 +382,24 @@ export function applyBatch(live: LiveTurn, batch: AgentEventBatch, chatId?: Chat
         next.output[ev.call_id] = lines.slice(-LIVE_OUTPUT_LINES);
         break;
       }
+      // 04 §6: the guard decided, and the row says so — a small mark on an allow, the whole
+      // row on a block. A block is also the one thing the guard does that the user may want
+      // to know about while they are looking somewhere else, so it toasts.
+      case 'judge.decision': {
+        const c = next.calls[ev.call_id];
+        if (c) next.calls[ev.call_id] = { ...c, judge: ev.verdict };
+        if (ev.verdict.decision === 'deny' && ev.verdict.source !== 'unavailable') {
+          blocked.push({ chatId, callId: ev.call_id, reason: ev.verdict.reason });
+        }
+        break;
+      }
       case 'tool_call.completed': {
         const c = next.calls[ev.call_id];
         if (c) {
           next.calls[ev.call_id] = {
             ...c,
             status: ev.status,
+            decision_source: ev.decision_source ?? c.decision_source,
             is_error: ev.is_error,
             result_preview: ev.result_preview,
             result: ev.result,
@@ -442,6 +484,12 @@ export const useRunStore = create<RunState>()((set, get) => ({
   retry: async (chatId, turnId) => {
     const channel = channelFor(chatId);
     const next = await unwrap(commands.retryTurn(chatId, turnId, channel));
+    adopt(set, chatId, next);
+    return next;
+  },
+  allowBlocked: async (chatId, callId) => {
+    const channel = channelFor(chatId);
+    const next = await unwrap(commands.allowBlockedCall(chatId, callId, channel));
     adopt(set, chatId, next);
     return next;
   },

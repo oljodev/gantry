@@ -1,4 +1,4 @@
-import { DotsThreeIcon } from '@phosphor-icons/react';
+import { DotsThreeIcon, ShieldWarningIcon } from '@phosphor-icons/react';
 import { Link } from '@tanstack/react-router';
 import { type ComponentType, type ReactNode, useState } from 'react';
 
@@ -40,7 +40,8 @@ type ItemProps = {
 };
 
 /**
- * A chat in the sidebar (15 §7): a small dot, the title, a pending-decision count. The dot is
+ * A chat in the sidebar (15 §7): a small dot, the title, a pending-decision count and, when
+ * the guard blocked something in a turn running elsewhere, its mark. The dot is
  * hollow at rest and filled accent while a turn runs. Right-click or the `⋯` that appears on
  * hover open the same menu; Rename edits the title in place.
  */
@@ -112,6 +113,13 @@ export function ChatRow({
             <span className="truncate font-mono text-micro text-fg-3">{chat.subtitle}</span>
           )}
         </span>
+        {/* 04 §6: the guard blocked something here while you were elsewhere. It is not a
+            decision waiting for you — the turn carried on — so it is a mark, not a count. */}
+        {chat.blocked !== undefined && chat.blocked > 0 && (
+          <span aria-label={`${chat.blocked} blocked by guard`} title="Blocked by guard">
+            <ShieldWarningIcon className="size-3.5 shrink-0 text-warn" />
+          </span>
+        )}
         {chat.pending !== undefined && chat.pending > 0 && (
           <Badge variant="accent" aria-label={`${chat.pending} pending decision`}>
             {chat.pending}

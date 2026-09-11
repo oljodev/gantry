@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use gantry_agent::EventSink;
-use gantry_core::{AgentEventBatch, AttachmentInput, ChatId, ErrorDto, TurnId};
+use gantry_core::{AgentEventBatch, AttachmentInput, CallId, ChatId, ErrorDto, TurnId};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, State, ipc::Channel};
 use tauri_specta::Event;
@@ -65,6 +65,40 @@ pub fn retry_turn(
     }
     .emit(&app);
     Ok(turn)
+}
+
+/// **Allow anyway** on a call the guard blocked (04 §6): the override is remembered and a new
+/// turn starts, telling the model to make the call again.
+#[tauri::command]
+#[specta::specta]
+pub fn allow_blocked_call(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    chat_id: ChatId,
+    call_id: CallId,
+    on_event: Channel<AgentEventBatch>,
+) -> Result<TurnId, ErrorDto> {
+    let turn = state
+        .turns
+        .allow_blocked(chat_id, call_id, Arc::new(ChannelSink(on_event)))?;
+    let _ = ChatsChanged {
+        chat_ids: vec![chat_id],
+    }
+    .emit(&app);
+    Ok(turn)
+}
+
+/// Marks a guard decision right or wrong, or takes the mark back (04 §6). Stored with the
+/// decision for later prompt tuning; nothing reads it yet.
+#[tauri::command]
+#[specta::specta]
+pub fn mark_judge_decision(
+    state: State<'_, AppState>,
+    call_id: CallId,
+    wrong: Option<bool>,
+) -> Result<(), ErrorDto> {
+    state.turns.mark_verdict(&call_id, wrong)?;
+    Ok(())
 }
 
 /// Whether the turn was running.

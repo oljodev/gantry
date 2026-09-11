@@ -3,7 +3,8 @@ import { type ReactNode, useEffect, useState } from 'react';
 
 import { useBackendEvents } from '@/lib/ipc/events';
 import { useSettings } from '@/lib/ipc/hooks/settings';
-import { bindRunStore } from '@/lib/stores/runStore';
+import { toast } from '@/components/ui/toast';
+import { bindGuardBlocks, bindRunStore } from '@/lib/stores/runStore';
 import { useUiStore } from '@/lib/stores/uiStore';
 
 export function Providers({ children }: { children: ReactNode }) {
@@ -30,6 +31,15 @@ function BackendSync() {
   useBackendEvents();
   const qc = useQueryClient();
   useEffect(() => bindRunStore(qc), [qc]);
+  // The guard's only notification (04 §6): it blocked something, and here is why. Pressing
+  // **Allow anyway** happens on the row in the chat, where the call itself is.
+  useEffect(
+    () =>
+      bindGuardBlocks(({ reason }) => {
+        toast.add({ title: 'Blocked by guard', description: reason, type: 'warning' });
+      }),
+    [],
+  );
   const settings = useSettings();
   const appearance = settings.data?.appearance;
   useEffect(() => {

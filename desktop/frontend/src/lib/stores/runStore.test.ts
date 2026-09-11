@@ -33,6 +33,7 @@ const interaction: Interaction = {
       args: {},
       display: { kind: 'read', summary: '' },
       guardrail: null,
+      guard: null,
       why: 'Let me check',
       description: 'The time',
       scopes: ['tool', 'all_reads'],
@@ -331,5 +332,70 @@ describe('a running command shows what it has printed', () => {
     });
     // The result carries the output now; keeping the window as well would double it.
     expect(live.output[CMD]).toBeUndefined();
+  });
+
+  // 04 §6: a block replaces the row and offers a way out of it; an allow is a mark on the row.
+  it('shows what the guard decided, and announces only the blocks', () => {
+    const blocked: { callId: string; reason: string }[] = [];
+    let live = fresh(TURN);
+    live = applyBatch(
+      live,
+      {
+        turn_id: TURN,
+        events: [
+          ev({
+            type: 'tool_call.started',
+            call_id: CALL,
+            message_id: MSG,
+            connector: 'github',
+            connector_name: 'GitHub',
+            tool: 'create_release',
+            model_tool_name: 'github__create_release',
+          }),
+          ev({
+            type: 'judge.decision',
+            call_id: CALL,
+            verdict: {
+              decision: 'deny',
+              confidence: 0.9,
+              reason: 'Publishes a release nobody asked for',
+              flags: ['irreversible'],
+              source: 'model',
+              model: 'deepseek/deepseek-v4-flash',
+              latency_ms: 900,
+              overridden: false,
+              wrong: null,
+            },
+          }),
+          ev({
+            type: 'tool_call.completed',
+            call_id: CALL,
+            status: 'denied',
+            decision_source: 'judge',
+            is_error: true,
+            duration_ms: 0,
+            result_preview: '{}',
+            result: [{ kind: 'json', json: { error: 'blocked_by_guard' } }],
+          }),
+        ],
+      },
+      'c1',
+      blocked,
+    );
+
+    expect(blocked).toEqual([
+      { chatId: 'c1', callId: CALL, reason: 'Publishes a release nobody asked for' },
+    ]);
+    expect(live.calls[CALL]?.decision_source).toBe('judge');
+
+    const turns = toTurns(chat({}), live, () => 'Model');
+    const items = turns[0]?.blocks.flatMap((b) => (b.kind === 'activity' ? b.items : [])) ?? [];
+    const row = items.find((i) => i.kind === 'connector');
+    expect(row?.kind === 'connector' && row.guard).toEqual({
+      ok: false,
+      reason: 'Publishes a release nobody asked for',
+      overridden: false,
+      wrong: undefined,
+    });
   });
 });

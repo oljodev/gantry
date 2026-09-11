@@ -199,7 +199,6 @@ export const authChat: ChatDetail = {
                 'test result: ok. 31 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.42s',
               ],
             },
-            { kind: 'guard', id: 'g1', ok: true },
             { kind: 'artifact', id: 'a1', title: 'Auth expiry fix', type: 'markdown', version: 1 },
           ],
         },

@@ -21,6 +21,13 @@ export function summarize(items: ActivityItem[]): string {
     if (!order.includes(key)) order.push(key);
   };
   for (const item of items) {
+    // A block is work that did not happen, and is worth saying so; an override is work that
+    // did, and is counted with the rest (04 §6).
+    if (item.kind === 'connector' && item.guard && !item.guard.ok && !item.guard.overridden) {
+      blocked++;
+      note('guard');
+      continue;
+    }
     if ('status' in item && (item.status === 'cancelled' || item.status === 'denied')) continue;
     switch (item.kind) {
       case 'read':
@@ -48,12 +55,6 @@ export function summarize(items: ActivityItem[]): string {
       case 'artifact':
         (item.action === 'updated' ? updated : created).add(item.artifactId ?? item.id);
         note(item.action === 'updated' ? 'updated' : 'created');
-        break;
-      case 'guard':
-        if (!item.ok) {
-          blocked++;
-          note('guard');
-        }
         break;
       default:
         break;

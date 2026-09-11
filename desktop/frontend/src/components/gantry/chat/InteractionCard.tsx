@@ -60,7 +60,8 @@ export type PermissionAnswer =
  * A permission prompt (04 §7). `Y` allows once and `N` denies while `hotkeys` is set (the
  * first pending card of the open chat); typing in a field never triggers them. A card raised by
  * a guardrail (04 §5) says so and says why, because that is the part worth reading: the mode
- * would have run this without asking.
+ * would have run this without asking. A card the guard could not answer (04 §6) says that too,
+ * for the same reason — in Auto mode, being asked at all is the surprise.
  */
 export function PermissionCard({
   permission,
@@ -199,6 +200,12 @@ export function PermissionCard({
               Guardrail <code className="font-mono">{permission.guardrail.rule}</code>.
             </span>
           </span>
+        </p>
+      )}
+      {permission.guard && (
+        <p className="mt-2 flex items-start gap-1.5 text-meta text-warn">
+          <ShieldWarningIcon className="mt-px size-3.5 shrink-0" />
+          <span>{permission.guard}</span>
         </p>
       )}
       {permission.why && (

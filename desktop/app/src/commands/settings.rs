@@ -86,6 +86,62 @@ pub fn get_guardrails(state: State<'_, AppState>) -> Result<GuardrailInfo, Error
     })
 }
 
+/// One decision the guard made, as Settings → Guard lists it (04 §6). The chat's title comes
+/// with it so a row can say where the decision happened; the page links back to it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
+pub struct GuardDecision {
+    pub call_id: gantry_core::CallId,
+    pub chat_id: gantry_core::ChatId,
+    pub chat_title: String,
+    pub connector_name: String,
+    pub tool: String,
+    pub tier: gantry_core::RiskTier,
+    pub summary: String,
+    pub verdict: gantry_core::JudgeVerdict,
+    #[specta(type = specta_typescript::Number)]
+    pub at: i64,
+}
+
+/// The guard's last decisions, newest first (04 §6, §11).
+#[tauri::command]
+#[specta::specta]
+pub fn list_guard_decisions(
+    state: State<'_, AppState>,
+    limit: u32,
+) -> Result<Vec<GuardDecision>, ErrorDto> {
+    let limit = limit.clamp(1, 200);
+    let rows = state
+        .store
+        .read(move |conn| {
+            let calls = gantry_store::repos::tool_calls::recent_judged(conn, limit)?;
+            let mut out = Vec::with_capacity(calls.len());
+            for call in calls {
+                let title = gantry_store::repos::chats::get(conn, call.chat_id)?
+                    .map(|c| c.title)
+                    .unwrap_or_default();
+                out.push((call, title));
+            }
+            Ok(out)
+        })
+        .map_err(|e| GantryError::Store(e.to_string()))?;
+    Ok(rows
+        .into_iter()
+        .filter_map(|(call, chat_title)| {
+            Some(GuardDecision {
+                call_id: call.id,
+                chat_id: call.chat_id,
+                chat_title,
+                connector_name: call.connector_name,
+                tool: call.tool,
+                tier: call.tier,
+                summary: call.display.summary,
+                verdict: call.judge?,
+                at: call.started_at.or(call.ended_at).unwrap_or_default(),
+            })
+        })
+        .collect())
+}
+
 #[tauri::command]
 #[specta::specta]
 pub fn get_secret_store_status(state: State<'_, AppState>) -> Result<SecretStoreStatus, ErrorDto> {

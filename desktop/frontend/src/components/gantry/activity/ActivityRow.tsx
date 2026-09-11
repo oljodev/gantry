@@ -38,10 +38,16 @@ export interface ActivityRowProps {
    * both open by default and doubled once opened.
    */
   bare?: boolean;
+  /**
+   * **Allow anyway** on a call the guard blocked (04 §6), by call id. Absent where the chat
+   * cannot start a turn to carry it out — the gallery, an export — and then the row says the
+   * call did not run and stops there.
+   */
+  onAllowAnyway?: (callId: string) => void;
 }
 
 /** One activity item (05 §1, 15 §8): icon, title, mono summary, status at the right. */
-export function ActivityRow({ item, onOpen, expandable, bare }: ActivityRowProps) {
+export function ActivityRow({ item, onOpen, expandable, bare, onAllowAnyway }: ActivityRowProps) {
   const detail = expandable ? inlineDetail(item, onOpen) : undefined;
   if (detail) return <ExpandableRow item={item} detail={detail} onOpen={onOpen} />;
   const open = onOpen ? () => onOpen(item) : undefined;
@@ -132,6 +138,43 @@ export function ActivityRow({ item, onOpen, expandable, bare }: ActivityRowProps
           />
         );
       }
+      // 04 §6: the guard's block is the same shape, and does offer **Allow anyway** — a
+      // judgement the user disagrees with is exactly what they should be able to overrule.
+      if (item.guard && !item.guard.ok) {
+        return (
+          <Row
+            icon={
+              <ShieldWarningIcon className={item.guard.overridden ? 'text-fg-3' : 'text-bad'} />
+            }
+            title={
+              <span className={item.guard.overridden ? 'text-fg-2' : 'text-bad'}>
+                {item.guard.overridden ? 'Blocked by guard, then allowed' : 'Blocked by guard'}
+              </span>
+            }
+            summary={item.guard.reason}
+            status={
+              item.guard.overridden ? (
+                <span className="text-meta text-fg-3">you allowed it</span>
+              ) : onAllowAnyway ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onAllowAnyway(item.id);
+                  }}
+                >
+                  Allow anyway
+                </Button>
+              ) : (
+                <span className="text-meta text-fg-3">not run</span>
+              )
+            }
+            onOpen={open}
+            className={item.guard.overridden ? undefined : 'bg-bad-subtle'}
+          />
+        );
+      }
       return (
         <Row
           icon={<ConnectorMark id={item.connector} name={item.connectorName} size={16} />}
@@ -153,6 +196,12 @@ export function ActivityRow({ item, onOpen, expandable, bare }: ActivityRowProps
               <span className="text-meta text-fg-3">cancelled</span>
             ) : (
               <span className="flex items-center gap-1.5 text-meta text-fg-3 tnum">
+                {/* 04 §6: the guard allowed it, and says why when you ask. */}
+                {item.guard?.ok && (
+                  <span title={item.guard.reason} className="flex items-center">
+                    <ShieldCheckIcon className="size-3.5 text-good" />
+                  </span>
+                )}
                 <Done />
                 {item.durationMs !== undefined && item.durationMs >= 1000 && (
                   <span>{(item.durationMs / 1000).toFixed(1)} s</span>
@@ -171,26 +220,6 @@ export function ActivityRow({ item, onOpen, expandable, bare }: ActivityRowProps
               </div>
             ) : undefined
           }
-        />
-      );
-    case 'guard':
-      return item.ok ? (
-        <div className="flex h-6 items-center gap-1.5 px-1 text-meta text-fg-3">
-          <ShieldCheckIcon className="size-3.5 text-good" />
-          guard ✓
-        </div>
-      ) : (
-        <Row
-          icon={<ShieldWarningIcon className="text-bad" />}
-          title={<span className="text-bad">Blocked by guard</span>}
-          summary={item.reason}
-          status={
-            <Button variant="ghost" size="sm">
-              Allow anyway
-            </Button>
-          }
-          onOpen={open}
-          className="bg-bad-subtle"
         />
       );
     case 'compacted':

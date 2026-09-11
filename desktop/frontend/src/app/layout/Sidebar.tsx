@@ -79,6 +79,10 @@ export function Sidebar() {
     lastMessageAt: c.last_message_at,
     running: live[c.id]?.status === 'running' || c.active_turn !== null,
     pending: live[c.id]?.pending.length || pendingCounts[c.id] || undefined,
+    blocked:
+      Object.values(live[c.id]?.calls ?? {}).filter(
+        (call) => call.judge?.decision === 'deny' && !call.judge.overridden,
+      ).length || undefined,
     // A code session is its folder as much as its title, so the row says which one (16 §5).
     subtitle: c.roots[0] ? folderName(c.roots[0]) : undefined,
   }));

@@ -12,6 +12,7 @@ import type {
   ActivityItem,
   Block,
   ConnectorOffer,
+  GuardMark,
   Permission,
   Turn,
 } from '@/fixtures/types';
@@ -144,6 +145,15 @@ function userOf(t: TurnDto): Turn['user'] {
         mime: p.mime,
       });
     }
+  }
+  // A turn Gantry opened rather than the user: **Allow anyway** starts one from a system note
+  // (04 §6), and a note is not something the user said.
+  if (t.user.role === 'system') {
+    const text = t.user.parts
+      .map((p) => (p.kind === 'system_note' ? p.text : ''))
+      .filter(Boolean)
+      .join(' ');
+    return { text, system: true };
   }
   return {
     text: partsText(t.user.parts),
@@ -302,6 +312,7 @@ function callItem(
     summary: call?.display.summary ?? '',
     status: rowStatus(call),
     blocked: blockedBy(call),
+    guard: guardOf(call),
     tier: call?.tier,
     args: call?.args ?? part?.args,
     result: call?.result ?? undefined,
@@ -375,6 +386,18 @@ function rowStatus(
   }
 }
 
+/** What the guard decided, when the guard was asked (04 §6). */
+function guardOf(call: ToolCallDto | undefined): GuardMark | undefined {
+  const j = call?.judge;
+  if (!j) return undefined;
+  return {
+    ok: j.decision === 'allow',
+    reason: j.reason,
+    overridden: j.overridden ?? false,
+    wrong: j.wrong ?? undefined,
+  };
+}
+
 /** The guardrail's own reason, when a guardrail is what refused the call (04 §5). */
 function blockedBy(call: ToolCallDto | undefined): string | undefined {
   if (call?.status !== 'denied' || call.decision_source !== 'guardrail') return undefined;
@@ -407,6 +430,7 @@ export function permissionOf(i: Interaction): Permission {
     args,
     note: r.description,
     guardrail: r.guardrail ? { rule: r.guardrail.rule, reason: r.guardrail.reason } : undefined,
+    guard: r.guard ?? undefined,
     why: r.why ?? undefined,
     scopes: [{ id: 'once', label: 'Allow once' }, ...r.scopes.map((s) => scopeOption(s, r.tool))],
   };

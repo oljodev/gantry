@@ -35,6 +35,25 @@ export function useGuardrails() {
   });
 }
 
+/** The guard's last decisions, newest first (04 §6). Settings → Guard shows them. */
+export function useGuardDecisions(limit = 40) {
+  return useQuery({
+    queryKey: [...keys.guardDecisions, limit],
+    queryFn: () => unwrap(commands.listGuardDecisions(limit)),
+    enabled: isTauri(),
+  });
+}
+
+/** "This block was wrong", stored with the decision for later prompt tuning (04 §6). */
+export function useMarkGuardDecision() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ callId, wrong }: { callId: string; wrong: boolean | null }) =>
+      unwrap(commands.markJudgeDecision(callId, wrong)),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.guardDecisions }),
+  });
+}
+
 export function useSecretStoreStatus() {
   return useQuery({
     queryKey: keys.secretStore,

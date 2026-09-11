@@ -26,6 +26,7 @@ export function TurnSteps({
   defaultOpen = false,
   detailed = false,
   onOpen,
+  onAllowAnyway,
 }: {
   steps: StepBlock[];
   running?: boolean;
@@ -37,6 +38,8 @@ export function TurnSteps({
    */
   detailed?: boolean;
   onOpen?: (item: ActivityItem) => void;
+  /** **Allow anyway** on a call the guard blocked (04 §6). */
+  onAllowAnyway?: (callId: string) => void;
 }) {
   const [open, setOpen] = useState(defaultOpen || detailed);
   const items = steps.flatMap((s) => (s.kind === 'activity' ? s.items : []));
@@ -109,7 +112,13 @@ export function TurnSteps({
               s.items
                 .filter((item) => item.kind !== 'context' && item.kind !== 'notice')
                 .map((item) => (
-                  <ActivityRow key={item.id} item={item} expandable={detailed} onOpen={onOpen} />
+                  <ActivityRow
+                    key={item.id}
+                    item={item}
+                    expandable={detailed}
+                    onOpen={onOpen}
+                    onAllowAnyway={onAllowAnyway}
+                  />
                 ))
             ),
           )}

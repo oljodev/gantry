@@ -467,6 +467,44 @@ impl LoopTracker {
     }
 }
 
+/// **Allow anyway** (04 §6): the user's answer to a block, remembered until that exact call is
+/// made again and then forgotten.
+///
+/// It is deliberately not stored. An override is a decision about one action in one moment, and
+/// a decision like that should not survive a restart the user did not connect it to — coming
+/// back tomorrow to find yesterday's override still standing is exactly the surprise the guard
+/// exists to prevent. If the model does not make the call again, the override simply expires.
+#[derive(Default)]
+pub struct Overrides {
+    inner: std::sync::Mutex<Vec<(gantry_core::ChatId, String, String)>>,
+}
+
+impl Overrides {
+    /// Remembers that the user allowed this call after the guard blocked it.
+    pub fn add(&self, chat_id: gantry_core::ChatId, tool: &str, args: &Value) {
+        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        let entry = (chat_id, tool.to_owned(), args.to_string());
+        if !inner.contains(&entry) {
+            inner.push(entry);
+        }
+    }
+
+    /// Whether this call was overridden, consuming the override if it was. It must be the same
+    /// call the user looked at: the same tool with the same arguments, in the same chat.
+    pub fn take(&self, chat_id: gantry_core::ChatId, tool: &str, args: &Value) -> bool {
+        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        let args = args.to_string();
+        let Some(i) = inner
+            .iter()
+            .position(|(c, t, a)| *c == chat_id && t == tool && *a == args)
+        else {
+            return false;
+        };
+        inner.remove(i);
+        true
+    }
+}
+
 /// The last rule of 04 §6: a `destructive` call the judge allowed without being sure is not an
 /// allow. It becomes the user's question, which is what "when confidence is below 0.7, do not
 /// allow" means with the fail-closed rule of §1 applied to it.
@@ -632,6 +670,30 @@ mod tests {
         assert!(
             t.verdict("shell__run_command", &json!({ "command": "cargo test" }))
                 .is_none()
+        );
+    }
+
+    #[test]
+    fn an_override_is_spent_on_the_call_it_was_given_for() {
+        let chat = gantry_core::ChatId::new();
+        let other = gantry_core::ChatId::new();
+        let args = json!({ "command": "git push --force" });
+        let o = Overrides::default();
+        o.add(chat, "shell__run_command", &args);
+        assert!(
+            !o.take(other, "shell__run_command", &args),
+            "another chat's"
+        );
+        assert!(!o.take(
+            chat,
+            "shell__run_command",
+            &json!({ "command": "git push" })
+        ));
+        assert!(!o.take(chat, "fake__write", &args));
+        assert!(o.take(chat, "shell__run_command", &args));
+        assert!(
+            !o.take(chat, "shell__run_command", &args),
+            "an override answers one call and is then gone"
         );
     }
 
