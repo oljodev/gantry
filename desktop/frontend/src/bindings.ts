@@ -603,6 +603,13 @@ export type ChatSettings = {
 	/**  Settings → General → Custom instructions (docs/plan/10 §2, layer 4). At most 4000 chars. */
 	custom_instructions?: string,
 	suggest_connectors?: boolean,
+	/**
+	 *  Connectors a new chat starts with attached, by namespace (03 §11). Ships with
+	 *  `filesystem`: a chat that cannot see your files is the commonest dead end, and its
+	 *  writes are still `write` tier and still decided by the mode. The shell and the code
+	 *  editor are deliberately not here — those belong to the Code surface (16).
+	 */
+	default_connectors?: string[],
 	/**  Open the right pane the first time a turn creates an artifact (13 §4). */
 	open_artifact_panel?: boolean,
 	/**

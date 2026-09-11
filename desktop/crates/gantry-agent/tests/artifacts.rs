@@ -37,6 +37,7 @@ fn chat(book: &ChatBook) -> ChatId {
         effort: ReasoningEffort::Off,
         system_snapshot: String::new(),
         system_snapshot_version: 1,
+        connectors: Vec::new(),
     })
     .unwrap()
     .id

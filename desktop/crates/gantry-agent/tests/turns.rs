@@ -1747,3 +1747,31 @@ async fn allow_anyway_lets_the_blocked_call_through_on_the_next_turn() {
         "only a call the guard blocked can be allowed anyway"
     );
 }
+
+/// 03 §11: a new chat starts with the connectors the user chose for new chats, so the first
+/// question does not cost a permission card before anything has happened.
+#[tokio::test]
+async fn a_new_chat_attaches_the_connectors_chosen_for_new_chats() {
+    let mut settings = Settings::default();
+    settings.chat.default_connectors = vec!["fake".into(), "not-installed".into()];
+    let m = manager_with(vec![vec![text("hi"), end()]], Duration::ZERO, settings);
+    install_fake(m.chats().store());
+
+    let chat = m.create_chat(None).unwrap();
+    let sink = Arc::new(Collect::default());
+    m.start(chat.id, "hello".into(), Vec::new(), sink.clone())
+        .unwrap();
+    wait_for(|| sink.completed().is_some()).await;
+
+    let names: Vec<String> = m.requests()[0]
+        .tools
+        .iter()
+        .map(|t| t.name.clone())
+        .collect();
+    assert!(
+        names.contains(&"fake__echo".to_owned()),
+        "the chat can use it from its first message: {names:?}"
+    );
+    // A namespace that is not installed is skipped rather than failing the chat.
+    assert!(m.chats().get(chat.id).unwrap().is_some());
+}

@@ -14,6 +14,7 @@ import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/components/ui/toast';
 import { isTauri } from '@/lib/ipc/client';
+import { useConnectors } from '@/lib/ipc/hooks/connectors';
 import { useSettings, useUpdateSettings } from '@/lib/ipc/hooks/settings';
 import { MODE_HINT, MODE_LABEL, MODES } from '@/lib/modes';
 import { chatDefaults } from '@/lib/settingsDefaults';
@@ -88,6 +89,16 @@ export function General() {
             aria-label="Suggest connectors"
             checked={chat.suggest_connectors}
             onCheckedChange={(v) => patch({ suggest_connectors: v })}
+          />
+        </SettingsRow>
+        <SettingsRow
+          stacked
+          label="Connectors in new chats"
+          hint="Attached from the first message, so a chat can do something before it has to ask. Anything not on this list can still be attached from the + menu, or asked for by the assistant. Every call still follows the chat's permission mode."
+        >
+          <DefaultConnectors
+            chosen={chat.default_connectors}
+            onChange={(default_connectors) => patch({ default_connectors })}
           />
         </SettingsRow>
       </SettingsGroup>
@@ -166,6 +177,48 @@ function InstructionsEditor({
           </Button>
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Which connectors a new chat starts with (03 §11). Installed ones only: this is a choice
+ * about chats, not a place to install anything.
+ */
+function DefaultConnectors({
+  chosen,
+  onChange,
+}: {
+  chosen: string[];
+  onChange: (next: string[]) => void;
+}) {
+  const installed = useConnectors();
+  const rows = (installed.data ?? []).filter((i) => i.enabled);
+  if (rows.length === 0) {
+    return (
+      <p className="text-meta text-fg-3">
+        No connectors installed yet. Add one in Customize → Connectors.
+      </p>
+    );
+  }
+  return (
+    <div className="flex flex-wrap gap-2">
+      {rows.map((i) => {
+        const on = chosen.includes(i.namespace);
+        return (
+          <Button
+            key={i.id}
+            variant={on ? 'primary' : 'secondary'}
+            size="sm"
+            aria-pressed={on}
+            onClick={() =>
+              onChange(on ? chosen.filter((n) => n !== i.namespace) : [...chosen, i.namespace])
+            }
+          >
+            {i.name}
+          </Button>
+        );
+      })}
     </div>
   );
 }

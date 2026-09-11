@@ -223,6 +223,16 @@ impl TurnManager {
             effort: settings.chat.default_effort,
             system_snapshot: prompt,
             system_snapshot_version: CORE_VERSION,
+            connectors: match surface {
+                // 16 C6: choosing a folder is the explicit action, and a code session that
+                // cannot read, edit or build in it is not a code session.
+                gantry_core::Surface::Code => vec![
+                    "filesystem".to_owned(),
+                    "code-editor".to_owned(),
+                    "shell".to_owned(),
+                ],
+                gantry_core::Surface::Chat => settings.chat.default_connectors.clone(),
+            },
         })
     }
 

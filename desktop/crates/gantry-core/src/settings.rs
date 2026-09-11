@@ -141,6 +141,11 @@ pub struct ChatSettings {
     /// Settings → General → Custom instructions (docs/plan/10 §2, layer 4). At most 4000 chars.
     pub custom_instructions: String,
     pub suggest_connectors: bool,
+    /// Connectors a new chat starts with attached, by namespace (03 §11). Ships with
+    /// `filesystem`: a chat that cannot see your files is the commonest dead end, and its
+    /// writes are still `write` tier and still decided by the mode. The shell and the code
+    /// editor are deliberately not here — those belong to the Code surface (16).
+    pub default_connectors: Vec<String>,
     /// Open the right pane the first time a turn creates an artifact (13 §4).
     pub open_artifact_panel: bool,
     /// Models starred in the model dialog, newest first. Recents are not stored beside them:
@@ -180,6 +185,7 @@ impl Default for ChatSettings {
             default_effort: ReasoningEffort::Medium,
             custom_instructions: String::new(),
             suggest_connectors: true,
+            default_connectors: vec!["filesystem".to_owned()],
             open_artifact_panel: true,
             favourite_models: Vec::new(),
             model_options: BTreeMap::new(),

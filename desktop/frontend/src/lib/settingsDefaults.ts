@@ -15,6 +15,7 @@ export function chatDefaults(s: Settings | undefined): Required<ChatSettings> {
     default_effort: c.default_effort ?? 'medium',
     custom_instructions: c.custom_instructions ?? '',
     suggest_connectors: c.suggest_connectors ?? true,
+    default_connectors: c.default_connectors ?? ['filesystem'],
     open_artifact_panel: c.open_artifact_panel ?? true,
     favourite_models: c.favourite_models ?? [],
     model_options: c.model_options ?? {},

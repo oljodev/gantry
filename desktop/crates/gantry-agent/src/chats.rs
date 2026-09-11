@@ -59,6 +59,10 @@ pub struct NewChat {
     pub effort: ReasoningEffort,
     pub system_snapshot: String,
     pub system_snapshot_version: u32,
+    /// Namespaces to attach at once (03 §11, `chat.default_connectors`). Anything not
+    /// installed or not enabled is skipped without complaint: a default is a preference, and
+    /// a preference that fails to create the chat would be worse than one that does nothing.
+    pub connectors: Vec<String>,
 }
 
 /// Chat settings the composer and the sidebar can change; `None` leaves a field alone.
@@ -151,6 +155,7 @@ impl ChatBook {
             effort,
             system_snapshot,
             system_snapshot_version,
+            connectors,
         } = new;
         let now = now_ms();
         let chat = ChatRecord {
@@ -180,6 +185,18 @@ impl ChatBook {
                 chats::insert(conn, &chat)?;
                 for root in &roots {
                     chats::add_root(conn, chat.id, root)?;
+                }
+                if !connectors.is_empty() {
+                    let installed = gantry_store::repos::connectors::list(conn)?;
+                    for want in &connectors {
+                        if let Some(i) =
+                            installed.iter().find(|i| i.enabled && &i.namespace == want)
+                        {
+                            gantry_store::repos::connectors::attach(
+                                conn, chat.id, i.id, "default",
+                            )?;
+                        }
+                    }
                 }
                 Ok(())
             })
@@ -981,6 +998,7 @@ mod tests {
                 effort: ReasoningEffort::Off,
                 system_snapshot: "sys".into(),
                 system_snapshot_version: 1,
+                connectors: Vec::new(),
             })
             .unwrap();
         (dir, book, c.id)
