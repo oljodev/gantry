@@ -500,11 +500,17 @@ Built in session 8, ahead of M6 (see the order change above). Landed:
 - Verified live: `gantry-connectors/tests/live.rs` connects to Cloudflare's documentation server,
   negotiates MCP 2026-07-28, lists its tools as `read` and calls one.
 
+**B0 done 2026-09-11**: `cargo xtask validate-connectors` (written, not extended — it was a
+stub) and `cargo xtask probe-connectors`, with `--offline` in CI on every push. The first probe
+found two things worth having: the modern MCP revision is stateless and envelope-bound (17 §5
+records the shape), and the site said `shell` was still `soon` when it had shipped with M7 — the
+first thing the site-parity check caught, and the reason 17 §7 asked for it.
+
 Not built yet, and what is left of M9: the runtime check step for local servers
 (`detect_runtimes`, per-OS instructions, Check again), MRTR `input_required` as an
 `Interaction::Elicitation` with a form, per-instance `user_config` forms and custom settings
 panels, the stderr log view for stdio servers, tool-list caching against `ttlMs` and
-list-changed notifications, and the `add-connector` skill.
+list-changed notifications, and the `add-connector` skill; then B1 and B2.
 
 ## M9 — the rest (original scope)
 

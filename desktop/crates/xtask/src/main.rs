@@ -2,7 +2,10 @@
 //!
 //! - `gen-bindings`    regenerate `desktop/frontend/src/bindings.ts` from the Tauri commands
 //! - `check-bindings`  regenerate into a temp file and fail if the committed bindings differ
-//! - `validate-connectors`, `validate-skills`, `icons`  arrive with M6, M12 and M13
+//! - `validate-connectors`  the catalogue checks a per-file schema cannot make (17 §5)
+//! - `probe-connectors`     ask every catalogued server what it is; `--offline` checks the
+//!   recorded fixtures instead, which is how CI runs it
+//! - `validate-skills`, `icons`  arrive with M12 and M13
 
 #![forbid(unsafe_code)]
 
@@ -14,6 +17,9 @@ use std::{
 
 use anyhow::{Context, bail};
 
+mod connectors;
+mod probe;
+
 const BINDINGS: &str = "desktop/frontend/src/bindings.ts";
 
 fn main() -> ExitCode {
@@ -21,13 +27,22 @@ fn main() -> ExitCode {
     let result = match task.as_str() {
         "gen-bindings" => gen_bindings(),
         "check-bindings" => check_bindings(),
-        "validate-connectors" | "validate-skills" | "icons" => {
+        "validate-connectors" => connectors::validate(&workspace_root()),
+        "probe-connectors" => {
+            let flags: Vec<String> = env::args().skip(2).collect();
+            probe::run(
+                &workspace_root(),
+                flags.iter().any(|f| f == "--offline"),
+                flags.iter().any(|f| f == "--spawn"),
+            )
+        }
+        "validate-skills" | "icons" => {
             eprintln!("xtask {task}: not implemented yet (see docs/plan/09-roadmap.md)");
             Ok(())
         }
         _ => {
             eprintln!(
-                "usage: cargo xtask <gen-bindings | check-bindings | validate-connectors | validate-skills | icons>"
+                "usage: cargo xtask <gen-bindings | check-bindings | validate-connectors | probe-connectors [--offline] [--spawn] | validate-skills | icons>"
             );
             return ExitCode::from(2);
         }

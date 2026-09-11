@@ -7213,6 +7213,11 @@ name = "xtask"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "gantry-connectors",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]

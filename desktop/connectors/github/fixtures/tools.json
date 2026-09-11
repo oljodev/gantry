@@ -1,0 +1,10 @@
+{
+  "status": 401,
+  "auth": {
+    "issuer": "https://github.com/login/oauth",
+    "dynamic_registration": false,
+    "client_id_metadata_document": false,
+    "scopes": ["offline_access"]
+  },
+  "tools": []
+}

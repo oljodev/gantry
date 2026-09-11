@@ -75,6 +75,15 @@ jobs:
       - name: Rust tests (includes the bindings drift check)
         run: cargo test --workspace
 
+      # The catalogue describes other people's servers, so these two check that it still agrees
+      # with what those servers last said (17 §5). No network: the probe reads the fixtures that
+      # were committed beside each manifest, which is what makes a manifest edit that contradicts
+      # the real server a failing build rather than something a user discovers.
+      - name: Connector catalogue
+        run: |
+          cargo run -p xtask -- validate-connectors
+          cargo run -p xtask -- probe-connectors --offline
+
   # Its own runner, because it needs none of the above and cannot survive beside it: the step
   # installs a toolchain of its own, and sharing a runner that already holds the built workspace
   # left 25 MB free and died with "No space left on device" (2026-09-10). It reads Cargo.lock,

@@ -49,7 +49,7 @@ export const connectors: Connector[] = [
     does: 'Targeted edits shown as diffs, revertible',
     summary: 'Precise, reviewable changes: the agent replaces exact spans of a file, you see the diff in the activity feed before and after, and every edit can be reverted from the feed.',
     capabilities: ['str_replace src/lib/auth.rs', 'insert_after line 42', 'create_file src/lib/limits.rs', 'revert last edit'] },
-  { slug: 'shell', name: 'Shell', status: 'soon', category: 'local', firstParty: true, auth: 'none', runtime: 'native',
+  { slug: 'shell', name: 'Shell', status: 'available', category: 'local', firstParty: true, auth: 'none', runtime: 'native',
     does: 'Run commands with streaming output',
     summary: 'Builds, tests and scripts in your own shell, with output streaming into the feed as it happens. Commands are execute-tier: they ask first unless the chat is in Auto.',
     capabilities: ['cargo test --package api', 'pnpm build', 'git status', 'npx playwright test'] },

@@ -245,7 +245,7 @@ requirement and one real install.
 B0's deliverable, and the thing that makes the rest cheap. It reads every manifest in
 `desktop/connectors/`, and for each:
 
-**`mcp-remote`** — POSTs `initialize` with no credential and records the status; on `401`, follows
+**`mcp-remote`** — asks for the tool list with no credential and records the status; on `401`, follows
 `WWW-Authenticate` to `/.well-known/oauth-protected-resource`, then to the authorization server
 metadata, and records whether dynamic registration and a client-id metadata document are offered;
 on `200`, calls `tools/list` and writes the names, descriptions and input schemas to
@@ -266,12 +266,31 @@ Three ways it runs:
   retired endpoint, a new destructive tool with no override, an auth mode that changed. Vendors
   move; this is how we find out before a user does.
 
-`validate-connectors` is today a stub that prints "not implemented yet" and exits zero
-(`desktop/crates/xtask/src/main.rs`), so B0 **writes** it rather than extending it: schema, icon,
-README, id equals folder, the id unique across the catalogue, `catalog.sort_weight` free of
-collisions inside a category, and every `suggest_for` term lowercase.
+`validate-connectors` was a stub that printed "not implemented yet" and exited zero, so B0
+**wrote** it: icon, README, id equals folder, the id unique across the catalogue,
+`catalog.sort_weight` free of collisions inside a category, and every `suggest_for` term
+lowercase. Not the schema — ajv already checks that on every `pnpm test`
+(`desktop/frontend/tests/schemas.test.ts`), and a second copy of one rule is a rule that drifts.
+What it does instead is parse each manifest with the app's own `Manifest` type, so a manifest that
+passes is one the app can install.
 
-It also takes the one invariant §7 states and nothing enforces: every `available` row in
+**As built (B0, 2026-09-11).** The modern revision turned out to need neither `initialize` nor
+`server/discover`: 2026-07-28 is stateless, and one `tools/list` is the whole conversation — but
+every request carries an envelope (`params._meta` with `io.modelcontextprotocol/protocolVersion`
+and `…/clientCapabilities`) and a `Mcp-Method` header that has to agree with the body, and sending
+a modern `MCP-Protocol-Version` header alongside a legacy `initialize` is itself an error. The
+probe therefore tries the modern shape first and falls back to the handshake with neither the
+header nor the envelope, which is what "`server/discover` or the legacy handshake" means in
+practice. Cloudflare's documentation server refuses each mistake with a sentence naming it, which
+is how this was found; it is worth knowing that not every server will.
+
+The first run recorded what it should: `cloudflare-docs` answers 200 at 2026-07-28 with two tools;
+`cloudflare-bindings` answers 401 and offers dynamic registration; `github` answers 401 and offers
+neither registration nor a client-id metadata document, which is exactly why 03 §7 has a dialog
+for it. Those three fixtures are committed, so CI re-checks the manifests against them on every
+push with no network at all.
+
+It also takes the one invariant §7 states and nothing enforced: every `available` row in
 `web/site/src/data/connectors.ts` has a folder in `desktop/connectors/`, and every folder has a
 row. That check costs ten lines and is the only thing standing between the site and a promise the
 app cannot keep.
