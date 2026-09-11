@@ -1,0 +1,62 @@
+{
+  "protocol_version": "2025-06-18",
+  "status": 200,
+  "tools": [
+    {
+      "name": "ask_question",
+      "description": "Ask any question about a GitHub repository and get an AI-powered, context-grounded response.",
+      "input_schema": {
+        "properties": {
+          "question": {
+            "description": "The question to ask about the repository.",
+            "type": "string"
+          },
+          "repoName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            ],
+            "description": "GitHub repository or list of repositories (max 10) in owner/repo format."
+          }
+        },
+        "required": ["repoName", "question"],
+        "type": "object"
+      }
+    },
+    {
+      "name": "read_wiki_contents",
+      "description": "View documentation about a GitHub repository.",
+      "input_schema": {
+        "properties": {
+          "repoName": {
+            "description": "GitHub repository in owner/repo format (e.g. \"facebook/react\").",
+            "type": "string"
+          }
+        },
+        "required": ["repoName"],
+        "type": "object"
+      }
+    },
+    {
+      "name": "read_wiki_structure",
+      "description": "Get a list of documentation topics for a GitHub repository.",
+      "input_schema": {
+        "properties": {
+          "repoName": {
+            "description": "GitHub repository in owner/repo format (e.g. \"facebook/react\").",
+            "type": "string"
+          }
+        },
+        "required": ["repoName"],
+        "type": "object"
+      }
+    }
+  ]
+}

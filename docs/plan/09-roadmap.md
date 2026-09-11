@@ -518,9 +518,18 @@ install dialog's second step, and `get_connector_config` / `set_connector_config
 "host you supply" batch was waiting on this. The custom settings panel (`settings_ui`) is not
 built and is not blocking anything: no catalogue entry declares one.
 
+**The `add-connector` skill and B1 done 2026-09-11.** `.claude/skills/add-connector/SKILL.md` is
+the recipe (17 §4); B1 is Microsoft Learn, Hugging Face, Context7, DeepWiki and Socket — five
+remote servers, no account, twelve connectors in the catalogue now. Every one probed green and its
+fixture is committed. Two things the probe settled that guessing would not have: DeepWiki and
+Socket both refuse the 2026-07-28 revision and were carried by the legacy-handshake fallback,
+which is the first time that path has been exercised against a server that needs it; and three of
+Socket's seven tools turned out to want an organization account, which the README now says instead
+of implying the whole server is open.
+
 Not built yet, and what is left of M9: MRTR `input_required` as an
 `Interaction::Elicitation` with a form, the stderr log view for stdio servers, tool-list caching
-against `ttlMs` and list-changed notifications, and the `add-connector` skill; then B1 and B2.
+against `ttlMs` and list-changed notifications; then B2.
 
 ## M9 — the rest (original scope)
 

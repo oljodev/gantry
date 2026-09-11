@@ -1,0 +1,45 @@
+{
+  "manifest_version": "1",
+  "id": "socket",
+  "name": "Socket",
+  "description": "Score an npm, PyPI or Go package for supply-chain risk, and read what it published.",
+  "long_description": "Socket scores open-source packages for the things that make a dependency dangerous \u2014 install scripts, obfuscated code, network access that was not there last version \u2014 and lets you read the files a package actually published. The package tools need no account; three others are scoped to a Socket organization and will say so. It sees the package names you ask about.",
+  "version": "0.1.0",
+  "icon": "icon.svg",
+  "category": "developer",
+  "keywords": ["security", "supply chain", "npm", "pypi", "dependencies", "vulnerabilities"],
+  "publisher": {
+    "name": "Socket",
+    "url": "https://socket.dev"
+  },
+  "first_party": false,
+  "homepage": "https://socket.dev",
+  "runtime": {
+    "kind": "mcp-remote",
+    "url": "https://mcp.socket.dev/"
+  },
+  "auth": {
+    "type": "none"
+  },
+  "risk": {
+    "network": "internet",
+    "local_system": "none",
+    "default_tool_tier": "read"
+  },
+  "tools_generated": true,
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "gantry": ">=0.1.0"
+  },
+  "catalog": {
+    "featured": false,
+    "sort_weight": 4,
+    "suggest_for": [
+      "socket",
+      "supply chain",
+      "is this package safe",
+      "npm audit",
+      "dependency risk"
+    ]
+  }
+}

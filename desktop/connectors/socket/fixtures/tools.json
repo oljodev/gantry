@@ -1,0 +1,282 @@
+{
+  "protocol_version": "2025-06-18",
+  "status": 200,
+  "tools": [
+    {
+      "name": "alerts",
+      "description": "List the latest security alerts for a Socket organization with the `alerts` tool. Requires `org_slug` — call the `organizations` tool first if you don't have it. Supports filtering by severity, category, status, artifact type/name, alert type, and repo. Use this to surface supply-chain, vulnerability, quality, license, and maintenance issues across the org's monitored packages. Results are paginated — pass the previous response's `endCursor` as `cursor` to fetch the next page.",
+      "input_schema": {
+        "properties": {
+          "alert_type": {
+            "description": "Comma-separated Socket alert types (e.g. \"usesEval,unmaintained\")",
+            "type": "string"
+          },
+          "artifact_name": {
+            "description": "Filter to a specific package name",
+            "type": "string"
+          },
+          "artifact_type": {
+            "description": "Comma-separated ecosystems: subset of npm,pypi,gem,maven,golang,nuget,cargo,chrome,openvsx",
+            "type": "string"
+          },
+          "category": {
+            "description": "Comma-separated categories: subset of supplyChainRisk,maintenance,quality,license,vulnerability",
+            "type": "string"
+          },
+          "cursor": {
+            "description": "Pagination cursor — the `endCursor` from a previous response's metadata",
+            "type": "string"
+          },
+          "org_slug": {
+            "description": "Organization slug, e.g. \"my-org\" (use the `organizations` tool to discover this)",
+            "type": "string"
+          },
+          "per_page": {
+            "description": "Results per page (default 100, max 5000)",
+            "maximum": 5000,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "repo_slug": {
+            "description": "Comma-separated repo slugs",
+            "type": "string"
+          },
+          "severity": {
+            "description": "Comma-separated severities to include: subset of low,medium,high,critical",
+            "type": "string"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "const": "open",
+                "type": "string"
+              },
+              {
+                "const": "cleared",
+                "type": "string"
+              }
+            ],
+            "description": "Filter to open or cleared alerts"
+          }
+        },
+        "required": ["org_slug"],
+        "type": "object"
+      }
+    },
+    {
+      "name": "depscore",
+      "description": "Get the dependency score of packages with the `depscore` tool from Socket. Use 'unknown' for version if not known. Use this tool to scan dependencies for their quality and security on existing code or when code is generated. Stop generating code and ask the user how to proceed when any of the scores are low. When checking dependencies, make sure to also check the imports in the code, not just the manifest files (pyproject.toml, package.json, etc).",
+      "input_schema": {
+        "properties": {
+          "packages": {
+            "description": "Array of packages to check",
+            "items": {
+              "properties": {
+                "depname": {
+                  "description": "The name of the dependency",
+                  "type": "string"
+                },
+                "ecosystem": {
+                  "default": "npm",
+                  "description": "Package ecosystem (PURL type): npm (JS/TS), pypi (Python), golang (Go), maven (Java/Scala/Kotlin), gem (Ruby), nuget (.NET), cargo (Rust), composer (PHP; \"packagist\" also accepted). See https://docs.socket.dev/docs/language-support",
+                  "type": "string"
+                },
+                "version": {
+                  "default": "unknown",
+                  "description": "The version of the dependency, use 'unknown' if not known",
+                  "type": "string"
+                }
+              },
+              "required": ["ecosystem", "depname", "version"],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "platform": {
+            "description": "Optional OS-architecture hint (e.g., 'linux-x64', 'darwin-arm64', 'win32-x64'). Used to select the most relevant artifact when a package has platform-specific builds.",
+            "type": "string"
+          }
+        },
+        "required": ["packages"],
+        "type": "object"
+      }
+    },
+    {
+      "name": "organizations",
+      "description": "List the Socket organizations the authenticated user belongs to with the `organizations` tool. Use this to discover the `org_slug` values needed by other org-scoped tools (e.g. `alerts`, `threat_feed`), or when the user asks which organizations they have access to.",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      }
+    },
+    {
+      "name": "package_file_contents",
+      "description": "Read a single file from a package using the `package_file_contents` tool from Socket. Pass the `hash` printed next to each entry in `package_files` output. Returns up to 1 MB of UTF-8 text; binary files return metadata only.",
+      "input_schema": {
+        "properties": {
+          "hash": {
+            "description": "Blob hash exactly as shown by `package_files` (the token printed after each file size)",
+            "type": "string"
+          },
+          "path": {
+            "description": "Optional file path for display only; does not affect the lookup",
+            "type": "string"
+          }
+        },
+        "required": ["hash"],
+        "type": "object"
+      }
+    },
+    {
+      "name": "package_file_grep",
+      "description": "Search a single file from a package for lines matching a JavaScript regular expression. Pass the `hash` printed next to each entry in `package_files` output. The file is fetched from Socket once per session and cached, so repeated greps on the same hash skip the network. Returns matching lines with line numbers (grep -n style); binary files are refused. Useful for locating a specific symbol, import, or string inside a dependency without dumping the whole file.",
+      "input_schema": {
+        "properties": {
+          "caseInsensitive": {
+            "description": "Match case-insensitively (default: false)",
+            "type": "boolean"
+          },
+          "contextLines": {
+            "description": "Lines of context to show before and after each match (0-5, default: 0)",
+            "maximum": 5,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "hash": {
+            "description": "Blob hash exactly as shown by `package_files` (the token printed after each file size)",
+            "type": "string"
+          },
+          "maxMatches": {
+            "description": "Cap on number of matching lines returned (default: 100, max: 500)",
+            "maximum": 500,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "path": {
+            "description": "Optional file path for display only; does not affect the lookup",
+            "type": "string"
+          },
+          "pattern": {
+            "description": "JavaScript regular expression. Plain literal strings work too. Anchors and character classes are supported.",
+            "type": "string"
+          }
+        },
+        "required": ["hash", "pattern"],
+        "type": "object"
+      }
+    },
+    {
+      "name": "package_files",
+      "description": "List the files published in a package using the `package_files` tool from Socket. Returns a tree of paths and sizes for any package on a supported ecosystem (npm, pypi, gem, cargo, maven, golang, nuget, chrome, openvsx). Useful for inspecting what a dependency ships before installing it. After calling this, use `package_file_contents` with one of the paths to read the file's contents.",
+      "input_schema": {
+        "properties": {
+          "artifactId": {
+            "description": "Per-version artifact disambiguator (e.g. PyPI filename, Maven artifact id, NuGet asset). Required when an ecosystem ships multiple artifacts per version.",
+            "type": "string"
+          },
+          "depname": {
+            "description": "Package name (e.g., \"lodash\", \"@babel/core\", \"org.springframework:spring-core\", \"meta/pyrefly\" for openvsx)",
+            "type": "string"
+          },
+          "ecosystem": {
+            "default": "npm",
+            "description": "Package ecosystem (e.g., npm, pypi, gem, cargo, maven, golang, nuget, chrome, openvsx)",
+            "type": "string"
+          },
+          "platform": {
+            "description": "Platform qualifier for ecosystems with per-OS/arch artifacts (e.g. openvsx: 'linux-x64', 'darwin-arm64', 'win32-x64').",
+            "type": "string"
+          },
+          "version": {
+            "description": "Package version",
+            "type": "string"
+          }
+        },
+        "required": ["ecosystem", "depname", "version"],
+        "type": "object"
+      }
+    },
+    {
+      "name": "threat_feed",
+      "description": "Look up items in the Socket organization threat feed with the `threat_feed` tool. Requires `org_slug` — call the `organizations` tool first if you don't have it. Returns recently flagged packages (malware, typosquats, obfuscated code, etc.) along with a `nextPageCursor` for pagination. Use `filter` to narrow the threat category (default `mal` for malware), `ecosystem` to scope to a registry, or `name`/`version` to look up a specific package. Pass the previous response's cursor as `cursor` to fetch the next page.",
+      "input_schema": {
+        "properties": {
+          "created_after": {
+            "description": "ISO timestamp; only return items created after this",
+            "type": "string"
+          },
+          "cursor": {
+            "description": "Pagination cursor — the `nextPageCursor` from a previous response",
+            "type": "string"
+          },
+          "direction": {
+            "anyOf": [
+              {
+                "const": "asc",
+                "type": "string"
+              },
+              {
+                "const": "desc",
+                "type": "string"
+              }
+            ],
+            "description": "Sort direction (default `desc`)"
+          },
+          "ecosystem": {
+            "description": "Ecosystem filter, e.g. npm, pypi, gem, maven, golang, nuget, cargo, chrome, openvsx, vscode, huggingface",
+            "type": "string"
+          },
+          "filter": {
+            "description": "Threat category filter (default `mal`). Common values: `mal` (malware), `vuln`, `typ` (typosquat), `obf` (obfuscated), `mjo`, `kes`, `spy`, `ano`, `ucf`, `ptp`, `ual`",
+            "type": "string"
+          },
+          "is_human_reviewed": {
+            "description": "Only return human-reviewed items (default false)",
+            "type": "boolean"
+          },
+          "name": {
+            "description": "Filter by package name",
+            "type": "string"
+          },
+          "org_slug": {
+            "description": "Organization slug, e.g. \"my-org\" (use the `organizations` tool to discover this)",
+            "type": "string"
+          },
+          "per_page": {
+            "description": "Results per page (default 30, max 100)",
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "sort": {
+            "anyOf": [
+              {
+                "const": "id",
+                "type": "string"
+              },
+              {
+                "const": "created_at",
+                "type": "string"
+              },
+              {
+                "const": "updated_at",
+                "type": "string"
+              }
+            ],
+            "description": "Sort field (default `updated_at`)"
+          },
+          "updated_after": {
+            "description": "ISO timestamp; only return items updated after this",
+            "type": "string"
+          },
+          "version": {
+            "description": "Filter by package version",
+            "type": "string"
+          }
+        },
+        "required": ["org_slug"],
+        "type": "object"
+      }
+    }
+  ]
+}

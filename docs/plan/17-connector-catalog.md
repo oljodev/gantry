@@ -210,7 +210,7 @@ day and one sign-in from Olav.
 | Batch | Shape | Connectors | New mechanism |
 |---|---|---|---|
 | **B0** | — | none | The probe harness, tier rules and the folder template (§5, §6) |
-| **B1** | Remote, no auth | Microsoft Learn, Hugging Face, Socket, Context7, DeepWiki | none — proven by `cloudflare-docs` |
+| **B1** ✅ | Remote, no auth | Microsoft Learn, Hugging Face, Socket, Context7, DeepWiki | none — proven by `cloudflare-docs`. Shipped 2026-09-11; two of the five needed the legacy handshake, and Socket's `alerts`, `organizations` and `threat_feed` want an account, which its README says |
 | **B2** | Remote, OAuth (DCR) | Linear, Notion, Sentry, Netlify, Vercel | none — proven by `cloudflare-bindings` |
 | **B3** | Remote, OAuth | Slack, Atlassian, Asana, Figma, Canva | Slack's admin-approval step; Atlassian and Asana are the first two `/mcp` paths taken from a vendor who also publishes `/sse`, so the first sign-in confirms the transport as well as the auth |
 | **B4** | Remote, OAuth | GitLab, Supabase, Neon, PostHog, Railway | none |

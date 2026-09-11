@@ -1,0 +1,39 @@
+{
+  "manifest_version": "1",
+  "id": "deepwiki",
+  "name": "DeepWiki",
+  "description": "Read a generated walkthrough of any public GitHub repository.",
+  "long_description": "DeepWiki writes and serves a structured guide to a public GitHub repository \u2014 its architecture, its main flows, where to start reading \u2014 and answers questions against it. Useful on a codebase you have just been handed. Public repositories only; it reads GitHub, not your machine.",
+  "version": "0.1.0",
+  "icon": "icon.svg",
+  "category": "developer",
+  "keywords": ["github", "repository", "architecture", "codebase", "documentation"],
+  "publisher": {
+    "name": "Cognition",
+    "url": "https://cognition.ai"
+  },
+  "first_party": false,
+  "homepage": "https://deepwiki.com",
+  "runtime": {
+    "kind": "mcp-remote",
+    "url": "https://mcp.deepwiki.com/mcp"
+  },
+  "auth": {
+    "type": "none"
+  },
+  "risk": {
+    "network": "internet",
+    "local_system": "none",
+    "default_tool_tier": "read"
+  },
+  "tools_generated": true,
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "gantry": ">=0.1.0"
+  },
+  "catalog": {
+    "featured": false,
+    "sort_weight": 5,
+    "suggest_for": ["deepwiki", "explain this repo", "codebase overview", "repository guide"]
+  }
+}

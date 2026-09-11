@@ -1,0 +1,39 @@
+{
+  "manifest_version": "1",
+  "id": "microsoft-learn",
+  "name": "Microsoft Learn",
+  "description": "Search Microsoft's documentation and code samples, from the live docs.",
+  "long_description": "Microsoft's hosted documentation server. It searches and fetches Microsoft Learn \u2014 Azure, .NET, Windows, Microsoft 365 \u2014 from the published documentation rather than from a model's memory, which matters most on the products that change every quarter. No account, and it reads public documentation only.",
+  "version": "0.1.0",
+  "icon": "icon.svg",
+  "category": "developer",
+  "keywords": ["microsoft", "azure", "dotnet", ".net", "documentation", "learn", "windows"],
+  "publisher": {
+    "name": "Microsoft",
+    "url": "https://learn.microsoft.com"
+  },
+  "first_party": false,
+  "homepage": "https://learn.microsoft.com/en-us/training/support/mcp",
+  "runtime": {
+    "kind": "mcp-remote",
+    "url": "https://learn.microsoft.com/api/mcp"
+  },
+  "auth": {
+    "type": "none"
+  },
+  "risk": {
+    "network": "internet",
+    "local_system": "none",
+    "default_tool_tier": "read"
+  },
+  "tools_generated": true,
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "gantry": ">=0.1.0"
+  },
+  "catalog": {
+    "featured": false,
+    "sort_weight": 8,
+    "suggest_for": ["azure", "microsoft docs", "dotnet", ".net", "microsoft learn", "entra"]
+  }
+}
