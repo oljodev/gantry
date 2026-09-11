@@ -75,6 +75,11 @@ export type ActivityItem =
       /** Display name when the connector is not in the fixture catalog (runtime tools). */
       connectorName?: string;
       tool: string;
+      /**
+       * What the row says instead of "Using {connector} · {tool}". Gantry's own runtime tools
+       * set it: "Using Gantry" is the app telling you it is using itself, which is not news.
+       */
+      title?: string;
       summary: string;
       status: 'done' | 'running' | 'failed' | 'waiting' | 'denied' | 'cancelled' | 'proposed';
       /** Set when a guardrail refused the call (04 §5): the rule's reason, in its own words. */

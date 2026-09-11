@@ -153,7 +153,9 @@ function inProgressLabel(item: ActivityItem): string | undefined {
     case 'connector':
       if (item.status === 'waiting') return 'Waiting for your decision';
       if (item.status === 'running' || item.status === 'proposed')
-        return `Using ${item.connectorName ?? connectorName(item.connector)}…`;
+        return item.title
+          ? `${item.title}…`
+          : `Using ${item.connectorName ?? connectorName(item.connector)}…`;
       return undefined;
     case 'artifact':
       if (item.status !== 'running') return undefined;

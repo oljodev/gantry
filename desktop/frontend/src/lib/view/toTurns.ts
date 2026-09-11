@@ -309,6 +309,7 @@ function callItem(
     connector,
     connectorName: call?.connector_name,
     tool,
+    title: runtimeTitle(connector, tool, call?.args ?? part?.args),
     summary: call?.display.summary ?? '',
     status: rowStatus(call),
     blocked: blockedBy(call),
@@ -383,6 +384,35 @@ function rowStatus(
       return 'denied';
     case 'cancelled':
       return 'cancelled';
+  }
+}
+
+/**
+ * Gantry's own tools, said as what they do (04 §2: they are `app` tier because they act only on
+ * Gantry's own state). Every other connector is named by its name, which is the useful thing to
+ * say about it; ours is called Gantry, and "Using Gantry" is not.
+ */
+function runtimeTitle(connector: string, tool: string, args: unknown): string | undefined {
+  if (connector !== 'gantry') return undefined;
+  const named = (key: string) => {
+    const v = args && typeof args === 'object' ? (args as Record<string, unknown>)[key] : undefined;
+    return typeof v === 'string' && v.length > 0 ? v : undefined;
+  };
+  switch (tool) {
+    case 'request_access': {
+      const name = named('connector');
+      return name ? `Asked to attach ${name}` : 'Asked to attach a connector';
+    }
+    case 'suggest_connector': {
+      const name = named('catalog_id');
+      return name ? `Offered to install ${name}` : 'Offered a connector';
+    }
+    case 'search_connectors':
+      return 'Looked through the connector catalog';
+    case 'clock':
+      return 'Checked the date and time';
+    default:
+      return undefined;
   }
 }
 

@@ -99,7 +99,9 @@ export function TurnView({
                 <TurnSteps
                   key={i}
                   steps={block.steps}
-                  running={turn.status === 'running' || turn.status === 'waiting'}
+                  // A turn waiting on a card is not running: the spinner and the "Using …"
+                  // label would contradict the "Waiting for your decision" line below it.
+                  running={turn.status === 'running'}
                   detailed={detailed}
                   onOpen={onOpenItem}
                   onAllowAnyway={onAllowAnyway}

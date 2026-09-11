@@ -86,3 +86,29 @@ describe('summarize', () => {
     expect(summarize(items.slice(1))).toBe('');
   });
 });
+
+describe('runtime tools', () => {
+  it('says what Gantry did rather than that it used itself', () => {
+    const items: ActivityItem[] = [
+      {
+        kind: 'connector',
+        id: '1',
+        connector: 'gantry',
+        connectorName: 'Gantry',
+        tool: 'request_access',
+        title: 'Asked to attach shell',
+        summary: '',
+        status: 'done',
+      },
+      {
+        kind: 'connector',
+        id: '2',
+        connector: 'github',
+        tool: 'list_issues',
+        summary: '',
+        status: 'done',
+      },
+    ];
+    expect(summarize(items)).toBe('Asked to attach shell, used GitHub');
+  });
+});

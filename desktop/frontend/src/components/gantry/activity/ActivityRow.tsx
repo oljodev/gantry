@@ -178,7 +178,10 @@ export function ActivityRow({ item, onOpen, expandable, bare, onAllowAnyway }: A
       return (
         <Row
           icon={<ConnectorMark id={item.connector} name={item.connectorName} size={16} />}
-          title={`Using ${item.connectorName ?? connectorName(item.connector)} · ${item.tool}`}
+          title={
+            item.title ??
+            `Using ${item.connectorName ?? connectorName(item.connector)} · ${item.tool}`
+          }
           summary={item.summary}
           status={
             item.status === 'running' || item.status === 'proposed' ? (

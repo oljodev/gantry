@@ -13,6 +13,7 @@ export function summarize(items: ActivityItem[]): string {
   const created = new Set<string>();
   const updated = new Set<string>();
   const uses = new Map<string, number>();
+  const own: string[] = [];
   let searches = 0;
   let commands = 0;
   let blocked = 0;
@@ -47,6 +48,12 @@ export function summarize(items: ActivityItem[]): string {
         note('command');
         break;
       case 'connector': {
+        // Gantry's own tools already say what they did; a count of "used Gantry" does not.
+        if (item.title) {
+          own.push(item.title);
+          note(`own:${own.length - 1}`);
+          break;
+        }
         const name = item.connectorName ?? connectorName(item.connector);
         uses.set(name, (uses.get(name) ?? 0) + 1);
         note(`use:${name}`);
@@ -70,7 +77,10 @@ export function summarize(items: ActivityItem[]): string {
     else if (key === 'updated') fragments.push(`updated ${count(updated.size, 'artifact')}`);
     else if (key === 'guard')
       fragments.push(blocked === 1 ? 'blocked by guard' : `blocked by guard ${blocked} times`);
-    else if (key.startsWith('use:')) {
+    else if (key.startsWith('own:')) {
+      const said = own[Number(key.slice(4))];
+      if (said) fragments.push(said.charAt(0).toLowerCase() + said.slice(1));
+    } else if (key.startsWith('use:')) {
       const name = key.slice(4);
       const n = uses.get(name) ?? 1;
       fragments.push(n === 1 ? `used ${name}` : `used ${name} ${n} times`);
