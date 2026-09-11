@@ -31,6 +31,22 @@ export function useChatConnectors(chatId: ChatId | null) {
   });
 }
 
+/**
+ * What a local server needs before it can run, and whether this machine has it (03 §11 step 1).
+ *
+ * Never cached: the answer changes while the dialog is open, which is what **Check again** is
+ * for. A value held from before the user installed Node would go on saying it is missing.
+ */
+export function useRuntimeCheck(catalogId: string | null) {
+  return useQuery({
+    queryKey: keys.runtimes(catalogId ?? ''),
+    queryFn: () => unwrap(commands.checkRuntimes(catalogId ?? '')),
+    enabled: isTauri() && catalogId !== null,
+    gcTime: 0,
+    staleTime: 0,
+  });
+}
+
 export function useConnectorMutations() {
   const qc = useQueryClient();
   const settle = () => {

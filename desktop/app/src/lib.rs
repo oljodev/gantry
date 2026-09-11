@@ -79,6 +79,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::connectors::list_catalog,
             commands::connectors::list_connectors,
             commands::connectors::get_connector,
+            commands::connectors::check_runtimes,
             commands::connectors::install_connector,
             commands::connectors::install_custom_connector,
             commands::connectors::connect_connector,

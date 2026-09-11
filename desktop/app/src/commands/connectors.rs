@@ -49,6 +49,20 @@ pub fn get_connector(
 
 /// Installs a catalog entry. A server that needs nothing is connected straight away, so the
 /// tool list is on screen before the dialog closes; anything else waits for a credential.
+/// Step 1 of a local server's install (03 §11): what it needs, and what this machine has.
+///
+/// Its own command rather than a field on the catalog entry, because the answer changes while
+/// the dialog is open — that is the whole point of **Check again** — and a value frozen into a
+/// list that was fetched before the user installed Node would tell them it is still missing.
+#[tauri::command]
+#[specta::specta]
+pub async fn check_runtimes(
+    state: State<'_, AppState>,
+    catalog_id: String,
+) -> Result<Vec<gantry_connectors::runtime::RuntimeStatus>, ErrorDto> {
+    Ok(state.connectors.runtime_check(&catalog_id).await?)
+}
+
 #[tauri::command]
 #[specta::specta]
 pub async fn install_connector(

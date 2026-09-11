@@ -176,7 +176,13 @@ export const commands = {
 	/**
 	 *  Installs a catalog entry. A server that needs nothing is connected straight away, so the
 	 *  tool list is on screen before the dialog closes; anything else waits for a credential.
+	 *  Step 1 of a local server's install (03 §11): what it needs, and what this machine has.
+	 * 
+	 *  Its own command rather than a field on the catalog entry, because the answer changes while
+	 *  the dialog is open — that is the whole point of **Check again** — and a value frozen into a
+	 *  list that was fetched before the user installed Node would tell them it is still missing.
 	 */
+	checkRuntimes: (catalogId: string) => typedError<RuntimeStatus[], ErrorDto>(__TAURI_INVOKE("check_runtimes", { catalogId })),
 	installConnector: (catalogId: string) => typedError<ConnectorInstanceDto, ErrorDto>(__TAURI_INVOKE("install_connector", { catalogId })),
 	installCustomConnector: (server: CustomServer) => typedError<ConnectorInstanceDto, ErrorDto>(__TAURI_INVOKE("install_custom_connector", { server })),
 	/**  Connects and refreshes the tool list. */
@@ -1007,6 +1013,14 @@ export type HunkDto = {
 	text: string,
 };
 
+/**  One way to install a runtime: a command to paste, a page to open, or both. */
+export type InstallHint = {
+	/**  "Homebrew", "winget", "Download from nodejs.org". */
+	label: string,
+	command?: string | null,
+	url?: string | null,
+};
+
 /**  An installed, configured connector. */
 export type InstanceId = string;
 
@@ -1443,6 +1457,23 @@ export type RuntimeRequirement = {
 	name: string,
 	/**  The version range asked for, as written in the manifest. */
 	version: string,
+};
+
+/**  What one requirement resolves to on this machine. */
+export type RuntimeStatus = {
+	/**  `node`, `python`, `uv`, `docker`. */
+	name: string,
+	/**  The range the manifest asks for, exactly as it wrote it. */
+	required: string,
+	/**  The version found, when the program answered. */
+	found: string | null,
+	/**  Where it was found, so "but I have Node" can be checked rather than argued with. */
+	path: string | null,
+	ok: boolean,
+	/**  Why not, in a sentence the person reading it can act on. */
+	problem: string | null,
+	/**  How to get it on this operating system. */
+	install: InstallHint[],
 };
 
 /**  One row of the palette's search (docs/plan/06 §3): a chat by title or a message by text. */

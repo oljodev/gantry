@@ -110,11 +110,38 @@ impl ConnectorService {
 
     /// Installs a catalog entry. Nothing is connected yet: a server that needs authorization is
     /// left `Unconfigured` with a Connect button, exactly as §11 requires.
+    /// What this connector needs before it can run, and whether this machine has it (03 §11
+    /// step 1). Empty for everything that is not a local process.
+    pub async fn runtime_check(
+        &self,
+        catalog_id: &str,
+    ) -> Result<Vec<gantry_connectors::runtime::RuntimeStatus>, GantryError> {
+        let manifest = self
+            .catalog
+            .get(catalog_id)
+            .ok_or_else(|| GantryError::not_found(format!("catalog entry {catalog_id}")))?;
+        Ok(gantry_connectors::runtime::detect(&manifest.requires(), &self.shell_env.vars).await)
+    }
+
     pub async fn install(&self, catalog_id: &str) -> Result<InstanceId, GantryError> {
         let manifest = self
             .catalog
             .get(catalog_id)
             .ok_or_else(|| GantryError::not_found(format!("catalog entry {catalog_id}")))?;
+        // 03 §11: there is no "install anyway". An instance whose runtime is missing is an entry
+        // in the list that fails every call with an error about `npx`, which means nothing to the
+        // person reading it; refusing here is the only message that says what to do.
+        let missing = self.runtime_check(catalog_id).await?;
+        let missing: Vec<&gantry_connectors::runtime::RuntimeStatus> =
+            missing.iter().filter(|r| !r.ok).collect();
+        if let Some(first) = missing.first() {
+            return Err(GantryError::invalid(
+                first
+                    .problem
+                    .clone()
+                    .unwrap_or_else(|| format!("{} is missing", first.name)),
+            ));
+        }
         let taken = self.store.read(repos::connectors::namespaces)?;
         if !manifest.multi_instance && taken.iter().any(|n| n == &manifest.id) {
             return Err(GantryError::invalid(format!(

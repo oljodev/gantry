@@ -13,7 +13,8 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import type { AuthType, CatalogEntryDto, ConnectorInstanceDto } from '@/bindings';
-import { useConnectorMutations } from '@/lib/ipc/hooks/connectors';
+import { RuntimeCheck } from '@/features/connectors/RuntimeCheck';
+import { useConnectorMutations, useRuntimeCheck } from '@/lib/ipc/hooks/connectors';
 import { openExternal } from '@/lib/clipboard';
 import { describe } from '@/lib/errors';
 import { cn } from '@/lib/utils';
@@ -44,6 +45,12 @@ export function InstallDialog({
   const [token, setTokenValue] = useState('');
   const [clientId, setClientId] = useState('');
   const [error, setError] = useState<string | null>(null);
+  // 03 §11 step 1: a local server runs on something, and nothing else in this dialog matters
+  // until it is here. Asked for only when the manifest asks for a runtime, which is never for a
+  // remote server.
+  const runtimes = useRuntimeCheck(entry.requires.length > 0 ? entry.id : null);
+  const statuses = runtimes.data ?? [];
+  const blocked = statuses.some((r) => !r.ok);
 
   const busy = install.isPending || authorize.isPending || setToken.isPending;
   const connected = current?.auth_state === 'authorized' && current.tools.length > 0;
@@ -84,13 +91,21 @@ export function InstallDialog({
             <DialogTitle>Connect {entry.name}</DialogTitle>
           </div>
           <DialogDescription>
-            {connected
-              ? entry.description
-              : `${entry.name} will not let an application in on its own. Do one of these once; Gantry remembers it.`}
+            {blocked
+              ? `${entry.name} runs as a program on this machine, and needs something that is not here yet.`
+              : connected
+                ? entry.description
+                : `${entry.name} will not let an application in on its own. Do one of these once; Gantry remembers it.`}
           </DialogDescription>
         </DialogHeader>
 
-        {connected ? (
+        {blocked ? (
+          <RuntimeCheck
+            statuses={statuses}
+            checking={runtimes.isFetching}
+            onCheckAgain={() => void runtimes.refetch()}
+          />
+        ) : connected ? (
           <div className="flex items-start gap-2 rounded-3 border border-good/30 bg-good-subtle px-3 py-2 text-ui text-fg">
             <CheckCircleIcon className="mt-0.5 size-4 shrink-0 text-good" />
             <span>
@@ -197,7 +212,7 @@ export function InstallDialog({
           <Button variant="secondary" onClick={onClose}>
             {connected ? 'Done' : 'Cancel'}
           </Button>
-          {!connected && (
+          {!connected && !blocked && (
             <Button
               disabled={
                 busy || (method === 'oauth2' ? clientId.trim() === '' : token.trim() === '')

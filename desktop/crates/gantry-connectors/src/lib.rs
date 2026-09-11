@@ -9,6 +9,7 @@ pub mod auth;
 pub mod catalog;
 pub mod manifest;
 pub mod mcp;
+pub mod runtime;
 
 use std::{
     collections::BTreeMap,

@@ -506,8 +506,13 @@ found two things worth having: the modern MCP revision is stateless and envelope
 records the shape), and the site said `shell` was still `soon` when it had shipped with M7 — the
 first thing the site-parity check caught, and the reason 17 §7 asked for it.
 
-Not built yet, and what is left of M9: the runtime check step for local servers
-(`detect_runtimes`, per-OS instructions, Check again), MRTR `input_required` as an
+**The runtime check done 2026-09-11** (03 §11 step 1): `gantry-connectors/src/runtime.rs`, the
+`check_runtimes` command, and `RuntimeCheck` as the install dialog's first step when a manifest
+asks for one. `ConnectorService::install` refuses on its own as well, so "no install anyway" is a
+property of the service rather than a rule the dialog remembers to follow. B6 and B7 were waiting
+on this.
+
+Not built yet, and what is left of M9: MRTR `input_required` as an
 `Interaction::Elicitation` with a form, per-instance `user_config` forms and custom settings
 panels, the stderr log view for stdio servers, tool-list caching against `ttlMs` and
 list-changed notifications, and the `add-connector` skill; then B1 and B2.

@@ -9,6 +9,7 @@ export const keys = {
   providers: ['providers'] as const,
   catalog: ['catalog'] as const,
   connectors: ['connectors'] as const,
+  runtimes: (catalogId: string) => ['runtimes', catalogId] as const,
   chatConnectors: (chatId: string) => ['chat_connectors', chatId] as const,
   models: (providerId: string) => ['models', providerId] as const,
   chats: ['chats'] as const,
