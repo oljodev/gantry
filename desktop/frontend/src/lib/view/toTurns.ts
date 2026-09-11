@@ -301,8 +301,14 @@ function callItem(
   if (isArtifactTool(modelName)) return artifactItem(id, tool, call, part, titles);
   // The file connectors have richer rows than "used a tool": a read with its line range, a
   // search with its count, an edit with its diff (16 §6).
+  // The guard decides about a command far more often than about anything else, so the rows a
+  // command becomes are the rows its mark matters most on (04 §6). It rides along here rather
+  // than inside `fileItem`, which builds the row and has no opinion about who allowed it.
   const file = call ? fileItem(call, output) : undefined;
-  if (file) return file;
+  if (file) {
+    file.guard = guardOf(call);
+    return file;
+  }
   return {
     kind: 'connector',
     id,

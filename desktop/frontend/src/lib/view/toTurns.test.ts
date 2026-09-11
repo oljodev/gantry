@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { ChatDetail, ToolCallDto, TurnDto } from '@/bindings';
+import type { ChatDetail, JudgeVerdict, ToolCallDto, TurnDto } from '@/bindings';
 import type { ActivityItem } from '@/fixtures/types';
 import { toTurns } from '@/lib/view/toTurns';
 
@@ -81,6 +81,63 @@ function rows(calls: ToolCallDto[]): ActivityItem[] {
   const [turn] = toTurns(chat(calls), undefined, (r) => r.model);
   return turn!.blocks.flatMap((b) => (b.kind === 'activity' ? b.items : []));
 }
+
+describe('what the guard decided, where the row can show it (04 §6)', () => {
+  const verdict: JudgeVerdict = {
+    decision: 'allow',
+    confidence: 0.95,
+    reason: 'Runs the silly command the user explicitly asked for.',
+    flags: [],
+    source: 'model',
+    model: 'x',
+    latency_ms: 900,
+    overridden: false,
+    wrong: null,
+  };
+
+  // A command is what the guard decides about most, and the command row is the one that could
+  // not say so: its mark has to survive the projection into a first-party row.
+  it('marks a command the guard allowed, not only a connector call', () => {
+    const [row] = rows([
+      call({
+        connector: 'shell',
+        connector_name: 'Shell',
+        tool: 'run_command',
+        model_tool_name: 'shell__run_command',
+        args: { command: 'cowsay moo' },
+        tier: 'execute',
+        decision_source: 'judge',
+        judge: verdict,
+        display: { kind: 'command', summary: '$ cowsay moo' },
+        result: [
+          { kind: 'json', json: { command: 'cowsay moo', cwd: '/home/olav', exit_code: 0 } },
+        ],
+      }),
+    ]);
+    expect(row).toMatchObject({
+      kind: 'command',
+      command: 'cowsay moo',
+      guard: { ok: true, reason: 'Runs the silly command the user explicitly asked for.' },
+    });
+  });
+
+  it('leaves the mark off a call no guard decided', () => {
+    const [row] = rows([
+      call({
+        connector: 'shell',
+        connector_name: 'Shell',
+        tool: 'run_command',
+        model_tool_name: 'shell__run_command',
+        args: { command: 'free -h' },
+        tier: 'execute',
+        decision_source: 'mode',
+        display: { kind: 'command', summary: '$ free -h' },
+        result: [{ kind: 'json', json: { command: 'free -h', cwd: '/home/olav', exit_code: 0 } }],
+      }),
+    ]);
+    expect(row).toMatchObject({ kind: 'command', guard: undefined });
+  });
+});
 
 describe('what a row says beside its title (05 §1)', () => {
   it('gives a failed call the reason it failed, not the arguments it was given', () => {

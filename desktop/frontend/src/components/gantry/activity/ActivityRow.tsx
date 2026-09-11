@@ -19,7 +19,7 @@ import { HunkPreview } from '@/components/gantry/activity/HunkPreview';
 import { ConnectorMark } from '@/components/gantry/ConnectorMark';
 import { Button } from '@/components/ui/button';
 import { connectorName } from '@/fixtures/connectors';
-import type { ActivityItem } from '@/fixtures/types';
+import type { ActivityItem, GuardMark } from '@/fixtures/types';
 import { cn } from '@/lib/utils';
 
 export interface ActivityRowProps {
@@ -46,6 +46,21 @@ export interface ActivityRowProps {
   onAllowAnyway?: (callId: string) => void;
 }
 
+/**
+ * The guard's tick (04 §6): it allowed this call, and says why when you ask. Rendered wherever
+ * a call can be judged, which is every row but the ones the mode always allows — a shell
+ * command most of all, since that is what the guard is usually deciding about. A block is not
+ * this mark: it is a row of its own, below, because it stopped the work.
+ */
+function GuardTick({ guard }: { guard?: GuardMark }) {
+  if (!guard?.ok) return null;
+  return (
+    <span title={`The guard allowed this: ${guard.reason}`} className="flex items-center">
+      <ShieldCheckIcon className="size-3.5 text-good" />
+    </span>
+  );
+}
+
 /** One activity item (05 §1, 15 §8): icon, title, mono summary, status at the right. */
 export function ActivityRow({ item, onOpen, expandable, bare, onAllowAnyway }: ActivityRowProps) {
   const detail = expandable ? inlineDetail(item, onOpen) : undefined;
@@ -58,7 +73,12 @@ export function ActivityRow({ item, onOpen, expandable, bare, onAllowAnyway }: A
           icon={<FileTextIcon />}
           title="Read"
           summary={item.path + (item.range ? ` (lines ${item.range})` : '')}
-          status={<Done />}
+          status={
+            <span className="flex items-center gap-1.5">
+              <GuardTick guard={item.guard} />
+              <Done />
+            </span>
+          }
           onOpen={open}
         />
       );
@@ -68,7 +88,12 @@ export function ActivityRow({ item, onOpen, expandable, bare, onAllowAnyway }: A
           icon={<MagnifyingGlassIcon />}
           title="Searched"
           summary={`${item.glob} for \`${item.query}\``}
-          status={<span className="text-meta text-fg-3 tnum">{item.matches} matches</span>}
+          status={
+            <span className="flex items-center gap-1.5 text-meta text-fg-3 tnum">
+              <GuardTick guard={item.guard} />
+              {item.matches} matches
+            </span>
+          }
           onOpen={open}
         />
       );
@@ -80,6 +105,7 @@ export function ActivityRow({ item, onOpen, expandable, bare, onAllowAnyway }: A
           summary={item.path}
           status={
             <span className="flex items-center gap-1.5">
+              <GuardTick guard={item.guard} />
               <span className="text-meta text-good tnum">+{item.added}</span>
               <span className="text-meta text-bad tnum">−{item.removed}</span>
               {item.status === 'running' ? <Spinner /> : <Done />}
@@ -106,6 +132,7 @@ export function ActivityRow({ item, onOpen, expandable, bare, onAllowAnyway }: A
               </span>
             ) : (
               <span className="flex items-center gap-1.5 text-meta text-fg-3 tnum">
+                <GuardTick guard={item.guard} />
                 {item.exitCode === 0 ? <Done /> : <Failed />}
                 {item.exitCode !== 0 && <span className="text-bad">exit {item.exitCode}</span>}
                 {item.durationMs !== undefined && (
@@ -195,12 +222,7 @@ export function ActivityRow({ item, onOpen, expandable, bare, onAllowAnyway }: A
               <span className="text-meta text-fg-3">cancelled</span>
             ) : (
               <span className="flex items-center gap-1.5 text-meta text-fg-3 tnum">
-                {/* 04 §6: the guard allowed it, and says why when you ask. */}
-                {item.guard?.ok && (
-                  <span title={item.guard.reason} className="flex items-center">
-                    <ShieldCheckIcon className="size-3.5 text-good" />
-                  </span>
-                )}
+                <GuardTick guard={item.guard} />
                 <Done />
                 {item.durationMs !== undefined && item.durationMs >= 1000 && (
                   <span>{(item.durationMs / 1000).toFixed(1)} s</span>

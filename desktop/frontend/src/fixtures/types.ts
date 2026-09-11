@@ -47,8 +47,8 @@ export interface Hunk {
 }
 
 export type ActivityItem =
-  | { kind: 'read'; id: string; path: string; range?: string }
-  | { kind: 'search'; id: string; query: string; glob: string; matches: number }
+  | { kind: 'read'; id: string; path: string; range?: string; guard?: GuardMark }
+  | { kind: 'search'; id: string; query: string; glob: string; matches: number; guard?: GuardMark }
   | {
       kind: 'edit';
       id: string;
@@ -57,6 +57,8 @@ export type ActivityItem =
       removed: number;
       hunks: Hunk[];
       status: 'done' | 'running';
+      /** What the guard decided about this call (04 §6), when a guard decided it. */
+      guard?: GuardMark;
     }
   | {
       kind: 'command';
@@ -67,6 +69,8 @@ export type ActivityItem =
       durationMs?: number;
       output: string[];
       status: 'done' | 'running' | 'failed';
+      /** What the guard decided about this call (04 §6), when a guard decided it. */
+      guard?: GuardMark;
     }
   | {
       kind: 'connector';

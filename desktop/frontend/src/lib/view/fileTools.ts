@@ -1,6 +1,9 @@
 import type { ResultPart, ToolCallDto } from '@/bindings';
 import type { ActivityItem, Hunk, HunkLine } from '@/fixtures/types';
 
+/** The four row kinds a first-party call becomes; every one of them can carry a guard mark. */
+export type FileRow = Extract<ActivityItem, { kind: 'read' | 'search' | 'edit' | 'command' }>;
+
 /**
  * The first-party tools' calls as the rows the feed already knows how to draw (15 §8, 16 §6).
  *
@@ -11,7 +14,7 @@ import type { ActivityItem, Hunk, HunkLine } from '@/fixtures/types';
  * Projecting into them is what turns the code surface from a list of calls into a record of what
  * happened to the files and what was run.
  */
-export function fileItem(call: ToolCallDto, liveOutput?: string[]): ActivityItem | undefined {
+export function fileItem(call: ToolCallDto, liveOutput?: string[]): FileRow | undefined {
   const result = json(call.result);
   const args = (call.args ?? {}) as Record<string, unknown>;
   const done = call.status === 'completed' && !call.is_error;
