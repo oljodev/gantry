@@ -56,7 +56,7 @@ function SentMessage({ user }: { user: Turn['user'] }) {
       )}
       {user.text.trim().length > 0 && (
         <div className="selectable max-w-[75%] rounded-3 bg-raised px-4 py-3 text-chat text-fg ring-1 ring-line-subtle">
-          <div className="whitespace-pre-wrap">{user.text}</div>
+          <div className="break-words whitespace-pre-wrap">{user.text}</div>
         </div>
       )}
       <ImageLightbox

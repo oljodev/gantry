@@ -310,7 +310,7 @@ function callItem(
     connectorName: call?.connector_name,
     tool,
     title: runtimeTitle(connector, tool, call?.args ?? part?.args),
-    summary: call?.display.summary ?? '',
+    summary: rowSummary(connector, tool, call, part),
     status: rowStatus(call),
     blocked: blockedBy(call),
     guard: guardOf(call),
@@ -414,6 +414,46 @@ function runtimeTitle(connector: string, tool: string, args: unknown): string | 
     default:
       return undefined;
   }
+}
+
+/**
+ * What the row says beside its title.
+ *
+ * Three things in order of what a person wants to know. A call that failed says why it failed:
+ * the model was told, and a row that shows only a red cross leaves the fold's "2 failed" as a
+ * count of mysteries. One of Gantry's own tools says its reason rather than its arguments,
+ * because `runtimeTitle` has already said the rest of them. Everything else keeps the
+ * connector's own summary, which is the arguments, which for a server Gantry knows nothing
+ * about is the honest thing to show.
+ */
+function rowSummary(
+  connector: string,
+  tool: string,
+  call: ToolCallDto | undefined,
+  part: Extract<ContentPart, { kind: 'tool_call' }> | undefined,
+): string {
+  const failure = errorText(call);
+  if (failure) return failure;
+  const reason = runtimeReason(connector, tool, call?.args ?? part?.args);
+  if (reason !== undefined) return reason;
+  return call?.display.summary ?? '';
+}
+
+/** The message a failed call returned, which is the message the model was given. */
+function errorText(call: ToolCallDto | undefined): string | undefined {
+  if (!call?.is_error) return undefined;
+  for (const p of call.result ?? []) {
+    if (p.kind === 'text' && p.text.trim() !== '') return p.text.trim();
+  }
+  return undefined;
+}
+
+/** The `reason` a Gantry tool was given, for the tools whose title has said everything else. */
+function runtimeReason(connector: string, tool: string, args: unknown): string | undefined {
+  if (connector !== 'gantry') return undefined;
+  if (tool !== 'request_access' && tool !== 'suggest_connector') return undefined;
+  const v = args && typeof args === 'object' ? (args as Record<string, unknown>).reason : undefined;
+  return typeof v === 'string' ? v : '';
 }
 
 /** What the guard decided, when the guard was asked (04 §6). */

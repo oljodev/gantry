@@ -94,6 +94,7 @@ export function ActivityRow({ item, onOpen, expandable, bare, onAllowAnyway }: A
         <Row
           icon={<TerminalIcon />}
           title={<span className="font-mono">$ {item.command}</span>}
+          tooltip={item.command}
           summary={item.cwd}
           status={
             item.status === 'running' ? (
@@ -114,13 +115,7 @@ export function ActivityRow({ item, onOpen, expandable, bare, onAllowAnyway }: A
             )
           }
           onOpen={open}
-          below={
-            bare ? undefined : (
-              <pre className="selectable max-h-24 overflow-hidden rounded-2 border border-line-subtle bg-inset px-3 py-2 font-mono text-mono text-fg-2">
-                {item.output.slice(-3).join('\n')}
-              </pre>
-            )
-          }
+          below={bare ? undefined : <OutputPreview output={item.output} />}
         />
       );
     case 'connector':
@@ -183,6 +178,7 @@ export function ActivityRow({ item, onOpen, expandable, bare, onAllowAnyway }: A
             `Using ${item.connectorName ?? connectorName(item.connector)} · ${item.tool}`
           }
           summary={item.summary}
+          tone={item.status === 'failed' && item.isError ? 'bad' : undefined}
           status={
             item.status === 'running' || item.status === 'proposed' ? (
               <Spinner />
@@ -297,7 +293,7 @@ function ExpandableRow({
         </div>
       </div>
       {open && (
-        <div className="mt-1 mb-2 ml-5 flex flex-col gap-1">
+        <div className="mt-1 mb-2 ml-5 flex min-w-0 flex-col gap-1">
           {detail}
           {onOpen && (
             <button
@@ -325,11 +321,11 @@ function inlineDetail(item: ActivityItem, onOpen?: (item: ActivityItem) => void)
         <HunkPreview hunks={item.hunks} full onShowAll={onOpen ? () => onOpen(item) : undefined} />
       );
     case 'command':
-      if (item.output.length === 0) return undefined;
       return (
-        <pre className="selectable max-h-96 overflow-auto rounded-2 border border-line-subtle bg-inset px-3 py-2 font-mono text-mono text-fg-2">
-          {item.output.join('\n')}
-        </pre>
+        <>
+          <Block label="Command" body={item.command} wrap />
+          {item.output.length > 0 && <Block label="Output" body={item.output.join('\n')} />}
+        </>
       );
     case 'connector': {
       const args = item.args ? JSON.stringify(item.args, null, 2) : undefined;
@@ -347,15 +343,50 @@ function inlineDetail(item: ActivityItem, onOpen?: (item: ActivityItem) => void)
   }
 }
 
-function Block({ label, body, tone }: { label: string; body: string; tone?: 'bad' }) {
+/**
+ * The tail of a command's output under its row: three lines, in a box that scrolls sideways in
+ * itself rather than widening the chat. A silent command gets no box at all — an empty bordered
+ * rectangle says "no output" less clearly than nothing does — and a long one says how much is
+ * above the fold, so the three lines read as the end of something rather than as all of it.
+ */
+function OutputPreview({ output }: { output: string[] }) {
+  if (output.length === 0) return null;
+  const hidden = output.length - 3;
   return (
-    <div>
+    <div className="selectable min-w-0 overflow-hidden rounded-2 border border-line-subtle bg-inset">
+      {hidden > 0 && (
+        <div className="border-b border-line-subtle px-3 py-1 text-micro text-fg-3 tnum">
+          {hidden} earlier {hidden === 1 ? 'line' : 'lines'}
+        </div>
+      )}
+      <pre className="overflow-x-auto px-3 py-2 font-mono text-mono text-fg-2">
+        {output.slice(-3).join('\n')}
+      </pre>
+    </div>
+  );
+}
+
+function Block({
+  label,
+  body,
+  tone,
+  wrap,
+}: {
+  label: string;
+  body: string;
+  tone?: 'bad';
+  /** A command is one long line meant to be read, not a column of output to be scanned. */
+  wrap?: boolean;
+}) {
+  return (
+    <div className="min-w-0">
       <div className="pb-0.5 text-micro font-medium uppercase tracking-[0.04em] text-fg-3">
         {label}
       </div>
       <pre
         className={cn(
           'selectable max-h-64 overflow-auto rounded-2 border border-line-subtle bg-inset px-3 py-2 font-mono text-mono',
+          wrap && 'whitespace-pre-wrap break-words',
           tone === 'bad' ? 'text-bad' : 'text-fg-2',
         )}
       >
@@ -408,7 +439,9 @@ function CompactedRow({ item }: { item: Extract<ActivityItem, { kind: 'compacted
 function Row({
   icon,
   title,
+  tooltip,
   summary,
+  tone,
   status,
   below,
   onOpen,
@@ -416,7 +449,11 @@ function Row({
 }: {
   icon: ReactNode;
   title: ReactNode;
+  /** The whole of a title the row had to cut short, for the hover that shows it. */
+  tooltip?: string;
   summary?: ReactNode;
+  /** A failed call's summary is the error it returned: prose, and worth the colour. */
+  tone?: 'bad';
   status?: ReactNode;
   below?: ReactNode;
   onOpen?: () => void;
@@ -428,16 +465,26 @@ function Row({
       <span className="flex w-4 shrink-0 items-center justify-center text-fg-2 [&_svg]:size-4">
         {icon}
       </span>
-      <span className="shrink-0 whitespace-nowrap">{title}</span>
+      <span className="min-w-0 truncate" title={tooltip}>
+        {title}
+      </span>
       {summary && (
-        <span className="min-w-0 flex-1 truncate font-mono text-mono text-fg-3">{summary}</span>
+        <span
+          title={typeof summary === 'string' ? summary : undefined}
+          className={cn(
+            'min-w-0 flex-1 truncate',
+            tone === 'bad' ? 'text-ui text-bad' : 'font-mono text-mono text-fg-3',
+          )}
+        >
+          {summary}
+        </span>
       )}
     </>
   );
   const mainClass =
     'flex min-h-(--row) min-w-0 flex-1 items-center gap-2 rounded-2 px-1 text-left text-ui text-fg';
   return (
-    <div className={cn('flex flex-col gap-1.5 rounded-2', className)}>
+    <div className={cn('flex min-w-0 flex-col gap-1.5 rounded-2', className)}>
       <div className="flex items-center">
         {onOpen ? (
           <button
@@ -452,7 +499,7 @@ function Row({
         )}
         {status && <span className="flex shrink-0 items-center pr-1 pl-2">{status}</span>}
       </div>
-      {below && <div className="pr-1 pl-7">{below}</div>}
+      {below && <div className="min-w-0 pr-1 pl-7">{below}</div>}
     </div>
   );
 }

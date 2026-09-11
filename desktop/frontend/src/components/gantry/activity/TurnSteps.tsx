@@ -99,7 +99,7 @@ export function TurnSteps({
         )}
       </button>
       {open && (
-        <div className="mt-1 ml-2.5 flex flex-col gap-0.5 border-l border-line-subtle pl-3">
+        <div className="mt-1 ml-2.5 flex min-w-0 flex-col gap-0.5 border-l border-line-subtle pl-3">
           {steps.map((s, i) =>
             s.kind === 'thinking' ? (
               <ThinkingBlock

@@ -390,8 +390,11 @@ export function ChatView({
   return (
     <div className="relative flex h-full min-w-0">
       <div className="flex min-w-0 flex-1 flex-col">
-        <div ref={feedRef} className="min-h-0 flex-1 overflow-y-auto pt-(--title-strip)">
-          <div className="mx-auto w-full max-w-(--measure) px-6 pt-2 pb-6">
+        <div
+          ref={feedRef}
+          className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto pt-(--title-strip)"
+        >
+          <div className="mx-auto w-full max-w-(--measure) min-w-0 px-6 pt-2 pb-6">
             {turns.map((turn, i) => (
               <TurnView
                 key={turn.id}

@@ -73,7 +73,7 @@ export function TurnView({
   const groups = groupBlocks(turn.blocks);
   const firstCard = groups.findIndex((b) => b.kind === 'permission');
   return (
-    <article className="group/turn flex flex-col gap-3 py-4">
+    <article className="group/turn flex min-w-0 flex-col gap-3 py-4">
       <UserMessage user={turn.user} />
       <div className="flex flex-col">
         {groups.map((block, i) => {

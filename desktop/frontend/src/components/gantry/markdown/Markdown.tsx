@@ -47,7 +47,7 @@ export function Markdown({ children, className }: { children: string; className?
   // defines one is parsed whole. Everything else keeps the per-block memoisation.
   const blocks = FOOTNOTE.test(children) ? [children] : splitBlocks(children);
   return (
-    <div className={cn('prose-gantry selectable text-chat text-fg', className)}>
+    <div className={cn('prose-gantry selectable break-words text-chat text-fg', className)}>
       {blocks.map((block, i) => (
         <MarkdownBlock key={i} text={block} />
       ))}
