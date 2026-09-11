@@ -69,7 +69,15 @@ jobs:
       - name: Rust tests (includes the bindings drift check)
         run: cargo test --workspace
 
-      - name: cargo deny
-        uses: EmbarkStudios/cargo-deny-action@v2
+  # Its own runner, because it needs none of the above and cannot survive beside it: the step
+  # installs a toolchain of its own, and sharing a runner that already holds the built workspace
+  # left 25 MB free and died with "No space left on device" (2026-09-10). It reads Cargo.lock,
+  # nothing more, so it is also the fastest job here.
+  deny:
+    name: Dependencies
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
         with:
           command: check

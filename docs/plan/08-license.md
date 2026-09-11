@@ -48,7 +48,7 @@ Terms and Conditions
 Grant of Future License on the second anniversary of first availability of each version, Apache 2.0 applies
 ```
 
-Placeholders: `${year}` → 2026 (update per release year), `${licensor name}` → the legal licensor (personal name now; a company later means a re-issue for new versions, not a change to old ones). Do not edit any other sentence; the value of FSL is that it is recognizable text.
+Placeholders: `${year}` → 2026 (update per release year), `${licensor name}` → the legal licensor (personal name now; a company later means a re-issue for new versions, not a change to old ones). **As built:** `Copyright 2026 Olav Jodal`, set 2026-09-11 before the repository goes public. Do not edit any other sentence; the value of FSL is that it is recognizable text.
 
 Add `SPDX-License-Identifier: FSL-1.1-ALv2` headers to source files through the formatter template, and set `"license": "FSL-1.1-ALv2"` in `package.json` and `Cargo.toml`.
 

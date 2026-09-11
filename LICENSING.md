@@ -40,8 +40,9 @@ Apache License 2.0. Every release lists its own conversion date here:
 
 ## Before the first public release
 
-The copyright notice in `LICENSE` still carries a placeholder for the licensor's name. It is
-filled in, and this table gets its first row, as part of the v0.1.0 release checklist.
+The licensor is **Olav Jodal**, named in the copyright notice of [`LICENSE`](LICENSE) since
+2026-09-11. The conversion table above gets its first row when v0.1.0 is released, which is the
+only licence item left on the release checklist.
 
 ## Contributing
 

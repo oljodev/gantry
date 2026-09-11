@@ -44,7 +44,8 @@ update the document in the same commit.
   `pnpm dev` (browser only), `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm build`; the root
   scripts forward to `desktop/frontend`, and `pnpm format` covers the whole repository.
 - Rust: `cargo test --workspace`, `cargo clippy --workspace --all-targets -- -D warnings`,
-  `cargo fmt --all`.
+  `cargo fmt --all`, and `cargo deny check` when dependencies change (licences, advisories,
+  sources; it is the one check that used to exist only in CI).
 - The app: `pnpm tauri dev` (the Tauri CLI finds `desktop/app/tauri.conf.json` by itself). After
   changing a command: `cargo xtask gen-bindings` and commit `desktop/frontend/src/bindings.ts` (the
   `gen_bindings` test fails on drift).

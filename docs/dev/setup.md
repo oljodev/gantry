@@ -45,6 +45,7 @@ The first Rust build takes a few minutes; later ones are incremental.
 | `pnpm dev` | the frontend alone in a browser on http://localhost:1420 (no backend; Tauri calls are skipped) |
 | `cargo test --workspace` | Rust tests, including the bindings drift check |
 | `cargo clippy --workspace --all-targets -- -D warnings` | lints |
+| `cargo deny check` | dependency licences, advisories and sources (`cargo install cargo-deny --locked` once) |
 | `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm format` | frontend checks |
 | `cargo xtask gen-bindings` | regenerate `desktop/frontend/src/bindings.ts` after changing a command |
 | `pnpm tauri build` | an installable bundle in `target/release/bundle/` |
