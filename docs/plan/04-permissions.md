@@ -125,7 +125,7 @@ Policy in the prompt: allow actions consistent with the stated task that are in 
 
 - **Allow** → execute; a small "guard ✓" mark on the activity item, with the reason on hover.
 - **Deny** → the call is skipped; the model receives `{ "error": "blocked_by_guard", "reason": …, "hint": "Ask the user or choose a safer approach." }`; the activity item shows "Blocked by guard" with an **Allow anyway** button that re-runs the call under a one-time grant; a toast (and a sidebar badge if the user is elsewhere) is the only notification. The judge never opens a blocking prompt.
-- **Judge failure** (timeout after 8 s, network error, unparseable output) → fall back to a blocking permission prompt. One interruption in a rare failure beats a silent allow.
+- **Judge failure** (timeout after 30 s, network error, unparseable output) → fall back to a blocking permission prompt. One interruption in a rare failure beats a silent allow.
 - Budget: target latency ≤ 1.5 s per decision; cost roughly a tenth of a cent per decision on Haiku 4.5 with the policy prompt cached, so a heavy coding turn costs cents.
 - Audit: `judge.decision` events; Settings → Guard shows recent decisions, override counts and a "this block was wrong" feedback toggle stored for later prompt tuning.
 
@@ -188,6 +188,16 @@ commands joined the read-only list, since every one of them reads whatever its f
 attempt (`ChatRequest::retries`): it has eight seconds and someone is waiting through them, so
 spending them on a rate limiter's backoff buys the same answer, late. A card in one second is a
 better failure than a card in eight.
+
+**Eight seconds was the wrong number** (2026-09-11, from the second live run, and it reverses the
+last sentence above). One `hostnamectl` probe — the only one of seven the classifier could not
+prove read-only, and the guard's whole question — timed out, and the user was handed a card. The
+bet in a short timeout is that giving up early saves the user time, and it does not: a timeout
+hands them the command to read and answer, so the short budget buys a wait that ends in homework
+instead of a wait that ends in an answer. A cheap fast route usually answers in a second or two
+and sometimes takes twenty, which puts eight inside its range rather than outside it. [`TIMEOUT`]
+is 30 s, and at 30 s a retry is affordable again — about a second of backoff to rescue the
+commonest failure there is, a rate limiter — so `retries` is 2.
 
 **The guard answers a second kind of question** (2026-09-11): whether the model may attach a
 connector the user installed but did not give this chat. It is the same machinery — `Decision::

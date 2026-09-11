@@ -149,6 +149,7 @@ function inProgressLabel(item: ActivityItem): string | undefined {
     case 'edit':
       return item.status === 'running' ? `Editing ${basename(item.path)}…` : undefined;
     case 'command':
+      if (item.status === 'waiting') return 'Waiting for your decision';
       return item.status === 'running' ? 'Running a command…' : undefined;
     case 'connector':
       if (item.status === 'waiting') return 'Waiting for your decision';

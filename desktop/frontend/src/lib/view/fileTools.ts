@@ -63,14 +63,23 @@ export function fileItem(call: ToolCallDto, liveOutput?: string[]): FileRow | un
       if (!done) {
         // The lines that have arrived so far, so a long build is visibly alive rather than a
         // spinner (05 §7, `docs/connectors/shell.md` §10). A call that has finished badly is
-        // not alive, and showing it as running left a spinner turning for ever.
+        // not alive, and showing it as running left a spinner turning for ever — but neither is
+        // a call that is waiting for the user an error, and calling it one put a red cross on a
+        // command nobody had answered yet and counted it among the turn's failures.
         return {
           kind: 'command',
           id,
           command,
           cwd,
           output: liveOutput ?? [],
-          status: call.status === 'running' || call.status === 'proposed' ? 'running' : 'failed',
+          status:
+            call.status === 'running' || call.status === 'proposed'
+              ? 'running'
+              : call.status === 'awaiting_decision'
+                ? 'waiting'
+                : call.status === 'cancelled'
+                  ? 'cancelled'
+                  : 'failed',
         };
       }
       const exitCode = num(result?.exit_code);

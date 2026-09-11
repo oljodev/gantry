@@ -41,9 +41,17 @@ describe('the rows a file or command call draws (16 §6)', () => {
   });
 
   it('does not leave a command that ended badly spinning for ever', () => {
-    for (const status of ['failed', 'cancelled'] as const) {
-      expect(fileItem(call(status))).toMatchObject({ kind: 'command', status: 'failed' });
-    }
+    expect(fileItem(call('failed'))).toMatchObject({ kind: 'command', status: 'failed' });
+  });
+
+  // Both of these used to come out as `failed`, which put a red cross on a command that had
+  // not run and made the fold above it count a failure the turn never had.
+  it('separates a command that is waiting or was stopped from one that failed', () => {
+    expect(fileItem(call('awaiting_decision'))).toMatchObject({
+      kind: 'command',
+      status: 'waiting',
+    });
+    expect(fileItem(call('cancelled'))).toMatchObject({ kind: 'command', status: 'cancelled' });
   });
 
   it('draws nothing for a call that was refused, so the row can say who refused it', () => {

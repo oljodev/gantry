@@ -68,7 +68,7 @@ export type ActivityItem =
       exitCode?: number;
       durationMs?: number;
       output: string[];
-      status: 'done' | 'running' | 'failed';
+      status: 'done' | 'running' | 'waiting' | 'cancelled' | 'failed';
       /** What the guard decided about this call (04 §6), when a guard decided it. */
       guard?: GuardMark;
     }

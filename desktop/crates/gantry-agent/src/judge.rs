@@ -32,7 +32,17 @@ use serde_json::{Value, json};
 pub const POLICY: &str = include_str!("../../../assets/prompts/judge.md");
 
 /// How long the judge may take before the user is asked instead (04 §6).
-pub const TIMEOUT: Duration = Duration::from_secs(8);
+///
+/// Thirty seconds, raised from eight on 2026-09-11 after the second live run timed out on a
+/// single question. The number is a bet about which failure costs more. A timeout does not save
+/// anybody time: it hands the call to the user, who then reads the command and answers it — so
+/// giving up early does not shorten the wait, it only replaces a wait that ends in an answer
+/// with a wait that ends in homework. A cheap fast route that is busy usually answers in a
+/// second or two and sometimes takes twenty, and eight seconds was inside the range it wanted
+/// rather than outside it.
+pub const TIMEOUT: Duration = Duration::from_secs(30);
+/// How many times one decision is attempted, inside [`TIMEOUT`] (04 §6).
+pub const ATTEMPTS: u32 = 2;
 /// A `destructive` call allowed below this confidence becomes a prompt instead (04 §6).
 pub const DESTRUCTIVE_FLOOR: f32 = 0.7;
 /// The same tool with the same arguments failing this many times in one turn is a loop.
@@ -273,10 +283,11 @@ pub async fn decide(
     let mut req = ChatRequest::new(model.clone(), POLICY, vec![Message::user_text(input)]);
     req.max_output_tokens = MAX_OUTPUT_TOKENS;
     req.reasoning = ReasoningEffort::Off;
-    // One attempt. The whole decision has [`TIMEOUT`] and someone is waiting through it; a rate
-    // limiter's backoff would spend those seconds to arrive at the same answer, late. Failing
-    // now means the card appears in a second instead of in eight, which is the better failure.
-    req.retries = 1;
+    // At eight seconds a retry was not worth its backoff: it spent the budget to arrive at the
+    // same answer, late. At thirty, one retry costs about a second and rescues the commonest
+    // way the guard fails — a rate limiter on the cheap fast route — while the timeout above
+    // still stops the whole thing from outstaying its welcome.
+    req.retries = ATTEMPTS;
     if structured {
         req.provider_options = structured_output(provider.kind());
     }
@@ -527,6 +538,21 @@ pub fn needs_the_user(verdict: &JudgeVerdict, tier: RiskTier) -> bool {
 
 #[cfg(test)]
 mod tests {
+    /// The retries have to fit inside the budget with room to spare, or the extra attempt is a
+    /// timeout with extra steps: it waits out its own backoff and is cut off mid-answer, on
+    /// exactly the slow route that made the retry necessary.
+    #[test]
+    fn the_budget_leaves_room_for_the_retry_it_asks_for() {
+        // `retry::backoff` sleeps 500 ms plus up to 250 ms of jitter before each retry.
+        let worst = super::Duration::from_millis(750) * (super::ATTEMPTS - 1);
+        assert!(
+            super::TIMEOUT.saturating_sub(worst) >= super::Duration::from_secs(20),
+            "{} attempts back off for {worst:?}, leaving too little of {:?} to answer in",
+            super::ATTEMPTS,
+            super::TIMEOUT,
+        );
+    }
+
     use super::*;
 
     fn action(args: Value) -> Action {

@@ -123,18 +123,22 @@ export function ActivityRow({ item, onOpen, expandable, bare, onAllowAnyway }: A
           tooltip={item.command}
           summary={item.cwd}
           status={
+            // A command still to be answered is not a failure, and a cancelled one is not
+            // either: both used to fall through to the exit-code branch and print a red cross
+            // with no code beside it, which the fold above then counted as a failed command.
             item.status === 'running' ? (
-              <span className="flex items-center gap-2">
-                <Spinner />
-                <Button variant="ghost" size="sm" className="text-bad hover:bg-bad-subtle">
-                  Kill
-                </Button>
-              </span>
+              <Spinner />
+            ) : item.status === 'waiting' ? (
+              <span className="text-meta text-accent-text">waiting</span>
+            ) : item.status === 'cancelled' ? (
+              <span className="text-meta text-fg-3">cancelled</span>
             ) : (
               <span className="flex items-center gap-1.5 text-meta text-fg-3 tnum">
                 <GuardTick guard={item.guard} />
                 {item.exitCode === 0 ? <Done /> : <Failed />}
-                {item.exitCode !== 0 && <span className="text-bad">exit {item.exitCode}</span>}
+                {item.exitCode !== undefined && item.exitCode !== 0 && (
+                  <span className="text-bad">exit {item.exitCode}</span>
+                )}
                 {item.durationMs !== undefined && (
                   <span>{(item.durationMs / 1000).toFixed(1)} s</span>
                 )}

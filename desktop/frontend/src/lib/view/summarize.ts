@@ -30,6 +30,8 @@ export function summarize(items: ActivityItem[]): string {
       continue;
     }
     if ('status' in item && (item.status === 'cancelled' || item.status === 'denied')) continue;
+    // Nor has work the user has not answered for yet: "ran a command" is a claim about the past.
+    if ('status' in item && item.status === 'waiting') continue;
     switch (item.kind) {
       case 'read':
         reads.add(item.path);
