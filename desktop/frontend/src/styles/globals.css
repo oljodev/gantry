@@ -154,6 +154,17 @@
  * data-starting-style / data-ending-style around open and close, which CSS transitions follow.
  */
 @layer components {
+  /*
+   * A connector's brand mark, in the vendor's own colour (src/lib/marks.generated.ts). The two
+   * values arrive on the element as custom properties rather than living here, because they are
+   * sixty pieces of per-connector data and not a palette — but which of the two applies is a
+   * theme question, so it is answered here, with tokens.css's own three-way structure: light on
+   * the bare rule, dark under the media query guarded against an explicit light choice, dark
+   * again under the attribute so the toggle wins in both directions.
+   */
+  .brand-mark {
+    color: var(--mark-light);
+  }
   .float {
     background: var(--bg-overlay);
     border: 1px solid var(--line);
@@ -240,5 +251,17 @@
   [data-theme='light'] .shiki-host .shiki,
   [data-theme='light'] .shiki-host .shiki span {
     color: var(--shiki-light);
+  }
+}
+
+@layer components {
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme='light']) .brand-mark {
+      color: var(--mark-dark);
+    }
+  }
+  :root[data-theme='dark'] .brand-mark,
+  [data-theme='dark'] .brand-mark {
+    color: var(--mark-dark);
   }
 }

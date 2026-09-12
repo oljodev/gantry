@@ -23,8 +23,11 @@ export default defineConfig([
   },
   {
     // Design tokens are the only place a colour or pixel size is written (docs/plan/15 §11).
+    // `marks.generated.ts` is the one exception, and it is generated rather than written: the
+    // colours in it are other companies' brand colours, which are data about those companies and
+    // not part of Gantry's palette. `pnpm marks` produces them; nothing edits them by hand.
     files: ['src/**/*.{ts,tsx}'],
-    ignores: ['src/styles/**', 'src/fixtures/**', 'src/bindings.ts'],
+    ignores: ['src/styles/**', 'src/fixtures/**', 'src/bindings.ts', 'src/lib/marks.generated.ts'],
     rules: {
       'no-restricted-syntax': [
         'error',

@@ -383,11 +383,15 @@ falls back to initials.
 **The app draws them too, since 2026-09-12**, and the question it was waiting on is answered the
 same way the website already answered it: a mark identifies the service a connector reaches, the
 way a bookshop's shelf labels identify publishers, and Simple Icons' paths are CC0 while the
-trademarks stay their owners'. Two differences from the site. The app draws every mark in
-`currentColor`, never the brand's colour — every colour in this app comes from `tokens.css` (15),
-and sixty brand hexes would be sixty exceptions to that rule. And where Simple Icons has no mark —
+trademarks stay their owners'. Two differences from the site. The app takes the brand colour but not
+as published: each one is adjusted per theme until it reads on that theme's surface, because a
+colour chosen for a vendor's own white page is not a colour that survives a dark one. And where
+Simple Icons has no mark —
 Microsoft, Salesforce, Slack and others asked to be removed from it, and a service six months old
 is simply not in it — the app falls back to **the connector's own `icon.svg`**, the stroked glyph
 every folder already carries, rather than to two grey letters. `pnpm marks` generates the lot and
-a test fails when a new connector has neither.
+a test fails when a new connector has neither. Those glyphs keep the colour of the text around
+them: Gantry drew them, and painting one in a brand colour nobody published would be inventing a
+fact about somebody else's company — the vendors' own pages were checked for a `theme-color`, and
+two of twenty-two publish one.
 Neither claims endorsement, and the note under the directory says so.
