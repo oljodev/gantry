@@ -122,7 +122,9 @@ export function InstallDialog({
                 ? `${entry.name} needs a few details before it can run.`
                 : connected
                   ? entry.description
-                  : `${entry.name} will not let an application in on its own. Do one of these once; Gantry remembers it.`}
+                  : entry.auth_needs_client_id
+                    ? `${entry.name} will not let an application in on its own. Do one of these once; Gantry remembers it.`
+                    : `Sign in to ${entry.name} in your browser. Gantry keeps the token on this machine.`}
           </DialogDescription>
         </DialogHeader>
 
@@ -185,16 +187,20 @@ export function InstallDialog({
                     Create the app on {hostOf(entry.auth_setup_url)}
                   </Button>
                 )}
-                <Input
-                  value={clientId}
-                  onChange={(e) => setClientId(e.target.value)}
-                  placeholder="Client id"
-                  aria-label="OAuth client id"
-                />
-                <p className="text-meta text-fg-3">
-                  Callback:{' '}
-                  <code className="selectable font-mono">http://127.0.0.1:17321/callback</code>
-                </p>
+                {entry.auth_needs_client_id && (
+                  <>
+                    <Input
+                      value={clientId}
+                      onChange={(e) => setClientId(e.target.value)}
+                      placeholder="Client id"
+                      aria-label="OAuth client id"
+                    />
+                    <p className="text-meta text-fg-3">
+                      Callback:{' '}
+                      <code className="selectable font-mono">http://127.0.0.1:17321/callback</code>
+                    </p>
+                  </>
+                )}
               </>
             ) : (
               <>
@@ -259,7 +265,10 @@ export function InstallDialog({
             !blocked && (
               <Button
                 disabled={
-                  busy || (method === 'oauth2' ? clientId.trim() === '' : token.trim() === '')
+                  busy ||
+                  (method === 'oauth2'
+                    ? entry.auth_needs_client_id && clientId.trim() === ''
+                    : token.trim() === '')
                 }
                 onClick={() => (method === 'oauth2' ? void signIn() : void submitToken())}
               >

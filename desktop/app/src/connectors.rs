@@ -417,6 +417,23 @@ impl ConnectorService {
             discovery::register(&self.http, &endpoint, &auth::redirect_uris(), &scopes)
                 .await
                 .map_err(auth_error)?;
+        // Registration is meant to produce a public client — PKCE, no secret — and some servers
+        // issue one anyway, because their token endpoint takes nothing else: Supabase advertises
+        // `client_secret_basic` and `client_secret_post` and no `none`. Dropping it, which is what
+        // used to happen here, made the sign-in succeed in the browser and the token exchange
+        // fail afterwards. It is a per-installation secret this machine was handed, not one
+        // shipped with Gantry, so it goes to the vault like any other credential (06 §5).
+        if let Some(secret) = registered.client_secret.as_deref() {
+            self.secrets
+                .set(
+                    OwnerKind::Instance,
+                    &id.to_string(),
+                    CredentialKind::OauthClientSecret,
+                    Some(issuer),
+                    secret,
+                )
+                .await?;
+        }
         let record = repos::connectors::OauthClient {
             id: ulid::Ulid::new().to_string(),
             instance_id: id,
@@ -428,6 +445,11 @@ impl ConnectorService {
             .write(move |c| repos::connectors::put_oauth_client(c, &record))
             .await?;
         Ok(registered.client_id)
+    }
+
+    /// The secret a registration handed this instance for that issuer, if there was one.
+    fn client_secret(&self, id: InstanceId, issuer: &str) -> Option<String> {
+        self.secret_named(id, issuer).ok().flatten()
     }
 
     /// Starts the OAuth flow and returns the URL the browser must open, plus everything needed
@@ -591,10 +613,17 @@ impl ConnectorService {
             issuer,
             ..
         } = authorization;
+        let secret = self.client_secret(id, &issuer);
         let result = match step {
             Step::Redirect(pending) => {
                 pending
-                    .complete(&self.http, &server, &client_id, Some(&resource))
+                    .complete(
+                        &self.http,
+                        &server,
+                        &client_id,
+                        secret.as_deref(),
+                        Some(&resource),
+                    )
                     .await
             }
             Step::Device(start) => flow::device_wait(&self.http, &server, &client_id, &start).await,
@@ -817,7 +846,7 @@ impl ConnectorService {
         if token.stale()
             && let Some(refresh) = token.refresh_token.clone()
         {
-            match self.refresh(&mut token, &refresh).await {
+            match self.refresh(id, &mut token, &refresh).await {
                 Ok(()) => self.store_token(id, &token).await?,
                 Err(err) => {
                     log::warn!("refreshing {}: {err}", instance.name);
@@ -832,13 +861,26 @@ impl ConnectorService {
         Ok(Some(token.header.clone()))
     }
 
-    async fn refresh(&self, token: &mut StoredToken, refresh: &str) -> Result<(), GantryError> {
+    async fn refresh(
+        &self,
+        id: InstanceId,
+        token: &mut StoredToken,
+        refresh: &str,
+    ) -> Result<(), GantryError> {
         let server = discovery::auth_server(&self.http, &token.issuer)
             .await
             .map_err(auth_error)?;
-        let fresh = flow::refresh(&self.http, &server, &token.client_id, refresh, None)
-            .await
-            .map_err(auth_error)?;
+        let secret = self.client_secret(id, &token.issuer);
+        let fresh = flow::refresh(
+            &self.http,
+            &server,
+            &token.client_id,
+            secret.as_deref(),
+            refresh,
+            None,
+        )
+        .await
+        .map_err(auth_error)?;
         token.expires_at = fresh.expires_at();
         token.header = fresh.header();
         token.access_token = fresh.access_token;

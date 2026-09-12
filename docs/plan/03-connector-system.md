@@ -394,6 +394,25 @@ the flow above has to survive:
   path-insertion form of RFC 8414. `<issuer>/.well-known/oauth-authorization-server` is a 404
   there. Discovery tries the path-insertion form, then the suffix form, then OpenID's
   `.well-known/openid-configuration`, in that order.
+- **A registration can come back with a secret** (as built, 2026-09-12). Registration is supposed
+  to produce a public client — PKCE, `token_endpoint_auth_method: "none"` — and Supabase's
+  authorization server offers `client_secret_basic` and `client_secret_post` and nothing else, so
+  the client it creates has a secret and its token endpoint will not talk without one. Gantry used
+  to read `client_id` out of the registration response and drop the rest, which made the browser
+  half succeed and the token exchange fail immediately afterwards: the user saw "you can go back
+  to Gantry" and then a dialog asking for a client id, which is the wrong question twice over.
+  The secret is now kept, in the vault as `oauth_client_secret` labelled with the issuer, and sent
+  with the code exchange and every refresh. It is not a secret shipped with Gantry — that is the
+  thing §7 cannot do, and why Slack and HubSpot are not in the catalogue — it is one this
+  installation was handed for itself.
+
+- **The client-id field is asked for only where it is needed** (as built, 2026-09-12). §11 already
+  said asking up front "made GitHub's problem everybody's", and the install dialog did it anyway:
+  it showed a Client id input for every `oauth2` entry and kept **Sign in** disabled until
+  something was typed into it. `CatalogEntryDto.auth_needs_client_id` now carries the manifest's
+  own answer — `user_supplied_fields` names `client_id` and the manifest pins none — so the field
+  appears for GitHub and Xero and for nobody else.
+
 - **GitHub supports neither Dynamic Client Registration nor a Client ID Metadata Document, and
   will not take a client without a secret.** Its metadata advertises `code_challenge_methods_
   supported: ["S256"]`, no `registration_endpoint`, and — the load-bearing omission — no

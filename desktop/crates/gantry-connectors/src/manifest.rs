@@ -163,6 +163,27 @@ impl Auth {
         }
     }
 
+    /// Whether the user has to make a client of their own before signing in: the manifest asks
+    /// for a `client_id` and ships none itself. Everything else — dynamic registration, a
+    /// client-id metadata document, an id pinned in the manifest — happens without them.
+    #[must_use]
+    pub fn needs_client_id(&self) -> bool {
+        match self {
+            Auth::Oauth2 {
+                user_supplied_fields,
+                client,
+                ..
+            } => {
+                user_supplied_fields.iter().any(|f| f == "client_id")
+                    && client
+                        .as_ref()
+                        .and_then(|c| c.client_id.as_deref())
+                        .is_none()
+            }
+            _ => false,
+        }
+    }
+
     #[must_use]
     pub fn scopes(&self) -> Vec<String> {
         match self {
@@ -478,6 +499,7 @@ impl Manifest {
                 .as_ref()
                 .and_then(|a| a.setup_url())
                 .map(str::to_owned),
+            auth_needs_client_id: self.auth.needs_client_id(),
         }
     }
 

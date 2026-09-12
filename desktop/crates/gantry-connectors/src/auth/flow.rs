@@ -125,6 +125,7 @@ impl Pending {
         http: &reqwest::Client,
         server: &AuthServer,
         client_id: &str,
+        client_secret: Option<&str>,
         resource: Option<&str>,
     ) -> Result<TokenSet, AuthError> {
         let query = tokio::time::timeout(WAIT, accept(&self.listener))
@@ -167,6 +168,13 @@ impl Pending {
         if let Some(resource) = resource {
             form.push(("resource", resource.to_owned()));
         }
+        // A client the server registered for this installation may have been given a secret —
+        // Supabase issues one and its token endpoint accepts nothing else. It is not a secret
+        // shipped with Gantry (03 §7 has no way to keep one of those); it belongs to this
+        // machine's registration and lives in the vault.
+        if let Some(secret) = client_secret {
+            form.push(("client_secret", secret.to_owned()));
+        }
         post_token(http, &server.token_endpoint, &form).await
     }
 }
@@ -176,6 +184,7 @@ pub async fn refresh(
     http: &reqwest::Client,
     server: &AuthServer,
     client_id: &str,
+    client_secret: Option<&str>,
     refresh_token: &str,
     resource: Option<&str>,
 ) -> Result<TokenSet, AuthError> {
@@ -186,6 +195,9 @@ pub async fn refresh(
     ];
     if let Some(resource) = resource {
         form.push(("resource", resource.to_owned()));
+    }
+    if let Some(secret) = client_secret {
+        form.push(("client_secret", secret.to_owned()));
     }
     post_token(http, &server.token_endpoint, &form).await
 }

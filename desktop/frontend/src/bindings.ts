@@ -543,6 +543,14 @@ export type CatalogEntryDto = {
 	auth_alternate: AuthType | null,
 	auth_alternate_instructions: string | null,
 	auth_alternate_setup_url: string | null,
+	/**
+	 *  Whether signing in needs a client id the user creates first (03 §7): true for a server
+	 *  that registers nobody and publishes no metadata document — GitHub, Xero — and false for
+	 *  every server that registers Gantry itself, which is most of them. The install dialog asks
+	 *  for one only when this is set; asking otherwise is asking for something that does not
+	 *  exist.
+	 */
+	auth_needs_client_id: boolean,
 };
 
 /**  Everything the chat view needs. */
