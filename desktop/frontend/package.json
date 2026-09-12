@@ -13,6 +13,7 @@
     "lint": "eslint .",
     "test": "vitest run",
     "fonts": "node scripts/sync-fonts.mjs",
+    "marks": "node scripts/sync-marks.mjs",
     "design:contrast": "node scripts/contrast.mjs"
   },
   "dependencies": {
@@ -59,6 +60,7 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.6",
     "globals": "^17.12.0",
+    "simple-icons": "^16.30.0",
     "tailwindcss": "^4.3.3",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.69.0",

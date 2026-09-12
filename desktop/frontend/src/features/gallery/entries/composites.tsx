@@ -11,6 +11,7 @@ import {
 import { UserMessage } from '@/components/gantry/chat/UserMessage';
 import { AttachmentTray, Composer } from '@/components/gantry/composer/Composer';
 import { ConnectorMark } from '@/components/gantry/ConnectorMark';
+import { MARKS } from '@/lib/marks.generated';
 import { ConnectorTile } from '@/components/gantry/connectors/ConnectorTile';
 import { EmptyState } from '@/components/gantry/EmptyState';
 import { ThinkingBlock } from '@/components/gantry/chat/ThinkingBlock';
@@ -364,6 +365,9 @@ function Pane() {
   );
 }
 
+/** Drawn by Phosphor rather than from a generated mark, so they are listed separately. */
+const FIRST_PARTY = ['filesystem', 'code-editor', 'shell', 'web', 'gantry', 'mcp'];
+
 function ConnectorsEntry() {
   return (
     <>
@@ -375,17 +379,17 @@ function ConnectorsEntry() {
           })}
         </div>
       </State>
-      <State label="Marks">
-        {['filesystem', 'code-editor', 'shell', 'web', 'github', 'notion', 'google-drive'].map(
-          (id) => (
-            <ConnectorMark
-              key={id}
-              id={id}
-              name={connectors.find((c) => c.id === id)?.name}
-              size={20}
-            />
-          ),
-        )}
+      <State label="Marks · every connector in the catalogue, and the monogram a hand-added server gets">
+        <div className="grid w-full grid-cols-4 gap-3 md:grid-cols-8">
+          {[...FIRST_PARTY, ...Object.keys(MARKS), 'some-server-nobody-knows'].map((id) => (
+            <div key={id} className="flex flex-col items-center gap-1.5 py-1">
+              <ConnectorMark id={id} name={connectors.find((c) => c.id === id)?.name} size={22} />
+              <span className="truncate text-mono text-fg-3" title={id}>
+                {id}
+              </span>
+            </div>
+          ))}
+        </div>
       </State>
     </>
   );
