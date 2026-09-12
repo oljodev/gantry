@@ -1,0 +1,44 @@
+{
+  "manifest_version": "1",
+  "id": "xero",
+  "name": "Xero",
+  "description": "Accounting in Xero: invoices, contacts, reports and the balance sheet.",
+  "long_description": "Xero's own hosted server. It reads invoices, bills, contacts and reports — aged receivables, the balance sheet, profit and loss — and can create the documents your scopes allow.\n\nXero registers no client on its own, so you create an app once in their developer portal and paste its Client ID. Gantry signs in with PKCE and never asks for a secret.",
+  "version": "0.1.0",
+  "icon": "icon.svg",
+  "category": "data",
+  "keywords": ["xero", "accounting", "invoices", "bookkeeping", "reports", "balance sheet"],
+  "publisher": {
+    "name": "Xero",
+    "url": "https://www.xero.com"
+  },
+  "first_party": false,
+  "homepage": "https://developer.xero.com/documentation/guides/how-to-guides/xero-mcp-server/",
+  "runtime": {
+    "kind": "mcp-remote",
+    "url": "https://mcp.xero.com/mcp"
+  },
+  "auth": {
+    "type": "oauth2",
+    "registration": ["user_supplied"],
+    "user_supplied_fields": ["client_id"],
+    "instructions": "Xero registers no application on its own. Create one in the developer portal, choose **Mobile or desktop application**, add `http://127.0.0.1:17321/callback` as a redirect URI (adding 17322–17325 too saves a retry if the port is busy), and paste the Client ID here. No secret is needed: Gantry signs in with PKCE.",
+    "setup_url": "https://developer.xero.com/app/manage"
+  },
+  "risk": {
+    "network": "internet",
+    "local_system": "none",
+    "default_tool_tier": "write_external",
+    "notes": "Reaches the Xero organisation you authorise. Creating an invoice or a payment is an accounting record other people rely on."
+  },
+  "tools_generated": true,
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "gantry": ">=0.1.0"
+  },
+  "catalog": {
+    "featured": false,
+    "sort_weight": 1,
+    "suggest_for": ["xero", "accounting", "invoices", "balance sheet", "profit and loss"]
+  }
+}

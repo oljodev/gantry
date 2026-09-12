@@ -1,0 +1,43 @@
+{
+  "manifest_version": "1",
+  "id": "paypal",
+  "name": "PayPal",
+  "description": "Orders, invoices, payments and disputes in your PayPal business account.",
+  "long_description": "PayPal's own hosted server. It reads orders, invoices, transactions and disputes, and can create invoices and orders when you let it.\n\nYou sign in through PayPal in your browser. This connector moves money, so every tool that does is confirmed each time, whatever the chat's mode.",
+  "version": "0.1.0",
+  "icon": "icon.svg",
+  "category": "data",
+  "keywords": ["paypal", "payments", "invoices", "orders", "disputes", "refunds"],
+  "publisher": {
+    "name": "PayPal",
+    "url": "https://www.paypal.com"
+  },
+  "first_party": false,
+  "homepage": "https://developer.paypal.com/tools/mcp-server/",
+  "runtime": {
+    "kind": "mcp-remote",
+    "url": "https://mcp.paypal.com/mcp"
+  },
+  "auth": {
+    "type": "oauth2",
+    "registration": ["dcr"],
+    "scopes": ["openid", "email", "profile"],
+    "instructions": "Sign in to PayPal in your browser; the server registers Gantry on the spot."
+  },
+  "risk": {
+    "network": "internet",
+    "local_system": "none",
+    "default_tool_tier": "write_external",
+    "notes": "Reaches the PayPal account you sign in to. Creating an order, issuing a refund or paying an invoice moves real money and is confirmed every time."
+  },
+  "tools_generated": true,
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "gantry": ">=0.1.0"
+  },
+  "catalog": {
+    "featured": false,
+    "sort_weight": 4,
+    "suggest_for": ["paypal", "invoice", "refund", "this order", "payment"]
+  }
+}

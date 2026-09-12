@@ -224,13 +224,23 @@ day and one sign-in from Olav.
 | **B6** | Local, Node | Playwright, Shopify Dev, Azure, Salesforce, BrowserStack | **the runtime check and command preview (03 §11) — one install from Olav** |
 | **B7** | Local, Python | ElevenLabs, Qdrant, Kagi, MiniMax, Ramp | **uv detection — one install from Olav** |
 | **B8** | Remote, OAuth client you supply | Google Drive, Calendar, Gmail, BigQuery, Cloud Run | Google's console steps; the GitHub path already proves the mechanism |
-| **B9** | Remote, OAuth, money | PayPal, Square, Xero, HubSpot, Ramp | tier review is the work, not the auth |
+| **B9** ✅ | Remote, OAuth, money | PayPal, Square, Ramp, Xero, **Plaid** | Shipped 2026-09-12. **HubSpot came out**: like Slack it offers no registration of any kind and takes `client_secret_post` only, so it needs a confidential client Gantry cannot hold. Xero registers nobody either, but accepts a public client with PKCE, so it takes the `github` shape — an app you make once, a client id you paste. Plaid took HubSpot's place |
 | **B10** | Remote, host you supply | Metabase, Grafana, Databricks, n8n, Unleash | **`user_config` in a runtime URL — one setup from Olav** |
 | **B11+** | proven shapes only | The long tail: Granola, Cal.com, Resend, MailerLite, Tally, Jotform, Lovable, incident.io, Datadog, Postman, Axiom, LangSmith, Cloudinary, Browserbase, Clarity, Fabric, Perplexity, Make, Hostinger, 21st.dev, Twilio, Windsor, Cardboard, Replicate, Plaid, Docker, JetBrains, 1Password, Rive, Lottie | none |
 
 B0–B2 land with M9's remaining work; B3–B5 with M10; B6–B7 need the runtime check, so they wait
 for the rest of M9 (09, "the runtime check, elicitation, `user_config` forms"); B8–B11 are
 release-cadence work after that, five per release, and each release note lists what was added.
+
+**The shape that is missing.** Slack and HubSpot are both shipped by their vendors, both answer
+correctly, and neither can be signed into: they offer no dynamic registration, no client-id
+metadata document, and their token endpoints accept `client_secret_post` and nothing else. That is
+a *confidential* client — an id and a secret — and 03 §7 knows three ways to get a client, none of
+which can keep a secret on a user's machine. The honest options are to ship a Gantry client id and
+secret for each such vendor (which means running a service, and means the secret is in the
+binary), or to let the user paste both halves of an app they made, which is what every other
+desktop client does. Neither is decided; until one is, those two stay `soon` on the website and
+this paragraph is why.
 
 Two rules keep the tail from rotting:
 

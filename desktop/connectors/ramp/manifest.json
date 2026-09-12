@@ -1,0 +1,42 @@
+{
+  "manifest_version": "1",
+  "id": "ramp",
+  "name": "Ramp",
+  "description": "Cards, bills, reimbursements and spend limits in your Ramp workspace.",
+  "long_description": "Ramp's own hosted server. It reads cards, transactions, bills, reimbursements and spend limits — the read scopes are the ones it offers, which makes it a good connector for a question about where the money went.\n\nYou sign in through Ramp in your browser.",
+  "version": "0.1.0",
+  "icon": "icon.svg",
+  "category": "data",
+  "keywords": ["ramp", "spend", "cards", "bills", "expenses", "reimbursements"],
+  "publisher": {
+    "name": "Ramp",
+    "url": "https://ramp.com"
+  },
+  "first_party": false,
+  "homepage": "https://docs.ramp.com/developer-api/v1/mcp",
+  "runtime": {
+    "kind": "mcp-remote",
+    "url": "https://mcp.ramp.com/mcp"
+  },
+  "auth": {
+    "type": "oauth2",
+    "registration": ["dcr"],
+    "instructions": "Sign in to Ramp in your browser; the server registers Gantry on the spot and the scopes it asks for are reads."
+  },
+  "risk": {
+    "network": "internet",
+    "local_system": "none",
+    "default_tool_tier": "write_external",
+    "notes": "Reaches your Ramp workspace. The scopes the server asks for are reads, so the usual answer here is a question about spend."
+  },
+  "tools_generated": true,
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "gantry": ">=0.1.0"
+  },
+  "catalog": {
+    "featured": false,
+    "sort_weight": 2,
+    "suggest_for": ["ramp", "spend", "company card", "expenses", "this bill"]
+  }
+}

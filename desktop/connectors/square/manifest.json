@@ -1,0 +1,42 @@
+{
+  "manifest_version": "1",
+  "id": "square",
+  "name": "Square",
+  "description": "Payments, orders, catalogue and customers in your Square account.",
+  "long_description": "Square's own hosted server. It reads payments, orders, the item catalogue and customers, and can create and update them.\n\nYou sign in through Square in your browser. Refunds and anything else that moves money are confirmed each time.",
+  "version": "0.1.0",
+  "icon": "icon.svg",
+  "category": "data",
+  "keywords": ["square", "payments", "pos", "catalog", "orders", "customers"],
+  "publisher": {
+    "name": "Square",
+    "url": "https://squareup.com"
+  },
+  "first_party": false,
+  "homepage": "https://developer.squareup.com/docs/mcp",
+  "runtime": {
+    "kind": "mcp-remote",
+    "url": "https://mcp.squareup.com/mcp"
+  },
+  "auth": {
+    "type": "oauth2",
+    "registration": ["dcr"],
+    "instructions": "Sign in to Square in your browser; the server registers Gantry on the spot."
+  },
+  "risk": {
+    "network": "internet",
+    "local_system": "none",
+    "default_tool_tier": "write_external",
+    "notes": "Reaches the Square account you sign in to. Refunds and catalogue changes affect a live business and are confirmed."
+  },
+  "tools_generated": true,
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "gantry": ">=0.1.0"
+  },
+  "catalog": {
+    "featured": false,
+    "sort_weight": 3,
+    "suggest_for": ["square", "payments", "my sales", "catalog", "refund"]
+  }
+}

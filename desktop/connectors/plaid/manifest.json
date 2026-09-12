@@ -1,0 +1,43 @@
+{
+  "manifest_version": "1",
+  "id": "plaid",
+  "name": "Plaid",
+  "description": "Your Plaid dashboard: items, institutions, webhooks and API logs.",
+  "long_description": "Plaid's own hosted server, connected to your Plaid dashboard. It reads items and institutions, checks webhooks, and searches the API logs — which is what you actually want when a bank link stops working.\n\nYou sign in through Plaid in your browser.",
+  "version": "0.1.0",
+  "icon": "icon.svg",
+  "category": "data",
+  "keywords": ["plaid", "banking", "fintech", "items", "webhooks", "api logs"],
+  "publisher": {
+    "name": "Plaid",
+    "url": "https://plaid.com"
+  },
+  "first_party": false,
+  "homepage": "https://plaid.com/docs/mcp/",
+  "runtime": {
+    "kind": "mcp-remote",
+    "url": "https://api.dashboard.plaid.com/mcp/"
+  },
+  "auth": {
+    "type": "oauth2",
+    "registration": ["dcr"],
+    "scopes": ["mcp:dashboard"],
+    "instructions": "Sign in to Plaid in your browser; the server registers Gantry on the spot."
+  },
+  "risk": {
+    "network": "internet",
+    "local_system": "none",
+    "default_tool_tier": "write_external",
+    "notes": "Reaches your Plaid dashboard. It is your integration's data — items, logs, webhooks — not your users' bank credentials."
+  },
+  "tools_generated": true,
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "gantry": ">=0.1.0"
+  },
+  "catalog": {
+    "featured": false,
+    "sort_weight": 0.5,
+    "suggest_for": ["plaid", "bank link", "item error", "api logs", "webhook"]
+  }
+}
