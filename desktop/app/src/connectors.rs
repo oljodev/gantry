@@ -423,9 +423,20 @@ impl ConnectorService {
             .await
             .or_else(|| discovery::protected_resource_url(url))
             .ok_or_else(|| GantryError::invalid("this server publishes no OAuth metadata"))?;
-        let resource = discovery::protected_resource(&self.http, &metadata_url)
-            .await
-            .map_err(auth_error)?;
+        // A server that publishes no protected-resource document is not necessarily one Gantry
+        // cannot sign in to: several serve authorization-server metadata on their own origin and
+        // skip the newer document entirely, so that is tried before giving up.
+        let resource = match discovery::protected_resource(&self.http, &metadata_url).await {
+            Ok(document) if !document.authorization_servers.is_empty() => document,
+            answer => {
+                if let Err(err) = answer {
+                    log::info!("{metadata_url}: {err}; assuming the resource is its own issuer");
+                }
+                discovery::resource_as_issuer(url).ok_or_else(|| {
+                    GantryError::invalid("this server publishes no OAuth metadata")
+                })?
+            }
+        };
         let issuer = resource
             .authorization_servers
             .first()

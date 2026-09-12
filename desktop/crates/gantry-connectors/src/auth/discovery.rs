@@ -109,6 +109,31 @@ pub fn protected_resource_url(resource: &str) -> Option<String> {
     ))
 }
 
+/// What to assume when a server refuses with a `401` and publishes no protected-resource
+/// document at all.
+///
+/// RFC 9728 is how a server *should* say where to sign in, and a good number do not: Atlassian,
+/// Datadog, Intercom, Jotform, Replicate, Apify and Windsor all answer `401` and serve
+/// authorization-server metadata on the resource's own origin instead (checked 2026-09-12).
+/// Treating the resource as its own issuer is the assumption RFC 8414 already describes, and it
+/// costs one request that either answers or does not — so a server that skipped the newer
+/// document is reachable rather than unsupported.
+#[must_use]
+pub fn resource_as_issuer(resource: &str) -> Option<ProtectedResource> {
+    let url = Url::parse(resource).ok()?;
+    let host = url.host_str()?;
+    let origin = match url.port() {
+        Some(port) => format!("{}://{host}:{port}", url.scheme()),
+        None => format!("{}://{host}", url.scheme()),
+    };
+    Some(ProtectedResource {
+        resource: resource.to_owned(),
+        authorization_servers: vec![origin],
+        scopes_supported: Vec::new(),
+        resource_name: None,
+    })
+}
+
 /// The authorization server's metadata, trying every place the specifications put it. GitHub's
 /// issuer (`https://github.com/login/oauth`) serves it only at the path-insertion URL, so that
 /// form is tried first; Cloudflare's issuer has no path and answers on the second.
@@ -195,6 +220,20 @@ pub async fn register(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_server_with_no_protected_resource_document_is_its_own_issuer() {
+        let assumed = super::resource_as_issuer("https://mcp.atlassian.com/v1/mcp").unwrap();
+        assert_eq!(
+            assumed.authorization_servers,
+            vec!["https://mcp.atlassian.com".to_owned()]
+        );
+        assert!(
+            assumed.scopes_supported.is_empty(),
+            "nothing was read, so nothing is claimed about scopes"
+        );
+        assert!(super::resource_as_issuer("not a url").is_none());
+    }
+
     use super::*;
 
     #[test]

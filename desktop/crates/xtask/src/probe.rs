@@ -469,9 +469,12 @@ async fn auth_shape(
     let metadata_url = challenge
         .and_then(discovery::resource_metadata_url)
         .or_else(|| discovery::protected_resource_url(resource))?;
-    let protected = discovery::protected_resource(http, &metadata_url)
-        .await
-        .ok()?;
+    // The same fallback the app uses: a server with no protected-resource document is assumed to
+    // be its own issuer, so the fixture records the shape instead of recording nothing.
+    let protected = match discovery::protected_resource(http, &metadata_url).await {
+        Ok(document) if !document.authorization_servers.is_empty() => document,
+        _ => discovery::resource_as_issuer(resource)?,
+    };
     let issuer = protected.authorization_servers.first()?.clone();
     let server = discovery::auth_server(http, &issuer).await.ok()?;
     Some(AuthShape {
