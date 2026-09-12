@@ -5,7 +5,9 @@
 //! - `validate-connectors`  the catalogue checks a per-file schema cannot make (17 §5)
 //! - `probe-connectors`     ask every catalogued server what it is; `--offline` checks the
 //!   recorded fixtures instead, which is how CI runs it
-//! - `validate-skills`, `icons`  arrive with M12 and M13
+//! - `validate-skills`   the rules of a bundled skill that `build.rs` does not stop the
+//!   build for (12 §A2)
+//! - `icons`             arrives with M13
 
 #![forbid(unsafe_code)]
 
@@ -19,6 +21,7 @@ use anyhow::{Context, bail};
 
 mod connectors;
 mod probe;
+mod skills;
 
 const BINDINGS: &str = "desktop/frontend/src/bindings.ts";
 
@@ -36,7 +39,8 @@ fn main() -> ExitCode {
                 flags.iter().any(|f| f == "--spawn"),
             )
         }
-        "validate-skills" | "icons" => {
+        "validate-skills" => skills::validate(&workspace_root()),
+        "icons" => {
             eprintln!("xtask {task}: not implemented yet (see docs/plan/09-roadmap.md)");
             Ok(())
         }

@@ -7215,7 +7215,9 @@ name = "xtask"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "gantry-agent",
  "gantry-connectors",
+ "gantry-core",
  "reqwest",
  "serde",
  "serde_json",

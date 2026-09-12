@@ -10,7 +10,9 @@ publish.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+gantry-agent = { path = "../gantry-agent" }
 gantry-connectors = { path = "../gantry-connectors" }
+gantry-core = { path = "../gantry-core" }
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
