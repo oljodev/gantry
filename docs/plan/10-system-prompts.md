@@ -17,7 +17,7 @@ What stays non-editable: the identity and tone floor, the tool-calling conventio
 The system prompt of a chat is assembled once, at chat creation, from these blocks in this order, and stored as `chats.system_snapshot` (02 §6, 06 §3):
 
 ```
-<gantry_core version="6">                     1. fixed scaffold, identical for every chat
+<gantry_core version="7">                     1. fixed scaffold, identical for every chat
   …identity, conventions, protocols, precedence rule…
   <mode>…manual | auto_edit | plan | auto…</mode>
 </gantry_core>
@@ -67,7 +67,7 @@ The precedence paragraph in `gantry_core`, in substance:
 
 Scope precedence among user layers: chat over project over global when they conflict (the more specific wins), stated in the same paragraph. Skills rank below instructions because they have the weakest provenance.
 
-### Skills and memory (core version 6, M12)
+### Skills and memory (core versions 6 and 7, M12)
 
 Version 6 adds two paragraphs beside the connector and artifact protocols. The skill one says
 what `<gantry_skills>` is and that `gantry__load_skill` is how to read one, and that a proposal
@@ -76,6 +76,15 @@ one is mostly a list of what never becomes a memory: a detail of the task at han
 out of a tool result rather than heard from the user, and any key, token or password. It also
 says the thing a model otherwise gets wrong on its own: **do not say you have remembered
 something before the user has agreed to it.**
+
+Version 7 (2026-09-13) rewrites the memory paragraph for auto-save, which is now the default
+(12 §B3 revised). Under it the model is writing, not offering, so the sentence about not
+claiming to have remembered something is replaced by a narrower one: do not make a performance
+of it — a memory written is worth at most a short clause in the reply, and often nothing. The
+paragraph also tells the model to search before it writes and pass `replaces_id`, so the store
+holds one sentence per idea, and to prune freely, because a store nobody prunes stops being
+worth reading. An incognito chat (15 A21) is given no `<memory>` block and none of these tools,
+so none of this paragraph applies inside one.
 
 ### The untrusted-content rule (core version 5, M7)
 

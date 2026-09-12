@@ -142,7 +142,9 @@ Kinds: `instruction` (how to behave: "answer in Norwegian"), `preference` (tool 
 - Forgetting is symmetric: `gantry__propose_forget { memory_id, reason }` produces a card; only the user deletes.
 - Users create memories directly: the Memory page, the composer command `/remember …`, or selecting text in any message → **Remember this**.
 
-Why confirmation rather than write-now-review-later: the cost is one click on a card that is already in the feed; the benefit is that a memory can never be planted by content the model read (a web page, a tool output, a skill) without the user seeing it, and the store never contains surprises. For users who find the click tedious, Settings → Memory offers **Auto-save assistant memories** per scope, off by default; in that mode the card still appears, already saved, with **Undo**.
+Why confirmation rather than write-now-review-later: the cost is one click on a card that is already in the feed; the benefit is that a memory can never be planted by content the model read (a web page, a tool output, a skill) without the user seeing it, and the store never contains surprises. For users who find the click tedious, Settings → Memory offers **Auto-save assistant memories** per scope; in that mode the card still appears, already saved, with **Undo**.
+
+**Revised 2026-09-13: auto-save is the default, in both directions.** The promise §B1 makes is that no memory exists the user has not been shown and cannot remove; it is not that they must click twice a day to get a workspace that knows how they work. So `auto_save_global` and `auto_save_project` default to on, and forgetting follows the same rule: under auto-save `propose_forget` archives the entry as it is called and its card offers to put it back. Forgetting also gets a budget of its own — six a turn against remembering's two — because pruning is the answer to a store that fills up, and it is the reversible direction: a forgotten entry is restorable for thirty days, while a written one is in every later prompt until somebody notices. `search_memory` takes no query at all, returning the whole store (capped at 100), which is where a tidy-up starts, and a `replaces_id` under auto-save archives what it replaces instead of leaving both sentences to disagree in the same prompt.
 
 ### B4. Which memories reach a chat
 
@@ -256,6 +258,34 @@ so the cache prefix still holds between turns.
   remember something would go on believing it had.
 - **`/remember …` and Remember this need no card.** The confirmation rule of §B3 is about what
   the model proposes; what the user writes themselves is already the user's decision.
+
+## Revised after M12 (2026-09-13)
+
+Two changes, both from using the thing.
+
+### Auto-save on, and forgetting with a budget of its own
+
+Described at §B3 above. The short version: memory built as a confirmation flow was correct
+about the promise and wrong about the cost. Every sentence worth keeping cost a click, and the
+model — told to say nothing about remembering until the user had — could not even mention what
+it had offered. Auto-save was already built; it now defaults to on. The card, the visible row
+and one-click Undo are what carry §B1, not the click.
+
+Forgetting is the half that decides whether the store is worth reading in a year. Under
+auto-save `propose_forget` archives as it is called, gets six calls a turn rather than sharing
+remembering's two, and a query-less `search_memory` gives the model the whole store to prune.
+The asymmetry is the point: an entry that goes is restorable for thirty days, an entry that
+arrives is in every prompt until somebody notices it.
+
+### Incognito takes memory out of the loop
+
+15 A21. An incognito session reads no memory and writes none, and the memory tools are dropped
+from its tool set rather than left to refuse — the same reasoning as `paused`: a tool that is
+not in the list cannot be reached for, and the model does not spend a round finding out.
+
+Skills are unaffected, which is a line worth writing down: a skill is how the user works, a
+memory is what the app learned about them. Privacy is about the second. A private chat that has
+forgotten the user's own playbooks is not more private, only worse.
 
 ### Not built
 

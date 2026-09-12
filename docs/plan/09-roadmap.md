@@ -658,6 +658,22 @@ Left for M11, because it has nothing to act on until then: `MemoryScopeKind::Pro
 
 Done when: a skill written in the editor is injected for a matching message and visible in "Context used"; an imported Anthropic-format skill folder installs with its scripts dropped and listed; a memory proposed by the assistant is saved, shows on the Memory page with provenance, appears in a new chat, and stops appearing after deletion.
 
+### After M12 (2026-09-13)
+
+Three changes, all from Olav using it.
+
+- **Auto-save is the default, and the model prunes.** A memory built as a confirmation flow was
+  right about the promise and wrong about the cost. Both scopes now default to on, forgetting is
+  applied the same way, and forgetting gets six calls a turn against remembering's two, because
+  it is the reversible direction and it is what keeps the store worth reading. `search_memory`
+  takes no query, which is where a tidy-up starts, and a replacement archives what it replaces.
+  Core prompt version **7**. Recorded in 12 "Revised after M12".
+- **Incognito** (15 A21): a chat in its own window that reads no memory, writes none, has the
+  memory tools dropped from its tool set, appears in no list, no search and no artifact library,
+  and is deleted when the window closes — or at the next startup, if a crash beat it to the
+  close handler. Migration 0013. Skills still apply inside one.
+- **The window controls sit on their own ground**, with **Use incognito** to their left (15 §7).
+
 ## M13 — Hardening and release (2 weeks)
 
 - ~~Context management: tool-result caps, client-side simple compaction, keep-tail compaction for other providers, the "summarized" notice.~~ **Done** 2026-09-11, pulled forward out of M13 because it is what bites first in ordinary use: a long chat simply stopped working. `gantry-agent/src/context.rs` with the summarizer prompt in `assets/prompts/compaction.md`, the decisions recorded in 02 §6 "As built". The tool-result cap became a setting (Settings → Advanced). Still in M13: Anthropic's **server-side** context editing and compaction, which are beta request shapes no test here can verify, and the full tool output as a blob.
