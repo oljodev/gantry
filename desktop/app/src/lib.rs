@@ -99,6 +99,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::skills::set_skill_enabled,
             commands::skills::test_skill_match,
             commands::skills::export_skill,
+            commands::skills::skill_export_filename,
             commands::skills::review_skill,
             commands::skills::review_skill_url,
             commands::skills::install_skill,
@@ -111,6 +112,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::memory::restore_memory,
             commands::memory::forget_memory_for_good,
             commands::memory::export_memories,
+            commands::memory::read_memory_export,
             commands::memory::review_memory_import,
             commands::memory::import_memories,
         ])

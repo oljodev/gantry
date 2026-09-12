@@ -27,6 +27,12 @@ export const keys = {
   allArtifacts: ['artifacts', 'all'] as const,
   artifact: (artifactId: string, version: number | undefined) =>
     ['artifact', artifactId, version ?? 'current'] as const,
+  /** The skill library and one skill's body (12 §A3). */
+  skills: ['skills'] as const,
+  skill: (id: string) => ['skill', id] as const,
+  chatSkills: (chatId: string) => ['chat_skills', chatId] as const,
+  /** One filtered view of the memory store; `['memories']` invalidates every view (12 §B5). */
+  memories: (query: unknown) => ['memories', query] as const,
   /** What a code session changed; the file diffs hang under the same prefix (16 §5). */
   changes: (chatId: string) => ['changes', chatId] as const,
   fileDiff: (chatId: string, path: string) => ['changes', chatId, path] as const,

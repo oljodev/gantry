@@ -12,6 +12,12 @@ import {
   PermissionCard,
 } from '@/components/gantry/chat/InteractionCard';
 import { ElicitationCard, type ElicitationAnswer } from '@/components/gantry/chat/ElicitationCard';
+import {
+  MemoryProposalCard,
+  SkillProposalCard,
+  type MemoryAnswer,
+  type SkillAnswer,
+} from '@/components/gantry/chat/ProposalCards';
 import { TurnActions, type TurnActionsProps } from '@/components/gantry/chat/TurnActions';
 import { UserMessage } from '@/components/gantry/chat/UserMessage';
 import { Markdown } from '@/components/gantry/markdown/Markdown';
@@ -48,6 +54,8 @@ export function TurnView({
   onAccess,
   onElicit,
   onOffer,
+  onSkill,
+  onMemory,
   installing,
   isLast,
   onCopy,
@@ -69,6 +77,10 @@ export function TurnView({
   onElicit?: (interactionId: string, answer: ElicitationAnswer) => void;
   /** Answers a connector suggestion: install it, or not (03 §9). */
   onOffer?: (interactionId: string, install: boolean) => void;
+  /** Keeps or discards a skill the model proposed (12 §A5 flow 4). */
+  onSkill?: (interactionId: string, answer: SkillAnswer) => void;
+  /** Keeps, forgets or discards what the model proposed remembering (12 §B3). */
+  onMemory?: (interactionId: string, answer: MemoryAnswer) => void;
   /** The suggestion whose install is running. */
   installing?: string;
   isLast?: boolean;
@@ -182,6 +194,23 @@ export function TurnView({
                   busy={installing === block.offer.id}
                   onInstall={onOffer ? () => onOffer(block.offer.id, true) : undefined}
                   onDecline={onOffer ? () => onOffer(block.offer.id, false) : undefined}
+                />
+              );
+            case 'skillProposal':
+              return (
+                <SkillProposalCard
+                  key={block.id}
+                  id={block.id}
+                  proposal={block.proposal}
+                  onAnswer={onSkill ? (answer) => onSkill(block.id, answer) : undefined}
+                />
+              );
+            case 'memoryProposal':
+              return (
+                <MemoryProposalCard
+                  key={block.id}
+                  proposal={block.proposal}
+                  onAnswer={onMemory ? (answer) => onMemory(block.id, answer) : undefined}
                 />
               );
           }

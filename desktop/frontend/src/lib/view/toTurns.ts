@@ -46,6 +46,30 @@ export function toTurns(
   });
 }
 
+/**
+ * The "Context used" row (05 §2, 12 §A4, §B4): the skills and memories this turn was given
+ * beyond the transcript.
+ *
+ * It is read from the user message's own `turn_context` part rather than from the
+ * `context.injected` event, because the part is written down — so the row is the same before a
+ * reload and after one, and it says exactly what the model was sent rather than what an event
+ * said it would be sent.
+ */
+function contextItem(t: TurnDto): ActivityItem | undefined {
+  for (const part of t.user.parts) {
+    if (part.kind !== 'turn_context') continue;
+    const { skills, memories } = part.injected;
+    if (skills.length === 0 && memories.length === 0) return undefined;
+    return {
+      kind: 'context',
+      id: `${t.id}-context`,
+      skills: skills.map((s) => s.name),
+      memories: memories.length,
+    };
+  }
+  return undefined;
+}
+
 function finishedTurn(t: TurnDto, modelLabel: Label, titles: ArtifactIndex): Turn {
   const calls = Object.fromEntries(t.tool_calls.map((c) => [c.id, c]));
   const blocks = messagesToBlocks(
@@ -56,6 +80,7 @@ function finishedTurn(t: TurnDto, modelLabel: Label, titles: ArtifactIndex): Tur
     undefined,
     titles,
   );
+  pushContext(blocks, contextItem(t));
   pushNotices(blocks, t.notices);
   if (t.status === 'failed' && t.error) {
     blocks.push({ kind: 'error', message: t.error, retryable: false });
@@ -94,6 +119,7 @@ function liveTurn(t: TurnDto, live: LiveTurn, modelLabel: Label, titles: Artifac
     titles,
     live.output,
   );
+  pushContext(blocks, contextItem(t));
   pushNotices(blocks, live.notices);
   if (live.error)
     blocks.push({ kind: 'error', message: live.error.message, retryable: live.error.retryable });
@@ -114,6 +140,14 @@ function liveTurn(t: TurnDto, live: LiveTurn, modelLabel: Label, titles: Artifac
     status:
       live.status === 'running' && live.pending.length > 0 ? 'waiting' : statusOf(live.status),
   };
+}
+
+/** The context row goes first: it is what the model was given before it said anything. */
+function pushContext(blocks: Block[], item: ActivityItem | undefined) {
+  if (!item) return;
+  const first = blocks[0];
+  if (first?.kind === 'activity') first.items.unshift(item);
+  else blocks.unshift({ kind: 'activity', items: [item] });
 }
 
 /** Notices sit after the text and calls they explain, as plain rows (05 §1). */
@@ -264,6 +298,10 @@ function messagesToBlocks(
       blocks.push({ kind: 'offer', offer: offerOf(p) });
     else if (p.payload.kind === 'elicitation')
       blocks.push({ kind: 'elicit', ask: elicitationOf(p) });
+    else if (p.payload.kind === 'skill_proposal')
+      blocks.push({ kind: 'skillProposal', id: p.id, proposal: p.payload.proposal });
+    else if (p.payload.kind === 'memory_proposal')
+      blocks.push({ kind: 'memoryProposal', id: p.id, proposal: p.payload.proposal });
   }
   return blocks;
 }

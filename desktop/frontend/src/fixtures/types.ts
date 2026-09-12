@@ -1,4 +1,4 @@
-import type { ElicitationField } from '@/bindings';
+import type { ElicitationField, MemoryProposal, SkillProposal } from '@/bindings';
 
 /**
  * View-model shapes the chat components render (docs/plan/README.md, 05 §1). Backend truth is
@@ -213,7 +213,10 @@ export type Block =
   | { kind: 'permission'; permission: Permission }
   | { kind: 'access'; ask: AccessAsk }
   | { kind: 'offer'; offer: ConnectorOffer }
-  | { kind: 'elicit'; ask: ElicitationAsk };
+  | { kind: 'elicit'; ask: ElicitationAsk }
+  /** A skill or a memory the model offered to keep (12 §A5 flow 4, §B3). */
+  | { kind: 'skillProposal'; id: string; proposal: SkillProposal }
+  | { kind: 'memoryProposal'; id: string; proposal: MemoryProposal };
 
 /** An attachment as a sent message shows it; `blob` and `mime` let an image be fetched. */
 export interface SentAttachment {

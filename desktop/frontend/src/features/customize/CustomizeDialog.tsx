@@ -1,12 +1,9 @@
 import { BrainIcon, GearIcon, GraduationCapIcon, PuzzlePieceIcon } from '@phosphor-icons/react';
 
-import {
-  PrefsDialog,
-  RailLink,
-  SectionTitle,
-  type RailItem,
-} from '@/components/gantry/settings/PrefsDialog';
+import { PrefsDialog, RailLink, type RailItem } from '@/components/gantry/settings/PrefsDialog';
 import { ConnectorsSection } from '@/features/customize/ConnectorsSection';
+import { MemorySection } from '@/features/customize/MemorySection';
+import { SkillsSection } from '@/features/customize/SkillsSection';
 import { CUSTOMIZE_SECTIONS, type CustomizeSection } from '@/features/settings/sections';
 import { useUiStore } from '@/lib/stores/uiStore';
 
@@ -40,23 +37,8 @@ export function CustomizeDialog() {
       footer={<RailLink icon={GearIcon} label="Settings" onClick={() => openSettings('general')} />}
     >
       {active === 'connectors' && <ConnectorsSection />}
-      {active === 'skills' && (
-        <>
-          <SectionTitle>Skills</SectionTitle>
-          <p className="text-body text-fg-2">
-            Playbooks Gantry reads when a message matches them. They arrive with milestone M12.
-          </p>
-        </>
-      )}
-      {active === 'memory' && (
-        <>
-          <SectionTitle>Memory</SectionTitle>
-          <p className="text-body text-fg-2">
-            What Gantry remembers between chats, with every entry visible and removable. It arrives
-            with milestone M12.
-          </p>
-        </>
-      )}
+      {active === 'skills' && <SkillsSection />}
+      {active === 'memory' && <MemorySection />}
     </PrefsDialog>
   );
 }

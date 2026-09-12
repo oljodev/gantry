@@ -7,10 +7,16 @@ import {
 } from '@phosphor-icons/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import type { CatalogEntryDto, PermissionDecision } from '@/bindings';
+import type {
+  CatalogEntryDto,
+  MemoryProposal,
+  PermissionDecision,
+  SkillProposal,
+} from '@/bindings';
 import { ArtifactGlyph } from '@/components/gantry/chat/ArtifactCard';
 import type { ElicitationAnswer } from '@/components/gantry/chat/ElicitationCard';
 import type { AccessAnswer, PermissionAnswer } from '@/components/gantry/chat/InteractionCard';
+import type { MemoryAnswer, SkillAnswer } from '@/components/gantry/chat/ProposalCards';
 import { Button } from '@/components/ui/button';
 import { TurnView } from '@/components/gantry/chat/TurnView';
 import { Composer } from '@/components/gantry/composer/Composer';
@@ -31,10 +37,12 @@ import { ArtifactPanel } from '@/features/artifacts/ArtifactPanel';
 import { useArtifactStore } from '@/features/artifacts/store';
 import type { ActivityItem, ModelRef } from '@/fixtures/types';
 import { copyText, openExternal } from '@/lib/clipboard';
+import { commands, unwrap } from '@/lib/ipc/client';
 import { useFollowBottom } from '@/lib/followBottom';
 import { pickFolder } from '@/lib/folders';
 import { useArtifacts } from '@/lib/ipc/hooks/artifacts';
 import { useChat, useChatMutations } from '@/lib/ipc/hooks/chats';
+import { useSkills } from '@/lib/ipc/hooks/skills';
 import {
   useCatalog,
   useChatConnectors,
@@ -118,6 +126,7 @@ export function ChatView({
   );
   const [paneOpen, setPaneOpen] = useState(() => openArtifactId !== undefined);
   const artifactList = useArtifacts(chatId);
+  const skills = useSkills();
   const openArtifacts = useArtifactStore((s) => s.openByChat[chatId]);
   const openArtifact = useArtifactStore((s) => s.open);
   const closeArtifact = useArtifactStore((s) => s.close);
@@ -311,6 +320,11 @@ export function ChatView({
   };
   const patch = (u: Parameters<typeof update.mutate>[0]['update']) =>
     update.mutate({ chatId, update: u });
+  // What `/` offers in the composer (12 §A6). Switched-off skills are not offered, because a
+  // name that does nothing when you type it is worse than one that is not there.
+  const skillChoices = (skills.data ?? [])
+    .filter((s) => s.enabled)
+    .map((s) => ({ name: s.name, description: s.description }));
   const decide = (interactionId: string, answer: PermissionAnswer) => {
     const resolution =
       answer.kind === 'allow'
@@ -340,6 +354,114 @@ export function ChatView({
       message: null,
     }).catch((err) =>
       toast.add({ title: 'Could not answer', description: describe(err), type: 'error' }),
+    );
+  };
+
+  /**
+   * A skill the model proposed (12 §A5 flow 4). The card is a form, so the fields that come
+   * back may not be the ones the model wrote; saving is an ordinary save, and the card is then
+   * resolved with what it produced so the model is told on its next turn.
+   */
+  const answerSkill = (interactionId: string, answer: SkillAnswer, proposal: SkillProposal) => {
+    const finish = async () => {
+      if (answer.kind === 'discard') {
+        await resolve(chatId, interactionId, {
+          kind: 'skill_proposal',
+          outcome: { kind: 'discarded' },
+        });
+        return;
+      }
+      const saved = await unwrap(
+        commands.saveSkill({
+          ...proposal.input,
+          name: answer.name,
+          description: answer.description,
+          body: answer.body,
+        }),
+      );
+      await resolve(chatId, interactionId, {
+        kind: 'skill_proposal',
+        outcome: { kind: 'saved', id: saved.id, name: saved.name },
+      });
+      toast.add({ title: `Saved \`${saved.name}\``, type: 'success' });
+    };
+    void finish().catch((err) =>
+      toast.add({ title: 'Could not save the skill', description: describe(err), type: 'error' }),
+    );
+  };
+
+  /**
+   * A memory the model proposed, or one it offered to forget (12 §B3). Auto-saved proposals
+   * arrive already stored, so **Undo** archives what was written rather than doing nothing.
+   */
+  const answerMemory = (interactionId: string, answer: MemoryAnswer, proposal: MemoryProposal) => {
+    const finish = async () => {
+      if (proposal.action === 'forget') {
+        if (answer.kind === 'save' && proposal.target) {
+          await unwrap(commands.deleteMemory(proposal.target.id));
+          await resolve(chatId, interactionId, {
+            kind: 'memory_proposal',
+            outcome: { kind: 'forgotten', id: proposal.target.id },
+          });
+          return;
+        }
+        await resolve(chatId, interactionId, {
+          kind: 'memory_proposal',
+          outcome: { kind: 'discarded' },
+        });
+        return;
+      }
+      if (answer.kind === 'discard') {
+        // Auto-save wrote it before the card appeared; Undo has something to undo.
+        if (proposal.auto_saved && proposal.target) {
+          await unwrap(commands.deleteMemory(proposal.target.id));
+        }
+        await resolve(chatId, interactionId, {
+          kind: 'memory_proposal',
+          outcome: { kind: 'discarded' },
+        });
+        return;
+      }
+      if (proposal.auto_saved && proposal.target) {
+        // Kept as it stands, or with the wording the user changed.
+        if (answer.text.trim() !== proposal.target.text) {
+          await unwrap(
+            commands.updateMemory(proposal.target.id, {
+              text: answer.text.trim(),
+              kind: null,
+              scope_kind: null,
+              scope_id: null,
+              always_include: null,
+              enabled: null,
+              tags: null,
+            }),
+          );
+        }
+        await resolve(chatId, interactionId, {
+          kind: 'memory_proposal',
+          outcome: { kind: 'saved', id: proposal.target.id },
+        });
+        return;
+      }
+      const saved = await unwrap(
+        commands.createMemory({
+          text: answer.text.trim(),
+          kind: proposal.kind,
+          scope_kind: proposal.scope_kind,
+          source: 'assistant',
+          origin_chat_id: chatId,
+          origin_message_id: null,
+        }),
+      );
+      // Replacing an older entry archives it, restorable from Recently deleted (12 §B3).
+      if (proposal.target) await unwrap(commands.deleteMemory(proposal.target.id));
+      await resolve(chatId, interactionId, {
+        kind: 'memory_proposal',
+        outcome: { kind: 'saved', id: saved.id },
+      });
+    };
+    void finish().catch((err) =>
+      toast.add({ title: 'Could not save it', description: describe(err), type: 'error' }),
     );
   };
 
@@ -430,6 +552,14 @@ export function ChatView({
                 onAccess={answerAccess}
                 onElicit={answerElicit}
                 onOffer={answerOffer}
+                onSkill={(id, answer) => {
+                  const block = turn.blocks.find((b) => b.kind === 'skillProposal' && b.id === id);
+                  if (block?.kind === 'skillProposal') answerSkill(id, answer, block.proposal);
+                }}
+                onMemory={(id, answer) => {
+                  const block = turn.blocks.find((b) => b.kind === 'memoryProposal' && b.id === id);
+                  if (block?.kind === 'memoryProposal') answerMemory(id, answer, block.proposal);
+                }}
                 installing={installingOffer ?? undefined}
                 onCopy={async (text) => {
                   try {
@@ -500,7 +630,8 @@ export function ChatView({
             else patch({ guard });
           }}
           onModelChange={(model: ModelRef) => patch({ model })}
-          onSend={(text, attachments) => {
+          skills={skillChoices}
+          onSend={(text, attachments, invoked) => {
             // Sending is the one moment where jumping is what the user meant: their own message
             // is about to appear at the bottom, so follow the feed again wherever they were.
             follow('auto');
@@ -508,6 +639,7 @@ export function ChatView({
               chatId,
               text,
               attachments.map((a) => a.input),
+              invoked,
             ).catch((err) =>
               toast.add({ title: 'Could not send', description: describe(err), type: 'error' }),
             );

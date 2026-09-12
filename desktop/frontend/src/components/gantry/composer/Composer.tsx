@@ -12,7 +12,7 @@ import {
   SquareIcon,
   XIcon,
 } from '@phosphor-icons/react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { ImageLightbox } from '@/components/gantry/ImageLightbox';
 import { ModeChip } from '@/components/gantry/composer/ModeChip';
@@ -40,6 +40,7 @@ import {
   pickFiles,
 } from '@/lib/attachments';
 import { readClipboardImage } from '@/lib/clipboard';
+import { completeSlash, invokedSkills, slashQuery } from '@/lib/composer/slash';
 import { folderName } from '@/lib/folders';
 import { cn } from '@/lib/utils';
 
@@ -87,8 +88,16 @@ export interface ComposerProps {
   onModeChange: (m: Mode) => void;
   onGuardChange: (g: boolean) => void;
   onModelChange: (m: ModelRef) => void;
-  onSend?: (text: string, attachments: PendingAttachment[]) => void;
+  /** Skills that can be invoked with `/name` (12 §A4 rule 5, §A6). */
+  skills?: SkillChoice[];
+  onSend?: (text: string, attachments: PendingAttachment[], skills: string[]) => void;
   onStop?: () => void;
+}
+
+/** One skill as the `/` menu offers it. */
+export interface SkillChoice {
+  name: string;
+  description: string;
 }
 
 /** One installed connector as the + menu offers it. */
@@ -127,10 +136,14 @@ export function Composer({
   onModeChange,
   onGuardChange,
   onModelChange,
+  skills,
   onSend,
   onStop,
 }: ComposerProps) {
   const [text, setText] = useState('');
+  const [caret, setCaret] = useState(0);
+  const [slashIndex, setSlashIndex] = useState(0);
+  const field = useRef<HTMLTextAreaElement | null>(null);
   const [attachments, setAttachments] = useState<PendingAttachment[]>(initialAttachments ?? []);
   const [thinkingLocal, setThinkingLocal] = useState(true);
   const canThink = capabilities?.thinking ?? true;
@@ -208,11 +221,31 @@ export function Composer({
     };
   }, []);
 
+  // The `/` menu (12 §A6). It opens only while the first token is being typed, so a slash in
+  // a path is a slash; `slash.ts` holds that rule and is tested on its own.
+  const names = (skills ?? []).map((s) => s.name);
+  const query = slashQuery(text, caret);
+  const matches =
+    query === null ? [] : (skills ?? []).filter((s) => s.name.startsWith(query)).slice(0, 6);
+  const menuOpen = matches.length > 0;
+
+  const choose = (name: string) => {
+    const [next, at] = completeSlash(text, caret, name);
+    setText(next);
+    setCaret(at);
+    setSlashIndex(0);
+    requestAnimationFrame(() => {
+      field.current?.focus();
+      field.current?.setSelectionRange(at, at);
+    });
+  };
+
   const send = () => {
     if (!canSend) return;
-    onSend?.(text, attachments);
+    onSend?.(text, attachments, invokedSkills(text, names));
     setText('');
     setAttachments([]);
+    setCaret(0);
   };
 
   return (
@@ -224,10 +257,56 @@ export function Composer({
             onRemove={(id) => setAttachments((a) => a.filter((x) => x.id !== id))}
           />
         )}
+        {menuOpen && (
+          <ul
+            role="listbox"
+            aria-label="Skills"
+            className="mb-2 flex flex-col overflow-hidden rounded-3 border border-line-subtle bg-surface"
+          >
+            {matches.map((s, i) => (
+              <li key={s.name}>
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={i === slashIndex % matches.length}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    choose(s.name);
+                  }}
+                  className={cn(
+                    'flex w-full items-baseline gap-2 px-3 py-1.5 text-left',
+                    i === slashIndex % matches.length ? 'bg-selected' : 'hover:bg-hover',
+                  )}
+                >
+                  <span className="shrink-0 font-mono text-meta text-fg">/{s.name}</span>
+                  <span className="min-w-0 flex-1 truncate text-meta text-fg-3">
+                    {s.description}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
         <textarea
+          ref={field}
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => {
+            setText(e.target.value);
+            setCaret(e.target.selectionStart ?? e.target.value.length);
+            setSlashIndex(0);
+          }}
+          onSelect={(e) => setCaret(e.currentTarget.selectionStart ?? 0)}
           onKeyDown={(e) => {
+            if (menuOpen && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+              e.preventDefault();
+              setSlashIndex((i) => i + (e.key === 'ArrowDown' ? 1 : matches.length - 1));
+              return;
+            }
+            if (menuOpen && (e.key === 'Tab' || e.key === 'Enter')) {
+              e.preventDefault();
+              choose(matches[slashIndex % matches.length]!.name);
+              return;
+            }
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault();
               send();

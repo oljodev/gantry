@@ -99,21 +99,22 @@ pub fn test_skill_match(
     })
 }
 
-/// The exact `SKILL.md`, and the name it should be written under (12 §A5 flow 2). The app
-/// hands back text rather than writing a file: where it goes is the file dialog's business.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
-pub struct SkillExport {
-    pub filename: String,
-    pub text: String,
-}
-
+/// Writes the exact `SKILL.md` where the user's file dialog says (12 §A5 flow 2). One
+/// readable file is the whole point of a text-only skill, so there is no wrapper and no
+/// signature — a `.skill.md` in a downloads folder is recognisable and openable.
 #[tauri::command]
 #[specta::specta]
-pub fn export_skill(state: State<'_, AppState>, id: String) -> Result<SkillExport, ErrorDto> {
-    Ok(SkillExport {
-        filename: import::export_filename(&id),
-        text: state.skills.text(&id)?,
-    })
+pub fn export_skill(state: State<'_, AppState>, id: String, path: String) -> Result<(), ErrorDto> {
+    let text = state.skills.text(&id)?;
+    std::fs::write(&path, text).map_err(GantryError::Io)?;
+    Ok(())
+}
+
+/// The file name an export suggests: `<name>.skill.md`.
+#[tauri::command]
+#[specta::specta]
+pub fn skill_export_filename(id: String) -> String {
+    import::export_filename(&id)
 }
 
 /// The review screen (12 §A5 flow 3). Nothing is written by this; `install_skill` is.

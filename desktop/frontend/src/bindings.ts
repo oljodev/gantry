@@ -236,7 +236,14 @@ export const commands = {
 	deleteSkill: (id: string) => typedError<null, ErrorDto>(__TAURI_INVOKE("delete_skill", { id })),
 	setSkillEnabled: (id: string, enabled: boolean) => typedError<null, ErrorDto>(__TAURI_INVOKE("set_skill_enabled", { id, enabled })),
 	testSkillMatch: (id: string, message: string) => typedError<MatchResult, ErrorDto>(__TAURI_INVOKE("test_skill_match", { id, message })),
-	exportSkill: (id: string) => typedError<SkillExport, ErrorDto>(__TAURI_INVOKE("export_skill", { id })),
+	/**
+	 *  Writes the exact `SKILL.md` where the user's file dialog says (12 §A5 flow 2). One
+	 *  readable file is the whole point of a text-only skill, so there is no wrapper and no
+	 *  signature — a `.skill.md` in a downloads folder is recognisable and openable.
+	 */
+	exportSkill: (id: string, path: string) => typedError<null, ErrorDto>(__TAURI_INVOKE("export_skill", { id, path })),
+	/**  The file name an export suggests: `<name>.skill.md`. */
+	skillExportFilename: (id: string) => __TAURI_INVOKE<string>("skill_export_filename", { id }),
 	/**  Reviews a skill from a file the user picked, a folder, or pasted text. */
 	reviewSkill: (path: string | null, text: string | null) => typedError<SkillReview, ErrorDto>(__TAURI_INVOKE("review_skill", { path, text })),
 	/**
@@ -269,7 +276,12 @@ export const commands = {
 	 *  Everything, as JSON the user can keep (12 §B5). Plain rows: a memory is a sentence, and an
 	 *  export nobody can read in a text editor would be a worse export.
 	 */
-	exportMemories: () => typedError<string, ErrorDto>(__TAURI_INVOKE("export_memories")),
+	exportMemories: (path: string) => typedError<number, ErrorDto>(__TAURI_INVOKE("export_memories", { path })),
+	/**
+	 *  Reads an export back for review. The file dialog picked it; nothing is written until the
+	 *  user confirms what it holds.
+	 */
+	readMemoryExport: (path: string) => typedError<string, ErrorDto>(__TAURI_INVOKE("read_memory_export", { path })),
 	reviewMemoryImport: (json: string) => typedError<MemoryImport, ErrorDto>(__TAURI_INVOKE("review_memory_import", { json })),
 	/**
 	 *  Writes a reviewed import. Entries come in as new rows with new ids: an import is a copy,
@@ -1923,15 +1935,6 @@ export type SkillDto = {
 	use_count: number,
 	/**  Chats and projects this skill is pinned to, counted for the list's badge. */
 	pinned_count: number,
-};
-
-/**
- *  The exact `SKILL.md`, and the name it should be written under (12 §A5 flow 2). The app
- *  hands back text rather than writing a file: where it goes is the file dialog's business.
- */
-export type SkillExport = {
-	filename: string,
-	text: string,
 };
 
 /**  What the editor and an import both hand back: the fields, and the body they belong to. */

@@ -134,10 +134,21 @@ pub fn forget_memory_for_good(
 /// export nobody can read in a text editor would be a worse export.
 #[tauri::command]
 #[specta::specta]
-pub fn export_memories(state: State<'_, AppState>) -> Result<String, ErrorDto> {
+pub fn export_memories(state: State<'_, AppState>, path: String) -> Result<u32, ErrorDto> {
     let all = state.memories.list(MemoryFilter::default(), "")?;
-    serde_json::to_string_pretty(&all)
-        .map_err(|e| GantryError::internal(format!("could not write the export: {e}")).into())
+    let json = serde_json::to_string_pretty(&all)
+        .map_err(|e| GantryError::internal(format!("could not write the export: {e}")))?;
+    std::fs::write(&path, json).map_err(GantryError::Io)?;
+    Ok(u32::try_from(all.len()).unwrap_or(u32::MAX))
+}
+
+/// Reads an export back for review. The file dialog picked it; nothing is written until the
+/// user confirms what it holds.
+#[tauri::command]
+#[specta::specta]
+pub fn read_memory_export(path: String) -> Result<String, ErrorDto> {
+    std::fs::read_to_string(&path)
+        .map_err(|e| GantryError::invalid(format!("could not read {path}: {e}")).into())
 }
 
 /// What an import would do, before it does it: the page reviews it like a skill (12 §B5).
