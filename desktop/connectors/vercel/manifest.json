@@ -1,0 +1,42 @@
+{
+  "manifest_version": "1",
+  "id": "vercel",
+  "name": "Vercel",
+  "description": "Read Vercel projects and deployments, their logs and their configuration.",
+  "long_description": "Vercel's hosted server, connected to your team. It lists projects and deployments, reads build logs and runtime logs, and searches Vercel's own documentation.\n\nDeploying to production changes what the public sees, so those tools are confirmed every time whatever the chat's mode says.",
+  "version": "0.1.0",
+  "icon": "icon.svg",
+  "category": "developer",
+  "keywords": ["vercel", "deploy", "next.js", "logs", "projects", "preview"],
+  "publisher": {
+    "name": "Vercel",
+    "url": "https://vercel.com"
+  },
+  "first_party": false,
+  "homepage": "https://vercel.com/docs/mcp/vercel-mcp",
+  "runtime": {
+    "kind": "mcp-remote",
+    "url": "https://mcp.vercel.com"
+  },
+  "auth": {
+    "type": "oauth2",
+    "registration": ["dcr"],
+    "instructions": "Sign in to Vercel in your browser and choose what this chat may reach."
+  },
+  "risk": {
+    "network": "internet",
+    "local_system": "none",
+    "default_tool_tier": "write_external",
+    "notes": "Reaches your Vercel team. Deploying to production is confirmed every time."
+  },
+  "tools_generated": true,
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "gantry": ">=0.1.0"
+  },
+  "catalog": {
+    "featured": false,
+    "sort_weight": 1,
+    "suggest_for": ["vercel", "deployment", "build log", "next.js", "preview url"]
+  }
+}

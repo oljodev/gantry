@@ -1,0 +1,10 @@
+{
+  "status": 401,
+  "auth": {
+    "issuer": "https://vercel.com",
+    "dynamic_registration": true,
+    "client_id_metadata_document": false,
+    "scopes": ["openid", "email", "profile", "offline_access"]
+  },
+  "tools": []
+}

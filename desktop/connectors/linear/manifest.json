@@ -1,0 +1,42 @@
+{
+  "manifest_version": "1",
+  "id": "linear",
+  "name": "Linear",
+  "description": "Read and write Linear issues, projects and cycles in your workspace.",
+  "long_description": "Linear's hosted server, connected to your workspace. It finds issues, reads a project's state, and creates or updates issues and comments.\n\nYou sign in through Linear in your browser; Gantry never sees your password, and the token it receives is stored encrypted on this machine. Every call still follows the chat's permission mode, so creating an issue asks first unless you have said otherwise.",
+  "version": "0.1.0",
+  "icon": "icon.svg",
+  "category": "productivity",
+  "keywords": ["linear", "issues", "tickets", "projects", "cycles", "sprint"],
+  "publisher": {
+    "name": "Linear",
+    "url": "https://linear.app"
+  },
+  "first_party": false,
+  "homepage": "https://linear.app/docs/mcp",
+  "runtime": {
+    "kind": "mcp-remote",
+    "url": "https://mcp.linear.app/mcp"
+  },
+  "auth": {
+    "type": "oauth2",
+    "registration": ["cimd", "dcr"],
+    "instructions": "Sign in to Linear in your browser and choose what this chat may reach."
+  },
+  "risk": {
+    "network": "internet",
+    "local_system": "none",
+    "default_tool_tier": "write_external",
+    "notes": "Reaches your Linear workspace. Reads are cheap; writes create and change issues other people will see."
+  },
+  "tools_generated": true,
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "gantry": ">=0.1.0"
+  },
+  "catalog": {
+    "featured": false,
+    "sort_weight": 9,
+    "suggest_for": ["linear", "issue tracker", "my tickets", "sprint", "triage"]
+  }
+}

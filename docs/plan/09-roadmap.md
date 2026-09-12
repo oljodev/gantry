@@ -527,9 +527,16 @@ which is the first time that path has been exercised against a server that needs
 Socket's seven tools turned out to want an organization account, which the README now says instead
 of implying the whole server is open.
 
+**B2 done 2026-09-11**: Linear, Notion, Sentry, Netlify and Vercel — seventeen connectors in the
+catalogue. All five probed as `401` + protected-resource document + dynamic registration, which is
+the shape `cloudflare-bindings` proved; three of them also offer a client-id metadata document,
+which is what Gantry will actually use, so their manifests say `["cimd", "dcr"]` rather than
+claiming a path that will not be taken. Nobody has signed in to any of them and every README says
+which parts were verified mechanically.
+
 Not built yet, and what is left of M9: MRTR `input_required` as an
-`Interaction::Elicitation` with a form, the stderr log view for stdio servers, tool-list caching
-against `ttlMs` and list-changed notifications; then B2.
+`Interaction::Elicitation` with a form, the stderr log view for stdio servers, and tool-list
+caching against `ttlMs` with list-changed notifications.
 
 ## M9 — the rest (original scope)
 

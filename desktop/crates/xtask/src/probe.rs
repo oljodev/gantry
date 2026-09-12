@@ -170,11 +170,12 @@ fn check(manifest: &Manifest, fixture: &Fixture) -> Vec<String> {
         )),
         (Auth::Oauth2 { registration, .. }, _, Some(shape)) => {
             for mode in registration {
+                // The four the schema allows (03 §7). The last two need nothing from the
+                // server — a client id the user pastes in, or one shipped with the manifest —
+                // so there is nothing to disagree with.
                 let offered = match mode.as_str() {
-                    "dynamic" => shape.dynamic_registration,
+                    "dcr" => shape.dynamic_registration,
                     "cimd" => shape.client_id_metadata_document,
-                    // A client id the user pastes in needs nothing from the server.
-                    "user_supplied" | "preregistered" => true,
                     _ => true,
                 };
                 if !offered {
@@ -222,6 +223,19 @@ fn suggestions(fixture: &Fixture, manifest: &Manifest) -> Vec<String> {
         "pay_",
     ];
     let mut lines = Vec::new();
+    if let (Auth::Oauth2 { registration, .. }, Some(shape)) = (&manifest.auth, &fixture.auth) {
+        for (mode, offered) in [
+            ("cimd", shape.client_id_metadata_document),
+            ("dcr", shape.dynamic_registration),
+        ] {
+            if offered && !registration.iter().any(|m| m == mode) {
+                lines.push(format!(
+                    "{} offers `{mode}`, which auth.registration does not list",
+                    shape.issuer
+                ));
+            }
+        }
+    }
     for tool in &fixture.tools {
         if manifest.tool_overrides.contains_key(&tool.name) {
             continue;

@@ -1,0 +1,42 @@
+{
+  "manifest_version": "1",
+  "id": "sentry",
+  "name": "Sentry",
+  "description": "Read issues, events and stack traces from your Sentry projects.",
+  "long_description": "Sentry's hosted server. It lists issues across your projects, reads an event with its stack trace and breadcrumbs, and can hand a failing trace to Seer for an explanation.\n\nIt is the connector that pairs best with the code surface: the error and the file that caused it come from two places and get read together.",
+  "version": "0.1.0",
+  "icon": "icon.svg",
+  "category": "developer",
+  "keywords": ["sentry", "errors", "exceptions", "traces", "monitoring", "issues"],
+  "publisher": {
+    "name": "Sentry",
+    "url": "https://sentry.io"
+  },
+  "first_party": false,
+  "homepage": "https://docs.sentry.io/product/sentry-mcp/",
+  "runtime": {
+    "kind": "mcp-remote",
+    "url": "https://mcp.sentry.dev/mcp"
+  },
+  "auth": {
+    "type": "oauth2",
+    "registration": ["cimd", "dcr"],
+    "instructions": "Sign in to Sentry in your browser and choose what this chat may reach."
+  },
+  "risk": {
+    "network": "internet",
+    "local_system": "none",
+    "default_tool_tier": "read",
+    "notes": "Reaches your Sentry organization. Most tools read; the few that change an issue's state are write_external."
+  },
+  "tools_generated": true,
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "gantry": ">=0.1.0"
+  },
+  "catalog": {
+    "featured": false,
+    "sort_weight": 3,
+    "suggest_for": ["sentry", "error tracking", "stack trace", "why is this crashing", "exception"]
+  }
+}

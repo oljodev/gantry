@@ -1,0 +1,10 @@
+{
+  "status": 401,
+  "auth": {
+    "issuer": "https://mcp.sentry.dev",
+    "dynamic_registration": true,
+    "client_id_metadata_document": true,
+    "scopes": ["org:read", "project:write", "team:write", "event:write"]
+  },
+  "tools": []
+}

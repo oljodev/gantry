@@ -1,0 +1,48 @@
+{
+  "manifest_version": "1",
+  "id": "netlify",
+  "name": "Netlify",
+  "description": "Inspect and deploy Netlify sites, with their builds, env vars and logs.",
+  "long_description": "Netlify's hosted server, connected to your team. It lists sites, reads build and deploy logs, manages environment variables and can trigger a deploy.\n\nDeploying changes what the public sees, so those tools are confirmed every time whatever the chat's mode says.",
+  "version": "0.1.0",
+  "icon": "icon.svg",
+  "category": "developer",
+  "keywords": ["netlify", "deploy", "hosting", "builds", "env", "sites"],
+  "publisher": {
+    "name": "Netlify",
+    "url": "https://www.netlify.com"
+  },
+  "first_party": false,
+  "homepage": "https://docs.netlify.com/build/build-with-ai/netlify-mcp-server/",
+  "runtime": {
+    "kind": "mcp-remote",
+    "url": "https://mcp.netlify.com/mcp"
+  },
+  "auth": {
+    "type": "oauth2",
+    "registration": ["dcr"],
+    "instructions": "Sign in to Netlify in your browser and choose what this chat may reach."
+  },
+  "risk": {
+    "network": "internet",
+    "local_system": "none",
+    "default_tool_tier": "write_external",
+    "notes": "Reaches your Netlify team. Deploying is confirmed every time: it changes what the public sees."
+  },
+  "tools_generated": true,
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "gantry": ">=0.1.0"
+  },
+  "catalog": {
+    "featured": false,
+    "sort_weight": 2,
+    "suggest_for": ["netlify", "deploy", "build failed", "env var", "hosting"]
+  },
+  "tool_overrides": {
+    "deploy-site": {
+      "risk": "destructive",
+      "always_confirm": true
+    }
+  }
+}

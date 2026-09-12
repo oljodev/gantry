@@ -211,7 +211,7 @@ day and one sign-in from Olav.
 |---|---|---|---|
 | **B0** | — | none | The probe harness, tier rules and the folder template (§5, §6) |
 | **B1** ✅ | Remote, no auth | Microsoft Learn, Hugging Face, Socket, Context7, DeepWiki | none — proven by `cloudflare-docs`. Shipped 2026-09-11; two of the five needed the legacy handshake, and Socket's `alerts`, `organizations` and `threat_feed` want an account, which its README says |
-| **B2** | Remote, OAuth (DCR) | Linear, Notion, Sentry, Netlify, Vercel | none — proven by `cloudflare-bindings` |
+| **B2** ✅ | Remote, OAuth (DCR) | Linear, Notion, Sentry, Netlify, Vercel | none — proven by `cloudflare-bindings`. Shipped 2026-09-11; all five answer `401` with a protected-resource document and offer dynamic registration, and Linear, Notion and Sentry offer a client-id metadata document as well, which `choose_client` prefers. Nobody has signed in to any of them, and each README says so |
 | **B3** | Remote, OAuth | Slack, Atlassian, Asana, Figma, Canva | Slack's admin-approval step; Atlassian and Asana are the first two `/mcp` paths taken from a vendor who also publishes `/sse`, so the first sign-in confirms the transport as well as the auth |
 | **B4** | Remote, OAuth | GitLab, Supabase, Neon, PostHog, Railway | none |
 | **B5** | Remote, key in a header or query | Stripe, Tavily, Firecrawl, Tinybird, Exa | **first key-in-header connector — one setup from Olav** |
@@ -289,6 +289,11 @@ The first run recorded what it should: `cloudflare-docs` answers 200 at 2026-07-
 neither registration nor a client-id metadata document, which is exactly why 03 §7 has a dialog
 for it. Those three fixtures are committed, so CI re-checks the manifests against them on every
 push with no network at all.
+
+The probe also prints the drift that is not a failure: a server offering a way in that
+`auth.registration` never mentions. The code picks by what the server supports, so nothing breaks
+— but the manifest is meant to describe the server, and one that has quietly stopped doing so is
+how a reader is misled. B2 found three that way.
 
 It also takes the one invariant §7 states and nothing enforced: every `available` row in
 `web/site/src/data/connectors.ts` has a folder in `desktop/connectors/`, and every folder has a
