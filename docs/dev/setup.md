@@ -254,6 +254,53 @@ Every case must report `ready` and no `error`; the screenshot shows what actuall
 10. Delete the chat: its artifacts are gone (no rows in `artifacts`, nothing to open).
 11. `grep -ci authorization` on the log file still prints 0.
 
+### The M9 checklist (hands-on, nearly free)
+
+M9 is the connector catalogue and the install flow, so most of it costs nothing: the model is
+only involved where a chat actually uses a connector, and those are one-line questions. Two
+things run before the app:
+
+```sh
+cargo run -p xtask -- validate-connectors      # 17 connectors, all valid
+cargo run -p xtask -- probe-connectors         # asks every server; rewrites the fixtures
+git diff desktop/connectors                    # a clean diff means nothing has drifted
+```
+
+A dirty diff is the point of the harness, not a failure of it: it means a vendor changed
+something. Read what changed before committing it.
+
+1. Customize → Connectors → Discover lists seventeen. Install **Microsoft Learn**: one click,
+   no dialog, and its tools appear on the row (`microsoft_docs_search` and two more).
+2. Install **DeepWiki** and **Socket** as well. Both refuse the current protocol revision and are
+   carried by the legacy handshake, which is the path nothing else in the catalogue exercises —
+   if either shows "No tools yet" after installing, that fallback is broken and the rest of this
+   list does not matter.
+3. New chat, attach Microsoft Learn from the `+` menu, ask: "What does Azure Managed Identity
+   do? Use the docs connector." The row says which tool ran; the answer cites the documentation.
+4. Sign in to **one** B2 connector. Netlify or Vercel registers Gantry on the spot; Linear,
+   Notion and Sentry use the metadata document at `id.oljo.dev` instead, so doing one of each
+   proves both paths. The browser opens by itself, and the row fills with tools on return.
+   Notion asks which pages to share — that choice is the real boundary, narrower than the
+   connector, so pick one page and check a chat cannot reach another.
+5. Refresh tools on a connector you installed. The list comes back the same. (The ten-minute
+   expiry and the `tools/list_changed` notification are covered by unit tests; nothing in the
+   catalogue changes its tool list on demand, so there is no way to watch it happen.)
+6. **The stderr log**, which needs a local server and the catalogue has none yet: Customize →
+   Connectors → Add a server → Command, name it `broken`, command `npx`, arguments
+   `-y @gantry/does-not-exist`. It fails to start. Open its row → **Show log**: npm's own
+   complaint is there, in its words. That is the whole point — before this, the failure said
+   "the process exited" and the explanation was thrown away.
+7. Remove `broken`. Its log goes with it (Show log on a fresh one of the same name is empty).
+8. Restart the app. Everything installed is still there, still with its tools, and the OAuth
+   connector is still authorized without a second sign-in.
+9. `grep -ci authorization` on the log file still prints 0.
+
+**Not testable yet, and worth knowing.** Three pieces of M9 ship without a server to exercise
+them, because the catalogue has no local connector and nothing in it elicits: the **runtime
+check** (03 §11 step 1 — reachable only from a catalogue `mcp-stdio` entry, so B6 is its first
+real run), the **`user_config` form** (no entry declares one; B10 is its first), and
+**elicitation** (04 §10 says so too). Each has unit tests and none has met a real server.
+
 ## Where the app keeps its data
 
 Tauri's app data directory under the identifier `dev.oljo.gantry`:
