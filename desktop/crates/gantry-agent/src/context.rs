@@ -122,7 +122,7 @@ pub fn counted(messages: &[Message]) -> u32 {
 fn part_tokens(part: &ContentPart) -> usize {
     let chars = match part {
         ContentPart::Text { text } | ContentPart::Thinking { text, .. } => text.len(),
-        ContentPart::SystemNote { text } => text.len(),
+        ContentPart::SystemNote { text } | ContentPart::TurnContext { text, .. } => text.len(),
         ContentPart::Compacted { summary, .. } => summary.len(),
         ContentPart::ToolCall { name, args, .. } => name.len() + args.to_string().len(),
         ContentPart::ToolResult { content, .. } => {

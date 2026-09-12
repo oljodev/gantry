@@ -135,6 +135,13 @@ pub enum AgentEventKind {
     },
     #[serde(rename = "provider.notice")]
     ProviderNotice { kind: String, detail: String },
+    /// What this turn added to the model's context beyond the transcript (05 §2, 12 §A4, §B4).
+    /// The "Context used" row reads it; nothing about the answer depends on it, which is the
+    /// point — the user can see what the model was told before it said anything.
+    #[serde(rename = "context.injected")]
+    ContextInjected {
+        injected: crate::memory::InjectedContext,
+    },
     /// A runtime tool created an artifact (13 §10).
     #[serde(rename = "artifact.created")]
     ArtifactCreated {
@@ -196,6 +203,7 @@ impl AgentEventKind {
             AgentEventKind::ToolCallOutput { .. } => "tool_call.output",
             AgentEventKind::ToolCallCompleted { .. } => "tool_call.completed",
             AgentEventKind::ProviderNotice { .. } => "provider.notice",
+            AgentEventKind::ContextInjected { .. } => "context.injected",
             AgentEventKind::ArtifactCreated { .. } => "artifact.created",
             AgentEventKind::ArtifactUpdated { .. } => "artifact.updated",
             AgentEventKind::MessageCompleted { .. } => "message.completed",

@@ -10,6 +10,7 @@ pub mod events;
 pub mod file_edits;
 pub mod grants;
 pub mod interactions;
+pub mod memories;
 pub mod messages;
 pub mod models;
 pub mod projections;
@@ -17,6 +18,7 @@ pub mod providers;
 pub mod recovery;
 pub mod search;
 pub mod settings;
+pub mod skills;
 pub mod tool_calls;
 pub mod turns;
 

@@ -64,6 +64,9 @@ id_type!(/// A standing permission for one chat (04 §8).
     GrantId);
 id_type!(/// A decision the turn waits on: a permission prompt, an access request, a proposal.
     InteractionId);
+id_type!(/// One remembered sentence (12 §B2). Skills are keyed by their name instead, because a
+    /// skill is a folder on disk and the folder name is what the user reads.
+    MemoryId);
 
 /// One tool call within a turn. Provider-assigned (`call_…`, `toolu_…`) and round-tripped
 /// unchanged; synthesized as `gantry_<ulid>` when a provider sends none (02 §3).

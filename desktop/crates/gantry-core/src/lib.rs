@@ -19,8 +19,10 @@ pub mod guardrail;
 pub mod ids;
 pub mod interaction;
 pub mod judge;
+pub mod memory;
 pub mod message;
 pub mod settings;
+pub mod skill;
 pub mod time;
 pub mod tool;
 
@@ -46,8 +48,8 @@ pub use guardrail::{
     GuardrailHit, GuardrailKind, GuardrailRule, GuardrailSettings, GuardrailVerdict, Guardrails,
 };
 pub use ids::{
-    ArtifactId, CallId, ChatId, EventId, GrantId, InstanceId, InteractionId, MessageId, ProjectId,
-    TurnId,
+    ArtifactId, CallId, ChatId, EventId, GrantId, InstanceId, InteractionId, MemoryId, MessageId,
+    ProjectId, TurnId,
 };
 pub use interaction::{
     AccessDecision, AccessRequest, ConnectorSuggestion, ElicitationAction, ElicitationField,
@@ -56,12 +58,20 @@ pub use interaction::{
     PermissionRequest, SuggestionOutcome,
 };
 pub use judge::{JudgeDecision, JudgeFlag, JudgeSource, JudgeVerdict};
+pub use memory::{
+    InjectedContext, InjectedMemory, InjectedSkill, MemoryAction, MemoryDto, MemoryInput,
+    MemoryKind, MemoryProposal, MemoryProposalOutcome, MemoryScopeKind, MemorySource,
+};
 pub use message::{
     ContentPart, MediaSource, Message, ProviderKind, ResultPart, Role, StopReason, Usage,
 };
 pub use settings::{
     AdvancedSettings, AppearanceSettings, ChatSettings, Density, GuardSettings, MediaOptions, Mode,
     ModelRef, ProviderId, ReasoningEffort, Settings, SettingsPatch, Theme,
+};
+pub use skill::{
+    SkillDetail, SkillDto, SkillInput, SkillProposal, SkillProposalOutcome, SkillReference,
+    SkillReplaces, SkillSource, SkillVersionSource,
 };
 pub use time::now_ms;
 pub use tool::{

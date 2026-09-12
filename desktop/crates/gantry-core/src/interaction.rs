@@ -7,6 +7,8 @@ use crate::{
     connector::{AuthType, RuntimeRequirement},
     grant::GrantScope,
     ids::{CallId, ChatId, InstanceId, InteractionId, TurnId},
+    memory::{MemoryProposal, MemoryProposalOutcome},
+    skill::{SkillProposal, SkillProposalOutcome},
     tool::{RiskTier, ToolDisplay},
 };
 
@@ -155,10 +157,27 @@ pub struct ConnectorSuggestion {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum InteractionPayload {
-    Permission { request: PermissionRequest },
-    AccessRequest { request: AccessRequest },
-    ConnectorSuggestion { suggestion: ConnectorSuggestion },
-    Elicitation { request: ElicitationRequest },
+    Permission {
+        request: PermissionRequest,
+    },
+    AccessRequest {
+        request: AccessRequest,
+    },
+    ConnectorSuggestion {
+        suggestion: ConnectorSuggestion,
+    },
+    Elicitation {
+        request: ElicitationRequest,
+    },
+    /// A skill the model wrote (12 §A5). Unlike every payload above it, the turn does not wait
+    /// for this one: the card sits in the feed and the model carries on.
+    SkillProposal {
+        proposal: Box<SkillProposal>,
+    },
+    /// Something the model would remember, or forget (12 §B3). Also non-blocking.
+    MemoryProposal {
+        proposal: Box<MemoryProposal>,
+    },
 }
 
 impl InteractionPayload {
@@ -169,7 +188,20 @@ impl InteractionPayload {
             InteractionPayload::AccessRequest { .. } => InteractionKind::AccessRequest,
             InteractionPayload::ConnectorSuggestion { .. } => InteractionKind::ConnectorSuggestion,
             InteractionPayload::Elicitation { .. } => InteractionKind::Elicitation,
+            InteractionPayload::SkillProposal { .. } => InteractionKind::SkillProposal,
+            InteractionPayload::MemoryProposal { .. } => InteractionKind::MemoryProposal,
         }
+    }
+
+    /// Whether the turn stops until this is answered. A proposal is an offer, not a question
+    /// the work depends on, so the model is told what happened on its next turn instead
+    /// (12 §A5, §B3).
+    #[must_use]
+    pub fn blocks_the_turn(&self) -> bool {
+        !matches!(
+            self,
+            InteractionPayload::SkillProposal { .. } | InteractionPayload::MemoryProposal { .. }
+        )
     }
 }
 
@@ -237,6 +269,12 @@ pub enum InteractionResolution {
         /// The filled-in form, by key. Empty unless the action was `Accept`.
         #[specta(type = specta_typescript::Unknown)]
         values: serde_json::Value,
+    },
+    SkillProposal {
+        outcome: SkillProposalOutcome,
+    },
+    MemoryProposal {
+        outcome: MemoryProposalOutcome,
     },
     /// The turn was cancelled or the app restarted while the card waited.
     Cancelled,

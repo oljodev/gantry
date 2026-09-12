@@ -61,6 +61,15 @@ impl Interactions {
             ) | (
                 gantry_core::InteractionPayload::ConnectorSuggestion { .. },
                 InteractionResolution::ConnectorSuggestion { .. },
+            ) | (
+                gantry_core::InteractionPayload::Elicitation { .. },
+                InteractionResolution::Elicitation { .. },
+            ) | (
+                gantry_core::InteractionPayload::SkillProposal { .. },
+                InteractionResolution::SkillProposal { .. },
+            ) | (
+                gantry_core::InteractionPayload::MemoryProposal { .. },
+                InteractionResolution::MemoryProposal { .. },
             ) | (_, InteractionResolution::Cancelled)
         );
         if !matches {

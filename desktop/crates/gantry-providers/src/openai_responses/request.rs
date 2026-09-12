@@ -179,7 +179,9 @@ fn user_content(parts: &[ContentPart]) -> Vec<Value> {
     parts
         .iter()
         .filter_map(|p| match p {
-            ContentPart::Text { text } if !text.is_empty() => {
+            ContentPart::Text { text } | ContentPart::TurnContext { text, .. }
+                if !text.is_empty() =>
+            {
                 Some(json!({ "type": "input_text", "text": text }))
             }
             ContentPart::Image {

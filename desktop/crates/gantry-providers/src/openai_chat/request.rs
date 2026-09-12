@@ -223,19 +223,15 @@ fn project(
 fn user_content(parts: &[ContentPart]) -> Value {
     let has_media = parts.iter().any(|p| matches!(p, ContentPart::Image { .. }));
     if !has_media {
-        let text: String = parts
-            .iter()
-            .filter_map(|p| match p {
-                ContentPart::Text { text } => Some(text.as_str()),
-                _ => None,
-            })
-            .collect();
+        let text: String = parts.iter().filter_map(ContentPart::user_text).collect();
         return json!(text);
     }
     let items: Vec<Value> = parts
         .iter()
         .filter_map(|p| match p {
-            ContentPart::Text { text } => Some(json!({ "type": "text", "text": text })),
+            ContentPart::Text { text } | ContentPart::TurnContext { text, .. } => {
+                Some(json!({ "type": "text", "text": text }))
+            }
             ContentPart::Image {
                 source: gantry_core::MediaSource::Base64 { data },
                 mime,

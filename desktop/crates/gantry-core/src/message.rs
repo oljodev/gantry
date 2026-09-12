@@ -139,6 +139,20 @@ pub enum ContentPart {
         #[specta(type = specta_typescript::Unknown)]
         json: serde_json::Value,
     },
+    /// What this turn added to the model's context beyond the transcript (10 §5, 12): skills
+    /// matched for the message and memories looked up for it, as one block on the user's own
+    /// message.
+    ///
+    /// It is written down rather than added at request time for three reasons: the transcript
+    /// is append-only and a block that appears in one request and not the next would rewrite
+    /// history under the model (02 §6); the "do not inject the same skill twice in six turns"
+    /// rule of 12 §A4 is only true if the earlier copy is still there; and a user who asks why
+    /// the model knew something can be shown the exact text that told it.
+    TurnContext {
+        text: String,
+        /// The same block as a list, for the "Context used" row.
+        injected: crate::memory::InjectedContext,
+    },
     /// An instruction change mid-chat (role `System`).
     SystemNote {
         text: String,
@@ -168,6 +182,17 @@ pub enum ContentPart {
 }
 
 impl ContentPart {
+    /// What a part of a `User` message contributes to a request: the text the user typed, and
+    /// the turn's context block (10 §5). The block carries its own blank line, so a projection
+    /// can concatenate these in order without knowing which is which.
+    #[must_use]
+    pub fn user_text(&self) -> Option<&str> {
+        match self {
+            ContentPart::Text { text } | ContentPart::TurnContext { text, .. } => Some(text),
+            _ => None,
+        }
+    }
+
     /// What a part of a `System` message says to the model (10 §4). A tool-set change is the
     /// one part that is structured rather than prose, so the sentence is written here once
     /// instead of in each provider's projection.
