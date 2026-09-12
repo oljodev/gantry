@@ -633,11 +633,28 @@ Done when: "what's in my Google Drive?" in a chat without Drive leads to a sugge
 
 Done when: a project with instructions, two knowledge files, a workspace folder and a pinned skill gives every new chat the right context and defaults, and an artifact from one chat can be read from another.
 
-## M12 — Skills and memory (2 weeks)
+## M12 — Skills and memory (2 weeks) — done 2026-09-12
 
-- Skills (12 §A): `desktop/skills/` bundled set and `build.rs` embedding; the on-disk user folder and rescan; the `skills`/`skill_versions` index; the keyword matcher and `context.injected`; the runtime tools; `/skills` page with editor, Test match, import review (file, zip, folder, URL), export; `SkillProposalCard` with the collision rule; `/` slash menu and pinning; the `artifact-authoring` bundled skill.
-- Memory (12 §B): `memories` table and FTS; the core set in the frozen prompt and the long-tail selector; `gantry__propose_memory`/`propose_forget`/`search_memory`; `MemoryProposalCard`; `/remember` and **Remember this**; the Memory page with Recently deleted, export/import, pause switches; the `SystemNote` delta rule; the secret-pattern refusal.
-- Settings → Skills and Settings → Memory.
+Built in session 10, out of the roadmap's order: M6's feed leftovers and M7's two remaining
+pieces are small and were left for later, because skills and memory change what the app *is* in
+a way another week of file editing does not.
+
+- ~~Skills (12 §A): `desktop/skills/` bundled set and `build.rs` embedding; the on-disk user folder and rescan; the `skills`/`skill_versions` index; the keyword matcher and `context.injected`; the runtime tools; the editor, Test match, import review, export; `SkillProposalCard` with the collision rule; `/` slash menu and pinning; the `artifact-authoring` bundled skill.~~ **Done**, with four bundled skills: commit-messages, code-review, writing-a-plan and artifact-authoring, the last with a reference on what a React artifact may import. `cargo xtask validate-skills` checks the folder, including the thing most likely to be forgotten — a description that never says *when* to use the skill, which is the matcher's main signal.
+- ~~Memory (12 §B): `memories` table and FTS; the core set in the frozen prompt and the long-tail selector; `gantry__propose_memory`/`propose_forget`/`search_memory`; `MemoryProposalCard`; `/remember` and **Remember this**; the Memory page with Recently deleted, export/import, pause switches; the `SystemNote` delta rule; the secret-pattern refusal.~~ **Done.**
+- ~~Settings → Skills and Settings → Memory.~~ They are the two **Customize** sections 15 A18 moved them to, which is where the rest of what-you-add-to-Gantry already lives.
+
+Four decisions the plan had not settled, all recorded in 12 "As built":
+
+- **The turn-context block is written into the user's message and stays in the transcript.** 10 §5 left the choice open, and only one of the two options works: "do not inject the same skill twice in six turns" is only true if the earlier copy is still there, and a block that appears in one request and not the next rewrites history under the model, which 02 §6 forbids.
+- **Selection happens inside `begin_turn`**, in the same transaction that writes the message, against the transcript as it stands *before* that message joins it — so the six-turn rule never counts the copy this turn is sending.
+- **The skill inventory rides with the turn**, like the connector inventory and for M10's reason: a skill written after a chat started is still one that chat can load.
+- **Four deviations**, each for a dependency that did not earn its place: no `.zip` import or export (a folder carries the same content), no `rust-stemmers` (three suffix rules), no CodeMirror in the editor (nothing else in the app carries it), and no `/skills` and `/memory` routes (15 A18 had already moved them into Customize).
+
+Core prompt version **6**: the skill and memory protocols, including the longer list of what never becomes a memory — task details, anything read out of a tool result rather than heard from the user, and secrets.
+
+Also fixed on the way past, unrelated to M12: `Interactions::resolve` had no arm for an elicitation, so every answer to an elicitation card since M9 was refused as "the resolution does not match the interaction's kind" and the waiting call was cancelled.
+
+Left for M11, because it has nothing to act on until then: `MemoryScopeKind::Project` and `project_skills` exist in the schema and in the types and nothing writes them — a project-scoped memory is unreachable until a chat can belong to a project. Also left: writing a `references/` file in the editor (they import, export, index and read; only authoring one is missing).
 
 Done when: a skill written in the editor is injected for a matching message and visible in "Context used"; an imported Anthropic-format skill folder installs with its scripts dropped and listed; a memory proposed by the assistant is saved, shows on the Memory page with provenance, appears in a new chat, and stops appearing after deletion.
 
@@ -656,7 +673,7 @@ Done when: v0.1.0 builds from `release.yml`, installs cleanly on all three OSes,
 
 ## Parallel track — marketing site (2 days, any time after M0)
 
-Done in session 4: the Astro site is in `web/site/` (14) with home, product tour, connectors and a page per connector, pricing, download, about, blog, changelog, docs and the trust pages. Remaining: create the two Cloudflare Pages projects (`web/site/` with `pnpm build`, Node 22; `web/client-metadata/` without a build), point `oljo.dev` and `id.oljo.dev`, verify the first deploy (14 §7), and add the stable-named asset upload step to `release.yml` so the download buttons resolve. Nothing in the app depends on it until M9 needs `web/client-metadata/` live for CIMD registrations, which is the one date to respect.
+Done in session 4: the Astro site is in `web/site/` (14) with home, product tour, connectors and a page per connector, pricing, download, about, blog, changelog, docs and the trust pages. Both Cloudflare Pages projects are live and both domains resolve (checked 2026-09-12: `oljo.dev` and `id.oljo.dev/client-metadata.json` both answer 200), which is what M9's CIMD registrations needed. Remaining: the stable-named asset upload step in `release.yml`, so the download buttons resolve to something. Nothing in the app depends on it until M9 needs `web/client-metadata/` live for CIMD registrations, which is the one date to respect.
 
 ## Post-MVP backlog (in likely order)
 

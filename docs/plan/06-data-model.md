@@ -49,7 +49,7 @@ Types are indicative; the migrations are the source of truth.
 - **chat_roots** — `chat_id, path, added_at` · PK `(chat_id, path)`. A code session must have at least one before its first turn (16 §13); enforced in the agent, so the row lands in the same transaction as the first message
 - **chat_connectors** — `chat_id, instance_id, tool_filter_json NULL, source (user|project_default|access_request|suggestion), attached_at` · PK `(chat_id, instance_id)`
 - **chat_grants** — `id, chat_id, instance_id, instance_name, tool_name NULL, tier_ceiling NULL, arg_scope_json NULL, source, created_at, revoked_at` · index `(chat_id, revoked_at)`; migration 0005. `instance_name` is carried so the Permissions panel can name the connector without joining a catalog that may have changed.
-- **chat_skills** — `chat_id, skill_id, pinned_at` · PK `(chat_id, skill_id)`; **project_skills** — `project_id, skill_id, pinned_at` · PK `(project_id, skill_id)`
+- **chat_skills** — `chat_id, skill_id, pinned_at` · PK `(chat_id, skill_id)`; **project_skills** — `project_id, skill_id, pinned_at` · PK `(project_id, skill_id)`. `project_skills` carries no foreign key to `projects`, which does not exist until M11; the constraint joins it when the table lands rather than blocking migration 0012 on a milestone
 
 ### Transcript
 
@@ -81,7 +81,7 @@ The transcript is `messages` ordered by `seq`. It is append-only; edits to histo
 - **artifact_versions** — `id, artifact_id, version, content_blob_hash, data_blob_hash NULL` (reserved for data types), `source (model_create|model_update|model_edit|user_edit|user_restore), tool_call_id NULL, message_id NULL, note NULL, size, created_at` · index `(artifact_id, version)`
 - **artifacts_fts** (FTS5 over title, summary and the current version's text; `artifact_id` and `chat_id` unindexed) — replaced by the repository on every version, not by triggers, because the text lives in the blob store.
 - **artifact_kv** — reserved, not created in v1: `scope_kind (artifact|project), scope_id, key, value, size, updated_at` (13 §8)
-- **skills** — `id` (= name), `source (bundled|user|imported), path, name, description, triggers_json, always_include, enabled, content_hash, size, version, installed_at, updated_at, last_used_at, use_count` (12 §A3)
+- **skills** — `id` (= name), `source (bundled|user|imported), path, name, description, triggers_json, always_include, enabled, content_hash, size, version, author, license, references_json, installed_at, updated_at, last_used_at, use_count` (12 §A3, migration 0012). `author`, `license` and `references_json` were added as built: the first two are Agent Skills fields worth showing, and the third is what lets `gantry__read_skill_file` answer without walking the folder
 - **skill_versions** — `id, skill_id, version, content, source (user_edit|import|ai_proposal|external_change|bundled), created_at`
 - **memories** — `id, scope_kind (global|project), scope_id NULL, kind (instruction|preference|fact|note), text, always_include, source (user|assistant), origin_chat_id NULL, origin_message_id NULL, tags_json, enabled, use_count, last_used_at, created_at, updated_at, archived_at` (12 §B2)
 

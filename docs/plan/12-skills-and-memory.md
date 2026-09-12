@@ -170,3 +170,99 @@ Memory edits follow the same rule as instruction edits (10 §4): new chats get a
 | `gantry__propose_memory` | `{ text, kind, scope, reason, replaces_id? }` → `{ status: "proposed" }` | app |
 | `gantry__propose_forget` | `{ memory_id, reason }` → `{ status: "proposed" }` | app |
 | `gantry__search_memory` | `{ query }` → matching entries in scope (for "what do you know about X") | app |
+
+---
+
+## As built (M12, 2026-09-12)
+
+Everything above shipped. What follows is what the code decided that this document had left
+open, and the four places where it deviates — each with the reason, so a later reader does not
+have to reconstruct it.
+
+### The turn-context block is written down
+
+§5 of document 10 offered a choice: the per-message block travels in the user message, or as a
+turn-scoped `role: system` message that costs nothing after the turn. **It is written into the
+user message, as a `ContentPart::TurnContext`, and it stays in the transcript.**
+
+Three things force that, and only the first is obvious:
+
+1. §A4 rule 3 and §B4 both skip anything injected within the last six turns *because the model
+   still has it*. That is only true if the earlier copy is still in the transcript. A transient
+   block would make the rule a bug — the skill would be dropped from turn two onwards and never
+   sent again.
+2. The transcript is append-only (02 §6). A block that appeared in one request and not the next
+   would rewrite history under the model, which is the one thing 02 §6 forbids.
+3. A user who asks why the model knew something can be shown the exact text that told it. The
+   "Context used" row reads from that part rather than from the `context.injected` event, so it
+   says the same thing before a reload and after one.
+
+The block carries its own leading blank line, so every provider's projection can concatenate it
+after the user's text without knowing what it is. `ContentPart::user_text` is the one place that
+knows.
+
+### Selection happens inside `begin_turn`
+
+The block is chosen in the same transaction that writes the user's message, against the
+transcript *as it stands before that message joins it*. Doing it there is what keeps the
+six-turn rule honest: the selector never counts the copy this turn is about to send. It also
+means one read of the skills index and one FTS query per turn, on the connection that is
+already open.
+
+### The skill inventory rides with the turn
+
+10 §2 put the list of available skills inside the frozen `<gantry_context>`. It is a separate
+`<gantry_skills>` block rebuilt at the start of every turn instead, for the reason M10 found
+with connectors: a skill written after a chat started is still a skill that chat can load, and
+a list frozen at creation goes on denying it exists. It changes only when the library changes,
+so the cache prefix still holds between turns.
+
+### Four deviations
+
+| Deviated | What ships | Why |
+|---|---|---|
+| `.zip` import and export (§A5 flows 2 and 3) | A single `.md`, a folder, or an HTTPS URL | A folder carries the same content as a zip, including `references/`, and needs no new dependency. Someone holding a zip unzips it. Worth revisiting if a community index ever ships zips as the unit. |
+| `rust-stemmers` (§A4 step 1) | Three suffix rules in `matcher::stem` | What the score needs is that "commits", "committing" and "commit" agree. A dependency whose whole job is a heuristic inside another heuristic does not earn its licence check. |
+| CodeMirror in the editor (§A5 flow 1) | A monospace `<textarea>` with a character count | Nothing else in the app carries CodeMirror — the diff viewer is hand-rolled — and a Markdown body is not where that dependency earns its place. |
+| `/skills` and `/memory` as pages (§A6, §B5) | Two sections of the **Customize** dialog | 15 A18 moved them there before this milestone: Settings is what the app does, Customize is what you add to it. The content is the same; there is no page to route to. |
+
+### What the code decided
+
+- **A bundled skill cannot be replaced, only shadowed.** `Skills::save` and `install_verbatim`
+  both refuse a bundled name outright, and the proposal card refuses with it. The user's switch
+  and its use counters survive a rescan, because they are Gantry's and not the file's.
+- **An imported skill is written byte for byte.** A field Gantry does not read — somebody else's
+  `allowed-tools`, another client's extension — travels with the file. Only a skill Gantry
+  authored or edited is rendered from its fields. Unread fields are named on the review screen
+  rather than dropped silently.
+- **The frontmatter parser reads the corner of YAML that Agent Skills uses**, not YAML: flat
+  `key: value`, one nested `metadata:` block, and block lists. Anything else is reported, not
+  guessed at.
+- **A name that breaks the rule is repaired, not refused**, on import and in a proposal:
+  `Rust Idioms` meaning `rust-idioms` is not ambiguous, and the user is told what it became.
+- **`long_tail` takes the message's significant terms and ORs them.** A message is not a search
+  box; ANDing every word finds nothing. The core-set kinds are excluded from it, so the same
+  sentence is never sent twice in one request.
+- **Both budgets count the newline that will separate an entry**, or a store of short entries
+  slips the ceiling one character at a time.
+- **A secret never becomes a memory.** `propose_memory` runs the guardrail floor's own secret
+  patterns (04 §5) over the text before the card is made — a key that became a standing
+  instruction would be pasted into every later prompt.
+- **Memory settings are their own section** (`settings.memory`): `paused`, `propose`, and
+  auto-save per scope. With `paused` on, the tools are not offered at all rather than always
+  refusing; with `propose` off, only `search_memory` is.
+- **The model is told what happened to a proposal** through a `SystemNote` on its next turn
+  (10 §4), because nothing blocked waiting for the answer. Without it, a model that offered to
+  remember something would go on believing it had.
+- **`/remember …` and Remember this need no card.** The confirmation rule of §B3 is about what
+  the model proposes; what the user writes themselves is already the user's decision.
+
+### Not built
+
+- **Project scope.** `MemoryScopeKind::Project` and `project_skills` exist in the schema and in
+  the types, and nothing writes them: `projects` arrives with M11, and a project-scoped memory
+  is unreachable until a chat can belong to one. The selector already filters on scope, so M11
+  adds a project id and nothing else.
+- **The shared community catalog**, still deferred for the reasons in §A5 flow 3.
+- **`references/` in the editor.** A skill can carry them, they are imported, exported, indexed
+  and readable with `gantry__read_skill_file`; the editor does not yet let you write one.

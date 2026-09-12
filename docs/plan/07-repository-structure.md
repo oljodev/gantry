@@ -57,12 +57,12 @@ gantry/
 │   │       ├── features/
 │   │       │   ├── chat/{ChatView.tsx, MessageList.tsx, TurnStatusBar.tsx}
 │   │       │   ├── activity/{ActivityFeed.tsx, detail/{DetailDrawer.tsx, JudgeDetail.tsx}}
-│   │       │   ├── interactions/{AccessRequestCard.tsx, ConnectorSuggestionCard.tsx, ElicitationCard.tsx, AuthRequiredCard.tsx,
-│   │       │   │                 SkillProposalCard.tsx, MemoryProposalCard.tsx}
+│   │       │   ├── interactions/{AccessRequestCard.tsx, ConnectorSuggestionCard.tsx, ElicitationCard.tsx, AuthRequiredCard.tsx}
+│   │       │   │                 # as built: the cards sit in components/gantry/chat/{InteractionCard,ElicitationCard,ProposalCards}.tsx
 │   │       │   ├── artifacts/{ArtifactPanel.tsx (toolbar and Problems inside), registry.ts, bridge.ts, store.ts,
 │   │       │   │              renderers/{MarkdownRenderer.tsx, CodeRenderer.tsx, SvgRenderer.tsx, SandboxHost.tsx}}
-│   │       │   ├── skills/{SkillsPage.tsx, SkillEditor.tsx, FrontmatterForm.tsx, ImportReview.tsx, MatchTester.tsx}
-│   │       │   ├── memory/{MemoryPage.tsx, MemoryTable.tsx, RecentlyDeleted.tsx}
+│   │       │   ├── skills/{SkillEditor.tsx, ImportReview.tsx}   # the list is customize/SkillsSection.tsx
+│   │       │   ├── customize/{SkillsSection.tsx, MemorySection.tsx}  # 15 A18: two dialog sections, not pages
 │   │       │   ├── projects/{ProjectPage.tsx, ProjectSettings.tsx, KnowledgeFiles.tsx, ProjectArtifacts.tsx}
 │   │       │   ├── connectors/{InstallDialog.tsx, AddCustomServer.tsx, DeviceCodeDialog.tsx, install.ts; later RuntimeCheck.tsx, ConnectorDetail.tsx,
 │   │       │   │               InstanceSettings.tsx, UserConfigForm.tsx, AuthStatus.tsx, customPanels.ts}   # customPanels: import.meta.glob of ../../connectors/*/ui
@@ -129,13 +129,13 @@ gantry/
 │   │   │       ├── tools.rs                  # the ToolSet of one turn: namespaced specs, mode filter, name map
 │   │   │       ├── permissions.rs            # the guardrail floor, the mode table, grants and the question the guard answers (04 §3, §5, §6)
 │   │   │       ├── judge.rs                  # the guard: the input, the model, the verdict, the loop detector and the overrides (04 §6)
-│   │   │       ├── runtime_tools/{mod.rs, clock.rs, artifacts.rs, catalog.rs; later skills.rs, memory.rs}
-│   │   │       ├── skills/{mod.rs, index.rs, matcher.rs, import.rs, export.rs}
-│   │   │       ├── memory/{mod.rs, selector.rs, proposals.rs}
+│   │   │       ├── runtime_tools/{mod.rs, clock.rs, artifacts.rs, catalog.rs, skills.rs, memory.rs}
+│   │   │       ├── skills/{mod.rs, format.rs, matcher.rs, import.rs}
+│   │   │       ├── memory/{mod.rs, selector.rs}
 │   │   │       ├── artifacts/{mod.rs, registry.rs, edits.rs}   # the service (versions, the render handshake), the type registry mirrored by the frontend, exact-match edits
 │   │   │       ├── interactions.rs
 │   │   └── xtask/
-│   │       └── src/{main.rs, validate_connectors.rs, validate_skills.rs, gen_bindings.rs, icons.rs}   # finds the root by walking up to Cargo.lock
+│   │       └── src/{main.rs, connectors.rs, probe.rs, skills.rs, icons.rs}   # finds the root by walking up to Cargo.lock
 │   │
 │   ├── connectors/                       # every connector, first-party or bundled, one folder each (03 §2)
 │   │   ├── README.md                     # the folder contract for contributors
