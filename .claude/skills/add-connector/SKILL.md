@@ -48,7 +48,34 @@ What the answers mean:
 | `401` with `WWW-Authenticate` | OAuth; follow it to the metadata to see whether registration is offered | `oauth2` |
 | `400` "No valid session. Send initialize first." | older revision, session-based — fine, the client handles it | as the 401 says |
 | `400` "Unsupported protocol version" | older revision — also fine | as the 401 says |
+| `401` with no `WWW-Authenticate` pointer | still fine: try `/.well-known/oauth-protected-resource` on the origin, and then `/.well-known/oauth-authorization-server` — several vendors publish only the second, and discovery falls back to it | `oauth2` |
 | connection refused, or only `/sse` works | not shippable | — |
+
+Then read the authorization server's metadata (the probe prints it, or fetch
+`/.well-known/oauth-authorization-server` yourself) and check two things before writing
+`auth.registration`:
+
+- `registration_endpoint` present → `dcr`; `client_id_metadata_document_supported` → `cimd`.
+  List what the server actually offers, in that preference order, and nothing else.
+- **`token_endpoint_auth_methods_supported` with only `client_secret_*` and no registration at
+  all → stop.** That is a confidential client: it needs an id *and* a secret, and Gantry has
+  nowhere to keep a secret. Slack, HubSpot and Microsoft Fabric are all in this position (17 §3).
+  Say so and leave the entry `soon`.
+- A server that registers nobody but accepts a *public* client with PKCE is fine: that is the
+  `github` shape — `registration: ["user_supplied"]`, `user_supplied_fields: ["client_id"]`, and
+  instructions naming `http://127.0.0.1:17321/callback` as the redirect URI to register. Xero is
+  the worked example.
+
+**Ask for the narrow scopes.** Where a server's scope list separates reading from writing, the
+manifest asks for the read ones unless the connector is for writing: Jotform's `readOnly` over
+`full`, Grafana's `grafana:read`/`grafana:query` without `write`, Resend's `emails:send` over
+`full_access`. The consent screen is the only boundary the user actually sees.
+
+**Where the key goes.** For `auth.type: "api_key"`, `inject.in` is `header`, `query` or `env`, and
+`inject.name` is what the vendor documents — `Authorization` with `format: "Bearer {value}"` for
+most, `?exaApiKey=` for Exa, `ELEVENLABS_API_KEY` for a local server. There is no `path` location
+and no way to hold two credentials, so a server that wants its key in the URL path (Firecrawl) or
+in two headers (Browserbase) cannot ship yet.
 
 A `400` about sessions or versions is **not** a failure. Gantry's client falls back to the
 `initialize` handshake, and so does `cargo xtask probe-connectors`. Do not change the URL because
@@ -70,6 +97,18 @@ folder name** — `validate-connectors` enforces it.
   Icons separately, which is a different question with a different answer.
 - **`README.md`** — Runs / Needs / Can reach / Protocol, in that order, in plain sentences. "Can
   reach" is the one a user actually needs: say what the server sees of theirs.
+
+### A local server
+
+`runtime.kind: "mcp-stdio"` adds three things: `requires` (`node`, `python`, `uv`, `docker`) so the
+install refuses before it starts rather than failing later with an error about `npx`;
+`platform_overrides.win32.command` (`npx.cmd`); and a decision about the credential. Plain settings
+— a host, a team id, a collection — are `user_config` keys referenced as `${user_config.KEY}` in
+`env`; a key is `auth.api_key` with `inject: { in: "env", name: "THE_VAR" }`, which keeps it in the
+vault and out of the config row. `make` and `qdrant` are the worked examples of both together.
+
+The probe checks the package against npm or PyPI and does not spawn it, so the fixture records
+what was checked rather than a tool list, and the README says nobody here has run it.
 
 ## 3. Tiers are the judgement
 

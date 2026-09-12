@@ -552,6 +552,27 @@ with the protocol's three actions, and the rounds walked by `McpSession::call` r
 rmcp's handler — 03 §6 records why. Nothing in the catalogue elicits, so it is built and untested
 against a real server; 04 §10 says so plainly rather than implying otherwise.
 
+**The catalogue tripled on 2026-09-12**: B3, B4, B5, B6, B7, B9 and B11a landed together —
+**sixty-three connectors**, of which four are Gantry's own. 17 §3 has the batch-by-batch account;
+what is worth recording here is the code it took, because a manifest-only batch is supposed to
+take none.
+
+Three changes, each found by a connector that could not work without it. `Inject` had been in the
+manifest type since the schema was written with nothing reading it, so every credential went out
+as `Authorization: Bearer …`; Exa, Tavily and Tinybird read the key from the URL and ElevenLabs
+from an environment variable, so `endpoint()` now asks the manifest where the key goes. Discovery
+gave up when a server published no protected-resource document, which ruled out seven servers
+that do answer — Atlassian, Datadog, Intercom, Jotform, Replicate, Apify, Plaid — and now falls
+back to treating the resource as its own issuer. And the probe was made fit for fifty-odd servers:
+one vendor's outage no longer ends the run, a `200` that lists tools is still asked how to sign
+in (Railway hands its whole list to anyone), a `uvx` package is checked against PyPI as an `npx`
+one always was, and a local server's fixture says what was checked instead of a bare `status: 0`.
+
+Two shapes the catalogue cannot take, both recorded in 17 §3: a **confidential client** — an id
+*and* a secret, which is what Slack, HubSpot and Microsoft Fabric require — and a credential that
+belongs somewhere `inject` has no name for, which is Firecrawl's URL path and Browserbase's pair
+of headers. Nothing is blocked on them but four good connectors are.
+
 ## M9 — the rest (original scope)
 
 - `mcp/` adapter on rmcp: stdio and Streamable HTTP; version negotiation with the `server/discover` probe and legacy handshake fallback; tool listing with `ttlMs` and change notifications; risk mapping from annotations; MRTR `input_required` and legacy elicitation into `Interaction::Elicitation` with a form renderer; process supervision, idle stop, stderr logs.
