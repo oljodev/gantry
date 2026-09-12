@@ -10,8 +10,43 @@ use tauri_specta::Event;
 
 use crate::{
     AppState,
-    events::{ChatsChanged, ConnectorsChanged, InteractionsChanged},
+    events::{ChatsChanged, ConnectorsChanged, InteractionsChanged, MemoryChanged, SkillsChanged},
 };
+
+/// What the model is told about a proposal it made, on its next turn. `None` for every other
+/// kind of interaction, which the turn waited for and already knows the answer to.
+fn proposal_note(resolved: &Interaction) -> Option<String> {
+    use gantry_core::{MemoryProposalOutcome, SkillProposalOutcome};
+    match resolved.resolution.as_ref()? {
+        InteractionResolution::SkillProposal { outcome } => Some(match outcome {
+            SkillProposalOutcome::Saved { name, .. } => format!(
+                "The user kept your skill proposal as `{name}`. It is available from now on; do \
+                 not offer it again."
+            ),
+            SkillProposalOutcome::Discarded => {
+                "The user discarded your skill proposal. Do not offer it again in this \
+                 conversation."
+                    .to_owned()
+            }
+        }),
+        InteractionResolution::MemoryProposal { outcome } => Some(match outcome {
+            MemoryProposalOutcome::Saved { .. } => {
+                "The user kept the memory you proposed; they may have edited the wording. It \
+                 will be in your context in later chats."
+                    .to_owned()
+            }
+            MemoryProposalOutcome::Forgotten { .. } => {
+                "The user agreed to forget that memory. Stop relying on it.".to_owned()
+            }
+            MemoryProposalOutcome::Discarded => {
+                "The user did not keep that memory. Do not propose it again, and do not act as \
+                 though it were remembered."
+                    .to_owned()
+            }
+        }),
+        _ => None,
+    }
+}
 
 /// Interactions waiting for the user, oldest first, for one chat or every chat. Cards render
 /// from the run store while a turn streams; this fills a chat view that mounts later.
@@ -47,6 +82,18 @@ pub fn resolve_interaction(
         .resolve_interaction(interaction_id, resolution)?;
     if widens {
         let _ = ConnectorsChanged.emit(&app);
+    }
+    // A proposal did not block the turn (12 §A5, §B3), so the model never saw an answer. It is
+    // told what happened the way every other out-of-band change is told: a `SystemNote` before
+    // the next user message (10 §4). Saying nothing would leave it believing it had remembered
+    // something.
+    if let Some(note) = proposal_note(&resolved) {
+        state
+            .turns
+            .chats()
+            .append_system_note(resolved.chat_id, note)?;
+        let _ = SkillsChanged.emit(&app);
+        let _ = MemoryChanged.emit(&app);
     }
     let _ = InteractionsChanged {
         chat_id: resolved.chat_id,

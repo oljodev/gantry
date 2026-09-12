@@ -41,3 +41,11 @@ pub struct DeviceCodeNeeded {
     pub user_code: String,
     pub verification_uri: String,
 }
+
+/// The skill library changed: one was written, imported, deleted, switched or pinned (12 §A).
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type, tauri_specta::Event)]
+pub struct SkillsChanged;
+
+/// A memory was written, edited, deleted or restored (12 §B).
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type, tauri_specta::Event)]
+pub struct MemoryChanged;

@@ -220,6 +220,63 @@ export const commands = {
 	 */
 	listChatConnectors: (chatId: ChatId) => typedError<InstanceId[], ErrorDto>(__TAURI_INVOKE("list_chat_connectors", { chatId })),
 	attachConnector: (chatId: ChatId, instanceId: InstanceId, attached: boolean) => typedError<InstanceId[], ErrorDto>(__TAURI_INVOKE("attach_connector", { chatId, instanceId, attached })),
+	/**
+	 *  Every skill, bundled and user-written, with the folder rescanned first so a file edited in
+	 *  another editor shows up (12 §A3).
+	 */
+	listSkills: () => typedError<SkillDto[], ErrorDto>(__TAURI_INVOKE("list_skills")),
+	/**  One skill with its body, for the editor. */
+	getSkill: (id: string) => typedError<SkillDetail, ErrorDto>(__TAURI_INVOKE("get_skill", { id })),
+	/**
+	 *  Saves a skill the user wrote or edited. The name is the folder name, so renaming one is
+	 *  saving a new skill and deleting the old — which the UI says out loud rather than hiding.
+	 */
+	saveSkill: (input: SkillInput) => typedError<SkillDto, ErrorDto>(__TAURI_INVOKE("save_skill", { input })),
+	/**  Deletes a user's skill, folder and all. A bundled one can only be switched off. */
+	deleteSkill: (id: string) => typedError<null, ErrorDto>(__TAURI_INVOKE("delete_skill", { id })),
+	setSkillEnabled: (id: string, enabled: boolean) => typedError<null, ErrorDto>(__TAURI_INVOKE("set_skill_enabled", { id, enabled })),
+	testSkillMatch: (id: string, message: string) => typedError<MatchResult, ErrorDto>(__TAURI_INVOKE("test_skill_match", { id, message })),
+	exportSkill: (id: string) => typedError<SkillExport, ErrorDto>(__TAURI_INVOKE("export_skill", { id })),
+	/**  Reviews a skill from a file the user picked, a folder, or pasted text. */
+	reviewSkill: (path: string | null, text: string | null) => typedError<SkillReview, ErrorDto>(__TAURI_INVOKE("review_skill", { path, text })),
+	/**
+	 *  Fetches a skill from a URL for review (12 §A5 flow 3): HTTPS only, no redirect to another
+	 *  host, text only, and capped — it is somebody else's file, and it is about to be read by a
+	 *  model that trusts its prompt.
+	 */
+	reviewSkillUrl: (url: string) => typedError<SkillReview, ErrorDto>(__TAURI_INVOKE("review_skill_url", { url })),
+	/**
+	 *  Installs a reviewed skill, byte for byte, under `name` — which the user may have changed on
+	 *  the review screen to avoid a collision.
+	 */
+	installSkill: (name: string, text: string, references: SkillReference[]) => typedError<SkillDto, ErrorDto>(__TAURI_INVOKE("install_skill", { name, text, references })),
+	/**  The skills pinned to one chat (12 §A6). A pinned skill is in that chat's frozen prompt. */
+	listChatSkills: (chatId: ChatId) => typedError<string[], ErrorDto>(__TAURI_INVOKE("list_chat_skills", { chatId })),
+	pinSkillToChat: (chatId: ChatId, skillId: string, pinned: boolean) => typedError<null, ErrorDto>(__TAURI_INVOKE("pin_skill_to_chat", { chatId, skillId, pinned })),
+	listMemories: (query: MemoryQuery) => typedError<MemoryDto[], ErrorDto>(__TAURI_INVOKE("list_memories", { query })),
+	/**
+	 *  Writes one entry the user asked for: the page's New, `/remember`, or **Remember this** on a
+	 *  selection.
+	 */
+	createMemory: (memory: NewMemory) => typedError<MemoryDto, ErrorDto>(__TAURI_INVOKE("create_memory", { memory })),
+	updateMemory: (id: MemoryId, patch: MemoryInput) => typedError<MemoryDto, ErrorDto>(__TAURI_INVOKE("update_memory", { id, patch })),
+	/**  Deletes into Recently deleted, where it stays for thirty days (12 §B5). */
+	deleteMemory: (id: MemoryId) => typedError<null, ErrorDto>(__TAURI_INVOKE("delete_memory", { id })),
+	restoreMemory: (id: MemoryId) => typedError<null, ErrorDto>(__TAURI_INVOKE("restore_memory", { id })),
+	/**  Removes an entry for good, from Recently deleted. There is nowhere after this. */
+	forgetMemoryForGood: (id: MemoryId) => typedError<null, ErrorDto>(__TAURI_INVOKE("forget_memory_for_good", { id })),
+	/**
+	 *  Everything, as JSON the user can keep (12 §B5). Plain rows: a memory is a sentence, and an
+	 *  export nobody can read in a text editor would be a worse export.
+	 */
+	exportMemories: () => typedError<string, ErrorDto>(__TAURI_INVOKE("export_memories")),
+	reviewMemoryImport: (json: string) => typedError<MemoryImport, ErrorDto>(__TAURI_INVOKE("review_memory_import", { json })),
+	/**
+	 *  Writes a reviewed import. Entries come in as new rows with new ids: an import is a copy,
+	 *  not a merge, and silently overwriting an entry the user has since edited would be the kind
+	 *  of surprise the whole feature is built to avoid.
+	 */
+	importMemories: (entries: MemoryDto[]) => typedError<number, ErrorDto>(__TAURI_INVOKE("import_memories", { entries })),
 };
 
 /** Events */
@@ -229,8 +286,10 @@ export const events = {
 	connectorsChanged: makeEvent<ConnectorsChanged>("connectors-changed"),
 	deviceCodeNeeded: makeEvent<DeviceCodeNeeded>("device-code-needed"),
 	interactionsChanged: makeEvent<InteractionsChanged>("interactions-changed"),
+	memoryChanged: makeEvent<MemoryChanged>("memory-changed"),
 	providersChanged: makeEvent<ProvidersChanged>("providers-changed"),
 	settingsChanged: makeEvent<SettingsChanged>("settings-changed"),
+	skillsChanged: makeEvent<SkillsChanged>("skills-changed"),
 };
 
 /* Types */
@@ -1296,6 +1355,16 @@ export type KeyStatus = {
 };
 
 /**
+ *  What the **Test match** box shows (12 §A5 flow 1): the score a sample message would get,
+ *  and the words that earned it.
+ */
+export type MatchResult = {
+	score: number,
+	qualifies: boolean,
+	hits: string[],
+};
+
+/**
  *  What a media model lets a person choose (docs/plan/02 §5). Every field is optional and
  *  nothing is sent unless it was picked: a model's own default is better than Gantry's guess,
  *  and an aspect ratio the model does not support is an error rather than a near miss.
@@ -1321,6 +1390,9 @@ export type MediaSource =
 
 /**  Remembering something, or forgetting it. Both are cards, and only the user resolves one. */
 export type MemoryAction = "remember" | "forget";
+
+/**  A memory was written, edited, deleted or restored (12 §B). */
+export type MemoryChanged = null;
 
 /**  One `memories` row. */
 export type MemoryDto = {
@@ -1350,6 +1422,26 @@ export type MemoryDto = {
  *  skill is a folder on disk and the folder name is what the user reads.
  */
 export type MemoryId = string;
+
+/**  What an import would do, before it does it: the page reviews it like a skill (12 §B5). */
+export type MemoryImport = {
+	entries: MemoryDto[],
+	problems: string[],
+};
+
+/**
+ *  What the Memory page's editor and `/remember` hand in; `None` leaves a field alone on an
+ *  update and takes the default on a create.
+ */
+export type MemoryInput = {
+	text: string | null,
+	kind: MemoryKind | null,
+	scope_kind: MemoryScopeKind | null,
+	scope_id: ProjectId | null,
+	always_include: boolean | null,
+	enabled: boolean | null,
+	tags: string[] | null,
+};
 
 /**
  *  What kind of sentence this is (12 §B2). The kind decides where it is spent: instructions
@@ -1387,6 +1479,17 @@ export type MemoryProposal = {
 
 /**  How a memory card ended. */
 export type MemoryProposalOutcome = { kind: "saved"; id: MemoryId } | { kind: "forgotten"; id: MemoryId } | { kind: "discarded" };
+
+/**  The page's filters, as the frontend sends them. */
+export type MemoryQuery = {
+	search?: string,
+	scope_kind?: MemoryScopeKind | null,
+	kind?: MemoryKind | null,
+	source?: MemorySource | null,
+	enabled?: boolean | null,
+	/**  Recently deleted instead of the live set. */
+	archived?: boolean,
+};
 
 export type MemoryScopeKind = "global" | "project";
 
@@ -1505,6 +1608,17 @@ export type ModelInfo = {
 export type ModelRef = {
 	provider: ProviderId,
 	model: string,
+};
+
+/**  A new memory, as the page's New, `/remember` and **Remember this** all hand it in. */
+export type NewMemory = {
+	text: string,
+	kind: MemoryKind,
+	scope_kind: MemoryScopeKind,
+	source: MemorySource,
+	/**  Provenance (12 §B1): which chat taught us this, and which message in it. */
+	origin_chat_id: ChatId | null,
+	origin_message_id: MessageId | null,
 };
 
 export type PermissionDecision = { kind: "allow_once" } | 
@@ -1772,6 +1886,54 @@ export type SettingsPatch = {
 	advanced?: AdvancedSettings | null,
 };
 
+/**  A skill with its text, for the editor and for `gantry__load_skill`. */
+export type SkillDetail = {
+	/**  The Markdown below the frontmatter. */
+	body: string,
+} & SkillDto;
+
+/**
+ *  One row of the `skills` index. The body is not here: it is read from the file, or from the
+ *  binary for a bundled skill, when something actually needs it (12 §A4's progressive
+ *  disclosure is the same idea one layer down).
+ */
+export type SkillDto = {
+	/**  The skill's name, which is its id and its folder name. */
+	id: string,
+	source: SkillSource,
+	/**  Absolute path of the folder; absent for a bundled skill. */
+	path: string | null,
+	name: string,
+	description: string,
+	triggers: string[],
+	/**  `metadata.gantry-always`: in every chat's frozen prompt rather than matched per message. */
+	always_include: boolean,
+	enabled: boolean,
+	content_hash: string,
+	/**  Bytes of `SKILL.md`. */
+	size: number,
+	version: number,
+	author: string | null,
+	license: string | null,
+	/**  `references/*.md` beside the skill, by file name. */
+	references: string[],
+	installed_at: number,
+	updated_at: number,
+	last_used_at: number | null,
+	use_count: number,
+	/**  Chats and projects this skill is pinned to, counted for the list's badge. */
+	pinned_count: number,
+};
+
+/**
+ *  The exact `SKILL.md`, and the name it should be written under (12 §A5 flow 2). The app
+ *  hands back text rather than writing a file: where it goes is the file dialog's business.
+ */
+export type SkillExport = {
+	filename: string,
+	text: string,
+};
+
 /**  What the editor and an import both hand back: the fields, and the body they belong to. */
 export type SkillInput = {
 	name: string,
@@ -1820,6 +1982,20 @@ export type SkillReplaces = {
 	body: string,
 };
 
+/**  The review screen (12 §A5 flow 3). Nothing is written by this; `install_skill` is. */
+export type SkillReview = {
+	input: SkillInput,
+	/**  The file as it arrived, installed byte for byte if the user says yes. */
+	text: string,
+	warnings: string[],
+	/**  A review with problems cannot be installed. */
+	problems: string[],
+	/**  The name it would take: repaired if it had to be, and free of collisions. */
+	name: string,
+	/**  Set when `name` is already taken, so the screen can say what it would replace. */
+	replaces: string | null,
+};
+
 /**  Where a skill came from (12 §A3). */
 export type SkillSource = 
 /**  Shipped inside the binary from `desktop/skills/`. Editable only by shadowing it. */
@@ -1828,6 +2004,9 @@ export type SkillSource =
 "user" | 
 /**  Brought in from a file, a folder or a URL, and living in the same place as `User`. */
 "imported";
+
+/**  The skill library changed: one was written, imported, deleted, switched or pinned (12 §A). */
+export type SkillsChanged = null;
 
 /**  Why the model stopped. */
 export type StopReason = { kind: "end_turn" } | { kind: "tool_use" } | { kind: "max_tokens" } | { kind: "refusal"; category: string | null } | { kind: "content_filter" } | { kind: "pause_turn" } | { kind: "cancelled" } | { kind: "other"; reason: string };

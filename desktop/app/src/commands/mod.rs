@@ -4,6 +4,8 @@ pub mod chats;
 pub mod code;
 pub mod connectors;
 pub mod interactions;
+pub mod memory;
 pub mod providers;
 pub mod settings;
+pub mod skills;
 pub mod turns;

@@ -92,6 +92,27 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::connectors::remove_connector,
             commands::connectors::list_chat_connectors,
             commands::connectors::attach_connector,
+            commands::skills::list_skills,
+            commands::skills::get_skill,
+            commands::skills::save_skill,
+            commands::skills::delete_skill,
+            commands::skills::set_skill_enabled,
+            commands::skills::test_skill_match,
+            commands::skills::export_skill,
+            commands::skills::review_skill,
+            commands::skills::review_skill_url,
+            commands::skills::install_skill,
+            commands::skills::list_chat_skills,
+            commands::skills::pin_skill_to_chat,
+            commands::memory::list_memories,
+            commands::memory::create_memory,
+            commands::memory::update_memory,
+            commands::memory::delete_memory,
+            commands::memory::restore_memory,
+            commands::memory::forget_memory_for_good,
+            commands::memory::export_memories,
+            commands::memory::review_memory_import,
+            commands::memory::import_memories,
         ])
         .events(tauri_specta::collect_events![
             events::ChatsChanged,
@@ -101,6 +122,8 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             events::ArtifactsChanged,
             events::ConnectorsChanged,
             events::DeviceCodeNeeded,
+            events::SkillsChanged,
+            events::MemoryChanged,
         ])
 }
 

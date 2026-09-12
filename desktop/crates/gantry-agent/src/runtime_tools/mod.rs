@@ -2,12 +2,14 @@
 //! model under the `gantry__` namespace. They implement the [`Connector`] trait so the turn
 //! loop has one call path, but they are not catalog entries: no install, no auth, no process.
 //!
-//! `gantry__clock` (M3), the artifact tools (M5) and the connector tools (M10: search, access
-//! requests, suggestions). Skills and memory follow with their milestones.
+//! `gantry__clock` (M3), the artifact tools (M5), the connector tools (M10: search, access
+//! requests, suggestions) and, with M12, the skill and memory tools (12 §A7, §B7).
 
 pub mod artifacts;
 pub mod catalog;
 pub mod clock;
+pub mod memory;
+pub mod skills;
 
 use std::sync::Arc;
 
@@ -18,7 +20,10 @@ use gantry_connectors::{
 use gantry_core::ToolDef;
 use tokio_util::sync::CancellationToken;
 
-use crate::{artifacts::Artifacts, runtime_tools::catalog::ConnectorAccess};
+use crate::{
+    artifacts::Artifacts,
+    runtime_tools::{catalog::ConnectorAccess, memory::MemoryTools, skills::SkillTools},
+};
 
 /// The namespace prefix of every runtime tool.
 pub const NAMESPACE: &str = "gantry";
@@ -27,6 +32,8 @@ pub struct RuntimeTools {
     descriptor: ConnectorDescriptor,
     artifacts: Option<Arc<Artifacts>>,
     connectors: Option<Arc<ConnectorAccess>>,
+    skills: Option<Arc<SkillTools>>,
+    memory: Option<Arc<MemoryTools>>,
 }
 
 impl Default for RuntimeTools {
@@ -48,6 +55,8 @@ impl RuntimeTools {
             },
             artifacts: None,
             connectors: None,
+            skills: None,
+            memory: None,
         }
     }
 
@@ -63,6 +72,14 @@ impl RuntimeTools {
     #[must_use]
     pub fn with_connectors(mut self, connectors: Arc<ConnectorAccess>) -> Self {
         self.connectors = Some(connectors);
+        self
+    }
+
+    /// With the skill and memory tools (12 §A7, §B7).
+    #[must_use]
+    pub fn with_library(mut self, skills: Arc<SkillTools>, memory: Arc<MemoryTools>) -> Self {
+        self.skills = Some(skills);
+        self.memory = Some(memory);
         self
     }
 }
@@ -81,6 +98,12 @@ impl Connector for RuntimeTools {
         if let Some(connectors) = &self.connectors {
             defs.extend(connectors.definitions());
         }
+        if let Some(skills) = &self.skills {
+            defs.extend(skills.definitions());
+        }
+        if let Some(memory) = &self.memory {
+            defs.extend(memory.definitions());
+        }
         Ok(defs)
     }
 
@@ -98,6 +121,14 @@ impl Connector for RuntimeTools {
             },
             t if catalog::NAMES.contains(&t) => match &self.connectors {
                 Some(service) => Ok(service.call(&req, &sink, &cancel).await),
+                None => Err(ConnectorError::UnknownTool(t.to_owned())),
+            },
+            t if skills::NAMES.contains(&t) => match &self.skills {
+                Some(service) => Ok(service.call(&req, &sink)),
+                None => Err(ConnectorError::UnknownTool(t.to_owned())),
+            },
+            t if memory::NAMES.contains(&t) => match &self.memory {
+                Some(service) => Ok(service.call(&req, &sink)),
                 None => Err(ConnectorError::UnknownTool(t.to_owned())),
             },
             other => Err(ConnectorError::UnknownTool(other.to_owned())),

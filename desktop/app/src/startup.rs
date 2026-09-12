@@ -11,6 +11,7 @@ use std::{
 use gantry_agent::{
     Artifacts, ChatBook, ChatNotifier, ConnectorAccess, Memories, PromptContext, RuntimeTools,
     Skills, TurnManager,
+    runtime_tools::{memory::MemoryTools, skills::SkillTools},
 };
 use gantry_connectors::ConnectorRegistry;
 use gantry_core::{ChatId, ProviderId, Settings};
@@ -207,12 +208,21 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn Error>> {
     // The connector tools ask the user through the same interaction registry the permission
     // cards use (03 §9, 04 §9), so they are registered once the turn manager owns it.
     tools.register(Arc::new(
-        RuntimeTools::with_artifacts(artifacts.clone()).with_connectors(ConnectorAccess::new(
-            store.clone(),
-            tools.clone(),
-            turns.interactions().clone(),
-            settings.clone(),
-        )),
+        RuntimeTools::with_artifacts(artifacts.clone())
+            .with_connectors(ConnectorAccess::new(
+                store.clone(),
+                tools.clone(),
+                turns.interactions().clone(),
+                settings.clone(),
+            ))
+            .with_library(
+                SkillTools::new(skills.clone(), turns.interactions().clone()),
+                MemoryTools::new(
+                    memories.clone(),
+                    turns.interactions().clone(),
+                    settings.clone(),
+                ),
+            ),
     ));
 
     app.manage(AppState {
