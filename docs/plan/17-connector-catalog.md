@@ -35,7 +35,8 @@ So the testing rule is **per auth shape, not per connector**:
 | Remote, no auth | `cloudflare-docs` | proven, shipped |
 | Remote, OAuth with dynamic client registration | `cloudflare-bindings` | proven, shipped |
 | Remote, OAuth with a client id you supply | `github` | proven, shipped |
-| Remote, API key in a header | first of B5 | one sign-in from Olav |
+| Remote, API key in a header | `stripe`, `kagi`, `apify` | mechanically proven; no key pasted yet |
+| Remote, API key in a query parameter | `exa` (its tool list is recorded) | mechanically proven; no key pasted yet |
 | Local process on Node (`npx`) | first of B6 | one install from Olav |
 | Local process on Python (`uvx`) | first of B7 | one install from Olav |
 | Remote, OAuth, no protected-resource document | `atlassian` | mechanically proven; the resource is assumed to be its own issuer |
@@ -219,13 +220,13 @@ day and one sign-in from Olav.
 | **B2** ✅ | Remote, OAuth (DCR) | Linear, Notion, Sentry, Netlify, Vercel | none — proven by `cloudflare-bindings`. Shipped 2026-09-11; all five answer `401` with a protected-resource document and offer dynamic registration, and Linear, Notion and Sentry offer a client-id metadata document as well, which `choose_client` prefers. Nobody has signed in to any of them, and each README says so |
 | **B3** ✅ | Remote, OAuth | Atlassian, Asana, Figma, Canva, **Intercom** | Shipped 2026-09-12. **Slack came out of this batch and is not shippable today**: it offers neither dynamic registration nor a client-id metadata document and its token endpoint accepts `client_secret_post` only, so signing in needs a Slack app's id *and* secret, and Gantry has nowhere to put a secret (03 §7 knows three ways to get a client; a user-supplied secret is not one of them). Intercom took its place and proved something instead — it publishes no protected-resource document at all, which is the gap the discovery fallback now covers |
 | **B4** ✅ | Remote, OAuth | GitLab, Supabase, Neon, PostHog, Railway | Shipped 2026-09-12. Railway is the interesting one: it hands its **whole tool list to anyone** and refuses every call until you sign in, so it is the only OAuth connector in the catalogue whose tiers were reviewed against the server's own answer rather than the vendor's prose — fourteen overrides came out of it |
-| **B5** | Remote, key in a header or query | Stripe, Tavily, Firecrawl, Tinybird, Exa | **first key-in-header connector — one setup from Olav** |
+| **B5** ✅ | Remote, key in a header or query | Stripe, Exa, Tavily, Tinybird, **Kagi**, **Apify** | Shipped 2026-09-12, and it needed code: `Inject` had been in the manifest type since the schema was written and nothing read it, so every credential went out as `Authorization: Bearer …`. Exa, Tavily and Tinybird read the key from the URL instead. **Firecrawl came out of the batch** — it wants the key in the URL *path* (`/{key}/v2/mcp`), which `inject` has no location for — and so did **Browserbase**, which wants two headers, `x-bb-api-key` and `x-bb-project-id`, and nothing in Gantry stores two credentials for one instance. Kagi and Apify came forward from B11 to fill the gaps. Still one setup from Olav: no key here has been used |
 | **B6** | Local, Node | Playwright, Shopify Dev, Azure, Salesforce, BrowserStack | **the runtime check and command preview (03 §11) — one install from Olav** |
 | **B7** | Local, Python | ElevenLabs, Qdrant, Kagi, MiniMax, Ramp | **uv detection — one install from Olav** |
 | **B8** | Remote, OAuth client you supply | Google Drive, Calendar, Gmail, BigQuery, Cloud Run | Google's console steps; the GitHub path already proves the mechanism |
 | **B9** | Remote, OAuth, money | PayPal, Square, Xero, HubSpot, Ramp | tier review is the work, not the auth |
 | **B10** | Remote, host you supply | Metabase, Grafana, Databricks, n8n, Unleash | **`user_config` in a runtime URL — one setup from Olav** |
-| **B11+** | proven shapes only | The long tail: Granola, Cal.com, Resend, MailerLite, Tally, Jotform, Lovable, incident.io, Datadog, Postman, Axiom, LangSmith, Cloudinary, Browserbase, Clarity, Fabric, Perplexity, Apify, Make, Hostinger, 21st.dev, Twilio, Windsor, Cardboard, Replicate, Plaid, Docker, JetBrains, 1Password, Rive, Lottie | none |
+| **B11+** | proven shapes only | The long tail: Granola, Cal.com, Resend, MailerLite, Tally, Jotform, Lovable, incident.io, Datadog, Postman, Axiom, LangSmith, Cloudinary, Browserbase, Clarity, Fabric, Perplexity, Make, Hostinger, 21st.dev, Twilio, Windsor, Cardboard, Replicate, Plaid, Docker, JetBrains, 1Password, Rive, Lottie | none |
 
 B0–B2 land with M9's remaining work; B3–B5 with M10; B6–B7 need the runtime check, so they wait
 for the rest of M9 (09, "the runtime check, elicitation, `user_config` forms"); B8–B11 are

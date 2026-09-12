@@ -1,0 +1,12 @@
+{
+  "status": 401,
+  "auth": {
+    "issuer": "https://console-backend.apify.com",
+    "dynamic_registration": true,
+    "client_id_metadata_document": true,
+    "scopes": [
+      "full_api_access"
+    ]
+  },
+  "tools": []
+}

@@ -1,0 +1,13 @@
+{
+  "status": 401,
+  "auth": {
+    "issuer": "https://mcp.tavily.com/",
+    "dynamic_registration": true,
+    "client_id_metadata_document": true,
+    "scopes": [
+      "openid",
+      "offline_access"
+    ]
+  },
+  "tools": []
+}

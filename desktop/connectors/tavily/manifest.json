@@ -1,0 +1,46 @@
+{
+  "manifest_version": "1",
+  "id": "tavily",
+  "name": "Tavily",
+  "description": "Search built for agents: ranked results with the text already extracted.",
+  "long_description": "Tavily's hosted server. It searches the web and returns concise, ranked results with the relevant text pulled out, and extracts a page you already have a URL for.\n\nBring a Tavily API key; it travels in the URL, which is how their server reads it.",
+  "version": "0.1.0",
+  "icon": "icon.svg",
+  "category": "web",
+  "keywords": ["tavily", "search", "web", "research", "extract", "agents"],
+  "publisher": {
+    "name": "Tavily",
+    "url": "https://tavily.com"
+  },
+  "first_party": false,
+  "homepage": "https://docs.tavily.com/documentation/mcp",
+  "runtime": {
+    "kind": "mcp-remote",
+    "url": "https://mcp.tavily.com/mcp/"
+  },
+  "auth": {
+    "type": "api_key",
+    "inject": {
+      "in": "query",
+      "name": "tavilyApiKey"
+    },
+    "instructions": "Create a Tavily API key and paste it here. It is sent as a query parameter, which is what this server reads.",
+    "setup_url": "https://app.tavily.com/home"
+  },
+  "risk": {
+    "network": "internet",
+    "local_system": "none",
+    "default_tool_tier": "read",
+    "notes": "Reads the public web and sends your search terms to Tavily. Nothing of yours is read."
+  },
+  "tools_generated": true,
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "gantry": ">=0.1.0"
+  },
+  "catalog": {
+    "featured": false,
+    "sort_weight": 6,
+    "suggest_for": ["tavily", "search the web", "look this up", "extract this page"]
+  }
+}

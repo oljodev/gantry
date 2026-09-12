@@ -1,0 +1,53 @@
+{
+  "manifest_version": "1",
+  "id": "stripe",
+  "name": "Stripe",
+  "description": "Customers, payments, invoices and products in your Stripe account.",
+  "long_description": "Stripe's own hosted server. It looks up customers, payments, subscriptions and invoices, and can create the objects your account allows.\n\nTwo ways in: a **restricted API key** you create in the dashboard — which is the recommendation, because you decide there exactly what the chat may touch — or a browser sign-in. Anything that moves money is confirmed every time, in every mode.",
+  "version": "0.1.0",
+  "icon": "icon.svg",
+  "category": "data",
+  "keywords": ["stripe", "payments", "invoices", "subscriptions", "customers", "billing"],
+  "publisher": {
+    "name": "Stripe",
+    "url": "https://stripe.com"
+  },
+  "first_party": false,
+  "homepage": "https://docs.stripe.com/mcp",
+  "runtime": {
+    "kind": "mcp-remote",
+    "url": "https://mcp.stripe.com"
+  },
+  "auth": {
+    "type": "api_key",
+    "inject": {
+      "in": "header",
+      "name": "Authorization",
+      "format": "Bearer {value}"
+    },
+    "instructions": "Create a **restricted** key with only the permissions this chat needs — read-only is a real option, and the better one — and paste it here. A live secret key would give the chat your whole account.",
+    "setup_url": "https://dashboard.stripe.com/apikeys"
+  },
+  "risk": {
+    "network": "internet",
+    "local_system": "none",
+    "default_tool_tier": "write_external",
+    "notes": "Reaches the Stripe account the key belongs to. Refunds, payouts and anything else that moves money are confirmed every time, in every mode."
+  },
+  "auth_alternate": {
+    "type": "oauth2",
+    "registration": ["dcr"],
+    "scopes": ["mcp"],
+    "instructions": "Sign in to Stripe in your browser instead; the server registers Gantry on the spot."
+  },
+  "tools_generated": true,
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "gantry": ">=0.1.0"
+  },
+  "catalog": {
+    "featured": false,
+    "sort_weight": 6,
+    "suggest_for": ["stripe", "payments", "this customer", "invoice", "refund", "mrr"]
+  }
+}

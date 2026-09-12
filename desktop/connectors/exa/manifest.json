@@ -1,0 +1,46 @@
+{
+  "manifest_version": "1",
+  "id": "exa",
+  "name": "Exa",
+  "description": "Search the web by meaning, with page contents included, for research-heavy chats.",
+  "long_description": "Exa's hosted search server. It searches the web by meaning rather than keywords, finds pages similar to one you already have, and returns the contents so the agent can read rather than guess.\n\nBring an Exa API key; it travels in the URL, which is how Exa's server reads it.",
+  "version": "0.1.0",
+  "icon": "icon.svg",
+  "category": "web",
+  "keywords": ["exa", "search", "research", "web", "neural search", "find similar"],
+  "publisher": {
+    "name": "Exa",
+    "url": "https://exa.ai"
+  },
+  "first_party": false,
+  "homepage": "https://docs.exa.ai/reference/exa-mcp",
+  "runtime": {
+    "kind": "mcp-remote",
+    "url": "https://mcp.exa.ai/mcp"
+  },
+  "auth": {
+    "type": "api_key",
+    "inject": {
+      "in": "query",
+      "name": "exaApiKey"
+    },
+    "instructions": "Create an Exa API key and paste it here. It is sent as a query parameter, which is what this server reads.",
+    "setup_url": "https://dashboard.exa.ai/api-keys"
+  },
+  "risk": {
+    "network": "internet",
+    "local_system": "none",
+    "default_tool_tier": "read",
+    "notes": "Reads the public web and sends your search terms to Exa. Nothing of yours is read."
+  },
+  "tools_generated": true,
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "gantry": ">=0.1.0"
+  },
+  "catalog": {
+    "featured": false,
+    "sort_weight": 7,
+    "suggest_for": ["exa", "search the web", "research", "find papers", "find similar pages"]
+  }
+}

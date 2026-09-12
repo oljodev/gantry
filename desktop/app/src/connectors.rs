@@ -726,8 +726,15 @@ impl ConnectorService {
             return Ok(None);
         };
         use secrecy::ExposeSecret;
-        let value = self.secrets.get(&credential)?.expose_secret().trim().to_owned();
-        Ok(Some((inject.clone(), value)))
+        let secret = self.secrets.get(&credential)?;
+        let raw = secret.expose_secret().trim();
+        // An entry can accept either a key or a sign-in (`auth_alternate`, 03 §7), and this
+        // instance may have taken the other road: an OAuth result is stored as JSON and belongs
+        // in the `Authorization` header it carries, not in whatever slot the key would fill.
+        if serde_json::from_str::<StoredToken>(raw).is_ok() {
+            return Ok(None);
+        }
+        Ok(Some((inject.clone(), raw.to_owned())))
     }
 
     /// The `Authorization` value for this instance, if it has a credential at all.

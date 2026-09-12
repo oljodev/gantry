@@ -1,0 +1,53 @@
+{
+  "manifest_version": "1",
+  "id": "apify",
+  "name": "Apify",
+  "description": "Run Apify Actors — scrapers and automations — and read what they produce.",
+  "long_description": "Apify's hosted server. It finds Actors in their store, runs one, and reads the dataset it produced, which is how a chat scrapes a site it has no API for.\n\nSign in with your browser, or paste an Apify API token. An Actor run costs Apify credits, so running one is confirmed every time.",
+  "version": "0.1.0",
+  "icon": "icon.svg",
+  "category": "web",
+  "keywords": ["apify", "scraping", "crawler", "actors", "automation", "datasets"],
+  "publisher": {
+    "name": "Apify",
+    "url": "https://apify.com"
+  },
+  "first_party": false,
+  "homepage": "https://docs.apify.com/platform/integrations/mcp",
+  "runtime": {
+    "kind": "mcp-remote",
+    "url": "https://mcp.apify.com"
+  },
+  "auth": {
+    "type": "oauth2",
+    "registration": ["cimd", "dcr"],
+    "scopes": ["full_api_access"],
+    "instructions": "Sign in to Apify in your browser; the server registers Gantry on the spot."
+  },
+  "risk": {
+    "network": "internet",
+    "local_system": "none",
+    "default_tool_tier": "write_external",
+    "notes": "Runs code on Apify's platform against sites of your choosing, and spends your Apify credits doing it."
+  },
+  "auth_alternate": {
+    "type": "api_key",
+    "inject": {
+      "in": "header",
+      "name": "Authorization",
+      "format": "Bearer {value}"
+    },
+    "instructions": "Or paste an Apify API token instead of signing in.",
+    "setup_url": "https://console.apify.com/settings/integrations"
+  },
+  "tools_generated": true,
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "gantry": ">=0.1.0"
+  },
+  "catalog": {
+    "featured": false,
+    "sort_weight": 4,
+    "suggest_for": ["apify", "scrape this site", "crawl", "actor", "extract listings"]
+  }
+}

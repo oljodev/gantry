@@ -1,0 +1,46 @@
+{
+  "manifest_version": "1",
+  "id": "tinybird",
+  "name": "Tinybird",
+  "description": "Query your Tinybird data sources and pipes with SQL from the chat.",
+  "long_description": "Tinybird's hosted server. It lists your data sources and pipes, explores their schemas, and runs SQL against them.\n\nBring a Tinybird token; it travels in the URL, which is how their server reads it. A token is scoped in Tinybird itself, so a read-only one is the safe thing to paste.",
+  "version": "0.1.0",
+  "icon": "icon.svg",
+  "category": "data",
+  "keywords": ["tinybird", "clickhouse", "sql", "analytics", "pipes", "data sources"],
+  "publisher": {
+    "name": "Tinybird",
+    "url": "https://www.tinybird.co"
+  },
+  "first_party": false,
+  "homepage": "https://www.tinybird.co/docs/forward/work-with-data/mcp-server",
+  "runtime": {
+    "kind": "mcp-remote",
+    "url": "https://mcp.tinybird.co"
+  },
+  "auth": {
+    "type": "api_key",
+    "inject": {
+      "in": "query",
+      "name": "token"
+    },
+    "instructions": "Paste a Tinybird token. Scope it in Tinybird first — a read-only token is enough for questions, and is what this is for.",
+    "setup_url": "https://cloud.tinybird.co/tokens"
+  },
+  "risk": {
+    "network": "internet",
+    "local_system": "none",
+    "default_tool_tier": "write_external",
+    "notes": "Runs SQL against your Tinybird workspace, with whatever the token allows."
+  },
+  "tools_generated": true,
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "gantry": ">=0.1.0"
+  },
+  "catalog": {
+    "featured": false,
+    "sort_weight": 5,
+    "suggest_for": ["tinybird", "run sql", "my analytics", "clickhouse", "pipe"]
+  }
+}
