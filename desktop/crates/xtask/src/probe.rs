@@ -109,7 +109,16 @@ async fn probe_all(root: &Path, offline: bool, spawn: bool) -> anyhow::Result<()
             (Runtime::McpRemote { url, headers }, false) => {
                 probed += 1;
                 println!("probing {id} at {url}");
-                remote(&http, url, headers).await?
+                // One vendor being down is not a reason to learn nothing about the other fifty,
+                // and with a catalogue this size there is usually one. It is still a problem —
+                // the run fails at the end — but every other fixture is written first.
+                match remote(&http, url, headers).await {
+                    Ok(fixture) => fixture,
+                    Err(err) => {
+                        problems.push(format!("{id}: {err:#}"));
+                        continue;
+                    }
+                }
             }
             (Runtime::McpStdio { .. }, false) => {
                 probed += 1;
@@ -333,7 +342,11 @@ async fn remote(
         return Ok(Fixture {
             protocol_version: Some(PROTOCOL.to_owned()),
             status,
-            auth: None,
+            // Listing tools to anyone is not the same as letting anyone call them: Railway and
+            // BigQuery hand out the whole list unauthenticated and refuse every call until you
+            // sign in. The protected-resource document is what says so, and recording it is what
+            // stops the manifest's `oauth2` reading as a contradiction of a 200.
+            auth: auth_shape(http, url, None).await,
             tools,
         });
     }
@@ -399,7 +412,7 @@ async fn remote(
     Ok(Fixture {
         protocol_version,
         status,
-        auth: None,
+        auth: auth_shape(http, url, None).await,
         tools: tools_of(&listed).unwrap_or_default(),
     })
 }
@@ -501,6 +514,22 @@ async fn stdio(
             bail!("npm has no `{name}@{version}` any more");
         }
     }
+    if let Some((name, version)) = python_package(command, args) {
+        let url = format!("https://pypi.org/pypi/{name}/json");
+        let response = http.get(&url).send().await?;
+        if !response.status().is_success() {
+            bail!(
+                "PyPI does not know the package `{name}` ({})",
+                response.status()
+            );
+        }
+        let body: Value = response.json().await?;
+        if let Some(version) = version
+            && body.pointer(&format!("/releases/{version}")).is_none()
+        {
+            bail!("PyPI has no `{name}=={version}` any more");
+        }
+    }
     if !spawn {
         // Without `--spawn` the tools are whatever the last spawn recorded; saying so beats
         // overwriting a real tool list with an empty one.
@@ -527,9 +556,40 @@ fn package(command: &str, args: &[String]) -> Option<(String, Option<String>)> {
     }
 }
 
+/// The PyPI distribution a `uvx` command runs, with its pinned version: `uvx name==1.2.3`, or
+/// `uv tool run name`. The npm half of this asks npm; a Python server's package has to be asked
+/// of PyPI, and a local server nobody can spawn here is otherwise checked against nothing at all.
+fn python_package(command: &str, args: &[String]) -> Option<(String, Option<String>)> {
+    if !matches!(command, "uvx" | "uv" | "pipx") {
+        return None;
+    }
+    let spec = args
+        .iter()
+        .filter(|a| !a.starts_with('-'))
+        // `uv tool run <name>` and `pipx run <name>`: the subcommands are not the package.
+        .find(|a| !matches!(a.as_str(), "tool" | "run"))?;
+    match spec.split_once("==") {
+        Some((name, version)) => Some((name.to_owned(), Some(version.to_owned()))),
+        None => Some((spec.clone(), None)),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_python_server_is_asked_of_pypi_however_uv_is_spelled() {
+        assert_eq!(
+            python_package("uvx", &["elevenlabs-mcp".into()]),
+            Some(("elevenlabs-mcp".to_owned(), None))
+        );
+        assert_eq!(
+            python_package("uv", &["tool".into(), "run".into(), "thing==1.2.3".into()]),
+            Some(("thing".to_owned(), Some("1.2.3".to_owned())))
+        );
+        assert_eq!(python_package("npx", &["-y".into(), "thing".into()]), None);
+    }
 
     #[test]
     fn a_scoped_package_keeps_its_scope_and_gives_up_its_version() {

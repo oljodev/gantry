@@ -4,7 +4,12 @@
     "issuer": "https://mcp.linear.app",
     "dynamic_registration": true,
     "client_id_metadata_document": true,
-    "scopes": ["read", "write", "openid", "email"]
+    "scopes": [
+      "read",
+      "write",
+      "openid",
+      "email"
+    ]
   },
   "tools": []
 }

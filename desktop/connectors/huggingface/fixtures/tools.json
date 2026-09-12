@@ -22,11 +22,21 @@
                 },
                 "cmd": {
                   "description": "Command to execute.",
-                  "enum": ["ls", "cat", "attach", "stat", "find", "search"],
+                  "enum": [
+                    "ls",
+                    "cat",
+                    "attach",
+                    "stat",
+                    "find",
+                    "search"
+                  ],
                   "type": "string"
                 }
               },
-              "required": ["cmd", "args"],
+              "required": [
+                "cmd",
+                "args"
+              ],
               "type": "object"
             },
             "maxItems": 30,
@@ -34,7 +44,9 @@
             "type": "array"
           }
         },
-        "required": ["operations"],
+        "required": [
+          "operations"
+        ],
         "type": "object"
       }
     },
@@ -72,7 +84,11 @@
           "operations": {
             "description": "Details to return. Defaults to [\"overview\"]. For datasets, prefer [\"overview\", \"dataset_structure\"] first; then call [\"dataset_preview\"] with config and split.",
             "items": {
-              "enum": ["overview", "dataset_structure", "dataset_preview"],
+              "enum": [
+                "overview",
+                "dataset_structure",
+                "dataset_preview"
+              ],
               "type": "string"
             },
             "type": "array"
@@ -89,7 +105,11 @@
           },
           "repo_type": {
             "description": "Specify lookup type; otherwise auto-detects",
-            "enum": ["model", "dataset", "space"],
+            "enum": [
+              "model",
+              "dataset",
+              "space"
+            ],
             "type": "string"
           },
           "split": {
@@ -97,7 +117,9 @@
             "type": "string"
           }
         },
-        "required": ["repo_ids"],
+        "required": [
+          "repo_ids"
+        ],
         "type": "object"
       }
     },
@@ -130,10 +152,17 @@
             "type": "string"
           },
           "repo_types": {
-            "default": ["model", "dataset"],
+            "default": [
+              "model",
+              "dataset"
+            ],
             "description": "Repository types to search. Defaults to [\"model\", \"dataset\"]. space uses keyword search via /api/spaces.",
             "items": {
-              "enum": ["model", "dataset", "space"],
+              "enum": [
+                "model",
+                "dataset",
+                "space"
+              ],
               "type": "string"
             },
             "maxItems": 3,
@@ -142,7 +171,13 @@
           },
           "sort": {
             "description": "Sort order (descending): trendingScore, downloads, likes, createdAt, lastModified",
-            "enum": ["trendingScore", "downloads", "likes", "createdAt", "lastModified"],
+            "enum": [
+              "trendingScore",
+              "downloads",
+              "likes",
+              "createdAt",
+              "lastModified"
+            ],
             "type": "string"
           }
         },

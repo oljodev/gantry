@@ -26,7 +26,10 @@
             "description": "GitHub repository or list of repositories (max 10) in owner/repo format."
           }
         },
-        "required": ["repoName", "question"],
+        "required": [
+          "repoName",
+          "question"
+        ],
         "type": "object"
       }
     },
@@ -40,7 +43,9 @@
             "type": "string"
           }
         },
-        "required": ["repoName"],
+        "required": [
+          "repoName"
+        ],
         "type": "object"
       }
     },
@@ -54,7 +59,9 @@
             "type": "string"
           }
         },
-        "required": ["repoName"],
+        "required": [
+          "repoName"
+        ],
         "type": "object"
       }
     }

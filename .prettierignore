@@ -7,3 +7,6 @@ desktop/frontend/src/bindings.ts
 desktop/app/gen
 web
 *.md
+# Recorded answers from somebody else's server: `cargo xtask probe-connectors` writes these,
+# and a second formatter turns every probe run into a diff of nothing.
+desktop/connectors/*/fixtures
