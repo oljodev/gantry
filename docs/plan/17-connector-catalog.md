@@ -314,6 +314,19 @@ neither registration nor a client-id metadata document, which is exactly why 03 
 for it. Those three fixtures are committed, so CI re-checks the manifests against them on every
 push with no network at all.
 
+**A claim is checked by asking, not by reading (2026-09-12).** `client_id_metadata_document` in a
+fixture no longer means "the metadata says so"; it means the authorize endpoint accepted
+`https://id.oljo.dev/client-metadata.json` when the probe offered it. Lovable is why: its metadata
+advertises the document and its authorize endpoint answers `invalid_client`, which reaches the
+user as a vendor error page in a browser Gantry cannot see into. The app now asks the same
+question before opening that browser and registers a client instead when the answer is no, so a
+vendor whose claim is false costs one extra request rather than a sign-in that cannot work.
+
+The check has to send the scopes, which is its own small lesson: Perplexity answers `400
+invalid_request` to a scopeless authorize request, and a probe that read that as "the client id
+was refused" would have demoted a server that is perfectly fine. Only `401`, `403` and a `400`
+that actually says `invalid_client` count as a refusal.
+
 The probe also prints the drift that is not a failure: a server offering a way in that
 `auth.registration` never mentions. The code picks by what the server supports, so nothing breaks
 — but the manifest is meant to describe the server, and one that has quietly stopped doing so is
@@ -365,5 +378,16 @@ cannot install.
 
 Third-party names and logos belong to their owners; a manifest describes a server it does not ship
 (`desktop/connectors/README.md`). The site draws marks from Simple Icons in the vendor's colour and
-falls back to initials; the app uses monograms until the licensing question is cleared (15, M0b).
+falls back to initials.
+
+**The app draws them too, since 2026-09-12**, and the question it was waiting on is answered the
+same way the website already answered it: a mark identifies the service a connector reaches, the
+way a bookshop's shelf labels identify publishers, and Simple Icons' paths are CC0 while the
+trademarks stay their owners'. Two differences from the site. The app draws every mark in
+`currentColor`, never the brand's colour — every colour in this app comes from `tokens.css` (15),
+and sixty brand hexes would be sixty exceptions to that rule. And where Simple Icons has no mark —
+Microsoft, Salesforce, Slack and others asked to be removed from it, and a service six months old
+is simply not in it — the app falls back to **the connector's own `icon.svg`**, the stroked glyph
+every folder already carries, rather than to two grey letters. `pnpm marks` generates the lot and
+a test fails when a new connector has neither.
 Neither claims endorsement, and the note under the directory says so.

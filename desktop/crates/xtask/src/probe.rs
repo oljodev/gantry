@@ -486,9 +486,22 @@ async fn auth_shape(
     };
     let issuer = protected.authorization_servers.first()?.clone();
     let server = discovery::auth_server(http, &issuer).await.ok()?;
+    // Advertising a client-id metadata document and accepting one are different things, and
+    // Lovable does the first and not the second. What goes in the fixture is the answer to the
+    // question Gantry will actually ask, so a manifest claiming `cimd` against a server that
+    // refuses it fails the offline check rather than a user's sign-in.
+    let cimd = server.client_id_metadata_document_supported
+        && discovery::accepts_client_id(
+            http,
+            &server,
+            gantry_connectors::auth::CIMD_URL,
+            "http://127.0.0.1:17321/callback",
+            &scopes_of(&protected, &server),
+        )
+        .await;
     Some(AuthShape {
         dynamic_registration: server.registration_endpoint.is_some(),
-        client_id_metadata_document: server.client_id_metadata_document_supported,
+        client_id_metadata_document: cimd,
         scopes: server.scopes_supported.clone(),
         issuer,
     })
@@ -497,6 +510,18 @@ async fn auth_shape(
 // ---------------------------------------------------------------------------------------------
 // Local servers
 // ---------------------------------------------------------------------------------------------
+
+/// What to ask for in the pre-flight: whatever the server or its resource document offers, so a
+/// server that refuses a scopeless request is not mistaken for one that refuses the client id.
+fn scopes_of(
+    protected: &gantry_connectors::auth::ProtectedResource,
+    server: &gantry_connectors::auth::AuthServer,
+) -> Vec<String> {
+    if !protected.scopes_supported.is_empty() {
+        return protected.scopes_supported.clone();
+    }
+    server.scopes_supported.clone()
+}
 
 /// A local server is a package before it is a process, so the cheap half of the check is asking
 /// the registry whether the pinned version is still published — which is the failure that

@@ -398,6 +398,38 @@ impl ConnectorService {
         }
     }
 
+    /// Registers Gantry with this authorization server and remembers the client it issued, so a
+    /// later Reconnect does not create a second one (03 §7 step 2).
+    async fn register_client(
+        &self,
+        id: InstanceId,
+        issuer: &str,
+        server: &discovery::AuthServer,
+        manifest: Option<&Manifest>,
+        resource: &discovery::ProtectedResource,
+    ) -> Result<String, GantryError> {
+        let endpoint = server
+            .registration_endpoint
+            .clone()
+            .ok_or_else(|| GantryError::invalid("this server registers no clients"))?;
+        let scopes = scopes_for(manifest, resource, server);
+        let registered =
+            discovery::register(&self.http, &endpoint, &auth::redirect_uris(), &scopes)
+                .await
+                .map_err(auth_error)?;
+        let record = repos::connectors::OauthClient {
+            id: ulid::Ulid::new().to_string(),
+            instance_id: id,
+            issuer: issuer.to_owned(),
+            client_id: registered.client_id.clone(),
+            registration_json: None,
+        };
+        self.store
+            .write(move |c| repos::connectors::put_oauth_client(c, &record))
+            .await?;
+        Ok(registered.client_id)
+    }
+
     /// Starts the OAuth flow and returns the URL the browser must open, plus everything needed
     /// to finish. Discovery happens here so a server that cannot be authorized says so before a
     /// browser window appears.
@@ -460,28 +492,37 @@ impl ConnectorService {
             Some(id) => id,
             None => match auth::choose_client(None, None, &server).map_err(auth_error)? {
                 ClientSource::Preregistered(id) => id,
-                ClientSource::Cimd => auth::CIMD_URL.to_owned(),
-                ClientSource::Dynamic => {
-                    let endpoint = server
-                        .registration_endpoint
-                        .clone()
-                        .expect("dynamic registration implies an endpoint");
+                ClientSource::Cimd => {
+                    // Every server that advertises a client-id metadata document is believed
+                    // until it is asked, and one of them says no: Lovable answers `invalid_client`
+                    // to the id its own metadata promised to take. Asking costs one request and
+                    // saves the user a browser window that can only end in an error page.
+                    let redirect = auth::redirect_uris().first().cloned().unwrap_or_default();
                     let scopes = scopes_for(manifest.as_deref(), &resource, &server);
-                    let registered =
-                        discovery::register(&self.http, &endpoint, &auth::redirect_uris(), &scopes)
-                            .await
-                            .map_err(auth_error)?;
-                    let record = repos::connectors::OauthClient {
-                        id: ulid::Ulid::new().to_string(),
-                        instance_id: id,
-                        issuer: issuer.clone(),
-                        client_id: registered.client_id.clone(),
-                        registration_json: None,
-                    };
-                    self.store
-                        .write(move |c| repos::connectors::put_oauth_client(c, &record))
-                        .await?;
-                    registered.client_id
+                    if discovery::accepts_client_id(
+                        &self.http,
+                        &server,
+                        auth::CIMD_URL,
+                        &redirect,
+                        &scopes,
+                    )
+                    .await
+                    {
+                        auth::CIMD_URL.to_owned()
+                    } else if server.registration_endpoint.is_some() {
+                        log::info!(
+                            "{issuer} advertises a client-id metadata document and refuses ours; \
+                             registering instead"
+                        );
+                        self.register_client(id, &issuer, &server, manifest.as_deref(), &resource)
+                            .await?
+                    } else {
+                        auth::CIMD_URL.to_owned()
+                    }
+                }
+                ClientSource::Dynamic => {
+                    self.register_client(id, &issuer, &server, manifest.as_deref(), &resource)
+                        .await?
                 }
             },
         };

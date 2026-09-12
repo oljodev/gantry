@@ -109,6 +109,68 @@ pub fn protected_resource_url(resource: &str) -> Option<String> {
     ))
 }
 
+/// Whether this authorization server will actually accept `client_id` — asked before a browser
+/// window opens, rather than discovered by the user reading the vendor's error page.
+///
+/// A server that advertises `client_id_metadata_document_supported` is claiming it will take a
+/// URL as a client id, and Lovable's says so and answers `401 invalid_client` to one (checked
+/// 2026-09-12, against five servers that accept the same id happily). There is nothing to catch
+/// in the flow when that happens: the failure is in the browser, the callback never arrives, and
+/// Gantry waits five minutes to report a timeout that explains nothing.
+///
+/// So the authorize endpoint is asked first, with a request that starts no session and grants
+/// nothing. Only a refusal of the *client* counts. A `401` or `403` is one; a `400` is one only
+/// when the server says `invalid_client`, because a `400` is just as likely to be about something
+/// else the pre-flight left out — Perplexity answers `invalid_request` to a request with no
+/// scope, which says nothing at all about the client id. Everything else, including a login page,
+/// a redirect to one, and a server having a bad day, is taken as acceptance: the point is to
+/// catch a certain "no", not to second-guess a "maybe".
+pub async fn accepts_client_id(
+    http: &reqwest::Client,
+    server: &AuthServer,
+    client_id: &str,
+    redirect_uri: &str,
+    scopes: &[String],
+) -> bool {
+    let Ok(mut url) = Url::parse(&server.authorization_endpoint) else {
+        return true;
+    };
+    url.query_pairs_mut()
+        .append_pair("response_type", "code")
+        .append_pair("client_id", client_id)
+        .append_pair("redirect_uri", redirect_uri)
+        // A throwaway challenge, for a code nobody will exchange.
+        .append_pair(
+            "code_challenge",
+            "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
+        )
+        .append_pair("code_challenge_method", "S256")
+        .append_pair("state", "preflight");
+    if !scopes.is_empty() {
+        url.query_pairs_mut()
+            .append_pair("scope", &scopes.join(" "));
+    }
+    let Ok(response) = http.get(url).send().await else {
+        return true;
+    };
+    let status = response.status().as_u16();
+    let body = if status == 400 {
+        response.text().await.unwrap_or_default()
+    } else {
+        String::new()
+    };
+    !refuses_client(status, &body)
+}
+
+/// The rule on its own, so it can be read and tested without a server.
+fn refuses_client(status: u16, body: &str) -> bool {
+    match status {
+        401 | 403 => true,
+        400 => body.contains("invalid_client"),
+        _ => false,
+    }
+}
+
 /// What to assume when a server refuses with a `401` and publishes no protected-resource
 /// document at all.
 ///
@@ -220,6 +282,23 @@ pub async fn register(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn only_a_refusal_of_the_client_counts_as_one() {
+        use super::refuses_client;
+        // Lovable: a bare 401 from the authorize endpoint.
+        assert!(refuses_client(401, ""));
+        assert!(refuses_client(400, r#"{"error":"invalid_client"}"#));
+        // Perplexity: a 400 about the scope, which says nothing about the client id.
+        assert!(!refuses_client(
+            400,
+            r#"{"error":"invalid_request","error_description":"The scope of your request is missing."}"#
+        ));
+        // A login page, a redirect to one, a bad afternoon.
+        assert!(!refuses_client(200, ""));
+        assert!(!refuses_client(302, ""));
+        assert!(!refuses_client(503, ""));
+    }
+
     #[test]
     fn a_server_with_no_protected_resource_document_is_its_own_issuer() {
         let assumed = super::resource_as_issuer("https://mcp.atlassian.com/v1/mcp").unwrap();

@@ -20,9 +20,9 @@
   },
   "auth": {
     "type": "oauth2",
-    "registration": ["cimd", "dcr"],
+    "registration": ["dcr"],
     "scopes": ["projects:read", "workspaces:read", "offline"],
-    "instructions": "Sign in to Lovable in your browser; this entry asks for the read scopes."
+    "instructions": "Sign in to Lovable in your browser; the server registers Gantry on the spot."
   },
   "risk": {
     "network": "internet",
