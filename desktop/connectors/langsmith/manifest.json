@@ -1,0 +1,42 @@
+{
+  "manifest_version": "1",
+  "id": "langsmith",
+  "name": "LangSmith",
+  "description": "Traces, runs and datasets in LangSmith.",
+  "long_description": "LangSmith's hosted server. It reads traces and runs, searches them, and reads datasets and evaluation results — the record of what your LLM application actually did.",
+  "version": "0.1.0",
+  "icon": "icon.svg",
+  "category": "developer",
+  "keywords": ["langsmith", "langchain", "traces", "runs", "evaluation", "datasets"],
+  "publisher": {
+    "name": "LangChain",
+    "url": "https://www.langchain.com"
+  },
+  "first_party": false,
+  "homepage": "https://docs.smith.langchain.com/administration/how_to_guides/organization_management/mcp",
+  "runtime": {
+    "kind": "mcp-remote",
+    "url": "https://api.smith.langchain.com/mcp"
+  },
+  "auth": {
+    "type": "oauth2",
+    "registration": ["dcr"],
+    "instructions": "Sign in to LangSmith in your browser; the server registers Gantry on the spot."
+  },
+  "risk": {
+    "network": "internet",
+    "local_system": "none",
+    "default_tool_tier": "read",
+    "notes": "Reads your LangSmith traces and datasets, which contain whatever your application sent to a model."
+  },
+  "tools_generated": true,
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "gantry": ">=0.1.0"
+  },
+  "catalog": {
+    "featured": false,
+    "sort_weight": 13,
+    "suggest_for": ["langsmith", "trace", "why did the model", "evaluation", "dataset"]
+  }
+}

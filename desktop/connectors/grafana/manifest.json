@@ -1,0 +1,43 @@
+{
+  "manifest_version": "1",
+  "id": "grafana",
+  "name": "Grafana Cloud",
+  "description": "Dashboards, data sources and queries in your Grafana Cloud stack.",
+  "long_description": "Grafana's hosted server for Grafana Cloud. It lists dashboards and data sources, runs queries against them, and reads alert rules.\n\nThe server's scopes separate reading, querying and writing, and this entry asks for the first two.",
+  "version": "0.1.0",
+  "icon": "icon.svg",
+  "category": "developer",
+  "keywords": ["grafana", "dashboards", "prometheus", "loki", "alerts", "observability"],
+  "publisher": {
+    "name": "Grafana Labs",
+    "url": "https://grafana.com"
+  },
+  "first_party": false,
+  "homepage": "https://grafana.com/docs/grafana-cloud/machine-learning/mcp/",
+  "runtime": {
+    "kind": "mcp-remote",
+    "url": "https://mcp.grafana.com/mcp"
+  },
+  "auth": {
+    "type": "oauth2",
+    "registration": ["cimd", "dcr"],
+    "scopes": ["grafana:read", "grafana:query"],
+    "instructions": "Sign in to Grafana Cloud in your browser. This entry asks to read and query, not to write."
+  },
+  "risk": {
+    "network": "internet",
+    "local_system": "none",
+    "default_tool_tier": "read",
+    "notes": "Reads dashboards and runs queries against your Grafana Cloud stack."
+  },
+  "tools_generated": true,
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "gantry": ">=0.1.0"
+  },
+  "catalog": {
+    "featured": false,
+    "sort_weight": 15,
+    "suggest_for": ["grafana", "dashboard", "prometheus query", "loki logs", "alert rule"]
+  }
+}

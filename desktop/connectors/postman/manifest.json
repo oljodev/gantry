@@ -1,0 +1,42 @@
+{
+  "manifest_version": "1",
+  "id": "postman",
+  "name": "Postman",
+  "description": "Collections, environments and APIs in your Postman workspaces.",
+  "long_description": "Postman's hosted server. It reads collections, requests and environments, and runs a request from a collection — which is how a chat exercises an API you already documented there.",
+  "version": "0.1.0",
+  "icon": "icon.svg",
+  "category": "developer",
+  "keywords": ["postman", "api", "collections", "requests", "environments"],
+  "publisher": {
+    "name": "Postman",
+    "url": "https://www.postman.com"
+  },
+  "first_party": false,
+  "homepage": "https://learning.postman.com/docs/developer/postman-api-mcp/",
+  "runtime": {
+    "kind": "mcp-remote",
+    "url": "https://mcp.postman.com/mcp"
+  },
+  "auth": {
+    "type": "oauth2",
+    "registration": ["dcr"],
+    "instructions": "Sign in to Postman in your browser; the server registers Gantry on the spot."
+  },
+  "risk": {
+    "network": "internet",
+    "local_system": "none",
+    "default_tool_tier": "write_external",
+    "notes": "Reaches your Postman workspaces. Running a saved request sends it to whatever API it points at, with whatever environment it carries."
+  },
+  "tools_generated": true,
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "gantry": ">=0.1.0"
+  },
+  "catalog": {
+    "featured": false,
+    "sort_weight": 14,
+    "suggest_for": ["postman", "collection", "api request", "environment"]
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "status": 401,
+  "auth": {
+    "issuer": "https://lovable.dev/oauth",
+    "dynamic_registration": true,
+    "client_id_metadata_document": true,
+    "scopes": [
+      "offline",
+      "openid",
+      "email",
+      "profile",
+      "projects:create",
+      "projects:read",
+      "projects:write",
+      "workspaces:create",
+      "workspaces:read",
+      "workspaces:write"
+    ]
+  },
+  "tools": []
+}

@@ -1,0 +1,18 @@
+{
+  "status": 401,
+  "auth": {
+    "issuer": "https://asset-management.mcp.cloudinary.com",
+    "dynamic_registration": true,
+    "client_id_metadata_document": false,
+    "scopes": [
+      "openid",
+      "profile",
+      "email",
+      "offline_access",
+      "asset_management",
+      "upload",
+      "media_generation"
+    ]
+  },
+  "tools": []
+}

@@ -1,0 +1,43 @@
+{
+  "manifest_version": "1",
+  "id": "resend",
+  "name": "Resend",
+  "description": "Send transactional email through Resend, and check what was delivered.",
+  "long_description": "Resend's hosted server. It sends email from a domain you own, lists what went out, and reads the delivery status of one message.\n\nSending mail is the one thing in this catalogue that cannot be undone by anybody, so every send is confirmed, in every mode.",
+  "version": "0.1.0",
+  "icon": "icon.svg",
+  "category": "communication",
+  "keywords": ["resend", "email", "transactional", "smtp", "delivery"],
+  "publisher": {
+    "name": "Resend",
+    "url": "https://resend.com"
+  },
+  "first_party": false,
+  "homepage": "https://resend.com/docs/mcp-server",
+  "runtime": {
+    "kind": "mcp-remote",
+    "url": "https://mcp.resend.com/mcp"
+  },
+  "auth": {
+    "type": "oauth2",
+    "registration": ["cimd", "dcr"],
+    "scopes": ["emails:send"],
+    "instructions": "Sign in to Resend in your browser. The narrower `emails:send` scope is what this asks for."
+  },
+  "risk": {
+    "network": "internet",
+    "local_system": "none",
+    "default_tool_tier": "write_external",
+    "notes": "Sends email from your domain. A sent message cannot be recalled, so sends are confirmed every time."
+  },
+  "tools_generated": true,
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "gantry": ">=0.1.0"
+  },
+  "catalog": {
+    "featured": false,
+    "sort_weight": 8,
+    "suggest_for": ["resend", "send an email", "email delivery", "did it bounce"]
+  }
+}

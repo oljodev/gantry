@@ -1,0 +1,15 @@
+{
+  "status": 401,
+  "auth": {
+    "issuer": "https://authorization.axiom.co",
+    "dynamic_registration": true,
+    "client_id_metadata_document": true,
+    "scopes": [
+      "email",
+      "offline_access",
+      "openid",
+      "profile"
+    ]
+  },
+  "tools": []
+}

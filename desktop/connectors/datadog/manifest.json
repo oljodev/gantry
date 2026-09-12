@@ -1,0 +1,43 @@
+{
+  "manifest_version": "1",
+  "id": "datadog",
+  "name": "Datadog",
+  "description": "Metrics, logs, traces and monitors in your Datadog organisation.",
+  "long_description": "Datadog's hosted server. It queries metrics, searches logs and traces, reads monitors and dashboards, and looks at incidents.\n\nYou sign in through Datadog in your browser. Reading is what this is for; a monitor change is production behaviour and is confirmed.",
+  "version": "0.1.0",
+  "icon": "icon.svg",
+  "category": "developer",
+  "keywords": ["datadog", "metrics", "logs", "traces", "monitors", "observability", "apm"],
+  "publisher": {
+    "name": "Datadog",
+    "url": "https://www.datadoghq.com"
+  },
+  "first_party": false,
+  "homepage": "https://docs.datadoghq.com/bits_ai/mcp_server/",
+  "runtime": {
+    "kind": "mcp-remote",
+    "url": "https://mcp.datadoghq.com/api/unstable/mcp-server/mcp"
+  },
+  "auth": {
+    "type": "oauth2",
+    "registration": ["dcr"],
+    "scopes": ["mcp_all"],
+    "instructions": "Sign in to Datadog in your browser; the server registers Gantry on the spot."
+  },
+  "risk": {
+    "network": "internet",
+    "local_system": "none",
+    "default_tool_tier": "write_external",
+    "notes": "Reads your telemetry. Changing a monitor changes who gets paged."
+  },
+  "tools_generated": true,
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "gantry": ">=0.1.0"
+  },
+  "catalog": {
+    "featured": false,
+    "sort_weight": 16,
+    "suggest_for": ["datadog", "metrics", "logs", "why is it slow", "monitor", "apm trace"]
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "manifest_version": "1",
+  "id": "axiom",
+  "name": "Axiom",
+  "description": "Query your Axiom event data with APL, and read its datasets.",
+  "long_description": "Axiom's hosted server. It lists datasets and runs APL queries against them, which is the fastest way to get from \"something is wrong\" to the events that say what.",
+  "version": "0.1.0",
+  "icon": "icon.svg",
+  "category": "data",
+  "keywords": ["axiom", "logs", "events", "apl", "query", "observability"],
+  "publisher": {
+    "name": "Axiom",
+    "url": "https://axiom.co"
+  },
+  "first_party": false,
+  "homepage": "https://axiom.co/docs/query-data/mcp",
+  "runtime": {
+    "kind": "mcp-remote",
+    "url": "https://mcp.axiom.co/mcp"
+  },
+  "auth": {
+    "type": "oauth2",
+    "registration": ["cimd", "dcr"],
+    "instructions": "Sign in to Axiom in your browser; the server registers Gantry on the spot."
+  },
+  "risk": {
+    "network": "internet",
+    "local_system": "none",
+    "default_tool_tier": "read",
+    "notes": "Reads the datasets in the Axiom organisation you sign in to."
+  },
+  "tools_generated": true,
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "gantry": ">=0.1.0"
+  },
+  "catalog": {
+    "featured": false,
+    "sort_weight": 0.3,
+    "suggest_for": ["axiom", "apl query", "logs", "events", "what happened at"]
+  }
+}

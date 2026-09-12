@@ -1,0 +1,42 @@
+{
+  "manifest_version": "1",
+  "id": "cal-com",
+  "name": "Cal.com",
+  "description": "Bookings, event types and availability on Cal.com.",
+  "long_description": "Cal.com's hosted server. It reads your bookings and event types, checks availability, and creates or cancels a booking when you ask.\n\nYou sign in through Cal.com in your browser. A booking involves somebody else's calendar, so it asks first.",
+  "version": "0.1.0",
+  "icon": "icon.svg",
+  "category": "productivity",
+  "keywords": ["cal.com", "calendar", "bookings", "scheduling", "availability"],
+  "publisher": {
+    "name": "Cal.com",
+    "url": "https://cal.com"
+  },
+  "first_party": false,
+  "homepage": "https://cal.com/docs/api-reference/v2/mcp",
+  "runtime": {
+    "kind": "mcp-remote",
+    "url": "https://mcp.cal.com/mcp"
+  },
+  "auth": {
+    "type": "oauth2",
+    "registration": ["dcr"],
+    "instructions": "Sign in to Cal.com in your browser; the server registers Gantry on the spot."
+  },
+  "risk": {
+    "network": "internet",
+    "local_system": "none",
+    "default_tool_tier": "write_external",
+    "notes": "Reaches your Cal.com bookings. Creating or cancelling one sends mail to whoever else is on it."
+  },
+  "tools_generated": true,
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "gantry": ">=0.1.0"
+  },
+  "catalog": {
+    "featured": false,
+    "sort_weight": 3,
+    "suggest_for": ["cal.com", "my bookings", "free slots", "schedule a call"]
+  }
+}

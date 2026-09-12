@@ -1,0 +1,43 @@
+{
+  "manifest_version": "1",
+  "id": "lovable",
+  "name": "Lovable",
+  "description": "Your Lovable projects and workspaces, from the chat.",
+  "long_description": "Lovable's hosted server. It lists your projects and workspaces and reads a project's state, so a chat here can pick up where the builder left off.",
+  "version": "0.1.0",
+  "icon": "icon.svg",
+  "category": "developer",
+  "keywords": ["lovable", "projects", "workspaces", "app builder"],
+  "publisher": {
+    "name": "Lovable",
+    "url": "https://lovable.dev"
+  },
+  "first_party": false,
+  "homepage": "https://docs.lovable.dev/features/mcp",
+  "runtime": {
+    "kind": "mcp-remote",
+    "url": "https://mcp.lovable.dev/mcp"
+  },
+  "auth": {
+    "type": "oauth2",
+    "registration": ["cimd", "dcr"],
+    "scopes": ["projects:read", "workspaces:read", "offline"],
+    "instructions": "Sign in to Lovable in your browser; this entry asks for the read scopes."
+  },
+  "risk": {
+    "network": "internet",
+    "local_system": "none",
+    "default_tool_tier": "write_external",
+    "notes": "Reaches your Lovable projects. This entry asks only for the read scopes."
+  },
+  "tools_generated": true,
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "gantry": ">=0.1.0"
+  },
+  "catalog": {
+    "featured": false,
+    "sort_weight": 0.9,
+    "suggest_for": ["lovable", "my project", "workspace"]
+  }
+}

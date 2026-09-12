@@ -1,0 +1,15 @@
+{
+  "status": 401,
+  "auth": {
+    "issuer": "https://mcp-auth.granola.ai",
+    "dynamic_registration": true,
+    "client_id_metadata_document": true,
+    "scopes": [
+      "email",
+      "offline_access",
+      "openid",
+      "profile"
+    ]
+  },
+  "tools": []
+}

@@ -1,0 +1,43 @@
+{
+  "manifest_version": "1",
+  "id": "perplexity",
+  "name": "Perplexity",
+  "description": "Ask Perplexity a question and get an answer with its sources.",
+  "long_description": "Perplexity's hosted server. It answers a question with citations and runs the deeper research modes, which is a different thing from a search index: you get an answer, and the links it came from.",
+  "version": "0.1.0",
+  "icon": "icon.svg",
+  "category": "web",
+  "keywords": ["perplexity", "search", "research", "answers", "citations"],
+  "publisher": {
+    "name": "Perplexity",
+    "url": "https://www.perplexity.ai"
+  },
+  "first_party": false,
+  "homepage": "https://docs.perplexity.ai/guides/mcp-server",
+  "runtime": {
+    "kind": "mcp-remote",
+    "url": "https://api.perplexity.ai/mcp"
+  },
+  "auth": {
+    "type": "oauth2",
+    "registration": ["cimd", "dcr"],
+    "scopes": ["perplexity_api"],
+    "instructions": "Sign in to Perplexity in your browser; the server registers Gantry on the spot."
+  },
+  "risk": {
+    "network": "internet",
+    "local_system": "none",
+    "default_tool_tier": "read",
+    "notes": "Sends your question to Perplexity and reads the public web through it. Usage is billed to your account."
+  },
+  "tools_generated": true,
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "gantry": ">=0.1.0"
+  },
+  "catalog": {
+    "featured": false,
+    "sort_weight": 3,
+    "suggest_for": ["perplexity", "research this", "who what when", "with sources"]
+  }
+}

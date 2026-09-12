@@ -1,0 +1,13 @@
+{
+  "status": 401,
+  "auth": {
+    "issuer": "https://api.resend.com",
+    "dynamic_registration": true,
+    "client_id_metadata_document": true,
+    "scopes": [
+      "full_access",
+      "emails:send"
+    ]
+  },
+  "tools": []
+}

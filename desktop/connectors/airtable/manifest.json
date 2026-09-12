@@ -1,0 +1,43 @@
+{
+  "manifest_version": "1",
+  "id": "airtable",
+  "name": "Airtable",
+  "description": "Bases, tables and records in the Airtable workspaces you grant.",
+  "long_description": "Airtable's hosted server. It lists bases and tables, reads the schema, searches records, and creates or updates rows.\n\nThe scopes separate reading from writing, base by base, and the consent screen is where you choose.",
+  "version": "0.1.0",
+  "icon": "icon.svg",
+  "category": "data",
+  "keywords": ["airtable", "bases", "tables", "records", "spreadsheet", "database"],
+  "publisher": {
+    "name": "Airtable",
+    "url": "https://airtable.com"
+  },
+  "first_party": false,
+  "homepage": "https://support.airtable.com/docs/airtable-mcp-server",
+  "runtime": {
+    "kind": "mcp-remote",
+    "url": "https://mcp.airtable.com/mcp"
+  },
+  "auth": {
+    "type": "oauth2",
+    "registration": ["cimd", "dcr"],
+    "scopes": ["schema.bases:read", "data.records:read", "workspacesAndBases:read"],
+    "instructions": "Sign in to Airtable in your browser and pick the bases this chat may reach. This entry asks for the read scopes."
+  },
+  "risk": {
+    "network": "internet",
+    "local_system": "none",
+    "default_tool_tier": "write_external",
+    "notes": "Reaches the bases you grant at sign-in."
+  },
+  "tools_generated": true,
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "gantry": ">=0.1.0"
+  },
+  "catalog": {
+    "featured": false,
+    "sort_weight": 0.4,
+    "suggest_for": ["airtable", "my base", "records", "table"]
+  }
+}

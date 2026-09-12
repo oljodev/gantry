@@ -1,0 +1,12 @@
+{
+  "status": 401,
+  "auth": {
+    "issuer": "https://mcp.datadoghq.com/v1/mcp",
+    "dynamic_registration": true,
+    "client_id_metadata_document": false,
+    "scopes": [
+      "mcp_all"
+    ]
+  },
+  "tools": []
+}
