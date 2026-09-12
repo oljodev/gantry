@@ -38,6 +38,7 @@ So the testing rule is **per auth shape, not per connector**:
 | Remote, API key in a header | first of B5 | one sign-in from Olav |
 | Local process on Node (`npx`) | first of B6 | one install from Olav |
 | Local process on Python (`uvx`) | first of B7 | one install from Olav |
+| Remote, OAuth, no protected-resource document | `atlassian` | mechanically proven; the resource is assumed to be its own issuer |
 | Remote, host you supply (self-hosted or tenant) | first of B10 | one sign-in from Olav |
 
 Four manual tests remain for the whole catalogue, each on a service Olav already uses. Every
@@ -59,6 +60,10 @@ exercised is not.
 
 ## 2. What actually exists, probed 2026-09-08
 
+Rows marked **shipped** were re-probed when their batch landed, and several of them corrected
+this table: an endpoint that redirects, a status that is not what a `401` looked like, a vendor
+whose Google-shaped URL only answers for one of its services. The correction is in the row.
+
 Verdicts: **official** = published by the vendor, on their domain or in their organization.
 **vendor-hosted** means Gantry needs no runtime; **local** means a child process on Node or
 Python (D3).
@@ -74,7 +79,7 @@ expects (03 §7).
 | Airtable | `https://mcp.airtable.com/mcp` | 401 | bearer / OAuth |
 | Apify | `https://mcp.apify.com` (root, not `/mcp`) | 401 | OAuth |
 | Asana | `https://mcp.asana.com/mcp` | 401 + PRM | OAuth |
-| Atlassian (Jira, Confluence) | `https://mcp.atlassian.com/v1/mcp` | 401 | OAuth |
+| Atlassian (Jira, Confluence) | `https://mcp.atlassian.com/v1/mcp` | 401, **no PRM** | OAuth (DCR), metadata on its own origin — **shipped** |
 | Axiom | `https://mcp.axiom.co/mcp` | 401 + PRM | OAuth |
 | Browserbase (Stagehand) | `https://mcp.browserbase.com/mcp` | 200 | key in header |
 | Cal.com | `https://mcp.cal.com/mcp` | 401 + PRM | OAuth |
@@ -88,13 +93,13 @@ expects (03 §7).
 | Firecrawl | `https://mcp.firecrawl.dev/mcp` | 200 | key in URL or header |
 | GitHub | `https://api.githubcopilot.com/mcp/` | 401 | OAuth (client id you supply) — **shipped** |
 | GitLab | `https://gitlab.com/api/v4/mcp` | 401 + PRM | OAuth |
-| Google Cloud & Workspace (BigQuery, Firestore, Cloud Run, Compute, Developer Knowledge, Drive, …) | `https://<service>.googleapis.com/mcp` | 200 | Google OAuth, client from your own project |
+| Google Cloud (BigQuery and some others; **not** Drive or Calendar, which answer 404) | `https://<service>.googleapis.com/mcp` | 200 | Google OAuth, client from your own project |
 | Grafana Cloud | `https://mcp.grafana.com/mcp` | 401 + PRM | OAuth |
 | Granola | `https://mcp.granola.ai/mcp` | 401 | OAuth |
 | Hugging Face | `https://huggingface.co/mcp` | 200 | optional token |
 | HubSpot | `https://mcp.hubspot.com/anthropic` | 401 + PRM | OAuth |
 | incident.io | `https://mcp.incident.io/mcp` | 401 + PRM | OAuth |
-| Intercom | `https://mcp.intercom.com/mcp` | 401 | OAuth |
+| Intercom | `https://mcp.intercom.com/mcp` | 401, **no PRM** | OAuth (DCR), metadata on its own origin — **shipped** |
 | Jotform | `https://mcp.jotform.com/mcp` | 401 | OAuth |
 | Kagi | `https://mcp.kagi.com/mcp` | 401 | bearer |
 | LangSmith | `https://api.smith.langchain.com/mcp` | 401 + PRM | OAuth |
@@ -108,20 +113,20 @@ expects (03 §7).
 | Notion | `https://mcp.notion.com/mcp` | 401 + PRM | OAuth |
 | PayPal | `https://mcp.paypal.com/mcp` | 401 + PRM | OAuth |
 | Perplexity | `https://api.perplexity.ai/mcp` | 401 + PRM | OAuth |
-| Plaid | `https://api.dashboard.plaid.com/mcp` | 401 | OAuth (see the transport note) |
+| Plaid | `https://api.dashboard.plaid.com/mcp/` (the trailing slash is not optional; without it, a 307) | 401 | OAuth |
 | PostHog | `https://mcp.posthog.com/mcp` | 401 + PRM | OAuth |
 | Postman | `https://mcp.postman.com/mcp` | 401 + PRM | OAuth |
-| Railway | `https://mcp.railway.com/mcp` | 401 + PRM | OAuth |
+| Railway | `https://mcp.railway.com/mcp` | **200**, tools listed without a credential | OAuth (DCR) — **shipped** |
 | Ramp | `https://mcp.ramp.com/mcp` | 401 + PRM | OAuth |
 | Replicate | `https://mcp.replicate.com/mcp` | 401 | OAuth |
 | Resend | `https://mcp.resend.com/mcp` | 401 + PRM | OAuth |
 | Sentry | `https://mcp.sentry.dev/mcp` | 401 + PRM | OAuth |
-| Slack | `https://mcp.slack.com/mcp` | 401 + PRM | OAuth, admin-approved (GA Feb 2026) |
+| Slack | `https://mcp.slack.com/mcp` | 401 + PRM | OAuth — but **no registration of any kind**, and `client_secret_post` only: see B3 |
 | Socket | `https://mcp.socket.dev/` | 200 | none for reads |
 | Square | `https://mcp.squareup.com/mcp` | 401 + PRM | OAuth |
 | Stripe | `https://mcp.stripe.com` | 401 + PRM | OAuth or key |
 | Supabase | `https://mcp.supabase.com/mcp` | 401 | OAuth |
-| Tally | `https://mcp.tally.so/mcp` | 401 + PRM (`api.tally.so`) | OAuth |
+| Tally | `https://api.tally.so/mcp` (`mcp.tally.so` is a 301 to it) | 401 + PRM | OAuth |
 | Tavily | `https://mcp.tavily.com/mcp` | 401 + PRM | OAuth or key in query |
 | Tinybird | `https://mcp.tinybird.co` | 200 | token in header |
 | Vercel | `https://mcp.vercel.com` | 401 | OAuth |
@@ -212,15 +217,15 @@ day and one sign-in from Olav.
 | **B0** | — | none | The probe harness, tier rules and the folder template (§5, §6) |
 | **B1** ✅ | Remote, no auth | Microsoft Learn, Hugging Face, Socket, Context7, DeepWiki | none — proven by `cloudflare-docs`. Shipped 2026-09-11; two of the five needed the legacy handshake, and Socket's `alerts`, `organizations` and `threat_feed` want an account, which its README says |
 | **B2** ✅ | Remote, OAuth (DCR) | Linear, Notion, Sentry, Netlify, Vercel | none — proven by `cloudflare-bindings`. Shipped 2026-09-11; all five answer `401` with a protected-resource document and offer dynamic registration, and Linear, Notion and Sentry offer a client-id metadata document as well, which `choose_client` prefers. Nobody has signed in to any of them, and each README says so |
-| **B3** | Remote, OAuth | Slack, Atlassian, Asana, Figma, Canva | Slack's admin-approval step; Atlassian and Asana are the first two `/mcp` paths taken from a vendor who also publishes `/sse`, so the first sign-in confirms the transport as well as the auth |
-| **B4** | Remote, OAuth | GitLab, Supabase, Neon, PostHog, Railway | none |
+| **B3** ✅ | Remote, OAuth | Atlassian, Asana, Figma, Canva, **Intercom** | Shipped 2026-09-12. **Slack came out of this batch and is not shippable today**: it offers neither dynamic registration nor a client-id metadata document and its token endpoint accepts `client_secret_post` only, so signing in needs a Slack app's id *and* secret, and Gantry has nowhere to put a secret (03 §7 knows three ways to get a client; a user-supplied secret is not one of them). Intercom took its place and proved something instead — it publishes no protected-resource document at all, which is the gap the discovery fallback now covers |
+| **B4** ✅ | Remote, OAuth | GitLab, Supabase, Neon, PostHog, Railway | Shipped 2026-09-12. Railway is the interesting one: it hands its **whole tool list to anyone** and refuses every call until you sign in, so it is the only OAuth connector in the catalogue whose tiers were reviewed against the server's own answer rather than the vendor's prose — fourteen overrides came out of it |
 | **B5** | Remote, key in a header or query | Stripe, Tavily, Firecrawl, Tinybird, Exa | **first key-in-header connector — one setup from Olav** |
 | **B6** | Local, Node | Playwright, Shopify Dev, Azure, Salesforce, BrowserStack | **the runtime check and command preview (03 §11) — one install from Olav** |
 | **B7** | Local, Python | ElevenLabs, Qdrant, Kagi, MiniMax, Ramp | **uv detection — one install from Olav** |
 | **B8** | Remote, OAuth client you supply | Google Drive, Calendar, Gmail, BigQuery, Cloud Run | Google's console steps; the GitHub path already proves the mechanism |
 | **B9** | Remote, OAuth, money | PayPal, Square, Xero, HubSpot, Ramp | tier review is the work, not the auth |
 | **B10** | Remote, host you supply | Metabase, Grafana, Databricks, n8n, Unleash | **`user_config` in a runtime URL — one setup from Olav** |
-| **B11+** | proven shapes only | The long tail: Granola, Cal.com, Resend, MailerLite, Tally, Jotform, Lovable, incident.io, Datadog, Postman, Axiom, LangSmith, Cloudinary, Browserbase, Clarity, Fabric, Perplexity, Apify, Make, Hostinger, 21st.dev, Twilio, Windsor, Cardboard, Replicate, Intercom, Plaid, Docker, JetBrains, 1Password, Rive, Lottie | none |
+| **B11+** | proven shapes only | The long tail: Granola, Cal.com, Resend, MailerLite, Tally, Jotform, Lovable, incident.io, Datadog, Postman, Axiom, LangSmith, Cloudinary, Browserbase, Clarity, Fabric, Perplexity, Apify, Make, Hostinger, 21st.dev, Twilio, Windsor, Cardboard, Replicate, Plaid, Docker, JetBrains, 1Password, Rive, Lottie | none |
 
 B0–B2 land with M9's remaining work; B3–B5 with M10; B6–B7 need the runtime check, so they wait
 for the rest of M9 (09, "the runtime check, elicitation, `user_config` forms"); B8–B11 are

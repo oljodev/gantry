@@ -1,0 +1,35 @@
+{
+  "status": 401,
+  "auth": {
+    "issuer": "https://api.supabase.com",
+    "dynamic_registration": true,
+    "client_id_metadata_document": false,
+    "scopes": [
+      "analytics:read",
+      "analytics:write",
+      "analytics_config:read",
+      "analytics_config:write",
+      "auth:read",
+      "auth:write",
+      "database:read",
+      "database:write",
+      "domains:read",
+      "domains:write",
+      "edge_functions:read",
+      "edge_functions:write",
+      "environment:read",
+      "environment:write",
+      "organizations:read",
+      "organizations:write",
+      "projects:read",
+      "projects:write",
+      "rest:read",
+      "rest:write",
+      "secrets:read",
+      "secrets:write",
+      "storage:read",
+      "storage:write"
+    ]
+  },
+  "tools": []
+}

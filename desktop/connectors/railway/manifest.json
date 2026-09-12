@@ -1,0 +1,95 @@
+{
+  "manifest_version": "1",
+  "id": "railway",
+  "name": "Railway",
+  "description": "Services, deployments, logs and variables on your Railway projects.",
+  "long_description": "Railway's own hosted server. It lists projects and services, reads deployment and build logs, manages environment variables, and redeploys.\n\nYou sign in through Railway in your browser. A deploy or a variable change affects something that is running, so it asks first.",
+  "version": "0.1.0",
+  "icon": "icon.svg",
+  "category": "developer",
+  "keywords": ["railway", "deploy", "hosting", "logs", "services", "environment variables"],
+  "publisher": {
+    "name": "Railway",
+    "url": "https://railway.com"
+  },
+  "first_party": false,
+  "homepage": "https://docs.railway.com/guides/mcp",
+  "runtime": {
+    "kind": "mcp-remote",
+    "url": "https://mcp.railway.com/mcp"
+  },
+  "auth": {
+    "type": "oauth2",
+    "registration": ["dcr"],
+    "scopes": ["openid", "profile", "email", "offline_access", "workspace:member"],
+    "instructions": "Sign in to Railway in your browser; the server registers Gantry on the spot."
+  },
+  "risk": {
+    "network": "internet",
+    "local_system": "none",
+    "default_tool_tier": "write_external",
+    "notes": "Reaches your Railway projects. A deploy, a variable change or a deletion affects something that is running, and is confirmed."
+  },
+  "tools_generated": true,
+  "tool_overrides": {
+    "delete-bucket": {
+      "risk": "destructive",
+      "always_confirm": true
+    },
+    "delete-feature-flag": {
+      "risk": "destructive",
+      "always_confirm": true
+    },
+    "delete-service": {
+      "risk": "destructive",
+      "always_confirm": true
+    },
+    "delete-tcp-proxy": {
+      "risk": "destructive",
+      "always_confirm": true
+    },
+    "delete-volume": {
+      "risk": "destructive",
+      "always_confirm": true
+    },
+    "accept-deploy": {
+      "always_confirm": true
+    },
+    "create-deployment": {
+      "always_confirm": true
+    },
+    "create-tcp-proxy": {
+      "always_confirm": true
+    },
+    "generate-domain": {
+      "always_confirm": true
+    },
+    "railway-agent": {
+      "always_confirm": true
+    },
+    "redeploy": {
+      "always_confirm": true
+    },
+    "restart-service": {
+      "always_confirm": true
+    },
+    "set-feature-flag": {
+      "always_confirm": true
+    },
+    "set-variables": {
+      "always_confirm": true
+    },
+    "list-variables": {
+      "always_confirm": true
+    }
+  },
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "gantry": ">=0.1.0"
+  },
+  "catalog": {
+    "featured": false,
+    "sort_weight": 11,
+    "suggest_for": ["railway", "deploy", "my service", "production logs"]
+  }
+}

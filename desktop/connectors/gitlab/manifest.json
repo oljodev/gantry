@@ -1,0 +1,43 @@
+{
+  "manifest_version": "1",
+  "id": "gitlab",
+  "name": "GitLab",
+  "description": "Projects, issues, merge requests and pipelines on GitLab.com.",
+  "long_description": "GitLab's own server, built into the API. It browses projects, reads issues and merge requests, checks pipelines, and opens merge requests when you ask.\n\nYou sign in through GitLab in your browser. Opening or merging a merge request is an external write and asks first outside Auto.",
+  "version": "0.1.0",
+  "icon": "icon.svg",
+  "category": "developer",
+  "keywords": ["gitlab", "merge request", "issues", "pipelines", "ci", "repository"],
+  "publisher": {
+    "name": "GitLab",
+    "url": "https://gitlab.com"
+  },
+  "first_party": false,
+  "homepage": "https://docs.gitlab.com/user/gitlab_duo/mcp/",
+  "runtime": {
+    "kind": "mcp-remote",
+    "url": "https://gitlab.com/api/v4/mcp"
+  },
+  "auth": {
+    "type": "oauth2",
+    "registration": ["dcr"],
+    "scopes": ["mcp"],
+    "instructions": "Sign in to GitLab in your browser; the server registers Gantry on the spot."
+  },
+  "risk": {
+    "network": "internet",
+    "local_system": "none",
+    "default_tool_tier": "write_external",
+    "notes": "Acts as you on GitLab. Merging and anything that deletes are asked about every time."
+  },
+  "tools_generated": true,
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "gantry": ">=0.1.0"
+  },
+  "catalog": {
+    "featured": false,
+    "sort_weight": 19,
+    "suggest_for": ["gitlab", "merge request", "pipeline", "this repo", "ci failed"]
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "manifest_version": "1",
+  "id": "figma",
+  "name": "Figma",
+  "description": "Read a Figma design: a frame's structure, its styles and the comments on it.",
+  "long_description": "Figma's own hosted server, for implementing a design without leaving the chat. It reads a file's structure, a frame's layout and styles, and the comments left on it.\n\nYou sign in through Figma in your browser. Reading a design is all most chats need; anything that writes back asks first.",
+  "version": "0.1.0",
+  "icon": "icon.svg",
+  "category": "productivity",
+  "keywords": ["figma", "design", "frames", "components", "styles", "comments"],
+  "publisher": {
+    "name": "Figma",
+    "url": "https://www.figma.com"
+  },
+  "first_party": false,
+  "homepage": "https://developers.figma.com/docs/figma-mcp-server/",
+  "runtime": {
+    "kind": "mcp-remote",
+    "url": "https://mcp.figma.com/mcp"
+  },
+  "auth": {
+    "type": "oauth2",
+    "registration": ["dcr"],
+    "scopes": ["mcp:connect"],
+    "instructions": "Sign in to Figma in your browser; the server registers Gantry on the spot."
+  },
+  "risk": {
+    "network": "internet",
+    "local_system": "none",
+    "default_tool_tier": "write_external",
+    "notes": "Reaches the Figma files your account can open."
+  },
+  "tools_generated": true,
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "gantry": ">=0.1.0"
+  },
+  "catalog": {
+    "featured": false,
+    "sort_weight": 6,
+    "suggest_for": ["figma", "design file", "this frame", "design tokens", "implement the design"]
+  }
+}

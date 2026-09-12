@@ -249,7 +249,10 @@ fn suggestions(fixture: &Fixture, manifest: &Manifest) -> Vec<String> {
         if manifest.tool_overrides.contains_key(&tool.name) {
             continue;
         }
-        let name = tool.name.to_ascii_lowercase();
+        // Railway's tools are `delete-service` and `create-deployment`: the same verbs the rules
+        // in 17 §6 name, spelled with hyphens. A rule that only reads underscores would have
+        // nothing to say about the fourteen destructive tools on that one server.
+        let name = tool.name.to_ascii_lowercase().replace('-', "_");
         // A name that reads as a read, and a name that reads as nothing in particular, both
         // keep `risk.default_tool_tier`; only the two that raise the bar are worth printing.
         let _ = READ;

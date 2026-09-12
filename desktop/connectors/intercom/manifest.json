@@ -1,0 +1,42 @@
+{
+  "manifest_version": "1",
+  "id": "intercom",
+  "name": "Intercom",
+  "description": "Search Intercom conversations and contacts, and read a thread in full.",
+  "long_description": "Intercom's own hosted server. It searches conversations and contacts, reads a thread with its notes, and — when you let it — replies.\n\nYou sign in through Intercom in your browser. A reply is a message a customer reads, so it is confirmed every time, whatever the chat's mode.",
+  "version": "0.1.0",
+  "icon": "icon.svg",
+  "category": "communication",
+  "keywords": ["intercom", "support", "conversations", "customers", "inbox", "tickets"],
+  "publisher": {
+    "name": "Intercom",
+    "url": "https://www.intercom.com"
+  },
+  "first_party": false,
+  "homepage": "https://developers.intercom.com/docs/guides/mcp",
+  "runtime": {
+    "kind": "mcp-remote",
+    "url": "https://mcp.intercom.com/mcp"
+  },
+  "auth": {
+    "type": "oauth2",
+    "registration": ["dcr"],
+    "instructions": "Sign in to Intercom in your browser; the server registers Gantry on the spot."
+  },
+  "risk": {
+    "network": "internet",
+    "local_system": "none",
+    "default_tool_tier": "write_external",
+    "notes": "Reaches your Intercom inbox and contacts. A reply is read by a customer, so it is always confirmed."
+  },
+  "tools_generated": true,
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "gantry": ">=0.1.0"
+  },
+  "catalog": {
+    "featured": false,
+    "sort_weight": 9,
+    "suggest_for": ["intercom", "support inbox", "customer conversation", "this ticket"]
+  }
+}

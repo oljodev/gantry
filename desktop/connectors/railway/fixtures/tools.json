@@ -1,0 +1,1545 @@
+{
+  "protocol_version": "2026-07-28",
+  "status": 200,
+  "auth": {
+    "issuer": "https://backboard.railway.com",
+    "dynamic_registration": true,
+    "client_id_metadata_document": false,
+    "scopes": [
+      "openid",
+      "profile",
+      "email",
+      "offline_access",
+      "workspace:member"
+    ]
+  },
+  "tools": [
+    {
+      "name": "accept-deploy",
+      "description": "DESTRUCTIVE: Commits all staged changes in a Railway environment and triggers a deploy. Only use this when the user has explicitly confirmed they want to deploy.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "commitMessage": {
+            "description": "Optional commit message for the deploy",
+            "type": "string"
+          },
+          "environmentId": {
+            "description": "The environment ID to commit staged changes for",
+            "type": "string"
+          }
+        },
+        "required": [
+          "environmentId"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "connect-service-source",
+      "description": "Attach a source to an existing service: a GitHub repository (deploys on push, builds immediately) or a Docker image. This is how a service that has never deployed gets its first deployment, and how an existing service's source is switched. Provide exactly one of repo or image. By default it applies to the service in all environments; pass staged: true with an environmentId to stage the source in that one environment's pending changes instead, in which case nothing builds until the staged changes are committed with accept-deploy.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "branch": {
+            "description": "Branch to deploy from. Only valid with repo; defaults to the repository's default branch.",
+            "type": "string"
+          },
+          "environmentId": {
+            "description": "Environment to scope a staged source change to. Only valid with staged: true, and required by it — a live connect always applies to every environment.",
+            "type": "string"
+          },
+          "image": {
+            "description": "Docker image to deploy, e.g. ghcr.io/org/app:latest",
+            "type": "string"
+          },
+          "projectId": {
+            "description": "The project ID",
+            "type": "string"
+          },
+          "repo": {
+            "description": "GitHub repository as owner/repo, e.g. railwayapp/starters. The user's GitHub account must have access to it.",
+            "type": "string"
+          },
+          "serviceId": {
+            "description": "The service ID to attach the source to",
+            "type": "string"
+          },
+          "staged": {
+            "default": false,
+            "description": "Stage the change in the environment's pending changes instead of applying it live. It takes effect only when the staged changes are committed with accept-deploy (or the user applies them in the dashboard).",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "projectId",
+          "serviceId"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "create-bucket",
+      "description": "Create an S3-compatible object storage bucket in a project and provision it in an environment. Default region is sjc. Pass staged: true to stage the bucket in the environment's pending changes instead of provisioning it live — it then only becomes real when the staged changes are committed with accept-deploy.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "environmentId": {
+            "description": "Environment to provision the bucket in. Defaults to the production environment.",
+            "type": "string"
+          },
+          "name": {
+            "description": "Name for the bucket. If omitted, a name is generated.",
+            "type": "string"
+          },
+          "projectId": {
+            "description": "The project ID",
+            "type": "string"
+          },
+          "region": {
+            "description": "Region to provision the bucket in (default: sjc)",
+            "enum": [
+              "sjc",
+              "iad",
+              "ams",
+              "sin"
+            ],
+            "type": "string"
+          },
+          "staged": {
+            "default": false,
+            "description": "Stage the bucket in the environment's pending changes instead of provisioning it live. It becomes real only when the staged changes are committed with accept-deploy (or the user applies them in the dashboard).",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "projectId"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "create-deployment",
+      "description": "Create a new service from a GitHub repository and trigger its first deployment. The repo must be one the authenticated user has connected via GitHub. Returns the new service; use get-status or list-deployments to follow the deploy.\n\nBefore calling this tool you MUST have a GitHub repo to deploy. If the user has not provided one, do not guess — first ask them which GitHub repo to deploy (in 'owner/name' form). If they don't have a repo yet, offer to help create one: if you have tools available to create a GitHub repository (e.g. a GitHub MCP server or `gh` CLI), offer to scaffold and push one for them; otherwise point them to create a repo on GitHub and share its 'owner/name'. Only call this tool once a concrete repo has been confirmed.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "branch": {
+            "description": "The branch to deploy. Defaults to 'main'. A branch is required to trigger the first deploy.",
+            "type": "string"
+          },
+          "environmentId": {
+            "description": "Environment ID to deploy into. If omitted, the service is created in all non-fork environments.",
+            "type": "string"
+          },
+          "name": {
+            "description": "Name for the new service. If omitted, a name is derived from the repo.",
+            "type": "string"
+          },
+          "projectId": {
+            "description": "The project ID to deploy into",
+            "type": "string"
+          },
+          "repo": {
+            "description": "The full name of the GitHub repo to deploy. e.g. 'railwayapp/starters'",
+            "type": "string"
+          }
+        },
+        "required": [
+          "projectId",
+          "repo"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "create-project",
+      "description": "Create a new Railway project",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "description": {
+            "description": "Optional project description",
+            "type": "string"
+          },
+          "isPublic": {
+            "description": "Whether the project should be public (default: false)",
+            "type": "boolean"
+          },
+          "name": {
+            "description": "Name for the new project",
+            "type": "string"
+          },
+          "workspaceId": {
+            "description": "Workspace ID to create the project in. If omitted, uses the first available workspace.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "create-service",
+      "description": "Create a new service in a project from a Docker image, or an empty service to configure later (e.g. before setting variables and attaching a source). Pass staged: true to stage the service in one environment instead of applying it live — it then only becomes real when the staged changes are committed with accept-deploy. To create a service from a GitHub repository, use create-deployment instead.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "environmentId": {
+            "description": "Environment ID to create the service in. If omitted, the service is created in all non-fork environments. Required when staged is true.",
+            "type": "string"
+          },
+          "image": {
+            "description": "Docker image to deploy, e.g. 'redis' or 'ghcr.io/org/app:latest'. Omit to create an empty service.",
+            "type": "string"
+          },
+          "name": {
+            "description": "Name for the new service. If omitted, a name is derived from the image or generated.",
+            "type": "string"
+          },
+          "projectId": {
+            "description": "The project ID to create the service in",
+            "type": "string"
+          },
+          "staged": {
+            "default": false,
+            "description": "Stage the service in the environment's pending changes instead of applying it live. The service shows up on the canvas immediately but gets no instance until accept-deploy commits the staged changes (or the user applies them in the dashboard). Requires environmentId.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "projectId"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "create-tcp-proxy",
+      "description": "Expose a service on the public internet over a raw TCP port (e.g. make a database reachable externally). Creates a TCP proxy forwarding a public endpoint to the given application port, applied through the environment config so the service redeploys with it active. Pass staged: true to stage the proxy in the environment's pending changes instead — it is only provisioned, and only gets a public endpoint, once the staged changes are committed with accept-deploy. A service can have at most one TCP proxy.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "applicationPort": {
+            "description": "The port the service listens on, e.g. 5432 for Postgres",
+            "maximum": 65535,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "environmentId": {
+            "description": "Environment ID. Defaults to the production environment.",
+            "type": "string"
+          },
+          "projectId": {
+            "description": "The project ID",
+            "type": "string"
+          },
+          "serviceId": {
+            "description": "The service ID",
+            "type": "string"
+          },
+          "staged": {
+            "default": false,
+            "description": "Stage the change in the environment's pending changes instead of applying it live. It takes effect only when the staged changes are committed with accept-deploy (or the user applies them in the dashboard).",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "projectId",
+          "serviceId",
+          "applicationPort"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "create-volume",
+      "description": "Create a persistent volume in a project and optionally attach it to a service at a mount path. The attach and redeploy are committed together so the service comes up with the mount applied. Pass staged: true to stage the volume in one environment instead of provisioning it live.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "environmentId": {
+            "description": "Environment to provision the volume in. If omitted, the volume is provisioned in all environments. Required when staged is true.",
+            "type": "string"
+          },
+          "mountPath": {
+            "description": "Path in the container to mount the volume at, e.g. /data",
+            "type": "string"
+          },
+          "name": {
+            "description": "Name for the volume. If omitted, a name is derived from the service or generated.",
+            "type": "string"
+          },
+          "projectId": {
+            "description": "The project ID",
+            "type": "string"
+          },
+          "serviceId": {
+            "description": "Service to attach the volume to. Omit to create an unattached volume.",
+            "type": "string"
+          },
+          "staged": {
+            "default": false,
+            "description": "Stage the volume in the environment's pending changes instead of provisioning it live. It becomes real only when the staged changes are committed with accept-deploy (or the user applies them in the dashboard). Requires environmentId.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "projectId",
+          "mountPath"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "delete-bucket",
+      "description": "Permanently delete an object storage bucket and its contents. By default it is removed from every environment it is provisioned in; pass an environmentId to remove it from that one environment only. Pass staged: true to stage the removal in one environment instead of applying it live. Deleting from every environment is irreversible.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "bucketId": {
+            "description": "The bucket ID to delete",
+            "type": "string"
+          },
+          "environmentId": {
+            "description": "Environment to remove the bucket from. If omitted, it is removed from every environment it is provisioned in. Required when staged is true.",
+            "type": "string"
+          },
+          "projectId": {
+            "description": "The project ID the bucket belongs to",
+            "type": "string"
+          },
+          "staged": {
+            "default": false,
+            "description": "Stage the change in the environment's pending changes instead of applying it live. It takes effect only when the staged changes are committed with accept-deploy (or the user applies them in the dashboard).",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "projectId",
+          "bucketId"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "delete-feature-flag",
+      "description": "Delete a project-scoped feature flag. Workspace-scoped flags cannot be deleted from project context.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "name": {
+            "description": "Feature flag name to delete",
+            "type": "string"
+          },
+          "projectId": {
+            "description": "The project ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "projectId",
+          "name"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "delete-service",
+      "description": "Permanently delete a service: its deployments stop and are removed, along with its domains, variables and deployment triggers. Any volume attached to it is detached and kept — delete-volume removes a volume and its data. By default the service is deleted in every environment that is not a fork; pass an environmentId to delete it in that one environment only. Pass staged: true to stage the removal in one environment instead of applying it live. A service whose creation is itself still staged is taken back out of the pending changes instead. This cannot be undone.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "environmentId": {
+            "description": "Environment to delete the service in. If omitted, it is deleted in every environment that is not a fork. Required when staged is true.",
+            "type": "string"
+          },
+          "projectId": {
+            "description": "The project ID the service belongs to",
+            "type": "string"
+          },
+          "serviceId": {
+            "description": "The service ID to delete",
+            "type": "string"
+          },
+          "staged": {
+            "default": false,
+            "description": "Stage the change in the environment's pending changes instead of applying it live. It takes effect only when the staged changes are committed with accept-deploy (or the user applies them in the dashboard).",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "projectId",
+          "serviceId"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "delete-tcp-proxy",
+      "description": "Remove a service's TCP proxy, taking its public endpoint offline. Anything connecting through that endpoint (e.g. external database clients) loses access. Pass staged: true to stage the removal in the environment's pending changes instead — that is also how a proxy that is itself only staged gets dropped again.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "applicationPort": {
+            "description": "The application port of the proxy to remove",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "environmentId": {
+            "description": "Environment ID. Defaults to the production environment.",
+            "type": "string"
+          },
+          "projectId": {
+            "description": "The project ID",
+            "type": "string"
+          },
+          "serviceId": {
+            "description": "The service ID",
+            "type": "string"
+          },
+          "staged": {
+            "default": false,
+            "description": "Stage the change in the environment's pending changes instead of applying it live. It takes effect only when the staged changes are committed with accept-deploy (or the user applies them in the dashboard).",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "projectId",
+          "serviceId",
+          "applicationPort"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "delete-volume",
+      "description": "Permanently delete a volume and its data. The volume is unmounted from any service it is attached to (redeploying that service). By default it is removed from every environment; pass an environmentId to remove it from that one environment only. Pass staged: true to stage the removal in one environment instead of applying it live. Deleting from every environment is irreversible.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "environmentId": {
+            "description": "Environment to remove the volume from. If omitted, it is removed from every environment. Required when staged is true.",
+            "type": "string"
+          },
+          "projectId": {
+            "description": "The project ID the volume belongs to",
+            "type": "string"
+          },
+          "staged": {
+            "default": false,
+            "description": "Stage the change in the environment's pending changes instead of applying it live. It takes effect only when the staged changes are committed with accept-deploy (or the user applies them in the dashboard).",
+            "type": "boolean"
+          },
+          "volumeId": {
+            "description": "The volume ID to delete",
+            "type": "string"
+          }
+        },
+        "required": [
+          "projectId",
+          "volumeId"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "describe-environment",
+      "description": "Inventory of everything in a Railway environment — services, volumes, buckets, shared variable names — with staged changes applied. Each resource carries a `state`: live, staged-create (exists only in the pending patch), staged-delete, or live-with-staged-changes. Includes each service's source, regions, replicas, cron, volume mounts and latest deployment, and a `staged` summary of the pending patch. Pass `region` to keep only resources in that region. For per-field staged diffs use get-staged-changes; for one service's full config use describe-service; for runtime health use environment-status. If environmentId is omitted, the production environment is used.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "environmentId": {
+            "description": "Environment to describe. Defaults to `production` if present, otherwise the project's oldest environment.",
+            "type": "string"
+          },
+          "projectId": {
+            "description": "The project ID",
+            "type": "string"
+          },
+          "region": {
+            "description": "Only return services deploying to, and volumes/buckets provisioned in, this region (e.g. us-west2, sjc).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "projectId"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "describe-service",
+      "description": "Everything about one service in an environment: its config with staged changes applied (source, build, deploy, networking, volume mounts), the per-field staged changes pending on it, mounted volumes, live domains and TCP proxies, and the latest deployment. `state` says whether the service is live, staged-create, staged-delete, or live-with-staged-changes. Variable names are listed but values are not — use list-variables for values. If environmentId is omitted, the production environment is used.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "environmentId": {
+            "description": "Environment ID. Defaults to `production` if present, otherwise the project's oldest environment.",
+            "type": "string"
+          },
+          "projectId": {
+            "description": "The project ID",
+            "type": "string"
+          },
+          "serviceId": {
+            "description": "The service ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "projectId",
+          "serviceId"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "domain-status",
+      "description": "Get detailed status for one domain on a service, by hostname, URL, or domain ID: required DNS records and whether they currently match, ownership verification, certificate status, and any certificate error. Use list-domains first if you do not know which domains exist. If environmentId is omitted, the production environment is used.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "domain": {
+            "description": "Hostname, full URL, or domain ID. For example api.example.com, https://api.example.com, or the id from list-domains.",
+            "type": "string"
+          },
+          "environmentId": {
+            "description": "Environment ID. Defaults to `production` if present, otherwise the project's oldest environment.",
+            "type": "string"
+          },
+          "projectId": {
+            "description": "The project ID",
+            "type": "string"
+          },
+          "serviceId": {
+            "description": "The service ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "projectId",
+          "serviceId",
+          "domain"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "environment-status",
+      "description": "Health overview of every service in an environment in one call: current LIVE (settled) deployment state, replica status, recent failures, unresolved warnings/criticals, and cron execution results. Does not include uncommitted staged patch work. By default only services with issues are returned — pass includeSuccessful to see everything. For error details, follow up with get-logs on the deployment IDs returned here.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "environmentId": {
+            "description": "Environment to check. Defaults to the production environment.",
+            "type": "string"
+          },
+          "hoursBack": {
+            "description": "How many hours back to count failures (default 8)",
+            "maximum": 168,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "includeSuccessful": {
+            "description": "Include healthy services too (default false: only services with issues)",
+            "type": "boolean"
+          },
+          "limit": {
+            "description": "Maximum services to return (default 10)",
+            "maximum": 10,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "projectId": {
+            "description": "The project ID",
+            "type": "string"
+          },
+          "serviceFilter": {
+            "description": "Minimatch pattern to filter services by name — NOT fuzzy; wrap in wildcards for substring matching, e.g. \"*api*\". Omit for all services.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "projectId"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "fetch-docs",
+      "description": "Fetch the full markdown content of a Railway documentation page by URL or slug (e.g. 'https://docs.railway.com/quick-start' or 'reference/variables'). Use search-docs first to find the right page.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "url": {
+            "description": "Documentation page URL or slug from search-docs results",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "generate-domain",
+      "description": "Expose a service publicly. Without `domain`, generates a Railway *.up.railway.app service domain (if the service already has domains, they are returned instead of creating another). With `domain`, attaches a custom domain you own and returns the DNS records the user must create for it to verify. If environmentId is omitted, the production environment is used.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "domain": {
+            "description": "A custom domain you own (e.g. app.example.com). Omit to generate a Railway domain.",
+            "type": "string"
+          },
+          "environmentId": {
+            "description": "Environment ID. Defaults to `production` if present, otherwise the project's oldest environment.",
+            "type": "string"
+          },
+          "projectId": {
+            "description": "The project ID",
+            "type": "string"
+          },
+          "serviceId": {
+            "description": "The service ID",
+            "type": "string"
+          },
+          "targetPort": {
+            "description": "Container port the domain routes to. Usually only needed when the service listens on multiple ports.",
+            "maximum": 65535,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "projectId",
+          "serviceId"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "get-deployment-diagnosis",
+      "description": "Get the AI-generated diagnosis for a failed deployment: root cause category, analysis, and suggested fixes, along with deployment context (service config, source repo, branch, commit, PR, failure stage and error). Diagnoses run automatically when a deployment fails — if one isn't available yet, fall back to get-logs to inspect the failure directly.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "deploymentId": {
+            "description": "The deployment ID to get the diagnosis for",
+            "type": "string"
+          },
+          "projectId": {
+            "description": "The project ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "projectId",
+          "deploymentId"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "get-feature-flag",
+      "description": "Get a Railway feature flag (Signal) by name for a project or its parent workspace scope.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "name": {
+            "description": "Feature flag name",
+            "type": "string"
+          },
+          "projectId": {
+            "description": "The project ID",
+            "type": "string"
+          },
+          "scope": {
+            "description": "Owner scope to read from (default \"project\")",
+            "enum": [
+              "project",
+              "workspace"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "projectId",
+          "name"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "get-logs",
+      "description": "Get logs from Railway for a deployment — covers deploy (runtime), build, and http (proxy request) contexts. Pass a specific deploymentId, or pass serviceId + environmentId to resolve the latest deployment. Use `types` to choose which streams to return (default: ['deploy']).",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "deploymentId": {
+            "description": "A specific deployment ID. If omitted, serviceId and environmentId must be provided to resolve the most recent deployment.",
+            "type": "string"
+          },
+          "endDate": {
+            "description": "ISO 8601 timestamp with an explicit timezone, at minute precision or finer. Example: \"2026-07-27T15:30:00.000Z\". Fractional seconds are optional; defaults to now.",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+            "type": "string"
+          },
+          "environmentId": {
+            "description": "Environment ID to read logs from. Optional — when omitted with a serviceId, the project's production environment is used (or its oldest, if there is no production).",
+            "type": "string"
+          },
+          "filter": {
+            "description": "Optional log filter expression (Loki-style, same syntax as the Railway dashboard). Applies to build and deploy streams.",
+            "type": "string"
+          },
+          "limit": {
+            "description": "Max log entries per stream (default 100, max 500)",
+            "maximum": 500,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "projectId": {
+            "description": "The project ID",
+            "type": "string"
+          },
+          "serviceId": {
+            "description": "Service ID (used together with environmentId when deploymentId is not given)",
+            "type": "string"
+          },
+          "startDate": {
+            "description": "ISO 8601 timestamp with an explicit timezone, at minute precision or finer. Example: \"2026-07-27T14:30:00.000Z\". Fractional seconds are optional.",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+            "type": "string"
+          },
+          "types": {
+            "description": "Array of log stream names. Example: [\"build\", \"deploy\"]. Omit to fetch only deploy logs.",
+            "items": {
+              "enum": [
+                "build",
+                "deploy",
+                "http"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "projectId"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "get-service-config",
+      "description": "Prefer describe-service: it applies the staged changes onto the live config for you and adds mounted volumes, domains, TCP proxies and the latest deployment. Get a service's configuration in an environment: source (repo/image), build settings, deploy settings (start command, healthcheck, replicas, cron, restart policy), networking, and volume mounts. `config` is what is live; `staged` holds the not-yet-deployed changes for this service, or null when nothing is staged. A service created with `staged: true` has an empty `config` until accept-deploy commits it. Variable names are listed but values are not included — use list-variables for values. If environmentId is omitted, the production environment is used.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "environmentId": {
+            "description": "Environment ID. Defaults to `production` if present, otherwise the project's oldest environment.",
+            "type": "string"
+          },
+          "projectId": {
+            "description": "The project ID",
+            "type": "string"
+          },
+          "serviceId": {
+            "description": "The service ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "projectId",
+          "serviceId"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "get-service-metrics",
+      "description": "Get resource usage metrics (CPU, memory, disk, network) for a service, summarized as current/average/min/max over a time window. Defaults to CPU_USAGE and MEMORY_USAGE_GB over the last hour. If environmentId is omitted, the production environment is used.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "environmentId": {
+            "description": "Environment ID. Defaults to `production` if present, otherwise the project's oldest environment.",
+            "type": "string"
+          },
+          "hoursBack": {
+            "description": "Time window in hours, up to 168 (7 days). Defaults to 1.",
+            "maximum": 168,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "measurements": {
+            "description": "Array of measurement names. Example: [\"CPU_USAGE\", \"MEMORY_USAGE_GB\"]. Omit to use those defaults.",
+            "items": {
+              "enum": [
+                "CPU_USAGE",
+                "CPU_USAGE_2",
+                "CPU_LIMIT",
+                "MEMORY_USAGE_GB",
+                "MEMORY_LIMIT_GB",
+                "DISK_USAGE_GB",
+                "NETWORK_RX_GB",
+                "NETWORK_TX_GB"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "projectId": {
+            "description": "The project ID",
+            "type": "string"
+          },
+          "sampleRateSeconds": {
+            "description": "Sampling rate in seconds",
+            "maximum": 9007199254740991,
+            "minimum": 30,
+            "type": "integer"
+          },
+          "serviceId": {
+            "description": "The service ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "projectId",
+          "serviceId"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "get-staged-changes",
+      "description": "Show the changes staged in a Railway environment that accept-deploy would commit: per resource (service, volume, bucket, group) the action — create, delete, update — and each changed field with its live and staged value. Variable values and registry credentials are redacted to names. Also reports whether the patch is destructive and whether a commit is already applying. Review this before calling accept-deploy. If environmentId is omitted, the production environment is used.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "environmentId": {
+            "description": "Environment to inspect. Defaults to `production` if present, otherwise the project's oldest environment.",
+            "type": "string"
+          },
+          "projectId": {
+            "description": "The project ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "projectId"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "get-status",
+      "description": "Prefer describe-environment: it also lists services that exist only in the staged patch, unattached volumes, and each resource's staged state. Get the deployment status of a Railway project environment. Returns project + environment metadata, whether the environment has undeployed staged changes, the environment's buckets, and for each live service its latest deployment status, replica count, cron schedule, and attached volumes. If environmentId is omitted, the project's `production` environment is used when present, otherwise the oldest environment.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "environmentId": {
+            "description": "Environment to report on. Defaults to `production` if present, otherwise the project's oldest environment.",
+            "type": "string"
+          },
+          "projectId": {
+            "description": "The project ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "projectId"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "http-error-rate",
+      "description": "Get the HTTP error rate for a service over time — the share of requests answered with a 5xx. Use this for reliability and to locate error spikes. 4xx responses are reported separately and are not counted in the rate, since a 404 or a rejected payload is usually the caller's doing. Defaults to the last hour. If environmentId is omitted, the production environment is used.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "environmentId": {
+            "description": "Environment ID. Defaults to `production` if present, otherwise the project's oldest environment.",
+            "type": "string"
+          },
+          "hoursBack": {
+            "description": "Time window in hours, up to 168 (7 days). Defaults to 1.",
+            "maximum": 168,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "maxDataPoints": {
+            "description": "Target number of buckets across the window. Defaults to 30, max 60 — the same cap the chat agent uses. Buckets are never finer than one minute, so a short window returns fewer than requested.",
+            "maximum": 60,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "method": {
+            "description": "Restrict to one HTTP method, e.g. GET.",
+            "type": "string"
+          },
+          "path": {
+            "description": "Restrict to one request path.",
+            "type": "string"
+          },
+          "projectId": {
+            "description": "The project ID",
+            "type": "string"
+          },
+          "serviceId": {
+            "description": "The service ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "projectId",
+          "serviceId"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "http-requests",
+      "description": "Get HTTP request counts for a service, bucketed over time and split by response status class (2xx/3xx/4xx/5xx). Use this for traffic volume and the mix of successful versus failing responses. Defaults to the last hour. If environmentId is omitted, the production environment is used.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "environmentId": {
+            "description": "Environment ID. Defaults to `production` if present, otherwise the project's oldest environment.",
+            "type": "string"
+          },
+          "hoursBack": {
+            "description": "Time window in hours, up to 168 (7 days). Defaults to 1.",
+            "maximum": 168,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "maxDataPoints": {
+            "description": "Target number of buckets across the window. Defaults to 30, max 60 — the same cap the chat agent uses. Buckets are never finer than one minute, so a short window returns fewer than requested.",
+            "maximum": 60,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "method": {
+            "description": "Restrict to one HTTP method, e.g. GET.",
+            "type": "string"
+          },
+          "path": {
+            "description": "Restrict to one request path.",
+            "type": "string"
+          },
+          "projectId": {
+            "description": "The project ID",
+            "type": "string"
+          },
+          "serviceId": {
+            "description": "The service ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "projectId",
+          "serviceId"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "http-response-time",
+      "description": "Get HTTP latency percentiles (p50, p90, p95, p99) for a service, bucketed over time, in milliseconds. Use this for performance and to find slow requests. Defaults to the last hour. If environmentId is omitted, the production environment is used.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "environmentId": {
+            "description": "Environment ID. Defaults to `production` if present, otherwise the project's oldest environment.",
+            "type": "string"
+          },
+          "hoursBack": {
+            "description": "Time window in hours, up to 168 (7 days). Defaults to 1.",
+            "maximum": 168,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "maxDataPoints": {
+            "description": "Target number of buckets across the window. Defaults to 30, max 60 — the same cap the chat agent uses. Buckets are never finer than one minute, so a short window returns fewer than requested.",
+            "maximum": 60,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "method": {
+            "description": "Restrict to one HTTP method, e.g. GET.",
+            "type": "string"
+          },
+          "path": {
+            "description": "Restrict to one request path.",
+            "type": "string"
+          },
+          "projectId": {
+            "description": "The project ID",
+            "type": "string"
+          },
+          "serviceId": {
+            "description": "The service ID",
+            "type": "string"
+          },
+          "statusCode": {
+            "description": "Restrict to one exact response status code, e.g. 200.",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "projectId",
+          "serviceId"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "list-deployments",
+      "description": "List recent deployments for a Railway project, optionally filtered by environment, service, or status. Returns the most recent first.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "environmentId": {
+            "description": "Filter to a specific environment",
+            "type": "string"
+          },
+          "limit": {
+            "description": "Max deployments to return (default 10, max 50)",
+            "maximum": 50,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "projectId": {
+            "description": "The project ID",
+            "type": "string"
+          },
+          "serviceId": {
+            "description": "Filter to a specific service",
+            "type": "string"
+          },
+          "status": {
+            "description": "Filter to deployments with this status (e.g. SUCCESS, FAILED, CRASHED, BUILDING, DEPLOYING)",
+            "enum": [
+              "WAITING",
+              "NEEDS_APPROVAL",
+              "QUEUED",
+              "INITIALIZING",
+              "SKIPPED",
+              "BUILDING",
+              "DEPLOYING",
+              "SUCCESS",
+              "FAILED",
+              "REMOVED",
+              "CRASHED",
+              "REMOVING",
+              "SLEEPING"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "projectId"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "list-domains",
+      "description": "List all domains (Railway-generated service domains and custom domains) for a service in an environment. If environmentId is omitted, the production environment is used.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "environmentId": {
+            "description": "Environment ID. Defaults to `production` if present, otherwise the project's oldest environment.",
+            "type": "string"
+          },
+          "projectId": {
+            "description": "The project ID",
+            "type": "string"
+          },
+          "serviceId": {
+            "description": "The service ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "projectId",
+          "serviceId"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "list-feature-flags",
+      "description": "List Railway feature flags (Signals) for a project and optionally the parent workspace. Project flags are editable with admin access; workspace flags are read-only from project context.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "includeWorkspace": {
+            "description": "Include workspace-scoped flags inherited by the project (default true)",
+            "type": "boolean"
+          },
+          "projectId": {
+            "description": "The project ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "projectId"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "list-projects",
+      "description": "List all Railway projects accessible to the authenticated user",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      }
+    },
+    {
+      "name": "list-services",
+      "description": "List the ids and names of all services and environments in a Railway project. Prefer describe-environment for what is actually in an environment: it includes volumes, buckets, deployments and staged changes.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "projectId": {
+            "description": "The project ID to list services for",
+            "type": "string"
+          }
+        },
+        "required": [
+          "projectId"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "list-tcp-proxies",
+      "description": "List the TCP proxies exposing a service over the public internet on a raw TCP port (e.g. a database's public endpoint). Returns the public endpoint (host:port) and the application port each proxy forwards to.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "environmentId": {
+            "description": "Environment ID. Defaults to the production environment.",
+            "type": "string"
+          },
+          "projectId": {
+            "description": "The project ID",
+            "type": "string"
+          },
+          "serviceId": {
+            "description": "The service ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "projectId",
+          "serviceId"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "list-variables",
+      "description": "List all environment variables for a service, fully rendered (reference variables like ${{Postgres.DATABASE_URL}} are resolved). With a Railway session or API token, values are returned in plaintext and may contain secrets. Connected OAuth apps receive variable names only. Sealed variables are always listed by name with no value — they are set, but nobody can read them back, so never recreate one. If environmentId is omitted, the production environment is used.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "environmentId": {
+            "description": "Environment ID. Defaults to `production` if present, otherwise the project's oldest environment.",
+            "type": "string"
+          },
+          "projectId": {
+            "description": "The project ID",
+            "type": "string"
+          },
+          "serviceId": {
+            "description": "The service ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "projectId",
+          "serviceId"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "list-workspaces",
+      "description": "List the Railway workspaces the current user belongs to. Use a workspace ID with create-project to choose where a project is created.",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      }
+    },
+    {
+      "name": "railway-agent",
+      "description": "Send a message to Railway's AI agent for complex infrastructure operations. The agent can inspect services, diagnose issues, and take actions on your behalf.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "environmentId": {
+            "description": "The environment ID",
+            "type": "string"
+          },
+          "message": {
+            "description": "The message to send to the agent",
+            "type": "string"
+          },
+          "projectId": {
+            "description": "The project ID",
+            "type": "string"
+          },
+          "serviceId": {
+            "description": "Optional service ID to scope the agent's context",
+            "type": "string"
+          },
+          "threadId": {
+            "description": "Thread ID to continue an existing conversation. Omit to start a new one.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "projectId",
+          "environmentId",
+          "message"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "redeploy",
+      "description": "Re-run the most recent deployment of a service in a given environment, reusing that deployment's existing build. Only works on a service that has already deployed in that environment — check with list-deployments if you are unsure. This does NOT give a service its first deployment: if it has never deployed, nothing here can deploy it — use the Railway CLI (`railway up --project <id> --environment <id> --service <id>`), or attach a GitHub repo to the service in the dashboard. create-deployment would build a separate new service from a GitHub repo rather than deploying this one.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "environmentId": {
+            "description": "The environment ID to redeploy in",
+            "type": "string"
+          },
+          "projectId": {
+            "description": "The project ID",
+            "type": "string"
+          },
+          "serviceId": {
+            "description": "The service ID to redeploy",
+            "type": "string"
+          }
+        },
+        "required": [
+          "projectId",
+          "serviceId",
+          "environmentId"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "restart-service",
+      "description": "Restart a service's running deployment in place — the containers restart without rebuilding the image, and no new deployment is created (use redeploy for a fresh build copy). Restarting causes brief downtime; do NOT restart database services (Postgres, MySQL, Redis, MongoDB) or services with attached volumes unless the user explicitly asked, as it can interrupt in-flight queries and transactions.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "deploymentId": {
+            "description": "Specific deployment to restart. If omitted, the latest running or crashed deployment is restarted.",
+            "type": "string"
+          },
+          "environmentId": {
+            "description": "Environment whose deployment to restart. Defaults to the production environment.",
+            "type": "string"
+          },
+          "projectId": {
+            "description": "The project ID",
+            "type": "string"
+          },
+          "serviceId": {
+            "description": "The service ID to restart",
+            "type": "string"
+          }
+        },
+        "required": [
+          "projectId",
+          "serviceId"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "search-docs",
+      "description": "Search the Railway documentation (docs.railway.com) for features, configuration, guides, and tutorials. Returns matching sections with URLs — use fetch-docs to read a full page.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "query": {
+            "description": "The search query (e.g. 'environment variables', 'deploy docker', 'postgres connection')",
+            "type": "string"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "set-feature-flag",
+      "description": "Create a project-scoped feature flag or update its default value. Use list-feature-flags and get-feature-flag to inspect existing flags first.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "defaultValue": {
+            "description": "Default value as text: \"true\"/\"false\", a raw string, a number, or JSON",
+            "type": "string"
+          },
+          "name": {
+            "description": "Feature flag name (letters, numbers, dots, dashes, underscores)",
+            "type": "string"
+          },
+          "projectId": {
+            "description": "The project ID",
+            "type": "string"
+          },
+          "type": {
+            "description": "Flag type (required when creating a new flag)",
+            "enum": [
+              "bool",
+              "string",
+              "number",
+              "json"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "projectId",
+          "name",
+          "defaultValue"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "set-variables",
+      "description": "Set one or more environment variables on a service (or environment-wide shared variables when serviceId is omitted). Existing variables with the same name are overwritten; others are left unchanged. Reference syntax like ${{Postgres.DATABASE_URL}} is supported. Affected services are redeployed unless skipDeploys is true. Pass staged: true to stage the variables in the environment's pending changes instead of setting them live — nothing is written or redeployed until the staged changes are committed with accept-deploy.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "environmentId": {
+            "description": "Environment ID. Defaults to `production` if present, otherwise the project's oldest environment. That default applies to staged: true as well — unlike the other staging tools this one never refuses an omitted environmentId, so pass one explicitly unless you mean to stage onto production.",
+            "type": "string"
+          },
+          "projectId": {
+            "description": "The project ID",
+            "type": "string"
+          },
+          "serviceId": {
+            "description": "The service to set variables on. Omit to set environment-level shared variables.",
+            "type": "string"
+          },
+          "skipDeploys": {
+            "description": "Skip redeploying the affected services. Implied by staged: true, which deploys nothing until the patch is committed.",
+            "type": "boolean"
+          },
+          "staged": {
+            "default": false,
+            "description": "Stage the change in the environment's pending changes instead of applying it live. It takes effect only when the staged changes are committed with accept-deploy (or the user applies them in the dashboard).",
+            "type": "boolean"
+          },
+          "variables": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Object mapping variable names to string values. Example: {\"NODE_ENV\":\"production\",\"PORT\":\"3000\"}.",
+            "propertyNames": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "projectId",
+          "variables"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "update-service",
+      "description": "Update a service's configuration: build/start/pre-deploy commands, healthcheck, sleep mode, root directory, cron schedule, Dockerfile path, restart policy, config file path, and watch patterns. Only the fields you pass are changed. Changes apply on the service's next deployment (use redeploy to apply immediately). Pass staged: true to stage the update in one environment's pending changes instead of writing it to the service — it then applies when the staged changes are committed with accept-deploy. Scaling (replicas/regions) and source changes are not handled by this tool.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "buildCommand": {
+            "description": "Custom build command",
+            "type": "string"
+          },
+          "cronSchedule": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Cron schedule, e.g. '0 * * * *'. Minimum interval is 5 minutes. Pass null to remove the schedule and run the service continuously."
+          },
+          "dockerfilePath": {
+            "description": "Path to a custom Dockerfile",
+            "type": "string"
+          },
+          "environmentId": {
+            "description": "Environment to update. If omitted, the service is updated in all environments. Required when staged is true.",
+            "type": "string"
+          },
+          "healthcheckPath": {
+            "description": "HTTP healthcheck path, e.g. /health",
+            "type": "string"
+          },
+          "healthcheckTimeout": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Healthcheck timeout in seconds (0-3600). Pass null to reset."
+          },
+          "preDeployCommand": {
+            "description": "Commands run before each deploy",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "projectId": {
+            "description": "The project ID",
+            "type": "string"
+          },
+          "railwayConfigFile": {
+            "description": "Path to a railway config file, e.g. railway.toml",
+            "type": "string"
+          },
+          "restartPolicyMaxRetries": {
+            "description": "Max restart retries for ON_FAILURE policy",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "restartPolicyType": {
+            "description": "Restart policy for crashed deployments",
+            "enum": [
+              "ALWAYS",
+              "NEVER",
+              "ON_FAILURE"
+            ],
+            "type": "string"
+          },
+          "rootDirectory": {
+            "description": "Root directory for builds, e.g. /packages/api. With staged: true this counts as a source change: committing it recreates the service's deployment triggers and re-resolves its GitHub authorization from whoever commits. Stage it on its own if that matters.",
+            "type": "string"
+          },
+          "serviceId": {
+            "description": "The service ID",
+            "type": "string"
+          },
+          "sleepApplication": {
+            "description": "Enable/disable app sleeping (serverless mode)",
+            "type": "boolean"
+          },
+          "staged": {
+            "default": false,
+            "description": "Stage the change in the environment's pending changes instead of applying it live. It takes effect only when the staged changes are committed with accept-deploy (or the user applies them in the dashboard).",
+            "type": "boolean"
+          },
+          "startCommand": {
+            "description": "Custom start command",
+            "type": "string"
+          },
+          "watchPatterns": {
+            "description": "File patterns that trigger automatic redeploys",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "projectId",
+          "serviceId"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "update-volume",
+      "description": "Update a volume's name and/or mount path. A mount path change redeploys the affected service so the new mount takes effect. Only the fields you pass are changed. Pass staged: true with an environmentId to stage the mount change in that environment's pending changes instead of applying it live; the volume's name is not environment-scoped and cannot be staged.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "environmentId": {
+            "description": "Environment whose volume instance to update. If omitted, the mount change applies in every environment the volume is provisioned in. Required when staged is true.",
+            "type": "string"
+          },
+          "mountPath": {
+            "description": "New mount path, e.g. /data. Redeploys the mounted service.",
+            "type": "string"
+          },
+          "name": {
+            "description": "New name for the volume",
+            "type": "string"
+          },
+          "projectId": {
+            "description": "The project ID the volume belongs to",
+            "type": "string"
+          },
+          "serviceId": {
+            "description": "Service to attach/move the volume to when changing the mount. If omitted, the volume stays on the service it is already attached to.",
+            "type": "string"
+          },
+          "staged": {
+            "default": false,
+            "description": "Stage the change in the environment's pending changes instead of applying it live. It takes effect only when the staged changes are committed with accept-deploy (or the user applies them in the dashboard).",
+            "type": "boolean"
+          },
+          "volumeId": {
+            "description": "The volume ID to update",
+            "type": "string"
+          }
+        },
+        "required": [
+          "projectId",
+          "volumeId"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "whoami",
+      "description": "Get the current authenticated Railway user's profile information",
+      "input_schema": {
+        "properties": {},
+        "type": "object"
+      }
+    }
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "manifest_version": "1",
+  "id": "supabase",
+  "name": "Supabase",
+  "description": "Projects, tables, SQL and logs on your Supabase organisations.",
+  "long_description": "Supabase's own hosted server. It lists projects and tables, runs SQL, reads logs and applies migrations.\n\nYou sign in through Supabase in your browser and the scopes decide what the chat may do. A migration or a write query changes a real database, so it asks first — and `database:write` is a scope you can simply not grant.",
+  "version": "0.1.0",
+  "icon": "icon.svg",
+  "category": "data",
+  "keywords": ["supabase", "postgres", "sql", "database", "migrations", "edge functions"],
+  "publisher": {
+    "name": "Supabase",
+    "url": "https://supabase.com"
+  },
+  "first_party": false,
+  "homepage": "https://supabase.com/docs/guides/getting-started/mcp",
+  "runtime": {
+    "kind": "mcp-remote",
+    "url": "https://mcp.supabase.com/mcp"
+  },
+  "auth": {
+    "type": "oauth2",
+    "registration": ["dcr"],
+    "instructions": "Sign in to Supabase in your browser and choose which organisation and scopes this chat gets."
+  },
+  "risk": {
+    "network": "internet",
+    "local_system": "none",
+    "default_tool_tier": "write_external",
+    "notes": "Runs SQL against a real database. A migration or a write is confirmed every time, and read-only scopes are worth granting instead."
+  },
+  "tools_generated": true,
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "gantry": ">=0.1.0"
+  },
+  "catalog": {
+    "featured": false,
+    "sort_weight": 9,
+    "suggest_for": ["supabase", "my database", "run sql", "migration", "postgres"]
+  }
+}

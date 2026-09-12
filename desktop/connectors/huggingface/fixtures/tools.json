@@ -1,6 +1,12 @@
 {
   "protocol_version": "2026-07-28",
   "status": 200,
+  "auth": {
+    "issuer": "https://huggingface.co",
+    "dynamic_registration": true,
+    "client_id_metadata_document": true,
+    "scopes": []
+  },
   "tools": [
     {
       "name": "hf_fs",

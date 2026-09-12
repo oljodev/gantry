@@ -1,0 +1,42 @@
+{
+  "manifest_version": "1",
+  "id": "asana",
+  "name": "Asana",
+  "description": "Projects, tasks and their status in the Asana workspace you sign in to.",
+  "long_description": "Asana's own hosted server. It lists projects, reads a task with its subtasks and comments, creates tasks and moves them along.\n\nYou sign in through Asana in your browser. Completing or creating a task is something your team sees, so it follows the chat's permission mode.",
+  "version": "0.1.0",
+  "icon": "icon.svg",
+  "category": "productivity",
+  "keywords": ["asana", "tasks", "projects", "todo", "work management"],
+  "publisher": {
+    "name": "Asana",
+    "url": "https://asana.com"
+  },
+  "first_party": false,
+  "homepage": "https://developers.asana.com/docs/mcp-server",
+  "runtime": {
+    "kind": "mcp-remote",
+    "url": "https://mcp.asana.com/mcp"
+  },
+  "auth": {
+    "type": "oauth2",
+    "registration": ["dcr"],
+    "instructions": "Sign in to Asana in your browser; the server registers Gantry on the spot."
+  },
+  "risk": {
+    "network": "internet",
+    "local_system": "none",
+    "default_tool_tier": "write_external",
+    "notes": "Reaches the Asana workspace you sign in to. Creating or completing a task changes what your team sees."
+  },
+  "tools_generated": true,
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "gantry": ">=0.1.0"
+  },
+  "catalog": {
+    "featured": false,
+    "sort_weight": 7,
+    "suggest_for": ["asana", "my tasks", "task list", "project status"]
+  }
+}

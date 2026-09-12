@@ -1,0 +1,37 @@
+{
+  "status": 401,
+  "auth": {
+    "issuer": "https://gitlab.com",
+    "dynamic_registration": true,
+    "client_id_metadata_document": false,
+    "scopes": [
+      "api",
+      "read_api",
+      "read_user",
+      "create_runner",
+      "manage_runner",
+      "k8s_proxy",
+      "self_rotate",
+      "mcp",
+      "mcp_orbit",
+      "read_repository",
+      "write_repository",
+      "read_registry",
+      "write_registry",
+      "read_virtual_registry",
+      "write_virtual_registry",
+      "read_observability",
+      "write_observability",
+      "ai_features",
+      "sudo",
+      "admin_mode",
+      "read_service_ping",
+      "openid",
+      "profile",
+      "email",
+      "ai_workflows",
+      "user:*"
+    ]
+  },
+  "tools": []
+}

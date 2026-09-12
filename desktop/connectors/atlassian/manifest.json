@@ -1,0 +1,42 @@
+{
+  "manifest_version": "1",
+  "id": "atlassian",
+  "name": "Atlassian",
+  "description": "Jira issues and Confluence pages in the sites your Atlassian account can reach.",
+  "long_description": "Atlassian's own hosted server, for Jira and Confluence together. It searches issues, reads one with its comments and transitions, creates and updates issues, and reads and writes Confluence pages.\n\nYou sign in through Atlassian in your browser and pick which site the chat may reach. A transition or a comment is something your team sees, so it follows the chat's permission mode like any other external write.",
+  "version": "0.1.0",
+  "icon": "icon.svg",
+  "category": "developer",
+  "keywords": ["jira", "confluence", "atlassian", "issues", "tickets", "boards", "wiki"],
+  "publisher": {
+    "name": "Atlassian",
+    "url": "https://www.atlassian.com"
+  },
+  "first_party": false,
+  "homepage": "https://support.atlassian.com/atlassian-rovo-mcp-server/",
+  "runtime": {
+    "kind": "mcp-remote",
+    "url": "https://mcp.atlassian.com/v1/mcp"
+  },
+  "auth": {
+    "type": "oauth2",
+    "registration": ["dcr"],
+    "instructions": "Sign in to Atlassian in your browser and choose which site this chat may reach."
+  },
+  "risk": {
+    "network": "internet",
+    "local_system": "none",
+    "default_tool_tier": "write_external",
+    "notes": "Reaches the Jira projects and Confluence spaces your account can see. A comment or a transition is visible to your team."
+  },
+  "tools_generated": true,
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "gantry": ">=0.1.0"
+  },
+  "catalog": {
+    "featured": false,
+    "sort_weight": 18,
+    "suggest_for": ["jira", "confluence", "atlassian", "my tickets", "sprint board", "wiki page"]
+  }
+}
