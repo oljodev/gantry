@@ -203,7 +203,7 @@ impl Connector for McpConnector {
     async fn call(
         &self,
         req: ToolCallRequest,
-        _sink: Arc<dyn ToolEventSink>,
+        sink: Arc<dyn ToolEventSink>,
         cancel: CancellationToken,
     ) -> Result<ToolOutcome, ConnectorError> {
         let call = async {
@@ -212,7 +212,20 @@ impl Connector for McpConnector {
                 .ensure(&mut guard)
                 .await
                 .map_err(|e| ConnectorError::Failed(e.to_string()))?;
-            match live.session.call(&req.tool, &req.args).await {
+            // The card this call would raise, minus the parts only the server knows. Built
+            // here because this is the only place that has both the call and the connector.
+            let waiting = gantry_core::ElicitationRequest {
+                call_id: req.call_id.clone(),
+                connector: self.descriptor.id.clone(),
+                connector_name: self.descriptor.name.clone(),
+                message: String::new(),
+                fields: Vec::new(),
+            };
+            match live
+                .session
+                .call(&req.tool, &req.args, sink.as_ref(), &waiting)
+                .await
+            {
                 Ok(out) => Ok(out),
                 // A server that went away between calls gets one reconnection, because the
                 // alternative is a failed turn for a connection Gantry closed itself.
@@ -226,7 +239,7 @@ impl Connector for McpConnector {
                         .await
                         .map_err(|e| ConnectorError::Failed(e.to_string()))?;
                     live.session
-                        .call(&req.tool, &req.args)
+                        .call(&req.tool, &req.args, sink.as_ref(), &waiting)
                         .await
                         .map_err(|e| ConnectorError::Failed(e.to_string()))
                 }

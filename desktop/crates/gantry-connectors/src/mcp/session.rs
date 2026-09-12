@@ -7,13 +7,17 @@
 
 use std::{sync::Arc, time::Duration};
 
-use gantry_core::{InstanceId, ResultPart, ServerInfo, ToolDef};
+use gantry_core::{
+    ElicitationAction, ElicitationField, ElicitationFieldKind, ElicitationOption,
+    ElicitationRequest, InstanceId, ResultPart, ServerInfo, ToolDef,
+};
 use rmcp::{
     ClientHandler, ClientServiceExt,
     model::{
-        CallToolRequestParams, CallToolResult, ClientCapabilities, ClientInfo, ContentBlock,
-        Implementation, InitializeRequestParams, JsonObject, PaginatedRequestParams,
-        ProtocolVersion,
+        CallToolRequestParams, CallToolResponse, CallToolResult, ClientCapabilities, ClientInfo,
+        ContentBlock, ElicitRequestParams, ElicitationAction as McpAction, ElicitationSchema,
+        Implementation, InitializeRequestParams, InputRequest, InputResponses, JsonObject,
+        PaginatedRequestParams, PrimitiveSchemaDefinition, ProtocolVersion,
     },
     service::{ClientLifecycleMode, NotificationContext, RoleClient, RunningService},
     transport::{
@@ -23,10 +27,14 @@ use rmcp::{
 };
 use tokio::process::Command;
 
-use crate::{logs::ConnectorLogs, mcp::risk::tier_for};
+use crate::{ToolEventSink, logs::ConnectorLogs, mcp::risk::tier_for};
 
 /// How long a connection may take before we give up and tell the user.
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// How many times one call may come back asking for more before it is called a loop. rmcp's own
+/// default, and for the same reason: a server that has asked ten questions is not converging.
+const MAX_ROUNDS: usize = 10;
 
 #[derive(Debug, thiserror::Error)]
 pub enum McpError {
@@ -196,12 +204,18 @@ impl McpSession {
         Ok(ToolListing { tools, ttl })
     }
 
-    /// Calls one tool. MRTR input requests are not answered here: rmcp's `call_tool` walks the
-    /// rounds it can, and anything still incomplete comes back as content the model can read.
+    /// Calls one tool, walking the MRTR rounds itself (03 §6).
+    ///
+    /// Not rmcp's `call_tool`, which walks them too — through the session's `ClientHandler`. A
+    /// handler is shared by every call the connector makes and is handed no way to tell which one
+    /// it is answering for, and an elicitation that reaches the wrong card is worse than none.
+    /// Driving the loop here keeps the call, the user and the answer in one scope.
     pub async fn call(
         &self,
         tool: &str,
         args: &serde_json::Value,
+        sink: &dyn ToolEventSink,
+        request: &ElicitationRequest,
     ) -> Result<(Vec<ResultPart>, Option<serde_json::Value>, bool), McpError> {
         let arguments: Option<JsonObject> = match args {
             serde_json::Value::Object(map) => Some(map.clone()),
@@ -210,12 +224,40 @@ impl McpSession {
         };
         let mut params = CallToolRequestParams::new(tool.to_owned());
         params.arguments = arguments;
-        let result = self
-            .service
-            .call_tool(params)
-            .await
-            .map_err(|e| McpError::Call(e.to_string()))?;
-        Ok(convert(result))
+        for _ in 0..MAX_ROUNDS {
+            let response = self
+                .service
+                .peer()
+                .call_tool_once(params.clone())
+                .await
+                .map_err(|e| McpError::Call(e.to_string()))?;
+            match response {
+                CallToolResponse::Complete(result) => return Ok(convert(result)),
+                CallToolResponse::InputRequired(more) => {
+                    let mut answers = InputResponses::new();
+                    for (key, input) in more.input_requests.unwrap_or_default() {
+                        answers.insert(key, answer(&input, sink, request).await?);
+                    }
+                    params.input_responses = (!answers.is_empty()).then_some(answers);
+                    params.request_state = more.request_state;
+                }
+                // SEP-2663 tasks: a server parking the work and expecting to be polled. Nothing
+                // here polls, and pretending otherwise would hang the turn. `CallToolResponse`
+                // is non-exhaustive, so anything a later revision adds lands here too — which is
+                // the right place for it: an answer this client does not understand is one it
+                // must not guess at.
+                _ => {
+                    return Err(McpError::Call(
+                        "the server answered in a way this version of Gantry does not \
+                         understand; it may want to run the call as a background task"
+                            .to_owned(),
+                    ));
+                }
+            }
+        }
+        Err(McpError::Call(format!(
+            "the server asked for input {MAX_ROUNDS} times without finishing the call"
+        )))
     }
 
     /// Stops the connection: closes the stream, or kills the child process tree.
@@ -423,6 +465,110 @@ fn client_info() -> ClientInfo {
         ClientCapabilities::default(),
         Implementation::new("Gantry", env!("CARGO_PKG_VERSION")).with_title("Gantry"),
     )
+}
+
+/// One server-initiated request, answered.
+///
+/// Only elicitation is answered by a person. Sampling asks Gantry to run *its* model on the
+/// server's prompt, and roots asks which folders it may see — both are capabilities Gantry does
+/// not offer, and the honest answer is the specification's own "no", not silence.
+async fn answer(
+    input: &InputRequest,
+    sink: &dyn ToolEventSink,
+    request: &ElicitationRequest,
+) -> Result<serde_json::Value, McpError> {
+    let InputRequest::Elicitation(elicit) = input else {
+        return Ok(serde_json::json!({ "action": "decline" }));
+    };
+    let (message, schema) = match &elicit.params {
+        ElicitRequestParams::FormElicitationParams {
+            message,
+            requested_schema,
+            ..
+        } => (message.clone(), Some(requested_schema)),
+        // A URL elicitation sends the user to a web page to finish something. Gantry has no way
+        // to know when they have, so declining is the true answer rather than a wait with no end.
+        ElicitRequestParams::UrlElicitationParams { message, .. } => (message.clone(), None),
+        _ => (String::new(), None),
+    };
+    let Some(schema) = schema else {
+        return Ok(serde_json::json!({ "action": "decline" }));
+    };
+    let answer = sink
+        .elicit(ElicitationRequest {
+            message,
+            fields: fields_of(schema),
+            ..request.clone()
+        })
+        .await;
+    let action = match answer.action {
+        ElicitationAction::Accept => McpAction::Accept,
+        ElicitationAction::Decline => McpAction::Decline,
+        ElicitationAction::Cancel => McpAction::Cancel,
+    };
+    let mut value = serde_json::json!({ "action": action });
+    if answer.action == ElicitationAction::Accept
+        && let Some(object) = value.as_object_mut()
+    {
+        object.insert("content".to_owned(), answer.values);
+    }
+    Ok(value)
+}
+
+/// An elicitation schema as the card's form. The specification allows primitives and nothing
+/// nested, which is why this is a flat list rather than a schema renderer.
+fn fields_of(schema: &ElicitationSchema) -> Vec<ElicitationField> {
+    let required = |key: &str| schema.required.iter().flatten().any(|r| r == key);
+    let mut fields = Vec::new();
+    for (key, property) in &schema.properties {
+        let raw = serde_json::to_value(property).unwrap_or(serde_json::Value::Null);
+        let text = |name: &str| {
+            raw.get(name)
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_owned)
+        };
+        let options: Vec<ElicitationOption> = raw
+            .get("enum")
+            .and_then(serde_json::Value::as_array)
+            .map(|values| {
+                let names = raw.get("enumNames").and_then(serde_json::Value::as_array);
+                values
+                    .iter()
+                    .enumerate()
+                    .map(|(i, v)| {
+                        let value = v.as_str().unwrap_or_default().to_owned();
+                        let label = names
+                            .and_then(|n| n.get(i))
+                            .and_then(serde_json::Value::as_str)
+                            .unwrap_or(&value)
+                            .to_owned();
+                        ElicitationOption { value, label }
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        let kind = if !options.is_empty() {
+            ElicitationFieldKind::Enum
+        } else {
+            match property {
+                PrimitiveSchemaDefinition::Boolean(_) => ElicitationFieldKind::Boolean,
+                PrimitiveSchemaDefinition::Number(_) => ElicitationFieldKind::Number,
+                PrimitiveSchemaDefinition::Integer(_) => ElicitationFieldKind::Integer,
+                _ => ElicitationFieldKind::String,
+            }
+        };
+        fields.push(ElicitationField {
+            key: key.clone(),
+            kind,
+            // A server that gave no title gets the key, which is at least the truth.
+            title: text("title").unwrap_or_else(|| key.clone()),
+            description: text("description"),
+            required: required(key),
+            options,
+            format: text("format"),
+        });
+    }
+    fields
 }
 
 /// MCP content blocks as Gantry's result parts. Anything that is not text or an image becomes

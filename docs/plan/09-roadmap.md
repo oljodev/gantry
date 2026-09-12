@@ -472,7 +472,7 @@ Done when: a coding task can be run in Manual, Auto-edit and Plan with the matri
 
 Done when: a multi-step task completes hands-off in Guarded Auto, with at least one sensible block and one override exercised. **Offline:** covered by `gantry-agent/tests/turns.rs` — the guard deciding a batch without a prompt, a guard that cannot decide asking the user, the loop detector stopping a repeat without asking, the floor outranking the guard, and **Allow anyway** carrying a blocked call through on the next turn. **Live:** Olav's to run.
 
-## M9 — MCP connectors and the install flow (3 weeks) — first half done 2026-09-07
+## M9 — MCP connectors and the install flow (3 weeks) — done 2026-09-11
 
 Built in session 8, ahead of M6 (see the order change above). Landed:
 
@@ -546,7 +546,11 @@ Two gaps it uncovered on the way, both of which would have bitten B6 on its firs
 reached the process it was typed for; and `SecretVault::set` replaced every credential of a kind
 rather than the one with the same label, so the second sensitive field deleted the first.
 
-What is left of M9: MRTR `input_required` as an `Interaction::Elicitation` with a form.
+**Elicitation done 2026-09-11**, and with it **M9 is complete**. `InteractionPayload::Elicitation`
+with a flat field list (the specification allows primitives and nothing nested), `ElicitationCard`
+with the protocol's three actions, and the rounds walked by `McpSession::call` rather than by
+rmcp's handler — 03 §6 records why. Nothing in the catalogue elicits, so it is built and untested
+against a real server; 04 §10 says so plainly rather than implying otherwise.
 
 ## M9 — the rest (original scope)
 

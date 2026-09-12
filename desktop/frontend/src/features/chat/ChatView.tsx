@@ -9,6 +9,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import type { CatalogEntryDto, PermissionDecision } from '@/bindings';
 import { ArtifactGlyph } from '@/components/gantry/chat/ArtifactCard';
+import type { ElicitationAnswer } from '@/components/gantry/chat/ElicitationCard';
 import type { AccessAnswer, PermissionAnswer } from '@/components/gantry/chat/InteractionCard';
 import { Button } from '@/components/ui/button';
 import { TurnView } from '@/components/gantry/chat/TurnView';
@@ -343,6 +344,20 @@ export function ChatView({
   };
 
   /**
+   * A server's mid-call question (03 §6). The answer goes back as the next round of the call
+   * that is still waiting on it, so nothing here restarts a turn — the turn never stopped.
+   */
+  const answerElicit = (interactionId: string, answer: ElicitationAnswer) => {
+    void resolve(chatId, interactionId, {
+      kind: 'elicitation',
+      action: answer.action,
+      values: answer.values,
+    }).catch((err) =>
+      toast.add({ title: 'Could not answer', description: describe(err), type: 'error' }),
+    );
+  };
+
+  /**
    * A connector suggestion (03 §9). Install runs the ordinary install flow from inside the
    * chat; the interaction is answered with the instance it produced, and the waiting turn goes
    * on with the new tools. A server that needs more than one click falls back to the install
@@ -413,6 +428,7 @@ export function ChatView({
                 }}
                 onDecide={decide}
                 onAccess={answerAccess}
+                onElicit={answerElicit}
                 onOffer={answerOffer}
                 installing={installingOffer ?? undefined}
                 onCopy={async (text) => {

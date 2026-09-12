@@ -884,6 +884,58 @@ export type DeviceCodeNeeded = {
 export type EditOp = "create" | "modify" | "delete" | "rename";
 
 /**
+ *  What the user did with an elicitation card (MCP's three actions).
+ * 
+ *  `Decline` and `Cancel` are different answers and the server is told which: declining is "no,
+ *  carry on without it", cancelling is "stop, I am not answering this" — a distinction the
+ *  specification makes and a server may act on.
+ */
+export type ElicitationAction = "accept" | "decline" | "cancel";
+
+export type ElicitationField = {
+	key: string,
+	kind: ElicitationFieldKind,
+	title: string,
+	description: string | null,
+	required: boolean,
+	/**  The values a choice is between, with the labels the server gave them. */
+	options: ElicitationOption[],
+	/**  `email`, `uri`, `date`, `date-time` — what the server said the string is. */
+	format: string | null,
+};
+
+export type ElicitationFieldKind = "string" | "number" | "integer" | "boolean" | "enum";
+
+export type ElicitationOption = {
+	value: string,
+	label: string,
+};
+
+/**
+ *  What a server asked the user for, in the middle of a tool call (03 §6, MCP's MRTR).
+ * 
+ *  A tool can stop halfway and say it needs something only a person can give — which repository,
+ *  which of these three accounts, are you sure. The call is not finished and not failed: it is
+ *  waiting, and the answer goes back as the next round of the same call.
+ * 
+ *  Modelled in Gantry's own terms rather than the wire's, because this crate knows nothing about
+ *  MCP and because only the primitives survive the translation anyway: the specification allows a
+ *  flat object of strings, numbers and booleans, and nothing nested.
+ */
+export type ElicitationRequest = {
+	/**  The call that is waiting, so the card can sit with the row it belongs to. */
+	call_id: CallId,
+	connector: string,
+	connector_name: string,
+	/**
+	 *  The server's own sentence about what it needs. Untrusted text from a third party — shown
+	 *  as the server's words, never as Gantry's.
+	 */
+	message: string,
+	fields: ElicitationField[],
+};
+
+/**
  *  What the frontend receives when a command fails. Never carries secrets or paths the
  *  user did not choose. Rendered by the UI as an inline error row.
  */
@@ -1064,14 +1116,16 @@ export type InteractionId = string;
 export type InteractionKind = "permission" | "access_request" | "connector_suggestion" | "elicitation" | "auth_required" | "skill_proposal" | "memory_proposal";
 
 /**  The kind-specific body of an interaction. */
-export type InteractionPayload = { kind: "permission"; request: PermissionRequest } | { kind: "access_request"; request: AccessRequest } | { kind: "connector_suggestion"; suggestion: ConnectorSuggestion };
+export type InteractionPayload = { kind: "permission"; request: PermissionRequest } | { kind: "access_request"; request: AccessRequest } | { kind: "connector_suggestion"; suggestion: ConnectorSuggestion } | { kind: "elicitation"; request: ElicitationRequest };
 
 /**  How an interaction ended. */
 export type InteractionResolution = { kind: "permission"; decision: PermissionDecision; 
 /**  Shown to the model with a denial. */
 message: string | null } | { kind: "access_request"; decision: AccessDecision; 
 /**  Shown to the model with a refusal. */
-message: string | null } | { kind: "connector_suggestion"; outcome: SuggestionOutcome } | 
+message: string | null } | { kind: "connector_suggestion"; outcome: SuggestionOutcome } | { kind: "elicitation"; action: ElicitationAction; 
+/**  The filled-in form, by key. Empty unless the action was `Accept`. */
+values: unknown } | 
 /**  The turn was cancelled or the app restarted while the card waited. */
 { kind: "cancelled" };
 

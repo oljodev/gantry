@@ -18,7 +18,10 @@ use std::{
 };
 
 use async_trait::async_trait;
-use gantry_core::{AgentEventKind, CallId, ChatId, InstanceId, Mode, ResultPart, ToolDef, TurnId};
+use gantry_core::{
+    AgentEventKind, CallId, ChatId, ElicitationAction, ElicitationRequest, InstanceId, Mode,
+    ResultPart, ToolDef, TurnId,
+};
 use tokio_util::sync::CancellationToken;
 
 /// The plan document that specifies this crate.
@@ -109,6 +112,7 @@ pub use gantry_core::ToolStream as OutputStream;
 
 /// Where a running call reports output and progress (05 §3). Every method has a no-op
 /// default so a connector implements only what it produces.
+#[async_trait::async_trait]
 pub trait ToolEventSink: Send + Sync {
     fn output(&self, call_id: &CallId, stream: OutputStream, chunk: &[u8]) {
         let _ = (call_id, stream, chunk);
@@ -119,6 +123,39 @@ pub trait ToolEventSink: Send + Sync {
     /// An event of the turn stream a runtime tool produces itself (`artifact.*`, 13 §10).
     fn event(&self, event: AgentEventKind) {
         let _ = event;
+    }
+
+    /// A server stopping mid-call to ask the user something (03 §6, MCP's MRTR).
+    ///
+    /// It rides on the *call's* sink rather than on the session, which is the whole reason this
+    /// is here: an elicitation belongs to one tool call in one turn, and a session is shared by
+    /// every call a connector makes. rmcp's own `call_tool` walks the rounds through a
+    /// session-scoped handler, which cannot know which call it is answering for; `McpConnector`
+    /// drives the rounds itself for the same reason.
+    ///
+    /// Declining is the default, so a sink that has no user attached — an export, a test, the
+    /// probe — answers rather than hangs.
+    async fn elicit(&self, request: ElicitationRequest) -> ElicitationAnswer {
+        let _ = request;
+        ElicitationAnswer::declined()
+    }
+}
+
+/// What came back from the card.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ElicitationAnswer {
+    pub action: ElicitationAction,
+    /// The filled-in form. Empty unless the action was `Accept`.
+    pub values: serde_json::Value,
+}
+
+impl ElicitationAnswer {
+    #[must_use]
+    pub fn declined() -> Self {
+        Self {
+            action: ElicitationAction::Decline,
+            values: serde_json::Value::Object(serde_json::Map::new()),
+        }
     }
 }
 

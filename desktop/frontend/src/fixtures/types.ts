@@ -1,3 +1,5 @@
+import type { ElicitationField } from '@/bindings';
+
 /**
  * View-model shapes the chat components render (docs/plan/README.md, 05 §1). Backend truth is
  * the generated bindings; `lib/view/toTurns.ts` projects it onto these, and the gallery fills
@@ -176,6 +178,17 @@ export interface ConnectorOffer {
   reason: string;
 }
 
+/** A server asking for something in the middle of a call (03 §6, MCP's MRTR). */
+export interface ElicitationAsk {
+  /** The interaction's id. */
+  id: string;
+  connector: string;
+  connectorName: string;
+  /** The server's own words about what it needs. */
+  message: string;
+  fields: ElicitationField[];
+}
+
 export type Block =
   | { kind: 'text'; markdown: string }
   | { kind: 'thinking'; text: string; running: boolean; durationMs?: number }
@@ -199,7 +212,8 @@ export type Block =
     }
   | { kind: 'permission'; permission: Permission }
   | { kind: 'access'; ask: AccessAsk }
-  | { kind: 'offer'; offer: ConnectorOffer };
+  | { kind: 'offer'; offer: ConnectorOffer }
+  | { kind: 'elicit'; ask: ElicitationAsk };
 
 /** An attachment as a sent message shows it; `blob` and `mime` let an image be fetched. */
 export interface SentAttachment {

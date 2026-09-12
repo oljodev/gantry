@@ -12,6 +12,7 @@ import type {
   ActivityItem,
   Block,
   ConnectorOffer,
+  ElicitationAsk,
   GuardMark,
   Permission,
   Turn,
@@ -261,6 +262,8 @@ function messagesToBlocks(
     else if (p.payload.kind === 'access_request') blocks.push({ kind: 'access', ask: accessOf(p) });
     else if (p.payload.kind === 'connector_suggestion')
       blocks.push({ kind: 'offer', offer: offerOf(p) });
+    else if (p.payload.kind === 'elicitation')
+      blocks.push({ kind: 'elicit', ask: elicitationOf(p) });
   }
   return blocks;
 }
@@ -547,6 +550,19 @@ export function offerOf(i: Interaction): ConnectorOffer {
     auth: s.auth,
     requires: s.requires.map((r) => `${r.name} ${r.version}`),
     reason: s.reason,
+  };
+}
+
+/** A server's mid-call question as its card renders it (03 §6). */
+export function elicitationOf(i: Interaction): ElicitationAsk {
+  if (i.payload.kind !== 'elicitation') throw new Error('not an elicitation');
+  const r = i.payload.request;
+  return {
+    id: i.id,
+    connector: r.connector,
+    connectorName: r.connector_name,
+    message: r.message,
+    fields: r.fields,
   };
 }
 

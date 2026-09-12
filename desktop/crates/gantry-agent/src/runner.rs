@@ -11,7 +11,8 @@ use std::{
 
 use futures_util::StreamExt;
 use gantry_connectors::{
-    ChatScope, ConnectorRegistry, OutputStream, ToolCallRequest, ToolEventSink, ToolOutcome,
+    ChatScope, ConnectorRegistry, ElicitationAnswer, OutputStream, ToolCallRequest, ToolEventSink,
+    ToolOutcome,
 };
 use gantry_core::{
     AgentEventKind, CallId, ContentPart, DecisionSource, GrantScope, GrantSource, Interaction,
@@ -22,6 +23,7 @@ use gantry_core::{
 };
 use gantry_providers::{ChatRequest, Provider, ProviderError, ServerTool, StreamEvent};
 use serde_json::json;
+use tokio_util::sync::CancellationToken;
 
 use crate::{
     chats::{ChatBook, TurnInput, TurnOutcome},
@@ -1296,6 +1298,8 @@ async fn execute(
         interactions: ctx.interactions.clone(),
         notifier: ctx.notifier.clone(),
         chat_id: ctx.input.chat_id,
+        turn_id: ctx.input.turn_id,
+        cancel: cancel.clone(),
     });
     let outcome = tokio::select! {
         _ = ctx.active.cancel.cancelled() => None,
@@ -1373,6 +1377,9 @@ struct TurnToolEvents {
     interactions: Arc<Interactions>,
     notifier: Option<Arc<dyn ChatNotifier>>,
     chat_id: gantry_core::ChatId,
+    /// An elicitation is raised against the turn, and answered `cancel` when the turn stops.
+    turn_id: gantry_core::TurnId,
+    cancel: CancellationToken,
 }
 
 impl TurnToolEvents {
@@ -1383,6 +1390,7 @@ impl TurnToolEvents {
     }
 }
 
+#[async_trait::async_trait]
 impl ToolEventSink for TurnToolEvents {
     /// A running call's output, on its way to the feed. Transient by design (05 §2): the end
     /// state is the call's result, so nothing here is persisted or replayed.
@@ -1421,6 +1429,43 @@ impl ToolEventSink for TurnToolEvents {
             _ => {}
         }
         self.batcher.push(event);
+    }
+
+    /// A server stopping mid-call to ask the user something (03 §6): the same card machinery as
+    /// a permission prompt, because to the person answering it is the same kind of moment — the
+    /// turn has stopped and is waiting on them.
+    ///
+    /// Cancelling the turn answers it `cancel`, which is the specification's own word for "the
+    /// user is not going to answer this". A server that gets it can stop rather than wait.
+    async fn elicit(&self, request: gantry_core::ElicitationRequest) -> ElicitationAnswer {
+        let interaction = Interaction::pending(
+            self.chat_id,
+            self.turn_id,
+            InteractionPayload::Elicitation { request },
+        );
+        let id = interaction.id;
+        let rx = self.interactions.request(interaction.clone());
+        self.event(AgentEventKind::DecisionRequested {
+            interaction: Box::new(interaction),
+        });
+        let resolution = tokio::select! {
+            () = self.cancel.cancelled() => InteractionResolution::Cancelled,
+            r = rx => r.unwrap_or(InteractionResolution::Cancelled),
+        };
+        self.event(AgentEventKind::DecisionResolved {
+            interaction_id: id,
+            resolution: resolution.clone(),
+            source: DecisionSource::UserOnce,
+        });
+        match resolution {
+            InteractionResolution::Elicitation { action, values } => {
+                ElicitationAnswer { action, values }
+            }
+            _ => ElicitationAnswer {
+                action: gantry_core::ElicitationAction::Cancel,
+                values: serde_json::Value::Object(serde_json::Map::new()),
+            },
+        }
     }
 }
 

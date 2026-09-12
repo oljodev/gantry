@@ -74,6 +74,69 @@ pub struct AccessRequest {
     pub reason: String,
 }
 
+/// What a server asked the user for, in the middle of a tool call (03 §6, MCP's MRTR).
+///
+/// A tool can stop halfway and say it needs something only a person can give — which repository,
+/// which of these three accounts, are you sure. The call is not finished and not failed: it is
+/// waiting, and the answer goes back as the next round of the same call.
+///
+/// Modelled in Gantry's own terms rather than the wire's, because this crate knows nothing about
+/// MCP and because only the primitives survive the translation anyway: the specification allows a
+/// flat object of strings, numbers and booleans, and nothing nested.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
+pub struct ElicitationRequest {
+    /// The call that is waiting, so the card can sit with the row it belongs to.
+    pub call_id: CallId,
+    pub connector: String,
+    pub connector_name: String,
+    /// The server's own sentence about what it needs. Untrusted text from a third party — shown
+    /// as the server's words, never as Gantry's.
+    pub message: String,
+    pub fields: Vec<ElicitationField>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
+pub struct ElicitationField {
+    pub key: String,
+    pub kind: ElicitationFieldKind,
+    pub title: String,
+    pub description: Option<String>,
+    pub required: bool,
+    /// The values a choice is between, with the labels the server gave them.
+    pub options: Vec<ElicitationOption>,
+    /// `email`, `uri`, `date`, `date-time` — what the server said the string is.
+    pub format: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "snake_case")]
+pub enum ElicitationFieldKind {
+    String,
+    Number,
+    Integer,
+    Boolean,
+    Enum,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+pub struct ElicitationOption {
+    pub value: String,
+    pub label: String,
+}
+
+/// What the user did with an elicitation card (MCP's three actions).
+///
+/// `Decline` and `Cancel` are different answers and the server is told which: declining is "no,
+/// carry on without it", cancelling is "stop, I am not answering this" — a distinction the
+/// specification makes and a server may act on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "snake_case")]
+pub enum ElicitationAction {
+    Accept,
+    Decline,
+    Cancel,
+}
+
 /// What a connector-suggestion card shows (03 §9): a catalog entry that is not installed at
 /// all. Nothing is installed until the user presses the card's button.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
@@ -95,6 +158,7 @@ pub enum InteractionPayload {
     Permission { request: PermissionRequest },
     AccessRequest { request: AccessRequest },
     ConnectorSuggestion { suggestion: ConnectorSuggestion },
+    Elicitation { request: ElicitationRequest },
 }
 
 impl InteractionPayload {
@@ -104,6 +168,7 @@ impl InteractionPayload {
             InteractionPayload::Permission { .. } => InteractionKind::Permission,
             InteractionPayload::AccessRequest { .. } => InteractionKind::AccessRequest,
             InteractionPayload::ConnectorSuggestion { .. } => InteractionKind::ConnectorSuggestion,
+            InteractionPayload::Elicitation { .. } => InteractionKind::Elicitation,
         }
     }
 }
@@ -166,6 +231,12 @@ pub enum InteractionResolution {
     },
     ConnectorSuggestion {
         outcome: SuggestionOutcome,
+    },
+    Elicitation {
+        action: ElicitationAction,
+        /// The filled-in form, by key. Empty unless the action was `Accept`.
+        #[specta(type = specta_typescript::Unknown)]
+        values: serde_json::Value,
     },
     /// The turn was cancelled or the app restarted while the card waited.
     Cancelled,

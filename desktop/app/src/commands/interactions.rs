@@ -33,9 +33,15 @@ pub fn resolve_interaction(
     interaction_id: InteractionId,
     resolution: InteractionResolution,
 ) -> Result<Interaction, ErrorDto> {
-    // An answered access request or suggestion attaches a connector inside the waiting turn,
-    // so the chat's connector list is stale the moment this returns (03 §9, 04 §9).
-    let widens = !matches!(resolution, InteractionResolution::Permission { .. });
+    // An answered access request or suggestion attaches a connector inside the waiting turn, so
+    // the chat's connector list is stale the moment this returns (03 §9, 04 §9). Named rather
+    // than inferred from "not a permission", so a later kind that changes nothing — an
+    // elicitation does not — is not swept in by a negation nobody revisits.
+    let widens = matches!(
+        resolution,
+        InteractionResolution::AccessRequest { .. }
+            | InteractionResolution::ConnectorSuggestion { .. }
+    );
     let resolved = state
         .turns
         .resolve_interaction(interaction_id, resolution)?;

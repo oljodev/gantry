@@ -48,7 +48,18 @@ async fn the_cloudflare_documentation_server_answers() {
         .expect("a documentation tool");
     let args = serde_json::json!({ "query": "workers kv", "q": "workers kv" });
     let (content, _structured, is_error) = session
-        .call(&searcher.name, &args)
+        .call(
+            &searcher.name,
+            &args,
+            &gantry_connectors::NoopToolEvents,
+            &gantry_core::ElicitationRequest {
+                call_id: gantry_core::CallId::from("live".to_owned()),
+                connector: "cloudflare-docs".to_owned(),
+                connector_name: "Cloudflare Docs".to_owned(),
+                message: String::new(),
+                fields: Vec::new(),
+            },
+        )
         .await
         .expect("calling the tool");
     println!(

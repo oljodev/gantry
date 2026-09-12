@@ -11,6 +11,7 @@ import {
   type PermissionAnswer,
   PermissionCard,
 } from '@/components/gantry/chat/InteractionCard';
+import { ElicitationCard, type ElicitationAnswer } from '@/components/gantry/chat/ElicitationCard';
 import { TurnActions, type TurnActionsProps } from '@/components/gantry/chat/TurnActions';
 import { UserMessage } from '@/components/gantry/chat/UserMessage';
 import { Markdown } from '@/components/gantry/markdown/Markdown';
@@ -45,6 +46,7 @@ export function TurnView({
   onAllowAnyway,
   onDecide,
   onAccess,
+  onElicit,
   onOffer,
   installing,
   isLast,
@@ -63,6 +65,8 @@ export function TurnView({
   onDecide?: (interactionId: string, answer: PermissionAnswer) => void;
   /** Answers an access request (04 §9). */
   onAccess?: (interactionId: string, answer: AccessAnswer) => void;
+  /** A server's mid-call question (03 §6). */
+  onElicit?: (interactionId: string, answer: ElicitationAnswer) => void;
   /** Answers a connector suggestion: install it, or not (03 §9). */
   onOffer?: (interactionId: string, install: boolean) => void;
   /** The suggestion whose install is running. */
@@ -160,6 +164,14 @@ export function TurnView({
                   key={block.ask.id}
                   ask={block.ask}
                   onDecide={onAccess ? (answer) => onAccess(block.ask.id, answer) : undefined}
+                />
+              );
+            case 'elicit':
+              return (
+                <ElicitationCard
+                  key={block.ask.id}
+                  ask={block.ask}
+                  onAnswer={onElicit ? (answer) => onElicit(block.ask.id, answer) : undefined}
                 />
               );
             case 'offer':

@@ -50,7 +50,8 @@ pub use ids::{
     TurnId,
 };
 pub use interaction::{
-    AccessDecision, AccessRequest, ConnectorSuggestion, Interaction, InteractionKind,
+    AccessDecision, AccessRequest, ConnectorSuggestion, ElicitationAction, ElicitationField,
+    ElicitationFieldKind, ElicitationOption, ElicitationRequest, Interaction, InteractionKind,
     InteractionPayload, InteractionResolution, InteractionStatus, PermissionDecision,
     PermissionRequest, SuggestionOutcome,
 };
