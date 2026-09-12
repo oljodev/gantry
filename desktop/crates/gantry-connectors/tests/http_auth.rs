@@ -99,11 +99,14 @@ async fn a_bearer_credential_arrives_once_with_one_scheme() {
     let seen = Arc::new(Mutex::new(Seen::default()));
     let url = serve(seen.clone()).await;
 
-    let session = McpSession::connect(&Endpoint::Http {
-        url,
-        headers: Vec::new(),
-        bearer: Some("Bearer secret-token".to_owned()),
-    })
+    let session = McpSession::connect(
+        &Endpoint::Http {
+            url,
+            headers: Vec::new(),
+            bearer: Some("Bearer secret-token".to_owned()),
+        },
+        Default::default(),
+    )
     .await
     .expect("connecting to the recorder");
     session.close().await;
@@ -123,11 +126,14 @@ async fn a_credential_with_another_scheme_survives_intact() {
     let seen = Arc::new(Mutex::new(Seen::default()));
     let url = serve(seen.clone()).await;
 
-    let session = McpSession::connect(&Endpoint::Http {
-        url,
-        headers: Vec::new(),
-        bearer: Some("token ghp_classic".to_owned()),
-    })
+    let session = McpSession::connect(
+        &Endpoint::Http {
+            url,
+            headers: Vec::new(),
+            bearer: Some("token ghp_classic".to_owned()),
+        },
+        Default::default(),
+    )
     .await
     .expect("connecting to the recorder");
     session.close().await;
@@ -144,11 +150,14 @@ async fn a_configured_header_reaches_the_server() {
     let seen = Arc::new(Mutex::new(Seen::default()));
     let url = serve(seen.clone()).await;
 
-    let session = McpSession::connect(&Endpoint::Http {
-        url,
-        headers: vec![("X-Gantry-Test".to_owned(), "1".to_owned())],
-        bearer: None,
-    })
+    let session = McpSession::connect(
+        &Endpoint::Http {
+            url,
+            headers: vec![("X-Gantry-Test".to_owned(), "1".to_owned())],
+            bearer: None,
+        },
+        Default::default(),
+    )
     .await
     .expect("connecting to the recorder");
     session.close().await;

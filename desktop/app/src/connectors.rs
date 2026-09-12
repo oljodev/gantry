@@ -334,12 +334,15 @@ impl ConnectorService {
         }
         let endpoint = self.endpoint(&instance).await?;
         let remote = instance.kind == ConnectorKind::McpRemote;
-        match gantry_connectors::mcp::McpSession::connect(&endpoint).await {
+        // A one-shot session for the install's first connection: it is closed at the end of
+        // this function, so a `tools/list_changed` arriving over it has nothing left to expire.
+        match gantry_connectors::mcp::McpSession::connect(&endpoint, Default::default()).await {
             Ok(session) => {
                 let defs = session
                     .tools(remote)
                     .await
-                    .map_err(|e| GantryError::internal(e.to_string()))?;
+                    .map_err(|e| GantryError::internal(e.to_string()))?
+                    .tools;
                 let manifest = instance
                     .catalog_id
                     .as_deref()

@@ -534,9 +534,13 @@ which is what Gantry will actually use, so their manifests say `["cimd", "dcr"]`
 claiming a path that will not be taken. Nobody has signed in to any of them and every README says
 which parts were verified mechanically.
 
+**Tool-list caching done 2026-09-11** (03 §6): `ttlMs` honoured where a server sends it, a
+ten-minute default where none does — the cache had no expiry at all before, so a list read at
+startup outlived every change the server made — and `tools/list_changed` wired to a real
+`ClientHandler` so a list known to be wrong is not waited out.
+
 Not built yet, and what is left of M9: MRTR `input_required` as an
-`Interaction::Elicitation` with a form, the stderr log view for stdio servers, and tool-list
-caching against `ttlMs` with list-changed notifications.
+`Interaction::Elicitation` with a form, and the stderr log view for stdio servers.
 
 ## M9 — the rest (original scope)
 

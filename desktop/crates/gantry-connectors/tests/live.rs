@@ -21,7 +21,7 @@ async fn the_cloudflare_documentation_server_answers() {
         headers: Vec::new(),
         bearer: None,
     };
-    let session = McpSession::connect(&endpoint)
+    let session = McpSession::connect(&endpoint, Default::default())
         .await
         .expect("connecting to the documentation server");
 
@@ -32,8 +32,9 @@ async fn the_cloudflare_documentation_server_answers() {
     );
     assert!(!server.protocol.is_empty(), "a version was negotiated");
 
-    let tools = session.tools(true).await.expect("listing tools");
-    println!("{} tools", tools.len());
+    let listing = session.tools(true).await.expect("listing tools");
+    println!("{} tools, ttl {:?}", listing.tools.len(), listing.ttl);
+    let tools = listing.tools;
     for tool in &tools {
         println!("  {} · {:?}", tool.name, tool.tier);
     }

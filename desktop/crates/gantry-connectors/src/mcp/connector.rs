@@ -3,7 +3,10 @@
 //! idled out from under it.
 
 use std::{
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
     time::{Duration, Instant},
 };
 
@@ -14,11 +17,21 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{
     Connector, ConnectorDescriptor, ConnectorError, ToolCallRequest, ToolEventSink, ToolOutcome,
-    mcp::session::{Endpoint, McpError, McpSession},
+    mcp::session::{Endpoint, McpError, McpSession, ToolListing},
 };
 
 /// A server idle for this long is stopped; the next call opens it again (03 §6).
 const IDLE_STOP: Duration = Duration::from_secs(10 * 60);
+
+/// How long a tool list is trusted when the server did not say (03 §6).
+///
+/// Every revision before 2026-07-28 carries no `ttlMs`, which is most servers today, and the
+/// cache used to have no expiry at all: a tool list read at startup was still being handed to the
+/// model a week later, and a server that had gained or lost a tool in between was misrepresented
+/// until the app restarted. Ten minutes is the same number as [`IDLE_STOP`] on purpose — a server
+/// that has been idle that long is about to be re-listed on its next use anyway, so the two
+/// timers agree instead of fighting.
+const DEFAULT_TTL: Duration = Duration::from_secs(10 * 60);
 
 pub struct McpConnector {
     descriptor: ConnectorDescriptor,
@@ -26,7 +39,16 @@ pub struct McpConnector {
     remote: bool,
     session: AsyncMutex<Option<Live>>,
     /// The last known tool list, so the tool set can be assembled without waking the server.
-    cached_tools: Mutex<Option<Vec<ToolDef>>>,
+    cached_tools: Mutex<Option<Cached>>,
+    /// Set by the session's handler when the server sends `tools/list_changed` — the one moment
+    /// a cache is known to be wrong rather than merely old (03 §6).
+    tools_changed: Arc<AtomicBool>,
+}
+
+/// A tool list and when it stops being trusted.
+struct Cached {
+    tools: Vec<ToolDef>,
+    fresh_until: Instant,
 }
 
 struct Live {
@@ -54,7 +76,14 @@ impl McpConnector {
             endpoint,
             remote: kind == ConnectorKind::McpRemote,
             session: AsyncMutex::new(None),
-            cached_tools: Mutex::new(cached_tools),
+            // A list read from the database at startup is a starting point, not a fresh answer:
+            // it was true when it was written and nothing since has checked. It gets the default
+            // TTL like any other, so the first use after ten minutes re-lists.
+            cached_tools: Mutex::new(cached_tools.map(|tools| Cached {
+                tools,
+                fresh_until: Instant::now() + DEFAULT_TTL,
+            })),
+            tools_changed: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -62,13 +91,30 @@ impl McpConnector {
     pub async fn refresh(&self) -> Result<Vec<ToolDef>, McpError> {
         let mut guard = self.session.lock().await;
         let live = self.ensure(&mut guard).await?;
-        let tools = live.session.tools(self.remote).await?;
-        self.remember(tools.clone());
-        Ok(tools)
+        let listing = live.session.tools(self.remote).await?;
+        self.remember(listing.clone());
+        Ok(listing.tools)
     }
 
-    fn remember(&self, tools: Vec<ToolDef>) {
-        *self.cached_tools.lock().unwrap_or_else(|e| e.into_inner()) = Some(tools);
+    fn remember(&self, listing: ToolListing) {
+        // A notification that arrived while this listing was in flight is about the list we just
+        // asked for, so clearing it here is right; one that arrives after sets the flag again.
+        self.tools_changed.store(false, Ordering::Relaxed);
+        *self.cached_tools.lock().unwrap_or_else(|e| e.into_inner()) = Some(Cached {
+            tools: listing.tools,
+            fresh_until: Instant::now() + listing.ttl.unwrap_or(DEFAULT_TTL),
+        });
+    }
+
+    /// The cached list, when it is still worth trusting: the server has not said it changed, and
+    /// the time it said to trust it for has not run out.
+    fn fresh(&self) -> Option<Vec<ToolDef>> {
+        if self.tools_changed.load(Ordering::Relaxed) {
+            return None;
+        }
+        let guard = self.cached_tools.lock().unwrap_or_else(|e| e.into_inner());
+        let cached = guard.as_ref()?;
+        (cached.fresh_until > Instant::now()).then(|| cached.tools.clone())
     }
 
     /// Opens the session if there is none, and lists the tools over it once.
@@ -81,9 +127,10 @@ impl McpConnector {
     /// that cannot list is still worth calling, and its error will say so.
     async fn ensure<'a>(&self, guard: &'a mut Option<Live>) -> Result<&'a mut Live, McpError> {
         if guard.is_none() {
-            let session = McpSession::connect(&self.endpoint).await?;
+            let session =
+                McpSession::connect(&self.endpoint, Arc::clone(&self.tools_changed)).await?;
             match session.tools(self.remote).await {
-                Ok(tools) => self.remember(tools),
+                Ok(listing) => self.remember(listing),
                 Err(err) => log::warn!("{} listed no tools on connect: {err}", self.descriptor.id),
             }
             *guard = Some(Live {
@@ -126,17 +173,31 @@ impl Connector for McpConnector {
     /// or open a connection: a chat with six connectors attached would pay for all six on every
     /// message (03 §6, tool list caching).
     async fn tools(&self) -> Result<Vec<ToolDef>, ConnectorError> {
-        if let Some(tools) = self
-            .cached_tools
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .clone()
-        {
+        if let Some(tools) = self.fresh() {
             return Ok(tools);
         }
-        self.refresh()
-            .await
-            .map_err(|e| ConnectorError::Failed(e.to_string()))
+        match self.refresh().await {
+            Ok(tools) => Ok(tools),
+            // A stale list beats no list. The server is unreachable, and answering a turn with
+            // "this connector has no tools" would make the model apologise for a capability it
+            // still has; the call it then makes fails with the connection error, which is the
+            // true thing to say and says it in the right place.
+            Err(err) => {
+                let stale = self
+                    .cached_tools
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .as_ref()
+                    .map(|c| c.tools.clone());
+                match stale {
+                    Some(tools) => {
+                        log::warn!("{}: using the last tool list: {err}", self.descriptor.id);
+                        Ok(tools)
+                    }
+                    None => Err(ConnectorError::Failed(err.to_string())),
+                }
+            }
+        }
     }
 
     async fn call(
@@ -181,5 +242,77 @@ impl Connector for McpConnector {
             structured,
             is_error,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gantry_core::RiskTier;
+
+    /// A connector with a cache and an endpoint nobody connects to: these are tests about when a
+    /// tool list stops being trusted, and answering that must not need a server.
+    fn connector(cached: Option<Vec<ToolDef>>) -> McpConnector {
+        McpConnector::new(
+            "test".to_owned(),
+            "Test".to_owned(),
+            InstanceId::new(),
+            ConnectorKind::McpRemote,
+            Endpoint::Http {
+                url: "https://example.invalid/mcp".to_owned(),
+                headers: Vec::new(),
+                bearer: None,
+            },
+            cached,
+        )
+    }
+
+    fn tool(name: &str) -> ToolDef {
+        ToolDef::new(name, "d", serde_json::json!({}), RiskTier::Read)
+    }
+
+    #[test]
+    fn a_list_read_from_the_database_is_a_starting_point_and_still_expires() {
+        let c = connector(Some(vec![tool("a")]));
+        assert_eq!(c.fresh().map(|t| t.len()), Some(1));
+
+        // It was true when it was written and nothing since has checked, so it ages like any
+        // other answer rather than lasting until the app restarts.
+        c.cached_tools.lock().unwrap().as_mut().unwrap().fresh_until =
+            Instant::now() - Duration::from_secs(1);
+        assert!(c.fresh().is_none(), "an expired list is not fresh");
+    }
+
+    #[test]
+    fn the_servers_own_ttl_beats_the_default() {
+        let c = connector(None);
+        c.remember(ToolListing {
+            tools: vec![tool("a")],
+            ttl: Some(Duration::from_millis(1)),
+        });
+        std::thread::sleep(Duration::from_millis(5));
+        assert!(c.fresh().is_none(), "the server said one millisecond");
+
+        c.remember(ToolListing {
+            tools: vec![tool("a")],
+            ttl: None,
+        });
+        assert!(c.fresh().is_some(), "and nothing said means the default");
+    }
+
+    /// `tools/list_changed` is the one moment a cache is known to be wrong rather than old, so
+    /// it does not wait for a TTL — and re-listing clears it, or every later read would refetch.
+    #[test]
+    fn a_list_changed_notification_expires_the_cache_at_once() {
+        let c = connector(Some(vec![tool("a")]));
+        assert!(c.fresh().is_some());
+        c.tools_changed.store(true, Ordering::Relaxed);
+        assert!(c.fresh().is_none());
+
+        c.remember(ToolListing {
+            tools: vec![tool("a"), tool("b")],
+            ttl: None,
+        });
+        assert_eq!(c.fresh().map(|t| t.len()), Some(2));
     }
 }

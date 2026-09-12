@@ -9,12 +9,13 @@ use std::{sync::Arc, time::Duration};
 
 use gantry_core::{ResultPart, ServerInfo, ToolDef};
 use rmcp::{
-    ClientServiceExt,
+    ClientHandler, ClientServiceExt,
     model::{
         CallToolRequestParams, CallToolResult, ClientCapabilities, ClientInfo, ContentBlock,
-        Implementation, JsonObject, ProtocolVersion,
+        Implementation, InitializeRequestParams, JsonObject, PaginatedRequestParams,
+        ProtocolVersion,
     },
-    service::{ClientLifecycleMode, RoleClient, RunningService},
+    service::{ClientLifecycleMode, NotificationContext, RoleClient, RunningService},
     transport::{
         StreamableHttpClientTransport, TokioChildProcess,
         streamable_http_client::StreamableHttpClientTransportConfig,
@@ -64,8 +65,45 @@ pub enum Endpoint {
 }
 
 pub struct McpSession {
-    service: RunningService<RoleClient, ClientInfo>,
+    service: RunningService<RoleClient, Client>,
     server: ServerInfo,
+}
+
+/// What the server said about a tool list, beyond the tools (03 §6, SEP-2549).
+#[derive(Debug, Clone, Default)]
+pub struct ToolListing {
+    pub tools: Vec<ToolDef>,
+    /// How long the server says this may be treated as fresh. Absent on every revision before
+    /// 2026-07-28, which is most servers today.
+    pub ttl: Option<Duration>,
+}
+
+/// Gantry as an MCP client.
+///
+/// It exists for one notification. rmcp's default handler ignores `tools/list_changed`, which is
+/// a server saying its tool list is no longer what it told us — the one moment a cache is known
+/// to be wrong rather than merely old. The flag is read by `McpConnector`, which owns the cache;
+/// a handler cannot refresh it itself, because refreshing needs the session the handler is being
+/// called from.
+#[derive(Debug, Clone)]
+pub struct Client {
+    info: ClientInfo,
+    tools_changed: Arc<std::sync::atomic::AtomicBool>,
+}
+
+impl ClientHandler for Client {
+    fn get_info(&self) -> InitializeRequestParams {
+        self.info.clone()
+    }
+
+    fn on_tool_list_changed(
+        &self,
+        _context: NotificationContext<RoleClient>,
+    ) -> impl Future<Output = ()> + Send + '_ {
+        self.tools_changed
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+        std::future::ready(())
+    }
 }
 
 impl std::fmt::Debug for McpSession {
@@ -79,8 +117,11 @@ impl std::fmt::Debug for McpSession {
 impl McpSession {
     /// Opens a connection and completes the handshake. A 401 is reported as `Unauthorized` so
     /// the caller can start the OAuth flow instead of showing a connection error (03 §7).
-    pub async fn connect(endpoint: &Endpoint) -> Result<Self, McpError> {
-        let service = tokio::time::timeout(CONNECT_TIMEOUT, serve(endpoint))
+    pub async fn connect(
+        endpoint: &Endpoint,
+        tools_changed: Arc<std::sync::atomic::AtomicBool>,
+    ) -> Result<Self, McpError> {
+        let service = tokio::time::timeout(CONNECT_TIMEOUT, serve(endpoint, tools_changed))
             .await
             .map_err(|_| McpError::Timeout)??;
         let info = service.peer_info();
@@ -107,13 +148,29 @@ impl McpSession {
 
     /// Every tool the server offers, with a tier derived from its annotations (03 §6), in the
     /// order the server listed them so the model-facing array stays stable.
-    pub async fn tools(&self, remote: bool) -> Result<Vec<ToolDef>, McpError> {
-        let tools = self
-            .service
-            .list_all_tools()
-            .await
-            .map_err(|e| McpError::Call(e.to_string()))?;
-        Ok(tools
+    pub async fn tools(&self, remote: bool) -> Result<ToolListing, McpError> {
+        // Paginated by hand rather than with `list_all_tools`, which drops the envelope — and
+        // the envelope is where `ttlMs` is. The first page's TTL is the listing's: a server that
+        // paginates says how long the whole answer is good for, not each slice of it.
+        let mut cursor = None;
+        let mut ttl = None;
+        let mut tools = Vec::new();
+        loop {
+            let page = self
+                .service
+                .list_tools(Some(PaginatedRequestParams::default().with_cursor(cursor)))
+                .await
+                .map_err(|e| McpError::Call(e.to_string()))?;
+            if ttl.is_none() {
+                ttl = page.ttl_ms.map(Duration::from_millis);
+            }
+            tools.extend(page.tools);
+            cursor = page.next_cursor;
+            if cursor.is_none() {
+                break;
+            }
+        }
+        let tools = tools
             .into_iter()
             .map(|t| {
                 let tier = tier_for(t.annotations.as_ref(), remote);
@@ -132,7 +189,8 @@ impl McpSession {
                     .unwrap_or(false);
                 def
             })
-            .collect())
+            .collect();
+        Ok(ToolListing { tools, ttl })
     }
 
     /// Calls one tool. MRTR input requests are not answered here: rmcp's `call_tool` walks the
@@ -178,8 +236,14 @@ fn lifecycles() -> [ClientLifecycleMode; 2] {
     ]
 }
 
-async fn serve(endpoint: &Endpoint) -> Result<RunningService<RoleClient, ClientInfo>, McpError> {
-    let info = client_info();
+async fn serve(
+    endpoint: &Endpoint,
+    tools_changed: Arc<std::sync::atomic::AtomicBool>,
+) -> Result<RunningService<RoleClient, Client>, McpError> {
+    let info = Client {
+        info: client_info(),
+        tools_changed,
+    };
     match endpoint {
         Endpoint::Stdio {
             command,
