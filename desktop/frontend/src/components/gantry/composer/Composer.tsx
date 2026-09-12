@@ -225,8 +225,13 @@ export function Composer({
   // a path is a slash; `slash.ts` holds that rule and is tested on its own.
   const names = (skills ?? []).map((s) => s.name);
   const query = slashQuery(text, caret);
-  const matches =
-    query === null ? [] : (skills ?? []).filter((s) => s.name.startsWith(query)).slice(0, 6);
+  // `/remember` sits in the same menu and is not a skill: `invokedSkills` only knows the names
+  // above, so typing it forces nothing and the composer treats the message as a command.
+  const offered = [
+    ...(skills ?? []),
+    { name: 'remember', description: 'Keep the rest of this line as a memory' },
+  ];
+  const matches = query === null ? [] : offered.filter((s) => s.name.startsWith(query)).slice(0, 6);
   const menuOpen = matches.length > 0;
 
   const choose = (name: string) => {

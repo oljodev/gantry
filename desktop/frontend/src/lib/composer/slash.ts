@@ -39,3 +39,14 @@ export function completeSlash(text: string, caret: number, name: string): [strin
   const next = `${before.slice(0, start)}/${name} `;
   return [next + text.slice(caret), next.length];
 }
+
+/**
+ * `/remember …` (12 §B3): the one slash command that is not a skill. It writes a memory
+ * instead of sending a turn, because "remember that I prefer pnpm" is not a question and an
+ * answer to it would be noise.
+ */
+export function rememberCommand(text: string): string | null {
+  const match = /^\s*\/remember\s+([\s\S]+)$/.exec(text);
+  const body = match?.[1]?.trim();
+  return body ? body : null;
+}

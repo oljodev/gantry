@@ -35,8 +35,10 @@ import { toast } from '@/components/ui/toast';
 import { ToolCallDetail } from '@/components/gantry/pane/ToolCallDetail';
 import { ArtifactPanel } from '@/features/artifacts/ArtifactPanel';
 import { useArtifactStore } from '@/features/artifacts/store';
+import { RememberSelection } from '@/features/chat/RememberSelection';
 import type { ActivityItem, ModelRef } from '@/fixtures/types';
 import { copyText, openExternal } from '@/lib/clipboard';
+import { rememberCommand } from '@/lib/composer/slash';
 import { commands, unwrap } from '@/lib/ipc/client';
 import { useFollowBottom } from '@/lib/followBottom';
 import { pickFolder } from '@/lib/folders';
@@ -526,9 +528,11 @@ export function ChatView({
 
   return (
     <div className="relative flex h-full min-w-0">
+      <RememberSelection chatId={chatId} scroller="[data-transcript]" />
       <div className="flex min-w-0 flex-1 flex-col">
         <div
           ref={feedRef}
+          data-transcript
           className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto pt-(--title-strip)"
         >
           <div className="mx-auto w-full max-w-(--measure) min-w-0 px-6 pt-2 pb-6">
@@ -632,6 +636,30 @@ export function ChatView({
           onModelChange={(model: ModelRef) => patch({ model })}
           skills={skillChoices}
           onSend={(text, attachments, invoked) => {
+            // `/remember …` writes a memory instead of sending a turn (12 §B3): it is not a
+            // question, and answering it would be noise.
+            const remember = rememberCommand(text);
+            if (remember) {
+              void unwrap(
+                commands.createMemory({
+                  text: remember,
+                  kind: 'fact',
+                  scope_kind: 'global',
+                  source: 'user',
+                  origin_chat_id: chatId,
+                  origin_message_id: null,
+                }),
+              )
+                .then(() => toast.add({ title: 'Remembered', description: remember }))
+                .catch((err: unknown) =>
+                  toast.add({
+                    title: 'Could not remember that',
+                    description: describe(err),
+                    type: 'error',
+                  }),
+                );
+              return;
+            }
             // Sending is the one moment where jumping is what the user meant: their own message
             // is about to appear at the bottom, so follow the feed again wherever they were.
             follow('auto');

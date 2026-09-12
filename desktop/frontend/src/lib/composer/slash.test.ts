@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { completeSlash, invokedSkills, slashQuery } from '@/lib/composer/slash';
+import { completeSlash, invokedSkills, rememberCommand, slashQuery } from '@/lib/composer/slash';
 
 const KNOWN = ['rust-idioms', 'code-review', 'commit-messages'];
 
@@ -43,5 +43,21 @@ describe('completeSlash', () => {
   it('replaces the partial name and leaves the rest of the message alone', () => {
     expect(completeSlash('/ru', 3, 'rust-idioms')).toEqual(['/rust-idioms ', 13]);
     expect(completeSlash('/ru fix this', 3, 'rust-idioms')).toEqual(['/rust-idioms  fix this', 13]);
+  });
+});
+
+describe('rememberCommand', () => {
+  it('takes everything after the word as the memory', () => {
+    expect(rememberCommand('/remember I prefer pnpm')).toBe('I prefer pnpm');
+    expect(rememberCommand('  /remember  the API lives in services/api  ')).toBe(
+      'the API lives in services/api',
+    );
+  });
+
+  it('is not a command without something to remember, or in the middle of a message', () => {
+    expect(rememberCommand('/remember')).toBeNull();
+    expect(rememberCommand('/remember   ')).toBeNull();
+    expect(rememberCommand('please /remember this')).toBeNull();
+    expect(rememberCommand('/rust-idioms go')).toBeNull();
   });
 });
