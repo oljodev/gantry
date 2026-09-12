@@ -146,12 +146,14 @@ export function SkillProposalCard({
 export type MemoryAnswer = { kind: 'save'; text: string } | { kind: 'discard' };
 
 /**
- * A memory the model proposed, or one it would forget (12 §B3).
+ * A memory the model wrote, or one it forgot (12 §B3).
  *
  * The text is editable before it is kept, which is what makes confirmation cheap rather than
- * annoying: a proposal that is nearly right is one word away from being right. When auto-save
- * is on the entry is already stored and the card offers **Undo** instead — the rule is that no
- * memory exists without the user seeing it, not that they must click.
+ * annoying: a sentence that is nearly right is one word away from being right. Under auto-save
+ * — the default — the change has already happened and the card offers **Undo** instead, in
+ * both directions: a new entry is already stored, and a forgotten one is already in Recently
+ * deleted. The rule is that nothing changes without the user seeing it, not that they must
+ * click.
  */
 export function MemoryProposalCard({
   proposal,
@@ -170,7 +172,9 @@ export function MemoryProposalCard({
       mark={<BrainIcon className="size-4 shrink-0 text-fg-2" />}
       title={
         forgetting
-          ? 'Forget this?'
+          ? proposal.auto_saved
+            ? 'Forgotten'
+            : 'Forget this?'
           : proposal.auto_saved
             ? 'Remembered'
             : proposal.target
@@ -179,22 +183,41 @@ export function MemoryProposalCard({
       }
       actions={
         forgetting ? (
-          <>
-            <Button
-              variant="primary"
-              disabled={pending}
-              onClick={() => onAnswer?.({ kind: 'save', text })}
-            >
-              Forget it
-            </Button>
-            <Button
-              variant="ghost"
-              disabled={pending}
-              onClick={() => onAnswer?.({ kind: 'discard' })}
-            >
-              Keep it
-            </Button>
-          </>
+          proposal.auto_saved ? (
+            <>
+              <Button
+                variant="secondary"
+                disabled={pending}
+                onClick={() => onAnswer?.({ kind: 'discard' })}
+              >
+                Undo
+              </Button>
+              <Button
+                variant="ghost"
+                disabled={pending}
+                onClick={() => onAnswer?.({ kind: 'save', text })}
+              >
+                Fine
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button
+                variant="primary"
+                disabled={pending}
+                onClick={() => onAnswer?.({ kind: 'save', text })}
+              >
+                Forget it
+              </Button>
+              <Button
+                variant="ghost"
+                disabled={pending}
+                onClick={() => onAnswer?.({ kind: 'discard' })}
+              >
+                Keep it
+              </Button>
+            </>
+          )
         ) : proposal.auto_saved ? (
           <>
             <Button

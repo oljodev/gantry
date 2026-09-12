@@ -233,8 +233,15 @@ pub struct GuardSettings {
 
 /// Memory (docs/plan/12 §B3, §B5). Two switches, and each one is a promise: with `paused` on,
 /// nothing is injected and nothing is proposed, so a chat about somebody else's data leaves no
-/// trace; with an auto-save on, the card still appears — already saved, with **Undo** — because
-/// 12 §B1's rule is that no memory exists without the user seeing it, not that they must click.
+/// trace; with an auto-save on — the default — the card still appears, already saved and with
+/// **Undo**, because 12 §B1's rule is that no memory exists without the user seeing it, not
+/// that they must click.
+///
+/// Auto-save defaults to on for both scopes. The point of the feature is a workspace that
+/// learns how you work without being asked twice, and a confirmation step on every sentence
+/// turns that into a chore; what keeps the promise is that the card is still there, the entry
+/// is still a visible row, and Undo is one click. Forgetting follows the same rule, and is
+/// even safer: a forgotten entry goes to Recently deleted for thirty days.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 #[serde(default)]
 pub struct MemorySettings {
@@ -242,7 +249,8 @@ pub struct MemorySettings {
     pub paused: bool,
     /// Whether the model may propose at all. Off means the tools are not offered.
     pub propose: bool,
-    /// Save an assistant proposal without waiting for the click, per scope.
+    /// Save an assistant proposal — and apply one it offers to forget — without waiting for
+    /// the click, per scope. On by default.
     pub auto_save_global: bool,
     pub auto_save_project: bool,
 }
@@ -252,8 +260,8 @@ impl Default for MemorySettings {
         Self {
             paused: false,
             propose: true,
-            auto_save_global: false,
-            auto_save_project: false,
+            auto_save_global: true,
+            auto_save_project: true,
         }
     }
 }

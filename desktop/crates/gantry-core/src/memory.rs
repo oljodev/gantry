@@ -182,6 +182,10 @@ pub const LONG_TAIL_LIMIT: usize = 8;
 pub const RECENT_TURNS: usize = 6;
 /// At most this many proposals per turn, so a chatty model does not bury the feed in cards.
 pub const MAX_PROPOSALS_PER_TURN: u32 = 2;
+/// Forgetting has its own, larger budget. Tidying is the whole answer to a store that fills
+/// up, and it is the reversible direction: an entry that goes is restorable for thirty days,
+/// whereas one that arrives is in every later prompt until someone notices it.
+pub const MAX_FORGETS_PER_TURN: u32 = 6;
 
 /// The sentence a card refuses with when a proposal is too long, or `None` when it fits.
 #[must_use]

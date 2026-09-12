@@ -4,7 +4,7 @@
 use gantry_core::{AuthState, ConnectorInstanceDto, Mode};
 
 /// Bumped whenever `assets/prompts/core.md` or a mode fragment changes meaning.
-pub const CORE_VERSION: u32 = 6;
+pub const CORE_VERSION: u32 = 7;
 
 const CORE: &str = include_str!("../../../assets/prompts/core.md");
 const MODE_MANUAL: &str = include_str!("../../../assets/prompts/modes/manual.md");

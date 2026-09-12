@@ -144,13 +144,13 @@ export function MemorySection() {
             />
           </Row>
           <Row
-            label="Save proposals without asking"
-            hint="The card still appears, already saved, with Undo."
+            label="Remember and forget without asking"
+            hint="A card still appears for every change, with Undo. Turn this off to be asked first."
           >
             <Switch
               checked={memory.auto_save_global}
               onCheckedChange={(auto_save_global) => setMemory({ auto_save_global })}
-              aria-label="Save proposals without asking"
+              aria-label="Remember and forget without asking"
             />
           </Row>
         </div>

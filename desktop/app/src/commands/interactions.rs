@@ -29,21 +29,34 @@ fn proposal_note(resolved: &Interaction) -> Option<String> {
                     .to_owned()
             }
         }),
-        InteractionResolution::MemoryProposal { outcome } => Some(match outcome {
-            MemoryProposalOutcome::Saved { .. } => {
-                "The user kept the memory you proposed; they may have edited the wording. It \
-                 will be in your context in later chats."
-                    .to_owned()
-            }
-            MemoryProposalOutcome::Forgotten { .. } => {
-                "The user agreed to forget that memory. Stop relying on it.".to_owned()
-            }
-            MemoryProposalOutcome::Discarded => {
-                "The user did not keep that memory. Do not propose it again, and do not act as \
-                 though it were remembered."
-                    .to_owned()
-            }
-        }),
+        InteractionResolution::MemoryProposal { outcome } => {
+            // Discarded means two different things depending on which card it was: a memory
+            // not kept, or one you forgot and the user put back. Saying the wrong one would
+            // have the model repeat exactly the change it was just told to leave alone.
+            let forgetting = matches!(
+                &resolved.payload,
+                gantry_core::InteractionPayload::MemoryProposal { proposal }
+                    if proposal.action == gantry_core::MemoryAction::Forget
+            );
+            Some(match outcome {
+                MemoryProposalOutcome::Saved { .. } => {
+                    "The user kept that memory; they may have edited the wording. It will be in \
+                     your context in later chats."
+                        .to_owned()
+                }
+                MemoryProposalOutcome::Forgotten { .. } => {
+                    "That memory is gone. Stop relying on it.".to_owned()
+                }
+                MemoryProposalOutcome::Discarded if forgetting => {
+                    "The user put that memory back; they still want it. Leave it alone.".to_owned()
+                }
+                MemoryProposalOutcome::Discarded => {
+                    "The user did not keep that memory. Do not write it again, and do not act \
+                     as though it were remembered."
+                        .to_owned()
+                }
+            })
+        }
         _ => None,
     }
 }

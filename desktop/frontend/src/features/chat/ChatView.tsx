@@ -393,19 +393,25 @@ export function ChatView({
   };
 
   /**
-   * A memory the model proposed, or one it offered to forget (12 §B3). Auto-saved proposals
-   * arrive already stored, so **Undo** archives what was written rather than doing nothing.
+   * A memory the model wrote, or one it forgot (12 §B3). Under auto-save the change has
+   * already happened when the card appears, so on both cards **Undo** has something to undo:
+   * it archives what was written, or restores what was forgotten.
    */
   const answerMemory = (interactionId: string, answer: MemoryAnswer, proposal: MemoryProposal) => {
     const finish = async () => {
       if (proposal.action === 'forget') {
         if (answer.kind === 'save' && proposal.target) {
-          await unwrap(commands.deleteMemory(proposal.target.id));
+          // Already archived under auto-save; archiving again is the same row either way.
+          if (!proposal.auto_saved) await unwrap(commands.deleteMemory(proposal.target.id));
           await resolve(chatId, interactionId, {
             kind: 'memory_proposal',
             outcome: { kind: 'forgotten', id: proposal.target.id },
           });
           return;
+        }
+        if (proposal.auto_saved && proposal.target) {
+          await unwrap(commands.restoreMemory(proposal.target.id));
+          toast.add({ title: 'Kept', description: proposal.text });
         }
         await resolve(chatId, interactionId, {
           kind: 'memory_proposal',
