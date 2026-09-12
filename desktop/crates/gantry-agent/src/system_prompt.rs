@@ -4,7 +4,7 @@
 use gantry_core::{AuthState, ConnectorInstanceDto, Mode};
 
 /// Bumped whenever `assets/prompts/core.md` or a mode fragment changes meaning.
-pub const CORE_VERSION: u32 = 5;
+pub const CORE_VERSION: u32 = 6;
 
 const CORE: &str = include_str!("../../../assets/prompts/core.md");
 const MODE_MANUAL: &str = include_str!("../../../assets/prompts/modes/manual.md");
@@ -29,6 +29,7 @@ pub struct PromptContext {
 pub struct SystemPromptBuilder {
     mode: Mode,
     context: PromptContext,
+    memory: String,
     global_instructions: String,
 }
 
@@ -38,8 +39,19 @@ impl SystemPromptBuilder {
         Self {
             mode,
             context,
+            memory: String::new(),
             global_instructions: String::new(),
         }
+    }
+
+    /// The core memory set (layer 3), already rendered and already inside its budget by
+    /// `memory::selector::core_block`. Empty means the chat carries no memory at all, and then
+    /// there is no block: an empty `<memory>` would teach the model that memory exists and is
+    /// empty, which is a different and less useful thing to say than nothing.
+    #[must_use]
+    pub fn memory(mut self, block: &str) -> Self {
+        self.memory = block.trim().to_owned();
+        self
     }
 
     /// Settings → Custom instructions (layer 4). Truncated to the cap.
@@ -62,6 +74,9 @@ impl SystemPromptBuilder {
                 .replace("{{mode_text}}", mode_text(self.mode).trim()),
         );
         blocks.push(self.context_block());
+        if !self.memory.is_empty() {
+            blocks.push(self.memory.clone());
+        }
         if !self.global_instructions.is_empty() {
             blocks.push(format!(
                 "<instructions scope=\"global\">\n{}\n</instructions>",

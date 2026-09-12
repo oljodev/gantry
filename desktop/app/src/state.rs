@@ -33,6 +33,10 @@ pub struct AppState {
     /// Installing, connecting and authorizing (03 §7, §11).
     pub connectors: Arc<crate::connectors::ConnectorService>,
     pub artifacts: Arc<Artifacts>,
+    /// The skill library (12 §A): the index, the folder, and the four flows.
+    pub skills: Arc<gantry_agent::Skills>,
+    /// What Gantry remembers (12 §B).
+    pub memories: Arc<gantry_agent::Memories>,
     /// Roots, file IO and the edit journal: what the Changes pane reads and reverts through.
     pub workspace: Arc<gantry_workspace::Workspace>,
     /// Providers whose last key test failed with an auth error; cleared when the key changes.

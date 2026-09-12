@@ -109,6 +109,15 @@ pub async fn run_turn(ctx: RunContext) {
         model: ctx.input.model.clone(),
     });
 
+    // What this turn was given beyond the transcript (05 §2, 12). It is emitted before the
+    // first token, so the "Context used" row is above the answer it shaped rather than under
+    // it.
+    if !ctx.input.injected.is_empty() {
+        batcher.push(AgentEventKind::ContextInjected {
+            injected: ctx.input.injected.clone(),
+        });
+    }
+
     let mut transcript = ctx.input.messages.clone();
     let mut attached = ctx.input.connectors.clone();
     if let Some(detail) = thinking_reset_notice(&ctx.input) {

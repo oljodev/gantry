@@ -231,6 +231,44 @@ pub struct GuardSettings {
     pub judge_model: Option<ModelRef>,
 }
 
+/// Memory (docs/plan/12 §B3, §B5). Two switches, and each one is a promise: with `paused` on,
+/// nothing is injected and nothing is proposed, so a chat about somebody else's data leaves no
+/// trace; with an auto-save on, the card still appears — already saved, with **Undo** — because
+/// 12 §B1's rule is that no memory exists without the user seeing it, not that they must click.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(default)]
+pub struct MemorySettings {
+    /// Nothing reaches a prompt and nothing is proposed while this is on.
+    pub paused: bool,
+    /// Whether the model may propose at all. Off means the tools are not offered.
+    pub propose: bool,
+    /// Save an assistant proposal without waiting for the click, per scope.
+    pub auto_save_global: bool,
+    pub auto_save_project: bool,
+}
+
+impl Default for MemorySettings {
+    fn default() -> Self {
+        Self {
+            paused: false,
+            propose: true,
+            auto_save_global: false,
+            auto_save_project: false,
+        }
+    }
+}
+
+impl MemorySettings {
+    /// Whether a proposal in this scope is saved before the user answers (12 §B3).
+    #[must_use]
+    pub fn auto_saves(&self, scope: crate::memory::MemoryScopeKind) -> bool {
+        match scope {
+            crate::memory::MemoryScopeKind::Global => self.auto_save_global,
+            crate::memory::MemoryScopeKind::Project => self.auto_save_project,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, specta::Type)]
 #[serde(default)]
 pub struct Settings {
@@ -239,13 +277,20 @@ pub struct Settings {
     /// The floor of docs/plan/04 §5, as the user's deviation from the shipped list.
     pub guardrails: GuardrailSettings,
     pub guard: GuardSettings,
+    pub memory: MemorySettings,
     pub advanced: AdvancedSettings,
 }
 
 impl Settings {
     /// The keys of the `settings` table, one per section.
-    pub const SECTIONS: [&'static str; 5] =
-        ["appearance", "chat", "guardrails", "guard", "advanced"];
+    pub const SECTIONS: [&'static str; 6] = [
+        "appearance",
+        "chat",
+        "guardrails",
+        "guard",
+        "memory",
+        "advanced",
+    ];
 
     /// Where a new session on this surface starts (16 §9).
     #[must_use]
@@ -274,6 +319,7 @@ pub struct SettingsPatch {
     pub chat: Option<ChatSettings>,
     pub guardrails: Option<GuardrailSettings>,
     pub guard: Option<GuardSettings>,
+    pub memory: Option<MemorySettings>,
     pub advanced: Option<AdvancedSettings>,
 }
 
@@ -304,6 +350,12 @@ impl SettingsPatch {
         {
             settings.guard = s;
             changed.push("guard");
+        }
+        if let Some(s) = self.memory
+            && s != settings.memory
+        {
+            settings.memory = s;
+            changed.push("memory");
         }
         if let Some(s) = self.advanced
             && s != settings.advanced
@@ -336,6 +388,7 @@ mod tests {
             }),
             chat: Some(ChatSettings::default()),
             guardrails: None,
+            memory: None,
             guard: Some(GuardSettings {
                 judge_model: Some(ModelRef {
                     provider: ProviderId("anthropic".into()),

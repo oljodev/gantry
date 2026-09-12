@@ -66,8 +66,8 @@ pub use message::{
     ContentPart, MediaSource, Message, ProviderKind, ResultPart, Role, StopReason, Usage,
 };
 pub use settings::{
-    AdvancedSettings, AppearanceSettings, ChatSettings, Density, GuardSettings, MediaOptions, Mode,
-    ModelRef, ProviderId, ReasoningEffort, Settings, SettingsPatch, Theme,
+    AdvancedSettings, AppearanceSettings, ChatSettings, Density, GuardSettings, MediaOptions,
+    MemorySettings, Mode, ModelRef, ProviderId, ReasoningEffort, Settings, SettingsPatch, Theme,
 };
 pub use skill::{
     SkillDetail, SkillDto, SkillInput, SkillProposal, SkillProposalOutcome, SkillReference,

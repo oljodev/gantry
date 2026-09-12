@@ -481,7 +481,13 @@ async fn a_text_turn_completes_and_is_recorded() {
     let chat = m.chat();
     let sink = Arc::new(Collect::default());
     let turn = m
-        .start(chat.id, "Hi there".into(), Vec::new(), sink.clone())
+        .start(
+            chat.id,
+            "Hi there".into(),
+            Vec::new(),
+            Vec::new(),
+            sink.clone(),
+        )
         .unwrap();
     wait_for(|| sink.completed().is_some()).await;
 
@@ -548,7 +554,7 @@ async fn cancel_keeps_the_partial_text() {
     let chat = m.chat();
     let sink = Arc::new(Collect::default());
     let turn = m
-        .start(chat.id, "go".into(), Vec::new(), sink.clone())
+        .start(chat.id, "go".into(), Vec::new(), Vec::new(), sink.clone())
         .unwrap();
     wait_for(|| !sink.text().is_empty()).await;
     assert!(m.cancel(turn));
@@ -576,7 +582,7 @@ async fn a_mid_stream_error_fails_the_turn_and_keeps_the_text() {
     );
     let chat = m.chat();
     let sink = Arc::new(Collect::default());
-    m.start(chat.id, "go".into(), Vec::new(), sink.clone())
+    m.start(chat.id, "go".into(), Vec::new(), Vec::new(), sink.clone())
         .unwrap();
     wait_for(|| sink.completed().is_some()).await;
     assert_eq!(sink.completed(), Some(TurnStatus::Failed));
@@ -602,7 +608,7 @@ async fn a_late_subscriber_gets_a_snapshot_then_live_events() {
     let chat = m.chat();
     let first = Arc::new(Collect::default());
     let turn = m
-        .start(chat.id, "go".into(), Vec::new(), first.clone())
+        .start(chat.id, "go".into(), Vec::new(), Vec::new(), first.clone())
         .unwrap();
     wait_for(|| first.text().len() > 10).await;
 
@@ -657,7 +663,7 @@ async fn without_a_provider_the_turn_fails_cleanly() {
     );
     let chat = m.create_chat(None).unwrap();
     let sink = Arc::new(Collect::default());
-    m.start(chat.id, "go".into(), Vec::new(), sink.clone())
+    m.start(chat.id, "go".into(), Vec::new(), Vec::new(), sink.clone())
         .unwrap();
     wait_for(|| sink.completed().is_some()).await;
     assert_eq!(sink.completed(), Some(TurnStatus::Failed));
@@ -675,9 +681,12 @@ async fn a_turn_can_be_started_from_a_plain_thread() {
     let chat = m.chat();
     let sink = Arc::new(Collect::default());
     let (m2, sink2) = (m.clone(), sink.clone());
-    std::thread::spawn(move || m2.start(chat.id, "go".into(), Vec::new(), sink2).unwrap())
-        .join()
-        .unwrap();
+    std::thread::spawn(move || {
+        m2.start(chat.id, "go".into(), Vec::new(), Vec::new(), sink2)
+            .unwrap()
+    })
+    .join()
+    .unwrap();
     wait_for(|| sink.completed().is_some()).await;
     assert_eq!(sink.completed(), Some(TurnStatus::Completed));
 }
@@ -697,7 +706,13 @@ async fn an_allowed_call_runs_and_its_result_goes_back_to_the_model() {
     let chat = m.chat();
     let sink = Arc::new(Collect::default());
     let turn = m
-        .start(chat.id, "echo hi".into(), Vec::new(), sink.clone())
+        .start(
+            chat.id,
+            "echo hi".into(),
+            Vec::new(),
+            Vec::new(),
+            sink.clone(),
+        )
         .unwrap();
     wait_for(|| sink.completed().is_some()).await;
     assert_eq!(sink.completed(), Some(TurnStatus::Completed));
@@ -773,7 +788,13 @@ async fn manual_mode_asks_and_allow_once_runs_the_call() {
     manual(&m, chat.id);
     let sink = Arc::new(Collect::default());
     let turn = m
-        .start(chat.id, "what day is it".into(), Vec::new(), sink.clone())
+        .start(
+            chat.id,
+            "what day is it".into(),
+            Vec::new(),
+            Vec::new(),
+            sink.clone(),
+        )
         .unwrap();
     wait_for(|| !m.interactions().list_pending(Some(chat.id)).is_empty()).await;
 
@@ -847,7 +868,7 @@ async fn a_denial_with_a_message_reaches_the_model() {
     let chat = m.chat();
     manual(&m, chat.id);
     let sink = Arc::new(Collect::default());
-    m.start(chat.id, "go".into(), Vec::new(), sink.clone())
+    m.start(chat.id, "go".into(), Vec::new(), Vec::new(), sink.clone())
         .unwrap();
     wait_for(|| !m.interactions().list_pending(Some(chat.id)).is_empty()).await;
     let id = m.interactions().list_pending(Some(chat.id))[0].id;
@@ -894,7 +915,7 @@ async fn cancelling_while_a_card_waits_ends_the_turn() {
     manual(&m, chat.id);
     let sink = Arc::new(Collect::default());
     let turn = m
-        .start(chat.id, "go".into(), Vec::new(), sink.clone())
+        .start(chat.id, "go".into(), Vec::new(), Vec::new(), sink.clone())
         .unwrap();
     wait_for(|| !m.interactions().list_pending(Some(chat.id)).is_empty()).await;
     let id = m.interactions().list_pending(Some(chat.id))[0].id;
@@ -954,7 +975,7 @@ async fn unknown_and_failing_tools_become_error_results() {
     );
     let chat = m.chat();
     let sink = Arc::new(Collect::default());
-    m.start(chat.id, "go".into(), Vec::new(), sink.clone())
+    m.start(chat.id, "go".into(), Vec::new(), Vec::new(), sink.clone())
         .unwrap();
     wait_for(|| sink.completed().is_some()).await;
     assert_eq!(sink.completed(), Some(TurnStatus::Completed));
@@ -997,7 +1018,7 @@ async fn the_round_cap_stops_a_looping_model() {
     );
     let chat = m.chat();
     let sink = Arc::new(Collect::default());
-    m.start(chat.id, "loop".into(), Vec::new(), sink.clone())
+    m.start(chat.id, "loop".into(), Vec::new(), Vec::new(), sink.clone())
         .unwrap();
     wait_for(|| sink.completed().is_some()).await;
     assert_eq!(sink.completed(), Some(TurnStatus::Completed));
@@ -1038,7 +1059,7 @@ async fn plan_mode_offers_only_tools_it_would_allow() {
     )
     .unwrap();
     let sink = Arc::new(Collect::default());
-    m.start(chat.id, "go".into(), Vec::new(), sink.clone())
+    m.start(chat.id, "go".into(), Vec::new(), Vec::new(), sink.clone())
         .unwrap();
     wait_for(|| sink.completed().is_some()).await;
     let names: Vec<String> = m.requests()[0]
@@ -1098,7 +1119,7 @@ async fn a_code_session_needs_a_folder_and_keeps_its_own_list() {
         .unwrap();
     let sink = Arc::new(Collect::default());
     let err = m
-        .start(code.id, "go".into(), Vec::new(), sink)
+        .start(code.id, "go".into(), Vec::new(), Vec::new(), sink)
         .expect_err("a code session with no folder sent a message");
     assert!(format!("{err:?}").contains("folder"), "{err:?}");
 }
@@ -1135,8 +1156,14 @@ async fn an_access_request_attaches_a_connector_and_its_tools_arrive_in_the_same
     // Manual mode, to prove the `app` tier never prompts for the asking itself.
     manual(&m, chat.id);
     let sink = Arc::new(Collect::default());
-    m.start(chat.id, "echo hi".into(), Vec::new(), sink.clone())
-        .unwrap();
+    m.start(
+        chat.id,
+        "echo hi".into(),
+        Vec::new(),
+        Vec::new(),
+        sink.clone(),
+    )
+    .unwrap();
 
     // The search answered without a card; the request raised one.
     wait_for(|| !m.interactions().list_pending(Some(chat.id)).is_empty()).await;
@@ -1217,8 +1244,14 @@ async fn a_refused_access_request_attaches_nothing() {
     install_fake(m.chats().store());
     let chat = m.create_chat(None).unwrap();
     let sink = Arc::new(Collect::default());
-    m.start(chat.id, "echo hi".into(), Vec::new(), sink.clone())
-        .unwrap();
+    m.start(
+        chat.id,
+        "echo hi".into(),
+        Vec::new(),
+        Vec::new(),
+        sink.clone(),
+    )
+    .unwrap();
     wait_for(|| !m.interactions().list_pending(Some(chat.id)).is_empty()).await;
     let pending = m.interactions().list_pending(Some(chat.id));
     m.resolve_interaction(
@@ -1245,7 +1278,7 @@ async fn a_chat_sees_only_the_connectors_it_attached() {
     install_fake(m.chats().store());
     let bare = m.create_chat(None).unwrap();
     let sink = Arc::new(Collect::default());
-    m.start(bare.id, "go".into(), Vec::new(), sink.clone())
+    m.start(bare.id, "go".into(), Vec::new(), Vec::new(), sink.clone())
         .unwrap();
     wait_for(|| sink.completed().is_some()).await;
     let names: Vec<String> = m.requests()[0]
@@ -1302,8 +1335,14 @@ async fn a_long_chat_is_summarized_and_the_next_request_carries_the_summary() {
     // before there is anything old enough — and long enough — to be worth summarizing.
     for i in 0..6 {
         let sink = Arc::new(Collect::default());
-        m.start(chat.id, format!("question {i}"), Vec::new(), sink.clone())
-            .unwrap();
+        m.start(
+            chat.id,
+            format!("question {i}"),
+            Vec::new(),
+            Vec::new(),
+            sink.clone(),
+        )
+        .unwrap();
         wait_for(|| sink.completed() == Some(TurnStatus::Completed)).await;
     }
     wait_for(|| {
@@ -1352,8 +1391,14 @@ async fn a_long_chat_is_summarized_and_the_next_request_carries_the_summary() {
     // The next request sends the summary and the kept tail, not the summarized messages.
     let before = m.requests().len();
     let sink = Arc::new(Collect::default());
-    m.start(chat.id, "question 4".into(), Vec::new(), sink.clone())
-        .unwrap();
+    m.start(
+        chat.id,
+        "question 4".into(),
+        Vec::new(),
+        Vec::new(),
+        sink.clone(),
+    )
+    .unwrap();
     wait_for(|| sink.completed().is_some()).await;
     let next = m.requests()[before].clone();
     let sent: String = next
@@ -1402,8 +1447,14 @@ async fn a_huge_tool_result_is_cut_to_the_configured_size() {
     );
     let chat = m.chat();
     let sink = Arc::new(Collect::default());
-    m.start(chat.id, "echo a lot".into(), Vec::new(), sink.clone())
-        .unwrap();
+    m.start(
+        chat.id,
+        "echo a lot".into(),
+        Vec::new(),
+        Vec::new(),
+        sink.clone(),
+    )
+    .unwrap();
     wait_for(|| sink.completed() == Some(TurnStatus::Completed)).await;
 
     let second = m.requests()[1].clone();
@@ -1456,8 +1507,14 @@ async fn the_guard_decides_in_auto_mode_without_asking_the_user() {
         r#"{"decision":"deny","confidence":0.95,"reason":"Writes outside the workspace, which the task never mentioned","flags":["outside_task"]}"#,
     ]);
     let sink = Arc::new(Collect::default());
-    m.start(chat.id, "Fix the parser".into(), Vec::new(), sink.clone())
-        .unwrap();
+    m.start(
+        chat.id,
+        "Fix the parser".into(),
+        Vec::new(),
+        Vec::new(),
+        sink.clone(),
+    )
+    .unwrap();
     wait_for(|| sink.completed().is_some()).await;
 
     assert_eq!(sink.completed(), Some(TurnStatus::Completed));
@@ -1551,7 +1608,7 @@ async fn a_guard_that_cannot_decide_asks_the_user() {
     m.guarded(chat.id);
     m.guard_says(&["Sure, that looks fine to me!"]);
     let sink = Arc::new(Collect::default());
-    m.start(chat.id, "go".into(), Vec::new(), sink.clone())
+    m.start(chat.id, "go".into(), Vec::new(), Vec::new(), sink.clone())
         .unwrap();
 
     wait_for(|| !m.interactions().list_pending(Some(chat.id)).is_empty()).await;
@@ -1600,8 +1657,14 @@ async fn a_call_that_keeps_failing_is_stopped_without_asking_the_guard() {
     let chat = m.chat();
     m.guarded(chat.id);
     let sink = Arc::new(Collect::default());
-    m.start(chat.id, "build it".into(), Vec::new(), sink.clone())
-        .unwrap();
+    m.start(
+        chat.id,
+        "build it".into(),
+        Vec::new(),
+        Vec::new(),
+        sink.clone(),
+    )
+    .unwrap();
     wait_for(|| sink.completed().is_some()).await;
 
     assert_eq!(
@@ -1652,8 +1715,14 @@ async fn the_floor_outranks_the_guard() {
     let chat = m.chat();
     m.guarded(chat.id);
     let sink = Arc::new(Collect::default());
-    m.start(chat.id, "read my key".into(), Vec::new(), sink.clone())
-        .unwrap();
+    m.start(
+        chat.id,
+        "read my key".into(),
+        Vec::new(),
+        Vec::new(),
+        sink.clone(),
+    )
+    .unwrap();
 
     wait_for(|| !m.interactions().list_pending(Some(chat.id)).is_empty()).await;
     let pending = m.interactions().list_pending(Some(chat.id));
@@ -1689,8 +1758,14 @@ async fn allow_anyway_lets_the_blocked_call_through_on_the_next_turn() {
     m.guarded(chat.id);
     m.guard_says(&[r#"{"decision":"deny","confidence":0.9,"reason":"Not part of the task"}"#]);
     let sink = Arc::new(Collect::default());
-    m.start(chat.id, "write it".into(), Vec::new(), sink.clone())
-        .unwrap();
+    m.start(
+        chat.id,
+        "write it".into(),
+        Vec::new(),
+        Vec::new(),
+        sink.clone(),
+    )
+    .unwrap();
     wait_for(|| sink.completed().is_some()).await;
     assert!(m.fake.calls.lock().unwrap().is_empty(), "the block held");
 
@@ -1759,8 +1834,14 @@ async fn a_new_chat_attaches_the_connectors_chosen_for_new_chats() {
 
     let chat = m.create_chat(None).unwrap();
     let sink = Arc::new(Collect::default());
-    m.start(chat.id, "hello".into(), Vec::new(), sink.clone())
-        .unwrap();
+    m.start(
+        chat.id,
+        "hello".into(),
+        Vec::new(),
+        Vec::new(),
+        sink.clone(),
+    )
+    .unwrap();
     wait_for(|| sink.completed().is_some()).await;
 
     let names: Vec<String> = m.requests()[0]

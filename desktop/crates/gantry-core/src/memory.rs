@@ -174,7 +174,7 @@ pub const RECENTLY_DELETED_DAYS: i64 = 30;
 /// 1,500 tokens (12 §B4). Counted in characters because nothing here talks to a tokenizer.
 pub const CORE_SET_MAX_CHARS: usize = 6_000;
 /// The same ceiling for the long tail, at ~800 tokens.
-pub const LONG_TAIL_MAX_CHARS: usize = 3_200;
+pub const LONG_TAIL_CHARS: usize = 3_200;
 /// How many long-tail entries one message may pull in.
 pub const LONG_TAIL_LIMIT: usize = 8;
 /// Entries and skills injected within this many turns are not injected again: the model still

@@ -13,12 +13,22 @@ use gantry_store::{
     repos::{
         artifacts, blobs,
         chats::{self, ChatRecord},
-        connectors, grants,
+        connectors, grants, memories,
         messages::{self, AttachmentRecord, MessageRecord},
-        tool_calls,
+        skills, tool_calls,
         turns::{self, TurnRecord},
     },
 };
+
+/// What the turn needs to know before it can choose its context block (12 §A4 rule 5, §B4).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct TurnContextOptions {
+    /// Skills the user named with `/name` in the composer; they are injected whatever they
+    /// score and whatever the last six turns carried.
+    pub invoked: Vec<String>,
+    /// Settings → Memory, inverted: paused means nothing is selected and nothing is injected.
+    pub memory_on: bool,
+}
 
 /// What a runner needs to build a request: the frozen prompt and the transcript so far,
 /// including the new user message, with media inlined for the provider.
@@ -45,6 +55,8 @@ pub struct TurnInput {
     pub surface: Surface,
     /// The folders the session may reach, primary first (16 §7). Empty for most chats.
     pub roots: Vec<String>,
+    /// The skills and memories this turn's context block carried, for `context.injected`.
+    pub injected: gantry_core::InjectedContext,
 }
 
 /// What creating a session needs (16 C3, C5).
@@ -274,11 +286,17 @@ impl ChatBook {
 
     /// Records the user message and its attachments, opens a running turn and returns what the
     /// runner needs. Fails when the chat is unknown or already has a running turn.
+    ///
+    /// The per-turn context block (10 §5, 12) is chosen *here*, inside the same transaction
+    /// that writes the message, and appended to it as a `TurnContext` part. Doing it here is
+    /// what makes the six-turn rule work: the selector needs the transcript to know what the
+    /// last few turns already carried, and the transcript is assembled two lines below.
     pub fn begin_turn(
         &self,
         chat_id: ChatId,
         user: Message,
         attachments: Vec<NewAttachment>,
+        context: TurnContextOptions,
     ) -> Result<TurnInput, GantryError> {
         let blobs = self.blobs.clone();
         self.store
@@ -324,6 +342,42 @@ impl ChatBook {
                     tool_call_count: 0,
                 };
                 turns::insert(conn, &turn)?;
+
+                // The context block is chosen against the transcript as it stands *before*
+                // this message joins it, so the six-turn rule never counts the copy this turn
+                // is about to send (12 §A4 rule 3). It is then appended to the message, which
+                // is what puts it in the transcript rather than only in one request.
+                let mut user = user;
+                let pinned = skills::pinned_for_chat(conn, chat_id)?;
+                let before = transcript(&messages::list_for_chat(conn, chat_id)?);
+                let block = crate::memory::selector::build(
+                    &user.text(),
+                    &crate::memory::selector::Selection {
+                        conn,
+                        project: chat.project_id,
+                        transcript: &before,
+                        invoked: &context.invoked,
+                        pinned: &pinned,
+                        memory_on: context.memory_on,
+                    },
+                );
+                let injected = block.injected.clone();
+                if !block.is_empty() {
+                    skills::mark_used(
+                        conn,
+                        &injected
+                            .skills
+                            .iter()
+                            .map(|s| s.name.clone())
+                            .collect::<Vec<_>>(),
+                    )?;
+                    memories::mark_used(
+                        conn,
+                        &injected.memories.iter().map(|m| m.id).collect::<Vec<_>>(),
+                    )?;
+                    user.parts.push(block.part());
+                }
+
                 messages::insert(
                     conn,
                     &MessageRecord {
@@ -354,6 +408,7 @@ impl ChatBook {
                 }
                 let transcript = transcript(&messages::list_for_chat(conn, chat_id)?);
                 Ok(TurnInput {
+                    injected,
                     turn_id: turn.id,
                     chat_id,
                     model: chat.model.clone(),
@@ -551,6 +606,45 @@ impl ChatBook {
                 };
                 f(verdict);
                 tool_calls::update(conn, &call)
+            })
+            .map_err(store_err)
+    }
+
+    /// Records which memories a chat's frozen prompt was built from (12 §B4). Provenance, not
+    /// behaviour: a failure here is logged and the chat still works.
+    pub fn record_snapshot_memories(&self, chat_id: ChatId, ids: &[gantry_core::MemoryId]) {
+        let ids = ids.to_vec();
+        if let Err(err) = self
+            .store
+            .write_blocking(move |c| chats::set_snapshot_memories(c, chat_id, &ids))
+        {
+            log::warn!("could not record the chat's memory snapshot: {err}");
+        }
+    }
+
+    /// The skills pinned to a chat (12 §A3). They live in the frozen prompt, so the matcher
+    /// skips them and the inventory lists them first.
+    pub fn pinned_skills(&self, chat_id: ChatId) -> Result<Vec<String>, GantryError> {
+        self.store
+            .read(move |c| skills::pinned_for_chat(c, chat_id))
+            .map_err(store_err)
+    }
+
+    /// Pins a skill to a chat, or unpins it. Returns the note the model is told (10 §4).
+    pub fn pin_skill(
+        &self,
+        chat_id: ChatId,
+        skill_id: &str,
+        pinned: bool,
+    ) -> Result<(), GantryError> {
+        let skill_id = skill_id.to_owned();
+        self.store
+            .write_blocking(move |c| {
+                if pinned {
+                    skills::pin_to_chat(c, chat_id, &skill_id)
+                } else {
+                    skills::unpin_from_chat(c, chat_id, &skill_id)
+                }
             })
             .map_err(store_err)
     }
@@ -1058,14 +1152,24 @@ mod tests {
     fn one_running_turn_at_a_time_and_the_transcript_grows() {
         let (_d, book, id) = book_with_chat();
         let input = book
-            .begin_turn(id, Message::user_text("Hello there friend"), Vec::new())
+            .begin_turn(
+                id,
+                Message::user_text("Hello there friend"),
+                Vec::new(),
+                TurnContextOptions::default(),
+            )
             .unwrap();
         assert_eq!(input.messages.len(), 1);
         assert_eq!(input.system, "sys");
         assert!(input.first_turn);
         assert!(
-            book.begin_turn(id, Message::user_text("again"), Vec::new())
-                .is_err()
+            book.begin_turn(
+                id,
+                Message::user_text("again"),
+                Vec::new(),
+                TurnContextOptions::default()
+            )
+            .is_err()
         );
         assert_eq!(book.get(id).unwrap().unwrap().title, "Hello there friend");
         assert_eq!(
@@ -1096,7 +1200,12 @@ mod tests {
         book.append_system_note(id, "Permission mode is now Plan.".into())
             .unwrap();
         let next = book
-            .begin_turn(id, Message::user_text("more"), Vec::new())
+            .begin_turn(
+                id,
+                Message::user_text("more"),
+                Vec::new(),
+                TurnContextOptions::default(),
+            )
             .unwrap();
         assert_eq!(next.messages.len(), 4, "user, assistant, note, user");
         assert_eq!(next.messages[2].role, Role::System);
@@ -1114,7 +1223,12 @@ mod tests {
     fn only_the_last_finished_turn_can_be_retried() {
         let (_d, book, id) = book_with_chat();
         let first = book
-            .begin_turn(id, Message::user_text("one"), Vec::new())
+            .begin_turn(
+                id,
+                Message::user_text("one"),
+                Vec::new(),
+                TurnContextOptions::default(),
+            )
             .unwrap();
         assert!(book.take_last_turn(id, first.turn_id).is_err(), "running");
         book.finish_turn(
@@ -1152,8 +1266,13 @@ mod tests {
             },
         )
         .unwrap();
-        book.begin_turn(id, Message::user_text("hello world"), Vec::new())
-            .unwrap();
+        book.begin_turn(
+            id,
+            Message::user_text("hello world"),
+            Vec::new(),
+            TurnContextOptions::default(),
+        )
+        .unwrap();
         assert_eq!(book.get(id).unwrap().unwrap().title, "Mine");
         assert!(!book.set_auto_title(id, "Generated".into()).unwrap());
         assert!(book.delete(id).unwrap());
@@ -1182,6 +1301,7 @@ mod tests {
                     blob_hash: hash,
                     extracted_text: Some("fn main() {}".into()),
                 }],
+                TurnContextOptions::default(),
             )
             .unwrap();
         let sent = &input.messages[0];

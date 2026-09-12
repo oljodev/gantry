@@ -79,7 +79,13 @@ export interface LiveTurn {
 interface RunState {
   byChat: Record<ChatId, LiveTurn>;
   /** Starts a turn; the caller has already created the chat. */
-  send: (chatId: ChatId, text: string, attachments?: AttachmentInput[]) => Promise<TurnId>;
+  /** `skills` are the ones a `/name` in the composer forced for this message (12 §A4). */
+  send: (
+    chatId: ChatId,
+    text: string,
+    attachments?: AttachmentInput[],
+    skills?: string[],
+  ) => Promise<TurnId>;
   stop: (chatId: ChatId) => Promise<void>;
   /** Reattaches to a running turn after a reload or a chat switch. */
   attach: (chatId: ChatId, turnId: TurnId) => Promise<void>;
@@ -475,9 +481,9 @@ export function fresh(turnId: TurnId): LiveTurn {
 
 export const useRunStore = create<RunState>()((set, get) => ({
   byChat: {},
-  send: async (chatId, text, attachments = []) => {
+  send: async (chatId, text, attachments = [], skills = []) => {
     const channel = channelFor(chatId);
-    const turnId = await unwrap(commands.sendMessage(chatId, text, attachments, channel));
+    const turnId = await unwrap(commands.sendMessage(chatId, text, attachments, skills, channel));
     adopt(set, chatId, turnId);
     return turnId;
   },

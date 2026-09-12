@@ -9,7 +9,8 @@ use std::{
 };
 
 use gantry_agent::{
-    Artifacts, ChatBook, ChatNotifier, ConnectorAccess, PromptContext, RuntimeTools, TurnManager,
+    Artifacts, ChatBook, ChatNotifier, ConnectorAccess, Memories, PromptContext, RuntimeTools,
+    Skills, TurnManager,
 };
 use gantry_connectors::ConnectorRegistry;
 use gantry_core::{ChatId, ProviderId, Settings};
@@ -187,6 +188,22 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn Error>> {
         tauri::async_runtime::handle().inner().clone(),
     );
     turns.set_notifier(Arc::new(Notifier(app.handle().clone())));
+
+    // Skills and memory (12). The skill library is handed to the turn manager, which rescans
+    // the folder before each turn; memory needs no such hand-off, because the selector reads
+    // the same tables from inside the turn's own transaction.
+    let skills = Skills::new(store.clone(), data_dir.join("skills"));
+    if let Err(err) = skills.rescan() {
+        log::warn!("could not index the skills folder: {err}");
+    }
+    turns.set_skills(skills.clone());
+    let memories = Memories::new(store.clone());
+    // Recently deleted is thirty days, and this is the only place that notices they are up.
+    match memories.sweep() {
+        Ok(0) => {}
+        Ok(n) => log::info!("swept {n} memories out of Recently deleted"),
+        Err(err) => log::warn!("could not sweep Recently deleted: {err}"),
+    }
     // The connector tools ask the user through the same interaction registry the permission
     // cards use (03 §9, 04 §9), so they are registered once the turn manager owns it.
     tools.register(Arc::new(
@@ -211,6 +228,8 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn Error>> {
         tools,
         connectors: connectors.clone(),
         artifacts,
+        skills,
+        memories,
         workspace,
         invalid_keys: Mutex::new(Default::default()),
     });

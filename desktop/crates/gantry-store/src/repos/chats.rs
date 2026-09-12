@@ -167,6 +167,41 @@ pub fn list_all(conn: &Connection) -> Result<Vec<ChatRecord>> {
 // ---- Roots ---------------------------------------------------------------------------------
 
 /// The folders a session may reach, oldest first: the first one is its primary folder (16 §7).
+/// Which memories the chat's frozen prompt was built from (docs/plan/10 §6, 12 §B4).
+///
+/// A narrow pair rather than two more fields on `ChatRecord`: nothing about a chat's behaviour
+/// reads this. It is provenance — what the snapshot was made of — for the Memory page's line
+/// about an entry an open chat still carries, and for developer mode.
+pub fn set_snapshot_memories(
+    conn: &Connection,
+    chat_id: gantry_core::ChatId,
+    ids: &[gantry_core::MemoryId],
+) -> Result<()> {
+    let json = serde_json::to_string(&ids.iter().map(ToString::to_string).collect::<Vec<_>>())
+        .unwrap_or_else(|_| "[]".to_owned());
+    conn.execute(
+        "UPDATE chats SET snapshot_memory_ids_json = ?2 WHERE id = ?1",
+        params![chat_id.to_string(), json],
+    )?;
+    Ok(())
+}
+
+pub fn snapshot_memories(
+    conn: &Connection,
+    chat_id: gantry_core::ChatId,
+) -> Result<Vec<gantry_core::MemoryId>> {
+    let json: String = conn.query_row(
+        "SELECT snapshot_memory_ids_json FROM chats WHERE id = ?1",
+        params![chat_id.to_string()],
+        |r| r.get(0),
+    )?;
+    Ok(serde_json::from_str::<Vec<String>>(&json)
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|s| s.parse().ok())
+        .collect())
+}
+
 pub fn roots(conn: &Connection, chat_id: ChatId) -> Result<Vec<String>> {
     let mut stmt =
         conn.prepare("SELECT path FROM chat_roots WHERE chat_id = ?1 ORDER BY added_at, path")?;

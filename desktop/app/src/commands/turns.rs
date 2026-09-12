@@ -27,6 +27,7 @@ pub struct ActiveTurn {
 
 /// Starts a turn and returns at once; the channel carries the turn's events until it ends.
 /// Attachments are read and stored before anything is sent; a bad one fails the whole call.
+/// `skills` are the ones the composer's `/name` forced for this message (12 §A4 rule 5).
 #[tauri::command]
 #[specta::specta]
 pub fn send_message(
@@ -35,11 +36,16 @@ pub fn send_message(
     chat_id: ChatId,
     text: String,
     attachments: Vec<AttachmentInput>,
+    skills: Vec<String>,
     on_event: Channel<AgentEventBatch>,
 ) -> Result<TurnId, ErrorDto> {
-    let turn = state
-        .turns
-        .start(chat_id, text, attachments, Arc::new(ChannelSink(on_event)))?;
+    let turn = state.turns.start(
+        chat_id,
+        text,
+        attachments,
+        skills,
+        Arc::new(ChannelSink(on_event)),
+    )?;
     let _ = ChatsChanged {
         chat_ids: vec![chat_id],
     }

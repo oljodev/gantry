@@ -18,11 +18,12 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{
     attachments,
-    chats::{ChatBook, ChatPatch, NewAttachment, NewChat},
+    chats::{ChatBook, ChatPatch, NewAttachment, NewChat, TurnContextOptions},
     events::{Batcher, EventSink, FanoutSink},
     interactions::Interactions,
     persist::PersistSink,
     runner::{self, RunContext},
+    skills::Skills,
     system_prompt::{
         CORE_VERSION, PromptContext, SystemPromptBuilder, connector_inventory, mode_note,
         with_roots,
@@ -121,6 +122,9 @@ pub struct TurnManager {
     notifier: RwLock<Option<Arc<dyn ChatNotifier>>>,
     /// **Allow anyway**, from the last turn to the next one (04 §6).
     overrides: Arc<crate::judge::Overrides>,
+    /// The skill library, when the app has one. `None` in tests that have no use for it: a
+    /// turn with no skills service simply carries no skills.
+    skills: RwLock<Option<Arc<Skills>>>,
 }
 
 impl TurnManager {
@@ -144,7 +148,21 @@ impl TurnManager {
             active: Mutex::new(HashMap::new()),
             notifier: RwLock::new(None),
             overrides: Arc::default(),
+            skills: RwLock::new(None),
         })
+    }
+
+    /// Hands the manager the skill library (12 §A): it rescans before each turn and names the
+    /// installed skills in the prompt.
+    pub fn set_skills(&self, skills: Arc<Skills>) {
+        *self.skills.write().unwrap_or_else(|e| e.into_inner()) = Some(skills);
+    }
+
+    fn skills(&self) -> Option<Arc<Skills>> {
+        self.skills
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
 
     pub fn set_notifier(&self, notifier: Arc<dyn ChatNotifier>) {
@@ -187,9 +205,37 @@ impl TurnManager {
     }
 
     fn build_prompt(&self, settings: &Settings, mode: gantry_core::Mode) -> String {
-        SystemPromptBuilder::new(mode, self.context.clone())
+        self.build_prompt_with_memory(settings, mode).0
+    }
+
+    /// The frozen prompt, and the memories it froze into it (10 §2 layer 3, 12 §B4).
+    ///
+    /// The core set is chosen **once**, here, and recorded on the chat. That is the whole point
+    /// of the two tiers: a chat's standing behaviour does not change under it mid-conversation,
+    /// and an edit reaches an open chat as a `SystemNote` instead (12 §B6).
+    fn build_prompt_with_memory(
+        &self,
+        settings: &Settings,
+        mode: gantry_core::Mode,
+    ) -> (String, Vec<gantry_core::MemoryId>) {
+        let (memory_block, ids) = if settings.memory.paused {
+            (String::new(), Vec::new())
+        } else {
+            let entries = self
+                .chats
+                .store()
+                .read(|c| gantry_store::repos::memories::core_set(c, None))
+                .unwrap_or_else(|err| {
+                    log::warn!("could not read the memory core set: {err}");
+                    Vec::new()
+                });
+            crate::memory::selector::core_block(&entries)
+        };
+        let prompt = SystemPromptBuilder::new(mode, self.context.clone())
+            .memory(&memory_block)
             .global_instructions(&settings.chat.custom_instructions)
-            .build()
+            .build();
+        (prompt, ids)
     }
 
     /// A new chat with the settings' defaults and a freshly assembled system prompt.
@@ -213,8 +259,8 @@ impl TurnManager {
         let settings = self.settings();
         let model = model.unwrap_or_else(|| settings.default_model());
         let (mode, guard) = settings.defaults_for(surface);
-        let prompt = self.build_prompt(&settings, mode);
-        self.chats.create(NewChat {
+        let (prompt, memory_ids) = self.build_prompt_with_memory(&settings, mode);
+        let chat = self.chats.create(NewChat {
             surface,
             roots,
             model,
@@ -233,7 +279,9 @@ impl TurnManager {
                 ],
                 gantry_core::Surface::Chat => settings.chat.default_connectors.clone(),
             },
-        })
+        })?;
+        self.chats.record_snapshot_memories(chat.id, &memory_ids);
+        Ok(chat)
     }
 
     /// Applies a patch; a mode change on a chat with turns appends the mode note (04 §3).
@@ -290,11 +338,13 @@ impl TurnManager {
 
     /// Starts a turn for `text` with `attachments` and returns at once; `sink` receives the
     /// batches.
+    /// `invoked` are the skills the composer's `/name` forced for this message (12 §A4 rule 5).
     pub fn start(
         self: &Arc<Self>,
         chat_id: ChatId,
         text: String,
         attachments: Vec<AttachmentInput>,
+        invoked: Vec<String>,
         sink: Arc<dyn EventSink>,
     ) -> Result<TurnId, GantryError> {
         let text = text.trim().to_owned();
@@ -311,7 +361,7 @@ impl TurnManager {
             user.parts.push(i.part);
             records.push(i.record);
         }
-        self.start_message(chat_id, user, records, sink)
+        self.start_message(chat_id, user, records, invoked, sink)
     }
 
     /// Re-runs the chat's last turn: the old turn is dropped and its user message sent again.
@@ -322,7 +372,9 @@ impl TurnManager {
         sink: Arc<dyn EventSink>,
     ) -> Result<TurnId, GantryError> {
         let (user, attachments) = self.chats.take_last_turn(chat_id, turn_id)?;
-        self.start_message(chat_id, user, attachments, sink)
+        // A retry re-sends the same message; the skills it named are named again by
+        // matching it, and a `/name` the user typed is still in its text.
+        self.start_message(chat_id, user, attachments, Vec::new(), sink)
     }
 
     /// **Allow anyway** (04 §6): the user overrules a block the guard made.
@@ -373,7 +425,7 @@ impl TurnManager {
             origin: None,
             created_at: now_ms(),
         };
-        self.start_message(chat_id, note, Vec::new(), sink)
+        self.start_message(chat_id, note, Vec::new(), Vec::new(), sink)
     }
 
     /// The Guard page's "this block was wrong" toggle (04 §6). It is stored with the decision
@@ -392,12 +444,30 @@ impl TurnManager {
         chat_id: ChatId,
         user: Message,
         attachments: Vec<NewAttachment>,
+        invoked: Vec<String>,
         sink: Arc<dyn EventSink>,
     ) -> Result<TurnId, GantryError> {
-        let mut input = self.chats.begin_turn(chat_id, user, attachments)?;
+        let settings = self.settings();
+        // Skills are rescanned before the turn rather than on a timer: the folder is the user's
+        // and they may have just edited it (12 §A3). A `stat` per folder is cheap enough to pay
+        // for being right.
+        let skills = self.skills();
+        if let Some(skills) = &skills
+            && let Err(err) = skills.rescan()
+        {
+            log::warn!("could not rescan the skills folder: {err}");
+        }
+        let mut input = self.chats.begin_turn(
+            chat_id,
+            user,
+            attachments,
+            TurnContextOptions {
+                invoked,
+                memory_on: !settings.memory.paused,
+            },
+        )?;
         let turn_id = input.turn_id;
         let provider = self.providers.provider(&input.model.provider);
-        let settings = self.settings();
         // The inventory rides with the turn, not with the frozen snapshot: what is installed
         // and attached changes outside the chat (03 §9, 04 §9, 10 §2).
         let installed = self.chats.installed_connectors().unwrap_or_else(|err| {
@@ -418,6 +488,19 @@ impl TurnManager {
                 settings.chat.suggest_connectors
             )
         );
+        // The skill list rides with the turn for the connector inventory's reason: a skill
+        // written after this chat started is still a skill this chat can load, and a list
+        // frozen at creation would go on denying it exists (10 §2).
+        if let Some(skills) = &skills {
+            let pinned = self.chats.pinned_skills(chat_id).unwrap_or_default();
+            match skills.inventory(&pinned) {
+                Ok(block) if !block.is_empty() => {
+                    input.system = format!("{}\n{block}\n", input.system.trim_end());
+                }
+                Ok(_) => {}
+                Err(err) => log::warn!("could not list the skills for the prompt: {err}"),
+            }
+        }
 
         let fanout = Arc::new(FanoutSink::new());
         fanout.add(Arc::new(PersistSink::new(
