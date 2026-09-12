@@ -36,7 +36,7 @@
   },
   "catalog": {
     "featured": false,
-    "sort_weight": 3,
+    "sort_weight": 84,
     "suggest_for": ["cal.com", "my bookings", "free slots", "schedule a call"]
   }
 }

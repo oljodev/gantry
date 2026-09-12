@@ -36,7 +36,7 @@
   },
   "catalog": {
     "featured": false,
-    "sort_weight": 2,
+    "sort_weight": 115,
     "suggest_for": ["netlify", "deploy", "build failed", "env var", "hosting"]
   },
   "tool_overrides": {

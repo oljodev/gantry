@@ -37,7 +37,7 @@
   },
   "catalog": {
     "featured": false,
-    "sort_weight": 19,
+    "sort_weight": 119,
     "suggest_for": ["gitlab", "merge request", "pipeline", "this repo", "ci failed"]
   }
 }

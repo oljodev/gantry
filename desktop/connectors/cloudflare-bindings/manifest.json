@@ -8,10 +8,16 @@
   "icon": "icon.svg",
   "category": "developer",
   "keywords": ["cloudflare", "workers", "kv", "r2", "d1", "bindings", "deploy"],
-  "publisher": { "name": "Cloudflare", "url": "https://developers.cloudflare.com" },
+  "publisher": {
+    "name": "Cloudflare",
+    "url": "https://developers.cloudflare.com"
+  },
   "first_party": false,
   "homepage": "https://developers.cloudflare.com/agents/model-context-protocol/mcp-servers-for-cloudflare/",
-  "runtime": { "kind": "mcp-remote", "url": "https://bindings.mcp.cloudflare.com/mcp" },
+  "runtime": {
+    "kind": "mcp-remote",
+    "url": "https://bindings.mcp.cloudflare.com/mcp"
+  },
   "auth": {
     "type": "oauth2",
     "registration": ["dcr"],
@@ -24,10 +30,13 @@
     "notes": "Reaches your Cloudflare account. Reads are cheap; writes create and change real resources."
   },
   "tools_generated": true,
-  "compatibility": { "platforms": ["darwin", "win32", "linux"], "gantry": ">=0.1.0" },
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "gantry": ">=0.1.0"
+  },
   "catalog": {
     "featured": true,
-    "sort_weight": 9,
+    "sort_weight": 113,
     "suggest_for": ["cloudflare", "workers", "kv", "r2", "d1", "deploy a worker"]
   }
 }

@@ -3,7 +3,7 @@
   "id": "notion",
   "name": "Notion",
   "description": "Search your Notion workspace, read pages and databases, and write back to them.",
-  "long_description": "Notion's hosted server, connected to the pages you grant it. It searches your workspace, reads pages and database rows, and creates or edits them.\n\nThe sign-in happens in your browser and Notion asks which pages to share \u2014 that choice is the real permission boundary here, and it is narrower than the connector. Gantry never sees your password.",
+  "long_description": "Notion's hosted server, connected to the pages you grant it. It searches your workspace, reads pages and database rows, and creates or edits them.\n\nThe sign-in happens in your browser and Notion asks which pages to share — that choice is the real permission boundary here, and it is narrower than the connector. Gantry never sees your password.",
   "version": "0.1.0",
   "icon": "icon.svg",
   "category": "productivity",
@@ -36,7 +36,7 @@
   },
   "catalog": {
     "featured": false,
-    "sort_weight": 8,
+    "sort_weight": 89,
     "suggest_for": ["notion", "my notes", "wiki", "meeting notes", "notion page"]
   }
 }

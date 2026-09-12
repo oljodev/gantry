@@ -47,7 +47,7 @@
   },
   "catalog": {
     "featured": false,
-    "sort_weight": 6,
+    "sort_weight": 67,
     "suggest_for": ["stripe", "payments", "this customer", "invoice", "refund", "mrr"]
   }
 }

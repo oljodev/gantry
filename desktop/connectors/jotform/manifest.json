@@ -37,7 +37,7 @@
   },
   "catalog": {
     "featured": false,
-    "sort_weight": 1,
+    "sort_weight": 82,
     "suggest_for": ["jotform", "form responses", "submissions", "survey"]
   }
 }

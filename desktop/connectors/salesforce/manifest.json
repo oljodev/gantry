@@ -1,0 +1,49 @@
+{
+  "manifest_version": "1",
+  "id": "salesforce",
+  "name": "Salesforce",
+  "description": "Salesforce orgs, metadata and SOQL, through the Salesforce CLI's sign-in.",
+  "long_description": "Salesforce's own server, run as a local process. It lists orgs, reads metadata, runs SOQL and deploys — using the orgs the Salesforce CLI has already authorised.\n\nNothing to paste: the CLI holds the credential, and this server borrows it.",
+  "version": "0.1.0",
+  "icon": "icon.svg",
+  "category": "developer",
+  "keywords": ["salesforce", "soql", "apex", "metadata", "orgs", "sfdx"],
+  "publisher": {
+    "name": "Salesforce",
+    "url": "https://www.salesforce.com"
+  },
+  "first_party": false,
+  "homepage": "https://developer.salesforce.com/docs/platform/mcp/guide/",
+  "runtime": {
+    "kind": "mcp-stdio",
+    "command": "npx",
+    "args": ["-y", "@salesforce/mcp", "--orgs", "DEFAULT_TARGET_ORG", "--toolsets", "all"],
+    "requires": {
+      "node": ">=20"
+    },
+    "platform_overrides": {
+      "win32": {
+        "command": "npx.cmd"
+      }
+    }
+  },
+  "auth": {
+    "type": "none"
+  },
+  "risk": {
+    "network": "internet",
+    "local_system": "execute",
+    "default_tool_tier": "execute",
+    "notes": "Acts as the org the Salesforce CLI has authorised. A deploy changes a live org."
+  },
+  "tools_generated": true,
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "gantry": ">=0.1.0"
+  },
+  "catalog": {
+    "featured": false,
+    "sort_weight": 103,
+    "suggest_for": ["salesforce", "soql", "my org", "apex", "metadata", "sfdx"]
+  }
+}

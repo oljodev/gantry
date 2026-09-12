@@ -36,7 +36,7 @@
   },
   "catalog": {
     "featured": false,
-    "sort_weight": 0.3,
+    "sort_weight": 63,
     "suggest_for": ["axiom", "apl query", "logs", "events", "what happened at"]
   }
 }

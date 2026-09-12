@@ -1,0 +1,49 @@
+{
+  "manifest_version": "1",
+  "id": "shopify-dev",
+  "name": "Shopify Dev",
+  "description": "Shopify's documentation, API schemas and GraphQL validation, run locally.",
+  "long_description": "Shopify's developer server, run as a local process. It searches their documentation, reads API schemas, and validates a GraphQL operation or a Liquid template before you ship it.\n\nNo account and no credential: it talks to Shopify's public developer surface.",
+  "version": "0.1.0",
+  "icon": "icon.svg",
+  "category": "developer",
+  "keywords": ["shopify", "graphql", "liquid", "documentation", "storefront", "admin api"],
+  "publisher": {
+    "name": "Shopify",
+    "url": "https://shopify.dev"
+  },
+  "first_party": false,
+  "homepage": "https://shopify.dev/docs/apps/build/ai-toolkit",
+  "runtime": {
+    "kind": "mcp-stdio",
+    "command": "npx",
+    "args": ["-y", "@shopify/dev-mcp"],
+    "requires": {
+      "node": ">=18"
+    },
+    "platform_overrides": {
+      "win32": {
+        "command": "npx.cmd"
+      }
+    }
+  },
+  "auth": {
+    "type": "none"
+  },
+  "risk": {
+    "network": "internet",
+    "local_system": "read",
+    "default_tool_tier": "execute",
+    "notes": "Runs a Node process that reads Shopify's public documentation. Nothing of your store is touched."
+  },
+  "tools_generated": true,
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "gantry": ">=0.1.0"
+  },
+  "catalog": {
+    "featured": false,
+    "sort_weight": 105,
+    "suggest_for": ["shopify", "graphql schema", "liquid", "storefront api", "admin api"]
+  }
+}

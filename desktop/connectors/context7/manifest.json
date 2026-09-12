@@ -3,7 +3,7 @@
   "id": "context7",
   "name": "Context7",
   "description": "Up-to-date documentation for a library, resolved by name and version.",
-  "long_description": "Context7 indexes library documentation and serves the current version of it. You name a library the way you would say it out loud, it resolves that to an id, and the docs it returns match the version you are actually using \u2014 which is the failure mode models have with fast-moving packages. Public documentation only; it sees nothing of your code.",
+  "long_description": "Context7 indexes library documentation and serves the current version of it. You name a library the way you would say it out loud, it resolves that to an id, and the docs it returns match the version you are actually using — which is the failure mode models have with fast-moving packages. Public documentation only; it sees nothing of your code.",
   "version": "0.1.0",
   "icon": "icon.svg",
   "category": "developer",
@@ -33,7 +33,7 @@
   },
   "catalog": {
     "featured": false,
-    "sort_weight": 6,
+    "sort_weight": 111,
     "suggest_for": ["context7", "library docs", "api reference", "up to date docs"]
   }
 }

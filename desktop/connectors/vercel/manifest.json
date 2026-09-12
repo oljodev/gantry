@@ -36,7 +36,7 @@
   },
   "catalog": {
     "featured": false,
-    "sort_weight": 1,
+    "sort_weight": 116,
     "suggest_for": ["vercel", "deployment", "build log", "next.js", "preview url"]
   }
 }

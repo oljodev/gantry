@@ -36,7 +36,7 @@
   },
   "catalog": {
     "featured": false,
-    "sort_weight": 3,
+    "sort_weight": 117,
     "suggest_for": ["sentry", "error tracking", "stack trace", "why is this crashing", "exception"]
   }
 }

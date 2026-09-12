@@ -36,7 +36,7 @@
   },
   "catalog": {
     "featured": false,
-    "sort_weight": 13,
+    "sort_weight": 98,
     "suggest_for": ["langsmith", "trace", "why did the model", "evaluation", "dataset"]
   }
 }

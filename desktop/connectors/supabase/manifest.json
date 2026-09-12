@@ -36,7 +36,7 @@
   },
   "catalog": {
     "featured": false,
-    "sort_weight": 9,
+    "sort_weight": 70,
     "suggest_for": ["supabase", "my database", "run sql", "migration", "postgres"]
   }
 }

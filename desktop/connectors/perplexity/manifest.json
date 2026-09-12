@@ -37,7 +37,7 @@
   },
   "catalog": {
     "featured": false,
-    "sort_weight": 3,
+    "sort_weight": 39,
     "suggest_for": ["perplexity", "research this", "who what when", "with sources"]
   }
 }

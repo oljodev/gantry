@@ -37,7 +37,7 @@
   },
   "catalog": {
     "featured": false,
-    "sort_weight": 16,
+    "sort_weight": 102,
     "suggest_for": ["datadog", "metrics", "logs", "why is it slow", "monitor", "apm trace"]
   }
 }

@@ -37,7 +37,7 @@
   },
   "catalog": {
     "featured": false,
-    "sort_weight": 2,
+    "sort_weight": 83,
     "suggest_for": ["tally", "form responses", "survey answers", "submissions"]
   }
 }

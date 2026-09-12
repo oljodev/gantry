@@ -37,7 +37,7 @@
   },
   "catalog": {
     "featured": false,
-    "sort_weight": 0.9,
+    "sort_weight": 95,
     "suggest_for": ["lovable", "my project", "workspace"]
   }
 }

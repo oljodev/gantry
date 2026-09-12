@@ -1,0 +1,70 @@
+{
+  "manifest_version": "1",
+  "id": "qdrant",
+  "name": "Qdrant",
+  "description": "Store and search memories in a Qdrant collection you point it at.",
+  "long_description": "Qdrant's own server, run as a local process on Python. It stores text with its embedding in a collection and finds it again by meaning — a small, explicit memory that lives in your own database rather than in a chat.\n\nYou give it the URL of a Qdrant you can reach, and the collection to use.",
+  "version": "0.1.0",
+  "icon": "icon.svg",
+  "category": "data",
+  "keywords": ["qdrant", "vector", "embeddings", "semantic search", "memory"],
+  "publisher": {
+    "name": "Qdrant",
+    "url": "https://qdrant.tech"
+  },
+  "first_party": false,
+  "homepage": "https://github.com/qdrant/mcp-server-qdrant",
+  "runtime": {
+    "kind": "mcp-stdio",
+    "command": "uvx",
+    "args": ["mcp-server-qdrant"],
+    "env": {
+      "QDRANT_URL": "${user_config.QDRANT_URL}",
+      "COLLECTION_NAME": "${user_config.COLLECTION_NAME}"
+    },
+    "requires": {
+      "uv": ">=0.5"
+    }
+  },
+  "auth": {
+    "type": "api_key",
+    "inject": {
+      "in": "env",
+      "name": "QDRANT_API_KEY"
+    },
+    "instructions": "A Qdrant Cloud cluster needs its API key here. A Qdrant running on your own machine usually needs nothing — leave it empty.",
+    "setup_url": "https://cloud.qdrant.io/"
+  },
+  "risk": {
+    "network": "internet",
+    "local_system": "execute",
+    "default_tool_tier": "execute",
+    "notes": "Reads and writes the collection you name, on the Qdrant you point it at."
+  },
+  "user_config": {
+    "QDRANT_URL": {
+      "type": "string",
+      "title": "Qdrant URL",
+      "description": "http://localhost:6333 for a local one, or your cluster's URL",
+      "required": true,
+      "default": "http://localhost:6333"
+    },
+    "COLLECTION_NAME": {
+      "type": "string",
+      "title": "Collection",
+      "description": "The collection to read and write; it is created if it does not exist",
+      "required": true,
+      "default": "gantry"
+    }
+  },
+  "tools_generated": true,
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "gantry": ">=0.1.0"
+  },
+  "catalog": {
+    "featured": false,
+    "sort_weight": 65,
+    "suggest_for": ["qdrant", "vector search", "remember this", "semantic search", "embeddings"]
+  }
+}

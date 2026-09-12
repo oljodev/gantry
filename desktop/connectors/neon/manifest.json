@@ -37,7 +37,7 @@
   },
   "catalog": {
     "featured": false,
-    "sort_weight": 8,
+    "sort_weight": 69,
     "suggest_for": ["neon", "postgres branch", "my database", "run sql"]
   }
 }

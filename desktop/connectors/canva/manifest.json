@@ -36,7 +36,7 @@
   },
   "catalog": {
     "featured": false,
-    "sort_weight": 5,
+    "sort_weight": 86,
     "suggest_for": ["canva", "design", "slide deck", "poster", "brand template"]
   }
 }

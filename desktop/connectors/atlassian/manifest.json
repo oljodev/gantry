@@ -36,7 +36,7 @@
   },
   "catalog": {
     "featured": false,
-    "sort_weight": 18,
+    "sort_weight": 118,
     "suggest_for": ["jira", "confluence", "atlassian", "my tickets", "sprint board", "wiki page"]
   }
 }

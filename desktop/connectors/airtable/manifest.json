@@ -37,7 +37,7 @@
   },
   "catalog": {
     "featured": false,
-    "sort_weight": 0.4,
+    "sort_weight": 66,
     "suggest_for": ["airtable", "my base", "records", "table"]
   }
 }

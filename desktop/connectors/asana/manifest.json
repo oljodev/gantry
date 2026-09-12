@@ -36,7 +36,7 @@
   },
   "catalog": {
     "featured": false,
-    "sort_weight": 7,
+    "sort_weight": 88,
     "suggest_for": ["asana", "my tasks", "task list", "project status"]
   }
 }

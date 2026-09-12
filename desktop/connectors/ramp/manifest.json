@@ -36,7 +36,7 @@
   },
   "catalog": {
     "featured": false,
-    "sort_weight": 2,
+    "sort_weight": 60,
     "suggest_for": ["ramp", "spend", "company card", "expenses", "this bill"]
   }
 }

@@ -89,7 +89,7 @@
   },
   "catalog": {
     "featured": false,
-    "sort_weight": 11,
+    "sort_weight": 114,
     "suggest_for": ["railway", "deploy", "my service", "production logs"]
   }
 }

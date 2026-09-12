@@ -38,7 +38,7 @@
   },
   "catalog": {
     "featured": false,
-    "sort_weight": 1,
+    "sort_weight": 59,
     "suggest_for": ["xero", "accounting", "invoices", "balance sheet", "profit and loss"]
   }
 }

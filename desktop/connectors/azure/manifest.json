@@ -1,0 +1,49 @@
+{
+  "manifest_version": "1",
+  "id": "azure",
+  "name": "Azure",
+  "description": "Your Azure subscriptions, resources and logs, through the Azure CLI's sign-in.",
+  "long_description": "Microsoft's Azure server, run as a local process. It lists subscriptions and resource groups, reads configuration, queries logs and storage — across most Azure services in one server.\n\nIt signs in the way the Azure CLI does: whoever `az login` says you are is who this acts as.",
+  "version": "0.1.0",
+  "icon": "icon.svg",
+  "category": "developer",
+  "keywords": ["azure", "cloud", "subscriptions", "resources", "kusto", "storage", "cosmos"],
+  "publisher": {
+    "name": "Microsoft",
+    "url": "https://azure.microsoft.com"
+  },
+  "first_party": false,
+  "homepage": "https://github.com/microsoft/mcp",
+  "runtime": {
+    "kind": "mcp-stdio",
+    "command": "npx",
+    "args": ["-y", "@azure/mcp", "server", "start"],
+    "requires": {
+      "node": ">=20"
+    },
+    "platform_overrides": {
+      "win32": {
+        "command": "npx.cmd"
+      }
+    }
+  },
+  "auth": {
+    "type": "none"
+  },
+  "risk": {
+    "network": "internet",
+    "local_system": "execute",
+    "default_tool_tier": "execute",
+    "notes": "Acts as whoever `az login` signed in as, across that account's subscriptions."
+  },
+  "tools_generated": true,
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "gantry": ">=0.1.0"
+  },
+  "catalog": {
+    "featured": false,
+    "sort_weight": 104,
+    "suggest_for": ["azure", "my subscription", "resource group", "azure logs", "storage account"]
+  }
+}

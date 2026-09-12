@@ -1,0 +1,74 @@
+{
+  "manifest_version": "1",
+  "id": "make",
+  "name": "Make",
+  "description": "Run and inspect Make scenarios — the automations you already built there.",
+  "long_description": "Make's own server, run as a local process. It lists your scenarios, runs one and reads what came back, so an automation you already built is a tool the agent can call.\n\nIt needs an API key with the `scenarios:read` and `scenarios:run` scopes, plus your zone and team.",
+  "version": "0.1.0",
+  "icon": "icon.svg",
+  "category": "productivity",
+  "keywords": ["make", "integromat", "scenarios", "automation", "workflows"],
+  "publisher": {
+    "name": "Make",
+    "url": "https://www.make.com"
+  },
+  "first_party": false,
+  "homepage": "https://developers.make.com/mcp-server",
+  "runtime": {
+    "kind": "mcp-stdio",
+    "command": "npx",
+    "args": ["-y", "@makehq/mcp-server"],
+    "env": {
+      "MAKE_ZONE": "${user_config.MAKE_ZONE}",
+      "MAKE_TEAM": "${user_config.MAKE_TEAM}"
+    },
+    "requires": {
+      "node": ">=18"
+    },
+    "platform_overrides": {
+      "win32": {
+        "command": "npx.cmd"
+      }
+    }
+  },
+  "auth": {
+    "type": "api_key",
+    "inject": {
+      "in": "env",
+      "name": "MAKE_API_KEY"
+    },
+    "instructions": "Create an API key in your Make profile with the `scenarios:read` and `scenarios:run` scopes, and paste it here.",
+    "setup_url": "https://www.make.com/en/help/apps/api"
+  },
+  "risk": {
+    "network": "internet",
+    "local_system": "execute",
+    "default_tool_tier": "execute",
+    "notes": "Runs your Make scenarios, which do whatever you built them to do — including sending things to other people."
+  },
+  "user_config": {
+    "MAKE_ZONE": {
+      "type": "string",
+      "title": "Zone",
+      "description": "The host your Make organisation is on, e.g. eu2.make.com",
+      "required": true,
+      "default": "eu2.make.com"
+    },
+    "MAKE_TEAM": {
+      "type": "string",
+      "title": "Team ID",
+      "description": "The number in the URL of your Make team page",
+      "required": true
+    }
+  },
+  "tools_generated": true,
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "gantry": ">=0.1.0"
+  },
+  "catalog": {
+    "featured": false,
+    "sort_weight": 81,
+    "suggest_for": ["make", "scenario", "automation", "integromat", "run the workflow"]
+  }
+}

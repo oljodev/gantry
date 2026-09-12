@@ -36,7 +36,7 @@
   },
   "catalog": {
     "featured": false,
-    "sort_weight": 7,
+    "sort_weight": 68,
     "suggest_for": ["posthog", "analytics", "funnel", "feature flag", "how many users"]
   }
 }

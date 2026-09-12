@@ -33,7 +33,7 @@
   },
   "catalog": {
     "featured": false,
-    "sort_weight": 7,
+    "sort_weight": 108,
     "suggest_for": ["hugging face", "huggingface", "model card", "dataset", "spaces"]
   }
 }

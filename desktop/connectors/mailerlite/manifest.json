@@ -36,7 +36,7 @@
   },
   "catalog": {
     "featured": false,
-    "sort_weight": 7,
+    "sort_weight": 48,
     "suggest_for": ["mailerlite", "newsletter", "subscribers", "campaign stats"]
   }
 }

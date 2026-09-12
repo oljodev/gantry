@@ -33,8 +33,12 @@ pub struct Fixture {
     /// The protocol version the server negotiated, when it let us in.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub protocol_version: Option<String>,
-    /// What `initialize` answered without a credential: `200`, `401`, and so on.
+    /// What `initialize` answered without a credential: `200`, `401`, and so on. Zero for a
+    /// local server, which was never asked anything — see `note`.
     pub status: u16,
+    /// What was checked instead of a connection, for a server that was not connected to.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
     /// Present when the server asked us to sign in: what its metadata offers.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub auth: Option<AuthShape>,
@@ -350,6 +354,7 @@ async fn remote(
             // sign in. The protected-resource document is what says so, and recording it is what
             // stops the manifest's `oauth2` reading as a contradiction of a 200.
             auth: auth_shape(http, url, None).await,
+            note: None,
             tools,
         });
     }
@@ -416,6 +421,7 @@ async fn remote(
         protocol_version,
         status,
         auth: auth_shape(http, url, None).await,
+        note: None,
         tools: tools_of(&listed).unwrap_or_default(),
     })
 }
@@ -504,6 +510,7 @@ async fn stdio(
     let Runtime::McpStdio { command, args, .. } = &manifest.runtime else {
         unreachable!("called for a stdio manifest")
     };
+    let mut checked = format!("`{command}` was not spawned; nothing was asked of the server");
     if let Some((name, version)) = package(command, args) {
         let url = format!("https://registry.npmjs.org/{name}");
         let response = http.get(&url).send().await?;
@@ -519,6 +526,7 @@ async fn stdio(
         {
             bail!("npm has no `{name}@{version}` any more");
         }
+        checked = format!("npm publishes `{name}`; the server was not spawned");
     }
     if let Some((name, version)) = python_package(command, args) {
         let url = format!("https://pypi.org/pypi/{name}/json");
@@ -535,15 +543,16 @@ async fn stdio(
         {
             bail!("PyPI has no `{name}=={version}` any more");
         }
+        checked = format!("PyPI publishes `{name}`; the server was not spawned");
     }
     if !spawn {
         // Without `--spawn` the tools are whatever the last spawn recorded; saying so beats
-        // overwriting a real tool list with an empty one.
+        // overwriting a real tool list with an empty one. What *was* checked goes in the note,
+        // so a fixture of `status: 0` says which registry answered rather than nothing at all.
         let recorded = fs::read_to_string(folder.join("fixtures/tools.json")).unwrap_or_default();
-        return Ok(serde_json::from_str(&recorded).unwrap_or(Fixture {
-            status: 0,
-            ..Fixture::default()
-        }));
+        let mut fixture: Fixture = serde_json::from_str(&recorded).unwrap_or_default();
+        fixture.note = Some(checked);
+        return Ok(fixture);
     }
     bail!("--spawn needs the runtime check of 03 §11 step 1, which lands with B6")
 }

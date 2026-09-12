@@ -3,7 +3,7 @@
   "id": "deepwiki",
   "name": "DeepWiki",
   "description": "Read a generated walkthrough of any public GitHub repository.",
-  "long_description": "DeepWiki writes and serves a structured guide to a public GitHub repository \u2014 its architecture, its main flows, where to start reading \u2014 and answers questions against it. Useful on a codebase you have just been handed. Public repositories only; it reads GitHub, not your machine.",
+  "long_description": "DeepWiki writes and serves a structured guide to a public GitHub repository — its architecture, its main flows, where to start reading — and answers questions against it. Useful on a codebase you have just been handed. Public repositories only; it reads GitHub, not your machine.",
   "version": "0.1.0",
   "icon": "icon.svg",
   "category": "developer",
@@ -33,7 +33,7 @@
   },
   "catalog": {
     "featured": false,
-    "sort_weight": 5,
+    "sort_weight": 110,
     "suggest_for": ["deepwiki", "explain this repo", "codebase overview", "repository guide"]
   }
 }

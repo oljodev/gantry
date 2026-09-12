@@ -37,7 +37,7 @@
   },
   "catalog": {
     "featured": false,
-    "sort_weight": 15,
+    "sort_weight": 101,
     "suggest_for": ["grafana", "dashboard", "prometheus query", "loki logs", "alert rule"]
   }
 }

@@ -41,7 +41,7 @@
   },
   "catalog": {
     "featured": false,
-    "sort_weight": 5,
+    "sort_weight": 37,
     "suggest_for": ["kagi", "search", "summarise this page", "summarize this video"]
   }
 }

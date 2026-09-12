@@ -1,0 +1,49 @@
+{
+  "manifest_version": "1",
+  "id": "playwright",
+  "name": "Playwright",
+  "description": "Drive a real browser: open pages, click through flows, read what is on screen.",
+  "long_description": "Microsoft's Playwright server, run as a local process. It opens a page, clicks through a flow, reads the accessibility tree and takes screenshots — so the agent can check a page rather than guess at it.\n\nIt runs on your machine, with your network, and the first run downloads a browser if Playwright has none.",
+  "version": "0.1.0",
+  "icon": "icon.svg",
+  "category": "developer",
+  "keywords": ["playwright", "browser", "testing", "automation", "screenshot", "e2e"],
+  "publisher": {
+    "name": "Microsoft",
+    "url": "https://playwright.dev"
+  },
+  "first_party": false,
+  "homepage": "https://github.com/microsoft/playwright-mcp",
+  "runtime": {
+    "kind": "mcp-stdio",
+    "command": "npx",
+    "args": ["-y", "@playwright/mcp"],
+    "requires": {
+      "node": ">=18"
+    },
+    "platform_overrides": {
+      "win32": {
+        "command": "npx.cmd"
+      }
+    }
+  },
+  "auth": {
+    "type": "none"
+  },
+  "risk": {
+    "network": "internet",
+    "local_system": "execute",
+    "default_tool_tier": "execute",
+    "notes": "Runs a browser on this machine and visits whatever it is pointed at."
+  },
+  "tools_generated": true,
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "gantry": ">=0.1.0"
+  },
+  "catalog": {
+    "featured": false,
+    "sort_weight": 106,
+    "suggest_for": ["playwright", "open the page", "click through", "browser test", "screenshot"]
+  }
+}

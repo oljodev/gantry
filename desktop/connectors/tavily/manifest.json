@@ -40,7 +40,7 @@
   },
   "catalog": {
     "featured": false,
-    "sort_weight": 6,
+    "sort_weight": 38,
     "suggest_for": ["tavily", "search the web", "look this up", "extract this page"]
   }
 }

@@ -3,7 +3,7 @@
   "id": "socket",
   "name": "Socket",
   "description": "Score an npm, PyPI or Go package for supply-chain risk, and read what it published.",
-  "long_description": "Socket scores open-source packages for the things that make a dependency dangerous \u2014 install scripts, obfuscated code, network access that was not there last version \u2014 and lets you read the files a package actually published. The package tools need no account; three others are scoped to a Socket organization and will say so. It sees the package names you ask about.",
+  "long_description": "Socket scores open-source packages for the things that make a dependency dangerous — install scripts, obfuscated code, network access that was not there last version — and lets you read the files a package actually published. The package tools need no account; three others are scoped to a Socket organization and will say so. It sees the package names you ask about.",
   "version": "0.1.0",
   "icon": "icon.svg",
   "category": "developer",
@@ -33,7 +33,7 @@
   },
   "catalog": {
     "featured": false,
-    "sort_weight": 4,
+    "sort_weight": 109,
     "suggest_for": [
       "socket",
       "supply chain",

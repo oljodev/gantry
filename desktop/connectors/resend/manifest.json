@@ -37,7 +37,7 @@
   },
   "catalog": {
     "featured": false,
-    "sort_weight": 8,
+    "sort_weight": 49,
     "suggest_for": ["resend", "send an email", "email delivery", "did it bounce"]
   }
 }

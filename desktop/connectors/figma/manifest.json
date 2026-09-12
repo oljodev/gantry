@@ -37,7 +37,7 @@
   },
   "catalog": {
     "featured": false,
-    "sort_weight": 6,
+    "sort_weight": 87,
     "suggest_for": ["figma", "design file", "this frame", "design tokens", "implement the design"]
   }
 }

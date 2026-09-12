@@ -36,7 +36,7 @@
   },
   "catalog": {
     "featured": false,
-    "sort_weight": 3,
+    "sort_weight": 61,
     "suggest_for": ["square", "payments", "my sales", "catalog", "refund"]
   }
 }

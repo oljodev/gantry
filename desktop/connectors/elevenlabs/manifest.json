@@ -1,0 +1,50 @@
+{
+  "manifest_version": "1",
+  "id": "elevenlabs",
+  "name": "ElevenLabs",
+  "description": "Text to speech, voice cloning and transcription through ElevenLabs.",
+  "long_description": "ElevenLabs' own server, run as a local process on Python. It turns text into speech, transcribes audio, and reaches the voices your account has.\n\nEvery generation is billed to your ElevenLabs account, and the audio lands as a file on this machine.",
+  "version": "0.1.0",
+  "icon": "icon.svg",
+  "category": "productivity",
+  "keywords": ["elevenlabs", "text to speech", "tts", "voice", "transcription", "audio"],
+  "publisher": {
+    "name": "ElevenLabs",
+    "url": "https://elevenlabs.io"
+  },
+  "first_party": false,
+  "homepage": "https://github.com/elevenlabs/elevenlabs-mcp",
+  "runtime": {
+    "kind": "mcp-stdio",
+    "command": "uvx",
+    "args": ["elevenlabs-mcp"],
+    "requires": {
+      "uv": ">=0.5"
+    }
+  },
+  "auth": {
+    "type": "api_key",
+    "inject": {
+      "in": "env",
+      "name": "ELEVENLABS_API_KEY"
+    },
+    "instructions": "Create an ElevenLabs API key and paste it here. Generations are billed to that account.",
+    "setup_url": "https://elevenlabs.io/app/settings/api-keys"
+  },
+  "risk": {
+    "network": "internet",
+    "local_system": "execute",
+    "default_tool_tier": "execute",
+    "notes": "Spends your ElevenLabs credits and writes audio files to this machine."
+  },
+  "tools_generated": true,
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "gantry": ">=0.1.0"
+  },
+  "catalog": {
+    "featured": false,
+    "sort_weight": 80,
+    "suggest_for": ["elevenlabs", "text to speech", "read this aloud", "transcribe", "voice over"]
+  }
+}

@@ -1,0 +1,68 @@
+{
+  "manifest_version": "1",
+  "id": "minimax",
+  "name": "MiniMax",
+  "description": "MiniMax's speech, image, video and music generation, run locally.",
+  "long_description": "MiniMax's own server, run as a local process on Python. It generates speech, images, video and music through their API and writes the result to this machine.\n\nEvery generation is billed to your MiniMax account.",
+  "version": "0.1.0",
+  "icon": "icon.svg",
+  "category": "productivity",
+  "keywords": ["minimax", "text to speech", "video", "image generation", "music", "hailuo"],
+  "publisher": {
+    "name": "MiniMax",
+    "url": "https://www.minimax.io"
+  },
+  "first_party": false,
+  "homepage": "https://github.com/MiniMax-AI/MiniMax-MCP",
+  "runtime": {
+    "kind": "mcp-stdio",
+    "command": "uvx",
+    "args": ["minimax-mcp"],
+    "env": {
+      "MINIMAX_API_HOST": "${user_config.MINIMAX_API_HOST}"
+    },
+    "requires": {
+      "uv": ">=0.5"
+    }
+  },
+  "auth": {
+    "type": "api_key",
+    "inject": {
+      "in": "env",
+      "name": "MINIMAX_API_KEY"
+    },
+    "instructions": "Paste a MiniMax API key from the same region as the host below — a key from one region is rejected by the other.",
+    "setup_url": "https://platform.minimax.io/user-center/basic-information/interface-key"
+  },
+  "risk": {
+    "network": "internet",
+    "local_system": "execute",
+    "default_tool_tier": "execute",
+    "notes": "Spends your MiniMax credits and writes generated media to this machine."
+  },
+  "user_config": {
+    "MINIMAX_API_HOST": {
+      "type": "string",
+      "title": "API host",
+      "description": "https://api.minimax.io for the global service, https://api.minimaxi.com for mainland China",
+      "required": true,
+      "default": "https://api.minimax.io"
+    }
+  },
+  "tools_generated": true,
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "gantry": ">=0.1.0"
+  },
+  "catalog": {
+    "featured": false,
+    "sort_weight": 79,
+    "suggest_for": [
+      "minimax",
+      "generate a video",
+      "text to speech",
+      "generate music",
+      "image generation"
+    ]
+  }
+}

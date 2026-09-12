@@ -40,7 +40,7 @@
   },
   "catalog": {
     "featured": false,
-    "sort_weight": 7,
+    "sort_weight": 40,
     "suggest_for": ["exa", "search the web", "research", "find papers", "find similar pages"]
   }
 }

@@ -3,7 +3,7 @@
   "id": "microsoft-learn",
   "name": "Microsoft Learn",
   "description": "Search Microsoft's documentation and code samples, from the live docs.",
-  "long_description": "Microsoft's hosted documentation server. It searches and fetches Microsoft Learn \u2014 Azure, .NET, Windows, Microsoft 365 \u2014 from the published documentation rather than from a model's memory, which matters most on the products that change every quarter. No account, and it reads public documentation only.",
+  "long_description": "Microsoft's hosted documentation server. It searches and fetches Microsoft Learn — Azure, .NET, Windows, Microsoft 365 — from the published documentation rather than from a model's memory, which matters most on the products that change every quarter. No account, and it reads public documentation only.",
   "version": "0.1.0",
   "icon": "icon.svg",
   "category": "developer",
@@ -33,7 +33,7 @@
   },
   "catalog": {
     "featured": false,
-    "sort_weight": 8,
+    "sort_weight": 107,
     "suggest_for": ["azure", "microsoft docs", "dotnet", ".net", "microsoft learn", "entra"]
   }
 }

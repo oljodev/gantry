@@ -37,7 +37,7 @@
   },
   "catalog": {
     "featured": false,
-    "sort_weight": 0.5,
+    "sort_weight": 58,
     "suggest_for": ["plaid", "bank link", "item error", "api logs", "webhook"]
   }
 }

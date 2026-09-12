@@ -37,7 +37,7 @@
   },
   "catalog": {
     "featured": false,
-    "sort_weight": 0.8,
+    "sort_weight": 96,
     "suggest_for": ["cloudinary", "images", "assets", "media library", "transformation"]
   }
 }
