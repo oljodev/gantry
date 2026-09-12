@@ -8,13 +8,13 @@ import { REQUEST_URL } from '@/lib/connectors';
 const rank = (c: (typeof connectors)[number]) => (c.status === 'available' ? 0 : 1);
 const groups = CATEGORY_IDS.map((id) => ({ id, ...CATEGORIES[id], items: connectors.filter((c) => c.category === id).sort((a, b) => rank(a) - rank(b)) }));
 ---
-<BaseLayout title="Connectors" description={`${available.length} connectors ship with Gantry today and ${connectors.length - available.length} more are on the way: built-in tools for your machine and MCP servers for GitHub, Notion, Postgres, Slack and more. Nothing installs itself.`}>
+<BaseLayout title="Connectors" description={`${available.length} connectors ship with Gantry today: built-in tools for your machine and MCP servers for GitHub, Linear, Notion, Sentry, Supabase, Stripe, Figma and more, all under one permission model. Nothing installs itself.`}>
   <section class="head">
     <div class="wrap">
       <p class="eyebrow">Connectors</p>
       <h1 class="display">Every connector, one click away.</h1>
       <p class="lede">Built-in tools for your machine and MCP servers for the services you use, all under the same permission model. Find one here, install it from inside the app.</p>
-      <p class="lede-note"><strong>{available.length} are available now.</strong> The rest are marked <em>Soon</em>: the server exists and we have checked it, and the connector lands in one of the next releases. More are added every release.</p>
+      <p class="lede-note"><strong>{available.length} are available now</strong>, and every one of them has been checked against the service’s own server rather than written from memory. The {connectors.length - available.length} marked <em>Soon</em> are not a release away by default: some are scheduled, and some are waiting on a server the vendor has not published or on something Gantry has to build first. Each one says which on its own page.</p>
     </div>
   </section>
 
@@ -54,7 +54,7 @@ const groups = CATEGORY_IDS.map((id) => ({ id, ...CATEGORIES[id], items: connect
       </div>
       <a class="btn" href={REQUEST_URL} rel="noopener">Request a connector</a>
     </div>
-    <p class="note">Connectors marked <em>Soon</em> are planned, not shipped; the app only ever offers what is really there. Product names and logos belong to their owners and show which services Gantry can connect to, not endorsement. Connectors without a public mark are shown with their initials. Every connector, built in or MCP, waits for an explicit Install in the app.</p>
+    <p class="note">Connectors marked <em>Soon</em> are not shipped; the app only ever offers what is really there. Product names and logos belong to their owners and show which services Gantry can connect to, not endorsement. Connectors without a public mark are shown with their initials. Every connector, built in or MCP, waits for an explicit Install in the app.</p>
   </section>
   <script src="../../scripts/connector-filter.ts"></script>
 </BaseLayout>

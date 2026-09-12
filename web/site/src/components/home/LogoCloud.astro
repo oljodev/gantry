@@ -2,29 +2,32 @@
 /** The connectors, Ramp-style: a bordered card of small logo tiles that light up in waves travelling across the
  *  grid. Pure CSS: each tile carries two build-time phases (desktop and phone column counts) and shares one keyframe.
  *  The whole card is one link; the grid is decorative for assistive tech. Reduced motion shows the lit grid. */
-import { connectors } from '@/data/connectors';
+import { available } from '@/data/connectors';
 import Mark from '@/components/connectors/Mark.astro';
 
 const COLS = { lg: 9, sm: 6 };
 const extras = [{ label: 'Any MCP server', text: 'MCP' }, { label: 'More coming', text: '+' }];
-const total = connectors.length + extras.length;
+/** A wall, not a directory: enough tiles to read as "a lot of these" at a glance, the ones with a
+ *  real mark, and the `+` tile carries the rest. The count in the heading is the true one. */
+const shown = available.filter((c) => c.icon !== false).slice(0, 40);
+const total = shown.length + extras.length;
 const phase = (i: number, cols: number) => {
   const rows = Math.ceil(total / cols);
   const r = Math.floor(i / cols), c = i % cols;
   return ((r + c) / (rows - 1 + cols - 1)).toFixed(3);
 };
 ---
-<a class="cloud card" href="/connectors/" aria-label={`Browse all ${connectors.length} connectors`}>
+<a class="cloud card" href="/connectors/" aria-label={`Browse all ${available.length} connectors`}>
   <div class="cloud-head">
-    <span class="cloud-title">{connectors.length} connectors, one permission model</span>
+    <span class="cloud-title">{available.length} connectors, one permission model</span>
     <span class="arrow-link">Browse the directory</span>
   </div>
   <ul class="cloud-grid" aria-hidden="true">
-    {connectors.map((c, i) => (
+    {shown.map((c, i) => (
       <li class="tile" title={c.name} style={`--p-lg:${phase(i, COLS.lg)};--p-sm:${phase(i, COLS.sm)}`}><Mark connector={c} size={22} /></li>
     ))}
     {extras.map((e, j) => (
-      <li class="tile tile-text" title={e.label} style={`--p-lg:${phase(connectors.length + j, COLS.lg)};--p-sm:${phase(connectors.length + j, COLS.sm)}`}>{e.text}</li>
+      <li class="tile tile-text" title={e.label} style={`--p-lg:${phase(shown.length + j, COLS.lg)};--p-sm:${phase(shown.length + j, COLS.sm)}`}>{e.text}</li>
     ))}
   </ul>
 </a>

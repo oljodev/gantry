@@ -354,6 +354,13 @@ The site's list and the shipped catalogue therefore disagree by design, in one d
 everything `available` on the site exists in the app, and the app never has a connector the site
 does not list.
 
+**And a `soon` row says why** (`soonNote`, added 2026-09-12). "Coming soon" stopped being true
+once the reasons stopped being the same: Slack and Firecrawl are waiting on something Gantry has
+to build, Google's Drive and Gmail servers do not exist, and MongoDB and Brave are simply next in
+the queue. One sentence per row, on that connector's page, saying which — because a directory that
+promises a release date it does not have is the same failure as one that lists a connector the app
+cannot install.
+
 ## 8. Names, marks and law
 
 Third-party names and logos belong to their owners; a manifest describes a server it does not ship

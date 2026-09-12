@@ -24,7 +24,7 @@ const runtimeNote: Record<string, string> = {
   'mcp-stdio': 'An MCP server that runs as a local process on the Node or Python you already have. Gantry checks the runtime is present before installing.',
 };
 ---
-<BaseLayout title={`${c.name} connector`} description={`${c.name} in Gantry: ${c.does.toLowerCase()}. ${c.status === 'soon' ? 'Planned, and on the way.' : kindLabel(c) === 'Built in' ? 'Built into the app.' : 'An MCP server, installed with one click.'}`}>
+<BaseLayout title={`${c.name} connector`} description={`${c.name} in Gantry: ${c.does.toLowerCase()}. ${c.status === 'soon' ? 'Planned; not in the app yet.' : kindLabel(c) === 'Built in' ? 'Built into the app.' : 'An MCP server, installed with one click.'}`}>
   <article class="wrap page">
     <nav class="crumbs" aria-label="Breadcrumb"><a href="/connectors/">Connectors</a><span aria-hidden="true">/</span><a href={`/connectors/?category=${c.category}`}>{cat.label}</a></nav>
     <header class="head">
@@ -32,7 +32,7 @@ const runtimeNote: Record<string, string> = {
       <div>
         <h1 class="title">{c.name}</h1>
         <p class="lede">{c.does}.</p>
-        <p class="badges"><span class:list={['badge', c.firstParty && 'badge-brand']}>{kindLabel(c)}</span><span class="badge">{cat.label}</span><span class="badge">{AUTH_LABEL[c.auth]}</span>{c.status === 'soon' && <span class="badge badge-soon">Coming soon</span>}</p>
+        <p class="badges"><span class:list={['badge', c.firstParty && 'badge-brand']}>{kindLabel(c)}</span><span class="badge">{cat.label}</span><span class="badge">{AUTH_LABEL[c.auth]}</span>{c.status === 'soon' && <span class="badge badge-soon">Not shipped yet</span>}</p>
       </div>
     </header>
 
@@ -40,7 +40,7 @@ const runtimeNote: Record<string, string> = {
       <div class="main">
         {c.status === 'soon' && (
           <p class="soon-note card">
-            <strong>This one is on the way.</strong> {c.name}’s server has been checked and the connector is planned for one of the next releases — it is not in the app yet. Everything below is what it will do. Until it lands you can add it yourself as a custom MCP server, and <a class="link" href={REQUEST_URL} rel="noopener">saying you want it</a> moves it up the list.
+            <strong>Not in the app yet.</strong> {c.soonNote ?? `${c.name}’s server has been checked and the connector is planned for one of the next releases.`} Everything below is what it will do when it lands. Meanwhile you can add any MCP server yourself under Settings → Connectors, and <a class="link" href={REQUEST_URL} rel="noopener">saying you want this one</a> moves it up the list.
           </p>
         )}
         <p class="prose-muted summary">{c.summary}</p>
@@ -71,7 +71,7 @@ const runtimeNote: Record<string, string> = {
           <dl class="side-facts">
             <div><dt>Category</dt><dd><a class="link" href={`/connectors/?category=${c.category}`}>{cat.label}</a></dd></div>
             <div><dt>Kind</dt><dd>{kindLabel(c) === 'Built in' ? 'Built into Gantry' : 'MCP server'}</dd></div>
-            <div><dt>Status</dt><dd>{c.status === 'available' ? 'Available now' : 'Coming soon'}</dd></div>
+            <div><dt>Status</dt><dd>{c.status === 'available' ? 'Available now' : 'Not shipped yet'}</dd></div>
             <div><dt>Sign-in</dt><dd>{AUTH_LABEL[c.auth]}</dd></div>
             {c.website && <div><dt>Service</dt><dd><a class="link" href={c.website} rel="noopener">{c.website.replace(/^https?:\/\//, '').replace(/\/$/, '')} <Icon name="arrow-up-right" size={12} /></a></dd></div>}
           </dl>
