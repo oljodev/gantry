@@ -39,8 +39,16 @@ pub const RUNTIME_NAMESPACE: &str = "gantry";
 impl ToolSet {
     /// The tools this turn may call: every runtime tool, plus the connectors the chat attached
     /// (03 §11), minus what the mode hides (04 §4: Plan mode hides tools it would deny rather
-    /// than letting the model waste rounds on them).
-    pub async fn assemble(registry: &ConnectorRegistry, mode: Mode, attached: &[String]) -> Self {
+    /// than letting the model waste rounds on them) and, in an incognito session, the memory
+    /// tools (15 A21). Dropping them rather than refusing the call is the same choice the
+    /// memory settings make: a tool that is not in the list cannot be reached for, and the
+    /// model does not spend a round finding that out.
+    pub async fn assemble(
+        registry: &ConnectorRegistry,
+        mode: Mode,
+        attached: &[String],
+        memory: bool,
+    ) -> Self {
         let mut set = ToolSet::default();
         for connector in registry.list() {
             let id = &connector.descriptor().id;
@@ -59,6 +67,12 @@ impl ToolSet {
             };
             for def in defs {
                 if mode == Mode::Plan && def.plan_mode == PlanModePolicy::Deny {
+                    continue;
+                }
+                if !memory
+                    && id == RUNTIME_NAMESPACE
+                    && crate::runtime_tools::memory::NAMES.contains(&def.name.as_str())
+                {
                     continue;
                 }
                 let model_name = set.names.insert(&connector.descriptor().id, &def.name);

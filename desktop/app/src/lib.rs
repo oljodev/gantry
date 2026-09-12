@@ -38,6 +38,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::providers::add_custom_provider,
             commands::providers::remove_provider,
             commands::chats::create_chat,
+            commands::chats::open_incognito_window,
             commands::chats::image_preview,
             commands::chats::blob_image,
             commands::chats::blob_media,

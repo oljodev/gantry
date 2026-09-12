@@ -198,6 +198,13 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn Error>> {
         log::warn!("could not index the skills folder: {err}");
     }
     turns.set_skills(skills.clone());
+    // An incognito session lives as long as its window (15 A21). Nothing but a crash can leave
+    // one behind, and this is where that one case is answered — before any list can read it.
+    match turns.chats().sweep_incognito() {
+        Ok(0) => {}
+        Ok(n) => log::info!("deleted {n} incognito session(s) left by the previous run"),
+        Err(err) => log::warn!("could not delete the incognito sessions left behind: {err}"),
+    }
     let memories = Memories::new(store.clone());
     // Recently deleted is thirty days, and this is the only place that notices they are up.
     match memories.sweep() {

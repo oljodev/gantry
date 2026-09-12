@@ -8,6 +8,10 @@ import { cn } from '@/lib/utils';
 /**
  * Minimise / maximise / close for Windows and Linux, where the native frame is dropped
  * (docs/plan/15 §7). macOS keeps its traffic lights and never renders this.
+ *
+ * The three sit on `bg-inset` rather than on the strip itself, which is the only thing that
+ * tells a frameless window where its own corner is: with the same ground as everything else,
+ * three small glyphs float in a wide empty bar and nothing says they belong together.
  */
 export function WindowControls() {
   const [maximized, setMaximized] = useState(false);
@@ -30,7 +34,7 @@ export function WindowControls() {
   };
 
   return (
-    <div className="flex h-full items-start" data-tauri-drag-region="false">
+    <div className="flex h-full items-start bg-inset" data-tauri-drag-region="false">
       <ControlButton label="Minimise" onClick={call((w) => w.minimize())}>
         <Minus size={14} />
       </ControlButton>

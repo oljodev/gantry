@@ -205,7 +205,7 @@ impl TurnManager {
     }
 
     fn build_prompt(&self, settings: &Settings, mode: gantry_core::Mode) -> String {
-        self.build_prompt_with_memory(settings, mode).0
+        self.build_prompt_with_memory(settings, mode, true).0
     }
 
     /// The frozen prompt, and the memories it froze into it (10 §2 layer 3, 12 §B4).
@@ -217,8 +217,9 @@ impl TurnManager {
         &self,
         settings: &Settings,
         mode: gantry_core::Mode,
+        memory_on: bool,
     ) -> (String, Vec<gantry_core::MemoryId>) {
-        let (memory_block, ids) = if settings.memory.paused {
+        let (memory_block, ids) = if settings.memory.paused || !memory_on {
             (String::new(), Vec::new())
         } else {
             let entries = self
@@ -240,7 +241,7 @@ impl TurnManager {
 
     /// A new chat with the settings' defaults and a freshly assembled system prompt.
     pub fn create_chat(&self, model: Option<ModelRef>) -> Result<ChatSummary, GantryError> {
-        self.create_session(gantry_core::Surface::Chat, Vec::new(), model)
+        self.create_session(gantry_core::Surface::Chat, Vec::new(), model, false)
     }
 
     /// A new session on either surface (16 C3, C5). A code session is created with the folder
@@ -250,6 +251,7 @@ impl TurnManager {
         surface: gantry_core::Surface,
         roots: Vec<String>,
         model: Option<ModelRef>,
+        incognito: bool,
     ) -> Result<ChatSummary, GantryError> {
         if surface.needs_folder() && roots.is_empty() {
             return Err(GantryError::invalid(
@@ -259,7 +261,10 @@ impl TurnManager {
         let settings = self.settings();
         let model = model.unwrap_or_else(|| settings.default_model());
         let (mode, guard) = settings.defaults_for(surface);
-        let (prompt, memory_ids) = self.build_prompt_with_memory(&settings, mode);
+        // Incognito takes no memory in and leaves none behind (15 A21). Custom instructions
+        // stay: they are how the user has configured the app, not something it learned about
+        // them, and a private chat that forgets how to write is not what anyone asked for.
+        let (prompt, memory_ids) = self.build_prompt_with_memory(&settings, mode, !incognito);
         let chat = self.chats.create(NewChat {
             surface,
             roots,
@@ -279,6 +284,7 @@ impl TurnManager {
                 ],
                 gantry_core::Surface::Chat => settings.chat.default_connectors.clone(),
             },
+            incognito,
         })?;
         self.chats.record_snapshot_memories(chat.id, &memory_ids);
         Ok(chat)
@@ -551,6 +557,7 @@ impl TurnManager {
             log::warn!("guardrail rule ignored — {problem}");
         }
         let mode = input.mode;
+        let incognito = input.incognito;
         let attached = input.connectors.clone();
         // The guard asks the cheapest fast model of the chat's own provider, which is the same
         // table the title generator reads (04 §6). Resolved once, before the turn starts, so a
@@ -570,7 +577,7 @@ impl TurnManager {
             }),
         };
         self.runtime.spawn(async move {
-            let tools = ToolSet::assemble(&connectors, mode, &attached).await;
+            let tools = ToolSet::assemble(&connectors, mode, &attached, !incognito).await;
             runner::run_turn(RunContext {
                 input,
                 provider: provider.clone(),

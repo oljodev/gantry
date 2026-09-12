@@ -50,6 +50,7 @@ fn fixture() -> Fixture {
         updated_at: now,
         last_message_at: now,
         archived_at: None,
+        incognito: false,
     };
     let root = work.path().display().to_string();
     store

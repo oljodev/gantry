@@ -85,6 +85,10 @@ pub struct ChatSummary {
     pub last_message_at: i64,
     /// The turn currently streaming, if any.
     pub active_turn: Option<TurnId>,
+    /// An incognito session (15 A21): its own window, no memory either way, and gone when the
+    /// window closes. Never in a list the user browses, so this is only ever `true` for the
+    /// one chat an incognito window is showing.
+    pub incognito: bool,
 }
 
 /// One user message and everything the assistant did in reply.

@@ -50,6 +50,7 @@ impl World {
                 system_snapshot: "sys".into(),
                 system_snapshot_version: 1,
                 connectors: Vec::new(),
+                incognito: false,
             })
             .unwrap()
             .id

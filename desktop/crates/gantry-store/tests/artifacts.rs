@@ -41,6 +41,7 @@ fn chat(store: &Store) -> ChatId {
                     updated_at: now,
                     last_message_at: now,
                     archived_at: None,
+                    incognito: false,
                 },
             )
         })

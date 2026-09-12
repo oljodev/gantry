@@ -38,6 +38,7 @@ fn seed(conn: &rusqlite::Connection) -> (ChatId, TurnId) {
         updated_at: now,
         last_message_at: now,
         archived_at: None,
+        incognito: false,
     };
     chats::insert(conn, &chat).unwrap();
     let turn = turns::TurnRecord {

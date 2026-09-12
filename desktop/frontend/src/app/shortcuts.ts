@@ -1,5 +1,6 @@
 import type { AnyRouter } from '@tanstack/react-router';
 
+import { openIncognito } from '@/lib/ipc/incognito';
 import { useUiStore } from '@/lib/stores/uiStore';
 
 /** Global keyboard shortcuts (docs/plan/15 §12). Cmd on macOS, Ctrl elsewhere. */
@@ -20,7 +21,12 @@ export function installShortcuts(router: AnyRouter) {
       case 'n':
       case 'N':
         e.preventDefault();
-        void router.navigate({ to: '/chat' });
+        // ⇧ makes it private, the same way every browser spells it (15 A21).
+        if (e.shiftKey) {
+          void openIncognito().catch(() => {});
+        } else {
+          void router.navigate({ to: '/chat' });
+        }
         break;
       case 'a':
       case 'A':

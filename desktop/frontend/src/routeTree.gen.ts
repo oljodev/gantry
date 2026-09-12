@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ArtifactWindowRouteImport } from './routes/artifact-window'
 import { Route as ArtifactsRouteImport } from './routes/artifacts'
+import { Route as IncognitoRouteImport } from './routes/incognito'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as ProjectsRouteImport } from './routes/projects'
 import { Route as ChatIndexRouteImport } from './routes/chat.index'
@@ -33,6 +34,11 @@ const ArtifactWindowRoute = ArtifactWindowRouteImport.update({
 const ArtifactsRoute = ArtifactsRouteImport.update({
   id: '/artifacts',
   path: '/artifacts',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const IncognitoRoute = IncognitoRouteImport.update({
+  id: '/incognito',
+  path: '/incognito',
   getParentRoute: () => rootRouteImport,
 } as any)
 const OnboardingRoute = OnboardingRouteImport.update({
@@ -75,6 +81,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/artifact-window': typeof ArtifactWindowRoute
   '/artifacts': typeof ArtifactsRoute
+  '/incognito': typeof IncognitoRoute
   '/onboarding': typeof OnboardingRoute
   '/projects': typeof ProjectsRoute
   '/chat/$chatId': typeof ChatChatIdRoute
@@ -87,6 +94,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/artifact-window': typeof ArtifactWindowRoute
   '/artifacts': typeof ArtifactsRoute
+  '/incognito': typeof IncognitoRoute
   '/onboarding': typeof OnboardingRoute
   '/projects': typeof ProjectsRoute
   '/chat/$chatId': typeof ChatChatIdRoute
@@ -100,6 +108,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/artifact-window': typeof ArtifactWindowRoute
   '/artifacts': typeof ArtifactsRoute
+  '/incognito': typeof IncognitoRoute
   '/onboarding': typeof OnboardingRoute
   '/projects': typeof ProjectsRoute
   '/chat/$chatId': typeof ChatChatIdRoute
@@ -114,6 +123,7 @@ export interface FileRouteTypes {
     | '/'
     | '/artifact-window'
     | '/artifacts'
+    | '/incognito'
     | '/onboarding'
     | '/projects'
     | '/chat/$chatId'
@@ -126,6 +136,7 @@ export interface FileRouteTypes {
     | '/'
     | '/artifact-window'
     | '/artifacts'
+    | '/incognito'
     | '/onboarding'
     | '/projects'
     | '/chat/$chatId'
@@ -138,6 +149,7 @@ export interface FileRouteTypes {
     | '/'
     | '/artifact-window'
     | '/artifacts'
+    | '/incognito'
     | '/onboarding'
     | '/projects'
     | '/chat/$chatId'
@@ -151,6 +163,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ArtifactWindowRoute: typeof ArtifactWindowRoute
   ArtifactsRoute: typeof ArtifactsRoute
+  IncognitoRoute: typeof IncognitoRoute
   OnboardingRoute: typeof OnboardingRoute
   ProjectsRoute: typeof ProjectsRoute
   ChatChatIdRoute: typeof ChatChatIdRoute
@@ -181,6 +194,13 @@ declare module '@tanstack/react-router' {
       path: '/artifacts'
       fullPath: '/artifacts'
       preLoaderRoute: typeof ArtifactsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/incognito': {
+      id: '/incognito'
+      path: '/incognito'
+      fullPath: '/incognito'
+      preLoaderRoute: typeof IncognitoRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/onboarding': {
@@ -239,6 +259,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ArtifactWindowRoute: ArtifactWindowRoute,
   ArtifactsRoute: ArtifactsRoute,
+  IncognitoRoute: IncognitoRoute,
   OnboardingRoute: OnboardingRoute,
   ProjectsRoute: ProjectsRoute,
   ChatChatIdRoute: ChatChatIdRoute,

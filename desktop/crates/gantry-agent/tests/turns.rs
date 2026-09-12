@@ -1086,7 +1086,7 @@ async fn plan_mode_offers_only_tools_it_would_allow() {
 #[tokio::test]
 async fn a_code_session_needs_a_folder_and_keeps_its_own_list() {
     let m = manager(vec![text("hi"), end()], Duration::ZERO);
-    let refused = m.create_session(gantry_core::Surface::Code, Vec::new(), None);
+    let refused = m.create_session(gantry_core::Surface::Code, Vec::new(), None, false);
     assert!(
         refused.is_err(),
         "a code session with no folder was created"
@@ -1098,6 +1098,7 @@ async fn a_code_session_needs_a_folder_and_keeps_its_own_list() {
             gantry_core::Surface::Code,
             vec!["/home/olav/dev/gantry".into()],
             None,
+            false,
         )
         .unwrap();
     assert_eq!(code.surface, gantry_core::Surface::Code);

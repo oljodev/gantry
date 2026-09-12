@@ -47,6 +47,7 @@ pub fn create_chat(
         surface.unwrap_or_default(),
         roots.unwrap_or_default(),
         model,
+        false,
     )?;
     let _ = ChatsChanged {
         chat_ids: vec![chat.id],
@@ -300,4 +301,67 @@ pub fn image_preview(path: String) -> Option<String> {
     }
     let data = base64::engine::general_purpose::STANDARD.encode(&bytes);
     Some(format!("data:{mime};base64,{data}"))
+}
+
+/// Opens an incognito chat in its own window (docs/plan/15 A21).
+///
+/// The chat is created here rather than by the frontend, and the window is given its id, so the
+/// window owns the session from the first frame: the close handler below has something to
+/// delete however the window ends, and no path exists where a webview creates an incognito chat
+/// and then fails to claim it.
+///
+/// A separate window rather than a mode inside the main one, for the same reason the artifact
+/// windows are separate: a private conversation that shares a sidebar with the history is one
+/// keystroke from being in it, and "which window am I in" is a question a person can answer at
+/// a glance.
+#[tauri::command]
+#[specta::specta]
+pub fn open_incognito_window(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    model: Option<ModelRef>,
+) -> Result<ChatSummary, ErrorDto> {
+    use tauri::{Manager, WindowEvent};
+
+    let chat = state
+        .turns
+        .create_session(Surface::Chat, Vec::new(), model, true)?;
+    let label = format!("incognito-{}", chat.id);
+    let url = tauri::WebviewUrl::App(format!("index.html#/incognito?chat={}", chat.id).into());
+    let builder = tauri::WebviewWindowBuilder::new(&app, &label, url)
+        .title("Incognito chat")
+        .inner_size(1000.0, 760.0)
+        .min_inner_size(480.0, 400.0);
+    #[cfg(target_os = "macos")]
+    let builder = builder
+        .title_bar_style(tauri::TitleBarStyle::Overlay)
+        .hidden_title(true);
+    #[cfg(not(target_os = "macos"))]
+    let builder = builder.decorations(false);
+    let window = builder.build().map_err(|e| {
+        // The chat would otherwise sit in the table until the next startup sweep.
+        let _ = state.turns.chats().delete(chat.id);
+        GantryError::invalid(format!("could not open the window: {e}"))
+    })?;
+
+    // The session ends with the window, whichever way the window ends. `Destroyed` fires for a
+    // close, a quit and a kill of the webview alike; the startup sweep covers the one case it
+    // cannot, which is the process not living long enough to run this.
+    let handle = app.clone();
+    let chat_id = chat.id;
+    window.on_window_event(move |event| {
+        if matches!(event, WindowEvent::Destroyed)
+            && let Some(state) = handle.try_state::<AppState>()
+        {
+            match state.turns.chats().delete(chat_id) {
+                Ok(_) => log::info!("incognito session closed and deleted"),
+                Err(err) => log::warn!("could not delete the incognito session: {err}"),
+            }
+            let _ = ChatsChanged {
+                chat_ids: vec![chat_id],
+            }
+            .emit(&handle);
+        }
+    });
+    Ok(chat)
 }

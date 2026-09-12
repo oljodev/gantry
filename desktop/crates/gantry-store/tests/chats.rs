@@ -36,6 +36,7 @@ fn chat(title: &str) -> chats::ChatRecord {
         updated_at: now,
         last_message_at: now,
         archived_at: None,
+        incognito: false,
     }
 }
 
@@ -264,4 +265,66 @@ fn backups_exclude_credentials() {
         .unwrap();
     assert_eq!(n, 1, "the live database keeps its rows");
     store.integrity_check().unwrap();
+}
+
+/// An incognito session is in the table and in nothing a person can browse (15 A21): not the
+/// sidebar, not the list that spans both surfaces, and not search. `get` still finds it,
+/// because the window showing it has to be able to read its own chat.
+#[test]
+fn an_incognito_session_is_absent_from_every_list_and_from_search() {
+    let (_d, store) = open();
+    let ordinary = chat("An ordinary chat");
+    let mut private = chat("Something private");
+    private.incognito = true;
+    let t = turn(private.id, 0);
+    let (o, p, t2) = (ordinary.clone(), private.clone(), t.clone());
+    store
+        .write_blocking(move |conn| {
+            chats::insert(conn, &o)?;
+            chats::insert(conn, &p)?;
+            turns::insert(conn, &t2)?;
+            messages::insert(
+                conn,
+                &messages::MessageRecord {
+                    message: Message::user_text("a distinctive sentence about pangolins"),
+                    chat_id: p.id,
+                    turn_id: Some(t2.id),
+                    seq: 1,
+                    stop_reason: None,
+                    usage: None,
+                },
+            )?;
+            Ok(())
+        })
+        .unwrap();
+
+    let (listed, all, found, hits) = store
+        .read(move |conn| {
+            Ok((
+                chats::list(conn, gantry_core::Surface::Chat)?,
+                chats::list_all(conn)?,
+                chats::get(conn, private.id)?,
+                search::search(conn, "pangolins", 10)?,
+            ))
+        })
+        .unwrap();
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].id, ordinary.id);
+    assert_eq!(all.len(), 1);
+    assert!(found.is_some(), "the window must be able to read its chat");
+    assert!(hits.is_empty(), "an incognito message must not be findable");
+
+    let (swept, gone, kept) = store
+        .write_blocking(move |conn| {
+            let swept = chats::delete_incognito(conn)?;
+            Ok((
+                swept,
+                chats::get(conn, private.id)?,
+                chats::get(conn, ordinary.id)?,
+            ))
+        })
+        .unwrap();
+    assert_eq!(swept, 1);
+    assert!(gone.is_none());
+    assert!(kept.is_some());
 }

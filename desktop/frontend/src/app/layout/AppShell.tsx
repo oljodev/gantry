@@ -1,6 +1,7 @@
 import { useRouterState } from '@tanstack/react-router';
 import { type ReactNode, useEffect } from 'react';
 
+import { IncognitoButton } from '@/app/layout/IncognitoButton';
 import { Sidebar } from '@/app/layout/Sidebar';
 import { TitleStrip } from '@/app/layout/TitleStrip';
 import { DeviceCodeDialog } from '@/features/connectors/DeviceCodeDialog';
@@ -16,7 +17,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     <div className="flex h-screen w-screen overflow-hidden bg-base text-fg">
       {!collapsed && <Sidebar />}
       <div className="relative flex min-w-0 flex-1 flex-col bg-surface">
-        <TitleStrip className="absolute inset-x-0 top-0 z-30" />
+        <TitleStrip className="absolute inset-x-0 top-0 z-30" actions={<IncognitoButton />} />
         <main className="min-h-0 flex-1 overflow-hidden">{children}</main>
       </div>
       <SettingsDialog />

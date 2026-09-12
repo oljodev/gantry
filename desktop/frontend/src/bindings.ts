@@ -59,6 +59,23 @@ export const commands = {
 /**  Working inside a folder on this machine. */
 "code" | null, roots: string[] | null) => typedError<ChatSummary, ErrorDto>(__TAURI_INVOKE("create_chat", { model, surface, roots })),
 	/**
+	 *  Opens an incognito chat in its own window (docs/plan/15 A21).
+	 * 
+	 *  The chat is created here rather than by the frontend, and the window is given its id, so the
+	 *  window owns the session from the first frame: the close handler below has something to
+	 *  delete however the window ends, and no path exists where a webview creates an incognito chat
+	 *  and then fails to claim it.
+	 * 
+	 *  A separate window rather than a mode inside the main one, for the same reason the artifact
+	 *  windows are separate: a private conversation that shares a sidebar with the history is one
+	 *  keystroke from being in it, and "which window am I in" is a question a person can answer at
+	 *  a glance.
+	 */
+	openIncognitoWindow: (model: {
+	provider: ProviderId,
+	model: string,
+} | null) => typedError<ChatSummary, ErrorDto>(__TAURI_INVOKE("open_incognito_window", { model })),
+	/**
 	 *  A `data:` URL for an image on disk, so the composer can show what is attached before the
 	 *  message is sent. Anything that is not a supported image, or is over the image cap, answers
 	 *  with nothing rather than an error: a preview is a convenience, not a promise.
@@ -756,6 +773,12 @@ export type ChatSummary = {
 	last_message_at: number,
 	/**  The turn currently streaming, if any. */
 	active_turn: TurnId | null,
+	/**
+	 *  An incognito session (15 A21): its own window, no memory either way, and gone when the
+	 *  window closes. Never in a list the user browses, so this is only ever `true` for the
+	 *  one chat an incognito window is showing.
+	 */
+	incognito: boolean,
 };
 
 /**  Fields the composer and the sidebar change; absent fields stay as they are. */

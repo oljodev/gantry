@@ -33,9 +33,15 @@ pub struct ChatRecord {
     pub updated_at: i64,
     pub last_message_at: i64,
     pub archived_at: Option<i64>,
+    /// Never listed, never searched, deleted with its window (15 A21).
+    pub incognito: bool,
 }
 
-const COLUMNS: &str = "id, project_id, title, title_source, pinned, permission_mode, auto_guard, provider_id, model_id, effort, web_search, instructions, system_snapshot, system_snapshot_version, created_at, updated_at, last_message_at, archived_at, surface";
+const COLUMNS: &str = "id, project_id, title, title_source, pinned, permission_mode, auto_guard, provider_id, model_id, effort, web_search, instructions, system_snapshot, system_snapshot_version, created_at, updated_at, last_message_at, archived_at, surface, incognito";
+
+/// Every list a person can reach leaves incognito sessions out; the only things that see them
+/// are `get` — the open window asking for its own chat — and the sweep that deletes them.
+const VISIBLE: &str = "incognito = 0";
 
 fn from_row(r: &Row<'_>) -> rusqlite::Result<ChatRecord> {
     Ok(ChatRecord {
@@ -70,13 +76,14 @@ fn from_row(r: &Row<'_>) -> rusqlite::Result<ChatRecord> {
         last_message_at: r.get(16)?,
         archived_at: r.get(17)?,
         surface: enum_from_str(r, 18)?,
+        incognito: r.get::<_, i64>(19)? != 0,
     })
 }
 
 pub fn insert(conn: &Connection, c: &ChatRecord) -> Result<()> {
     conn.execute(
         &format!(
-            "INSERT INTO chats ({COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)"
+            "INSERT INTO chats ({COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)"
         ),
         params![
             c.id.to_string(),
@@ -98,6 +105,7 @@ pub fn insert(conn: &Connection, c: &ChatRecord) -> Result<()> {
             c.last_message_at,
             c.archived_at,
             enum_to_str(&c.surface),
+            c.incognito as i64,
         ],
     )?;
     Ok(())
@@ -148,7 +156,7 @@ pub fn get(conn: &Connection, id: ChatId) -> Result<Option<ChatRecord>> {
 /// mix: a code session does not appear among the chats and the reverse (16 §6).
 pub fn list(conn: &Connection, surface: Surface) -> Result<Vec<ChatRecord>> {
     let mut stmt = conn.prepare(&format!(
-        "SELECT {COLUMNS} FROM chats WHERE surface = ?1 ORDER BY last_message_at DESC, id DESC"
+        "SELECT {COLUMNS} FROM chats WHERE surface = ?1 AND {VISIBLE} ORDER BY last_message_at DESC, id DESC"
     ))?;
     let rows = stmt.query_map(params![surface.as_str()], from_row)?;
     Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
@@ -158,7 +166,7 @@ pub fn list(conn: &Connection, surface: Surface) -> Result<Vec<ChatRecord>> {
 /// library, and the sweep that marks turns interrupted at startup.
 pub fn list_all(conn: &Connection) -> Result<Vec<ChatRecord>> {
     let mut stmt = conn.prepare(&format!(
-        "SELECT {COLUMNS} FROM chats ORDER BY last_message_at DESC, id DESC"
+        "SELECT {COLUMNS} FROM chats WHERE {VISIBLE} ORDER BY last_message_at DESC, id DESC"
     ))?;
     let rows = stmt.query_map([], from_row)?;
     Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
@@ -232,6 +240,13 @@ pub fn remove_root(conn: &Connection, chat_id: ChatId, path: &str) -> Result<()>
 pub fn delete(conn: &Connection, id: ChatId) -> Result<bool> {
     let n = conn.execute("DELETE FROM chats WHERE id = ?1", params![id.to_string()])?;
     Ok(n > 0)
+}
+
+/// Deletes every incognito session, run at startup and when an incognito window closes (15
+/// A21). An incognito chat is meant to live exactly as long as its window; this is what makes
+/// that true across a crash, a kill, or a machine that lost power mid-sentence.
+pub fn delete_incognito(conn: &Connection) -> Result<usize> {
+    Ok(conn.execute("DELETE FROM chats WHERE incognito = 1", [])?)
 }
 
 pub fn set_last_message_at(conn: &Connection, id: ChatId, at: i64) -> Result<()> {

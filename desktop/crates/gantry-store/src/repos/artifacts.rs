@@ -193,10 +193,19 @@ pub fn list_for_project(conn: &Connection, project_id: &str) -> Result<Vec<Artif
     Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
 }
 
-/// Every artifact across every chat, newest change first (the library, 13 §9).
+/// Every artifact across every chat, newest change first (the library, 13 §9) — bar the ones
+/// made in an incognito session, which leaves nothing behind for a library to hold (15 A21).
 pub fn list_all(conn: &Connection) -> Result<Vec<ArtifactDto>> {
     let mut stmt = conn.prepare(&format!(
-        "SELECT {ARTIFACT_COLUMNS} FROM artifacts WHERE archived_at IS NULL ORDER BY updated_at DESC"
+        "SELECT {} FROM artifacts a
+         JOIN chats c ON c.id = a.chat_id
+         WHERE a.archived_at IS NULL AND c.incognito = 0
+         ORDER BY a.updated_at DESC",
+        ARTIFACT_COLUMNS
+            .split(", ")
+            .map(|c| format!("a.{c}"))
+            .collect::<Vec<_>>()
+            .join(", ")
     ))?;
     let rows = stmt.query_map([], artifact_from_row)?;
     Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)

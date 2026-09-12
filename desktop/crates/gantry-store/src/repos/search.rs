@@ -22,6 +22,10 @@ pub fn fts_query(input: &str) -> Option<String> {
 }
 
 /// Chats whose title matches, then messages whose text matches, newest first inside each group.
+///
+/// Both halves join `chats` and both exclude incognito sessions (15 A21): search reads the FTS
+/// tables, which know nothing about which chat a row belongs to, so the exclusion has to be
+/// written here rather than inherited from the chat list.
 pub fn search(conn: &Connection, input: &str, limit: u32) -> Result<Vec<SearchHit>> {
     let Some(query) = fts_query(input) else {
         return Ok(Vec::new());
@@ -31,7 +35,7 @@ pub fn search(conn: &Connection, input: &str, limit: u32) -> Result<Vec<SearchHi
         let mut stmt = conn.prepare(
             "SELECT c.id, c.title, c.last_message_at
              FROM chats_fts f JOIN chats c ON c.id = f.chat_id
-             WHERE chats_fts MATCH ?1 AND c.archived_at IS NULL
+             WHERE chats_fts MATCH ?1 AND c.archived_at IS NULL AND c.incognito = 0
              ORDER BY c.last_message_at DESC LIMIT ?2",
         )?;
         let rows = stmt.query_map(params![query, limit], |r| {
@@ -53,7 +57,7 @@ pub fn search(conn: &Connection, input: &str, limit: u32) -> Result<Vec<SearchHi
              FROM messages_fts f
              JOIN messages m ON m.id = f.message_id
              JOIN chats c ON c.id = m.chat_id
-             WHERE messages_fts MATCH ?1 AND m.role IN ('user', 'assistant')
+             WHERE messages_fts MATCH ?1 AND m.role IN ('user', 'assistant') AND c.incognito = 0
              ORDER BY m.created_at DESC LIMIT ?2",
         )?;
         let rows = stmt.query_map(params![query, limit], |r| {

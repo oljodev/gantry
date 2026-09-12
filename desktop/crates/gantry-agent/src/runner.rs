@@ -1367,7 +1367,7 @@ async fn refresh_tools(ctx: &RunContext, attached: &mut Vec<String>) -> Option<M
         .cloned()
         .collect();
     *attached = now.clone();
-    let set = ToolSet::assemble(&ctx.connectors, ctx.input.mode, &now).await;
+    let set = ToolSet::assemble(&ctx.connectors, ctx.input.mode, &now, !ctx.input.incognito).await;
     *ctx.tools.write().unwrap_or_else(|e| e.into_inner()) = set;
     Some(Message {
         id: MessageId::new(),

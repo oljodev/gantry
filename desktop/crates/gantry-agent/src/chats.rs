@@ -57,6 +57,9 @@ pub struct TurnInput {
     pub roots: Vec<String>,
     /// The skills and memories this turn's context block carried, for `context.injected`.
     pub injected: gantry_core::InjectedContext,
+    /// An incognito session (15 A21): no memory reaches it and the memory tools are not
+    /// offered, so it can neither read what the user has been remembered to like nor add to it.
+    pub incognito: bool,
 }
 
 /// What creating a session needs (16 C3, C5).
@@ -75,6 +78,9 @@ pub struct NewChat {
     /// installed or not enabled is skipped without complaint: a default is a preference, and
     /// a preference that fails to create the chat would be worse than one that does nothing.
     pub connectors: Vec<String>,
+    /// A session that never joins the history (15 A21): no memory in, no memory out, absent
+    /// from every list, and deleted with its window.
+    pub incognito: bool,
 }
 
 /// Chat settings the composer and the sidebar can change; `None` leaves a field alone.
@@ -168,6 +174,7 @@ impl ChatBook {
             system_snapshot,
             system_snapshot_version,
             connectors,
+            incognito,
         } = new;
         let now = now_ms();
         let chat = ChatRecord {
@@ -189,6 +196,7 @@ impl ChatBook {
             updated_at: now,
             last_message_at: now,
             archived_at: None,
+            incognito,
         };
         let mut summary = summary(&chat, None);
         summary.roots.clone_from(&roots);
@@ -358,7 +366,9 @@ impl ChatBook {
                         transcript: &before,
                         invoked: &context.invoked,
                         pinned: &pinned,
-                        memory_on: context.memory_on,
+                        // Incognito reads nothing from memory; skills still apply, because a
+                        // playbook is how the user works, not something learned about them.
+                        memory_on: context.memory_on && !chat.incognito,
                     },
                 );
                 let injected = block.injected.clone();
@@ -409,6 +419,7 @@ impl ChatBook {
                 let transcript = transcript(&messages::list_for_chat(conn, chat_id)?);
                 Ok(TurnInput {
                     injected,
+                    incognito: chat.incognito,
                     turn_id: turn.id,
                     chat_id,
                     model: chat.model.clone(),
@@ -814,6 +825,18 @@ impl ChatBook {
             })
     }
 
+    /// Deletes every incognito session left behind (15 A21). An incognito chat is meant to
+    /// live exactly as long as its window, and a crash is the one thing that can outlive it;
+    /// this runs at startup, before anything can read the table.
+    ///
+    /// The blobs of a deleted incognito chat are released by the ordinary sweep rather than
+    /// here: nothing points at them once the rows are gone.
+    pub fn sweep_incognito(&self) -> Result<usize, GantryError> {
+        self.store
+            .write_blocking(|conn| chats::delete_incognito(conn))
+            .map_err(store_err)
+    }
+
     /// Deletes the chat with everything under it and sweeps blobs nobody references any more.
     pub fn delete(&self, chat_id: ChatId) -> Result<bool, GantryError> {
         let blobs = self.blobs.clone();
@@ -863,6 +886,7 @@ fn summary(chat: &ChatRecord, active: Option<TurnId>) -> ChatSummary {
         created_at: chat.created_at,
         last_message_at: chat.last_message_at,
         active_turn: active,
+        incognito: chat.incognito,
     }
 }
 
@@ -1093,6 +1117,7 @@ mod tests {
                 system_snapshot: "sys".into(),
                 system_snapshot_version: 1,
                 connectors: Vec::new(),
+                incognito: false,
             })
             .unwrap();
         (dir, book, c.id)
