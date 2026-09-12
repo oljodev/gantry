@@ -7,7 +7,7 @@
 
 use std::{sync::Arc, time::Duration};
 
-use gantry_core::{ResultPart, ServerInfo, ToolDef};
+use gantry_core::{InstanceId, ResultPart, ServerInfo, ToolDef};
 use rmcp::{
     ClientHandler, ClientServiceExt,
     model::{
@@ -23,7 +23,7 @@ use rmcp::{
 };
 use tokio::process::Command;
 
-use crate::mcp::risk::tier_for;
+use crate::{logs::ConnectorLogs, mcp::risk::tier_for};
 
 /// How long a connection may take before we give up and tell the user.
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
@@ -54,6 +54,9 @@ pub enum Endpoint {
         args: Vec<String>,
         env: Vec<(String, String)>,
         cwd: Option<String>,
+        /// Where this server's stderr goes, and which instance it belongs to (03 §11 step 4).
+        /// `None` in a test or a one-shot probe, where nobody will read it.
+        log: Option<(ConnectorLogs, InstanceId)>,
     },
     Http {
         url: String,
@@ -250,6 +253,7 @@ async fn serve(
             args,
             env,
             cwd,
+            log,
         } => {
             let mut cmd = Command::new(command);
             cmd.args(args);
@@ -274,10 +278,20 @@ async fn serve(
             if let Some(dir) = cwd {
                 cmd.current_dir(dir);
             }
-            let transport = TokioChildProcess::new(cmd).map_err(|source| McpError::Spawn {
-                command: command.clone(),
-                source,
-            })?;
+            // Piped rather than inherited, so the server's own explanation of its failure ends
+            // up somewhere the app can show it. Inherited, it goes to Gantry's terminal — which
+            // in a packaged build is nowhere.
+            let (transport, stderr) = TokioChildProcess::builder(cmd)
+                .stderr(std::process::Stdio::piped())
+                .spawn()
+                .map_err(|source| McpError::Spawn {
+                    command: command.clone(),
+                    source,
+                })?;
+            if let (Some((logs, id)), Some(stderr)) = (log.clone(), stderr) {
+                logs.clear(id);
+                logs.drain(id, stderr);
+            }
             // A process cannot be handed to a second attempt, so it gets the one lifecycle that
             // already falls back internally.
             info.serve_with_lifecycle(transport, lifecycles().into_iter().next().expect("auto"))

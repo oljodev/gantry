@@ -65,6 +65,9 @@ pub struct ConnectorService {
     workspace: Arc<Workspace>,
     /// The login shell and its environment, captured once (`docs/connectors/shell.md` D2).
     shell_env: Arc<ShellEnv>,
+    /// What each local server wrote to stderr, for the failure that has to explain itself
+    /// (03 §11 step 4).
+    logs: gantry_connectors::logs::ConnectorLogs,
     http: reqwest::Client,
 }
 
@@ -84,6 +87,7 @@ impl ConnectorService {
             registry,
             workspace,
             shell_env,
+            logs: gantry_connectors::logs::ConnectorLogs::new(),
             http: reqwest::Client::builder()
                 .user_agent(concat!("Gantry/", env!("CARGO_PKG_VERSION")))
                 .build()
@@ -302,9 +306,17 @@ impl ConnectorService {
         Ok(())
     }
 
+    /// The stderr of a local server, newest last (03 §11 step 4). Empty for a remote one, which
+    /// has no process and explains itself over HTTP.
+    #[must_use]
+    pub fn logs(&self, id: InstanceId) -> Vec<String> {
+        self.logs.lines(id)
+    }
+
     /// Removes an instance, its credentials and its registered OAuth clients (03 §11).
     pub async fn remove(&self, id: InstanceId) -> Result<(), GantryError> {
         let instance = self.instance(id)?;
+        self.logs.clear(id);
         self.registry.remove(&instance.namespace);
         for secret in self
             .secrets
@@ -614,14 +626,30 @@ impl ConnectorService {
                 command,
                 args,
                 env,
+                secret_env,
                 cwd,
-                ..
-            } => Ok(Endpoint::Stdio {
-                command: command.clone(),
-                args: args.clone(),
-                env: env.clone(),
-                cwd: cwd.clone(),
-            }),
+            } => {
+                // The config row carries only the *names* of the secret variables (06 §3); their
+                // values are vault credentials, labelled with the name, and this is the one
+                // place they are decrypted — into a short-lived `Endpoint` that is never stored.
+                let mut env = env.clone();
+                for name in secret_env {
+                    match self.secret_named(instance.id, name)? {
+                        Some(value) => env.push((name.clone(), value)),
+                        None => log::warn!(
+                            "{}: no value stored for {name}; the server will start without it",
+                            instance.name
+                        ),
+                    }
+                }
+                Ok(Endpoint::Stdio {
+                    command: command.clone(),
+                    args: args.clone(),
+                    env,
+                    cwd: cwd.clone(),
+                    log: Some((self.logs.clone(), instance.id)),
+                })
+            }
             ConnectorConfig::McpRemote { url, headers, .. } => {
                 let bearer = self.authorization_header(instance).await?;
                 Ok(Endpoint::Http {
@@ -634,6 +662,23 @@ impl ConnectorService {
     }
 
     /// The `Authorization` value for this instance, if it has a credential at all.
+    /// One of an instance's secrets by the label it was stored under, which for a `user_config`
+    /// answer is the key the manifest named.
+    fn secret_named(&self, id: InstanceId, label: &str) -> Result<Option<String>, GantryError> {
+        let Some(found) = self
+            .secrets
+            .list_for_owner(OwnerKind::Instance, &id.to_string())?
+            .into_iter()
+            .find(|s| s.label.as_deref() == Some(label))
+        else {
+            return Ok(None);
+        };
+        use secrecy::ExposeSecret;
+        Ok(Some(
+            self.secrets.get(&found.id)?.expose_secret().to_owned(),
+        ))
+    }
+
     async fn authorization_header(
         &self,
         instance: &ConnectorInstanceDto,

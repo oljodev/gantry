@@ -59,6 +59,20 @@ export function useConnectorConfig(catalogId: string | null, instanceId?: Instan
   });
 }
 
+/**
+ * What a local server wrote to stderr (03 §11 step 4). Only asked for when the log is open: a
+ * server that is running fine has nothing anybody needs, and a poll would wake nothing useful.
+ */
+export function useConnectorLogs(instanceId: InstanceId | null) {
+  return useQuery({
+    queryKey: keys.connectorLogs(instanceId ?? ''),
+    queryFn: () => unwrap(commands.connectorLogs(instanceId ?? '')),
+    enabled: isTauri() && instanceId !== null,
+    gcTime: 0,
+    staleTime: 0,
+  });
+}
+
 export function useConnectorMutations() {
   const qc = useQueryClient();
   const settle = () => {

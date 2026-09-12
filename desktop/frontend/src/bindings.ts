@@ -184,6 +184,15 @@ export const commands = {
 	/**
 	 *  Installs a catalog entry. A server that needs nothing is connected straight away, so the
 	 *  tool list is on screen before the dialog closes; anything else waits for a credential.
+	 *  What a local server wrote to stderr (03 §11 step 4).
+	 * 
+	 *  A stdio server speaks MCP on stdout, so everything it wants a person to read goes to stderr —
+	 *  which is where the reason a spawn failed lives. Without this, an install's failure is "the
+	 *  process exited", which names no cause and suggests no fix, while the line saying
+	 *  `Cannot find module` was written and thrown away.
+	 */
+	connectorLogs: (instanceId: InstanceId) => typedError<string[], ErrorDto>(__TAURI_INVOKE("connector_logs", { instanceId })),
+	/**
 	 *  Step 2 of the install (03 §11): the keys this connector asks the user to fill in, and what
 	 *  this instance answered last time. A sensitive answer is never among the values — it is in the
 	 *  vault, and a form that showed it back would be printing a token onto the screen.

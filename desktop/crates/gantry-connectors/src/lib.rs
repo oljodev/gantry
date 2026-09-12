@@ -7,6 +7,7 @@
 
 pub mod auth;
 pub mod catalog;
+pub mod logs;
 pub mod manifest;
 pub mod mcp;
 pub mod runtime;

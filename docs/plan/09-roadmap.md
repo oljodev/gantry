@@ -539,8 +539,14 @@ ten-minute default where none does — the cache had no expiry at all before, so
 startup outlived every change the server made — and `tools/list_changed` wired to a real
 `ClientHandler` so a list known to be wrong is not waited out.
 
-Not built yet, and what is left of M9: MRTR `input_required` as an
-`Interaction::Elicitation` with a form, and the stderr log view for stdio servers.
+**The stderr log done 2026-09-11** (03 §11 step 4): the child is piped rather than inherited,
+drained into a bounded per-instance buffer, and shown behind **Show log** on a local server's row.
+Two gaps it uncovered on the way, both of which would have bitten B6 on its first install:
+`secret_env` was never resolved, so a sensitive `user_config` answer went to the vault and never
+reached the process it was typed for; and `SecretVault::set` replaced every credential of a kind
+rather than the one with the same label, so the second sensitive field deleted the first.
+
+What is left of M9: MRTR `input_required` as an `Interaction::Elicitation` with a form.
 
 ## M9 — the rest (original scope)
 

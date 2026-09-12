@@ -10,6 +10,7 @@ export const keys = {
   catalog: ['catalog'] as const,
   connectors: ['connectors'] as const,
   runtimes: (catalogId: string) => ['runtimes', catalogId] as const,
+  connectorLogs: (instanceId: string) => ['connector_logs', instanceId] as const,
   connectorConfig: (catalogId: string, instanceId: string) =>
     ['connector_config', catalogId, instanceId] as const,
   chatConnectors: (chatId: string) => ['chat_connectors', chatId] as const,

@@ -127,8 +127,8 @@ impl SecretVault {
         &self.status
     }
 
-    /// Encrypts and stores a new secret, replacing any existing one of the same kind for the
-    /// same owner. Returns what the UI may see.
+    /// Encrypts and stores a new secret, replacing the existing one with the same kind *and*
+    /// label for the same owner. Returns what the UI may see.
     pub async fn set(
         &self,
         owner: OwnerKind,
@@ -158,10 +158,16 @@ impl SecretVault {
         let owner_kind = owner.as_str().to_owned();
         let owner_id_owned = owner_id.to_owned();
         let kind_str = kind.as_str().to_owned();
+        let label_owned = label.map(str::to_owned);
         self.store
             .write(move |conn| {
+                // Replace the credential this one *is*, not every credential of its kind. The
+                // label is what tells two apart, and one owner may hold several of a kind: a
+                // connector whose `user_config` has two sensitive fields keeps one secret per
+                // field, and matching on the kind alone deleted the first when the second was
+                // saved (06 §5).
                 for old in credentials::list_for_owner(conn, &owner_kind, &owner_id_owned)? {
-                    if old.kind == kind_str {
+                    if old.kind == kind_str && old.label == label_owned {
                         credentials::delete(conn, &old.id)?;
                     }
                 }
@@ -259,7 +265,7 @@ mod tests {
                 OwnerKind::Provider,
                 "openrouter",
                 CredentialKind::ApiKey,
-                None,
+                Some("k"),
                 "sk-or-wxyz9876",
             )
             .await
@@ -267,9 +273,37 @@ mod tests {
         let refs = vault
             .list_for_owner(OwnerKind::Provider, "openrouter")
             .unwrap();
-        assert_eq!(refs.len(), 1, "the old key of the same kind is replaced");
+        assert_eq!(
+            refs.len(),
+            1,
+            "the same kind under the same label is replaced"
+        );
         assert_eq!(refs[0].id, b.id);
         assert!(matches!(vault.get(&a.id), Err(SecretsError::NotFound)));
+
+        // But a second label of the same kind is a second secret, not a replacement: a
+        // connector whose `user_config` has two sensitive fields keeps one per field, and
+        // matching on the kind alone deleted the first when the second was saved.
+        let other = vault
+            .set(
+                OwnerKind::Provider,
+                "openrouter",
+                CredentialKind::ApiKey,
+                Some("second"),
+                "sk-or-0000zzzz",
+            )
+            .await
+            .unwrap();
+        let refs = vault
+            .list_for_owner(OwnerKind::Provider, "openrouter")
+            .unwrap();
+        assert_eq!(refs.len(), 2, "two labels, two secrets");
+        assert_eq!(
+            vault.get(&other.id).unwrap().expose_secret(),
+            "sk-or-0000zzzz"
+        );
+        assert_eq!(vault.get(&b.id).unwrap().expose_secret(), "sk-or-wxyz9876");
+        vault.delete(&other.id).await.unwrap();
 
         vault.delete(&b.id).await.unwrap();
         assert!(

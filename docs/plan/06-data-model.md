@@ -120,6 +120,8 @@ Why not one OS-store entry per secret, which is what the brief literally suggest
 
 Rules: decryption happens only inside `gantry-secrets`, on demand, with plaintext zeroized after use; the frontend only ever receives `{ present: bool, hint: "…abcd" }`; secrets never appear in logs, events or the transcript; `rotate_master_key` re-encrypts every row; export/backup deliberately excludes `credentials`.
 
+**One secret per (owner, kind, label)** (2026-09-11). `SecretVault::set` replaces the credential with the same kind *and* label for that owner, not every credential of the kind. The label is what tells two apart, and one owner legitimately holds several of a kind: a connector whose `user_config` declares two sensitive fields keeps one secret per field, keyed by the manifest's own key, and the earlier rule deleted the first when the second was saved.
+
 ## 6. Size, retention and maintenance
 
 - Events are kept indefinitely; they are the audit log and cost roughly 1–5 KB per tool call.

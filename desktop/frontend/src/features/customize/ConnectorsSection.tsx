@@ -2,6 +2,7 @@ import {
   ArrowClockwiseIcon,
   MagnifyingGlassIcon,
   PlusIcon,
+  TerminalIcon,
   TrashIcon,
   WarningCircleIcon,
 } from '@phosphor-icons/react';
@@ -13,12 +14,17 @@ import { TierLabel } from '@/components/gantry/TierLabel';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
-import type { CatalogEntryDto, ConnectorInstanceDto } from '@/bindings';
+import type { CatalogEntryDto, ConnectorInstanceDto, InstanceId } from '@/bindings';
 import { AddCustomServer } from '@/features/connectors/AddCustomServer';
 import { useInstallFlow } from '@/features/connectors/install';
 import { InstallDialog } from '@/features/connectors/InstallDialog';
 import { isTauri } from '@/lib/ipc/client';
-import { useCatalog, useConnectorMutations, useConnectors } from '@/lib/ipc/hooks/connectors';
+import {
+  useCatalog,
+  useConnectorLogs,
+  useConnectorMutations,
+  useConnectors,
+} from '@/lib/ipc/hooks/connectors';
 import { describe } from '@/lib/errors';
 import { cn } from '@/lib/utils';
 
@@ -250,6 +256,7 @@ function InstalledRow({
   onFinishSetup: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [log, setLog] = useState(false);
   const needsSetup =
     instance.auth !== 'none' &&
     (instance.auth_state === 'unconfigured' || instance.auth_state === 'expired');
@@ -321,6 +328,14 @@ function InstalledRow({
               <ArrowClockwiseIcon />
               Refresh tools
             </Button>
+            {/* Only a local process has a stderr to show; a remote server explains itself
+                over HTTP, and its answer is already in `last_error`. */}
+            {instance.kind === 'mcp-stdio' && (
+              <Button variant="secondary" size="sm" onClick={() => setLog((l) => !l)}>
+                <TerminalIcon />
+                {log ? 'Hide log' : 'Show log'}
+              </Button>
+            )}
             <Button
               variant="ghost"
               size="sm"
@@ -331,7 +346,38 @@ function InstalledRow({
               Remove
             </Button>
           </div>
+          {log && <ServerLog instanceId={instance.id} />}
         </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The server's own words. A stdio server talks MCP on stdout, so everything it wants a person to
+ * read goes to stderr — and when a spawn fails, that is the only place the reason exists.
+ */
+function ServerLog({ instanceId }: { instanceId: InstanceId }) {
+  const logs = useConnectorLogs(instanceId);
+  const lines = logs.data ?? [];
+  return (
+    <div className="mt-3">
+      <div className="flex items-center justify-between pb-1">
+        <span className="text-micro font-medium uppercase tracking-[0.04em] text-fg-3">stderr</span>
+        <Button variant="ghost" size="sm" onClick={() => void logs.refetch()}>
+          <ArrowClockwiseIcon />
+          Refresh
+        </Button>
+      </div>
+      {lines.length === 0 ? (
+        <p className="text-meta text-fg-3">
+          Nothing yet. A server that has not started, or one that started cleanly, writes nothing
+          here.
+        </p>
+      ) : (
+        <pre className="selectable max-h-64 overflow-auto rounded-2 border border-line-subtle bg-inset px-3 py-2 font-mono text-mono text-fg-2">
+          {lines.join('\n')}
+        </pre>
       )}
     </div>
   );
