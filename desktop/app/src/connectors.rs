@@ -642,6 +642,20 @@ impl ConnectorService {
                         ),
                     }
                 }
+                // A local server reads its key from the environment, so `inject.in` is `env`
+                // and the name is the variable the server documents.
+                if let Some((inject, value)) = self.pasted_key(instance)? {
+                    if inject.location == "env" {
+                        env.push((inject.name.clone(), inject.render(&value)));
+                    } else {
+                        log::warn!(
+                            "{}: the manifest injects its key in `{}`, which a local process has \
+                             no way to read",
+                            instance.name,
+                            inject.location
+                        );
+                    }
+                }
                 Ok(Endpoint::Stdio {
                     command: command.clone(),
                     args: args.clone(),
@@ -651,14 +665,58 @@ impl ConnectorService {
                 })
             }
             ConnectorConfig::McpRemote { url, headers, .. } => {
-                let bearer = self.authorization_header(instance).await?;
+                let mut url = url.clone();
+                let mut headers = headers.clone();
+                let mut bearer = None;
+                // A key the user pasted goes where the manifest says the server wants it, which
+                // for most servers is `Authorization: Bearer …` and for several is not: Exa
+                // reads a query parameter, Tinybird its own header. An OAuth token is always the
+                // `Authorization` value and says so in the credential itself.
+                match self.pasted_key(instance)? {
+                    Some((inject, value)) => {
+                        place_key(&inject, &value, &mut url, &mut headers, &mut bearer);
+                    }
+                    None => bearer = self.authorization_header(instance).await?,
+                }
                 Ok(Endpoint::Http {
-                    url: url.clone(),
-                    headers: headers.clone(),
+                    url,
+                    headers,
                     bearer,
                 })
             }
         }
+    }
+
+    /// The key this instance was given and where its manifest says it goes, for a connector
+    /// that authenticates with a pasted key rather than a sign-in (03 §7). `None` for everything
+    /// else — an OAuth instance, a server that needs nothing, one the user added by hand.
+    fn pasted_key(
+        &self,
+        instance: &ConnectorInstanceDto,
+    ) -> Result<Option<(gantry_connectors::manifest::Inject, String)>, GantryError> {
+        if instance.auth != AuthType::ApiKey {
+            return Ok(None);
+        }
+        let Some(manifest) = instance
+            .catalog_id
+            .as_deref()
+            .and_then(|c| self.catalog.get(c))
+        else {
+            return Ok(None);
+        };
+        let gantry_connectors::manifest::Auth::ApiKey { inject, .. } = &manifest.auth else {
+            return Ok(None);
+        };
+        let id = instance.id;
+        let Some(credential) = self
+            .store
+            .read(move |c| repos::connectors::credential_id(c, id))?
+        else {
+            return Ok(None);
+        };
+        use secrecy::ExposeSecret;
+        let value = self.secrets.get(&credential)?.expose_secret().trim().to_owned();
+        Ok(Some((inject.clone(), value)))
     }
 
     /// The `Authorization` value for this instance, if it has a credential at all.
@@ -935,6 +993,36 @@ fn auth_error(err: AuthError) -> GantryError {
     }
 }
 
+/// Puts a pasted key on the wire the way the manifest says: `Authorization` when that is the
+/// header named, another header when the server uses its own, or a query parameter when it reads
+/// the key from the URL. The `Authorization` case is kept apart because rmcp sends that one on
+/// every request including the event stream, which is exactly what a key has to do too.
+fn place_key(
+    inject: &gantry_connectors::manifest::Inject,
+    value: &str,
+    url: &mut String,
+    headers: &mut Vec<(String, String)>,
+    bearer: &mut Option<String>,
+) {
+    let rendered = inject.render(value);
+    match inject.location.as_str() {
+        "header" if inject.name.eq_ignore_ascii_case("authorization") => *bearer = Some(rendered),
+        "header" => headers.push((inject.name.clone(), rendered)),
+        "query" => {
+            let separator = if url.contains('?') { '&' } else { '?' };
+            url.push(separator);
+            url.push_str(
+                &url::form_urlencoded::Serializer::new(String::new())
+                    .append_pair(&inject.name, &rendered)
+                    .finish(),
+            );
+        }
+        // `env` on a remote server: there is no process to give it to. The manifest is wrong and
+        // the connector will fail to authorize, which is the honest outcome.
+        other => log::warn!("a remote server cannot take its key in `{other}`"),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -950,5 +1038,57 @@ mod tests {
     fn a_display_name_becomes_a_usable_prefix() {
         assert_eq!(slug("My Server!"), "my-server");
         assert_eq!(slug("  "), "server");
+    }
+
+    #[test]
+    fn a_key_goes_where_the_manifest_says_and_nowhere_else() {
+        use gantry_connectors::manifest::Inject;
+        let mut url = "https://mcp.example.test/mcp".to_owned();
+        let mut headers = Vec::new();
+        let mut bearer = None;
+
+        // The common case: the server wants a bearer, and rmcp carries it on every request.
+        place_key(
+            &Inject {
+                location: "header".into(),
+                name: "Authorization".into(),
+                format: Some("Bearer {value}".into()),
+            },
+            "k1",
+            &mut url,
+            &mut headers,
+            &mut bearer,
+        );
+        assert_eq!(bearer.as_deref(), Some("Bearer k1"));
+        assert!(headers.is_empty(), "and not a second time as a header");
+
+        // A server with its own header, and one that reads the URL.
+        let mut bearer = None;
+        place_key(
+            &Inject {
+                location: "header".into(),
+                name: "X-Api-Key".into(),
+                format: None,
+            },
+            "k2",
+            &mut url,
+            &mut headers,
+            &mut bearer,
+        );
+        assert_eq!(headers, vec![("X-Api-Key".to_owned(), "k2".to_owned())]);
+        assert!(bearer.is_none());
+
+        place_key(
+            &Inject {
+                location: "query".into(),
+                name: "exaApiKey".into(),
+                format: None,
+            },
+            "k 3",
+            &mut url,
+            &mut headers,
+            &mut bearer,
+        );
+        assert_eq!(url, "https://mcp.example.test/mcp?exaApiKey=k+3");
     }
 }
