@@ -75,6 +75,16 @@ The transcript is `messages` ordered by `seq`. It is append-only; edits to histo
 - **oauth_clients** — `id, instance_id, issuer, client_id, registration_json, created_at` (a client secret, if any, is a credential)
 - **credentials** — `id, kind (api_key|oauth_token|oauth_client_secret|user_config_secret|search_api_key), owner_kind (provider|instance), owner_id, label, ciphertext BLOB, nonce BLOB, expires_at NULL, meta_json` (issuer, scopes, last-four hint), `created_at, updated_at` · index `(owner_kind, owner_id)`
 
+  *As built (2026-09-13).* A `sensitive` answer is filed as **`user_config_secret`** with the
+  `user_config` field name as its `label`, and that includes the `web` connector's BYOK search
+  key — not `search_api_key`, which this list had anticipated for it. The key arrives through the
+  `user_config` form like any other sensitive answer (03 §11 step 2), and `set_user_config` is
+  what writes it; giving one form field a kind of its own would mean a second write path and a
+  second read path for a value that is not special. `search_api_key` is therefore unused, and is
+  kept for a search key that belongs to no connector instance. The label is how a value is found
+  again: `ConnectorService::native_config` reads an instance's credentials, keeps the
+  `user_config_secret` ones, and hands them to the connector by field name.
+
 ### Artifacts, skills and memory
 
 - **artifacts** — `id, chat_id, project_id NULL` (denormalized from the chat), `type, title, language NULL, summary NULL, current_version, created_by_message_id, created_at, updated_at, archived_at` (13 §7)

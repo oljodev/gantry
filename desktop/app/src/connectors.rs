@@ -177,14 +177,19 @@ impl ConnectorService {
             }
         }
         for field in manifest.user_config_fields().iter().filter(|f| f.sensitive) {
-            if let Some(value) = values.get(&field.key).filter(|v| !v.trim().is_empty()) {
+            // Trimmed, like the public answers below. Pasting a key picks up a newline, and a
+            // secret stored with it is a credential that fails against the service for a reason
+            // nothing in the interface can show — the one kind of value whose whitespace is
+            // invisible everywhere it is later read.
+            let given = values.get(&field.key).map(|v| v.trim()).unwrap_or("");
+            if !given.is_empty() {
                 self.secrets
                     .set(
                         OwnerKind::Instance,
                         &id.to_string(),
                         CredentialKind::UserConfigSecret,
                         Some(&field.key),
-                        value,
+                        given,
                     )
                     .await?;
             }
@@ -207,7 +212,15 @@ impl ConnectorService {
                 repos::connectors::set_config(c, id, &config)
             })
             .await?;
-        self.rebuild().await?;
+        // A native connector's tool list can depend on its answers — `web` offers `search` only
+        // once there is a key — so the recorded list is taken again rather than only the
+        // registry rebuilt. Without this the connector starts answering `search` calls while its
+        // page still lists the tools it had before the form was filled in.
+        if instance.kind == ConnectorKind::Native {
+            self.record_native(&instance).await?;
+        } else {
+            self.rebuild().await?;
+        }
         Ok(())
     }
 
@@ -675,6 +688,40 @@ impl ConnectorService {
         Ok(())
     }
 
+    /// Every `user_config` answer for one instance, the sensitive ones fetched from the vault.
+    ///
+    /// The public answers are a column on the instance row. A `sensitive` one never is (06 §3):
+    /// it was filed as a `user_config_secret` credential under the name of the field it fills,
+    /// and this is the other half of that — `set_user_config` writes it, and nothing read it
+    /// back until now.
+    ///
+    /// A vault that will not open, or an answer that is not there, is an absent answer and not
+    /// an error. Every native `user_config` field is optional by construction: a connector whose
+    /// key cannot be read should offer less, not fail to load and take its other tools with it.
+    fn native_config(&self, id: InstanceId) -> crate::native::NativeConfig {
+        let public = self
+            .store
+            .read(move |conn| repos::connectors::user_config(conn, id))
+            .unwrap_or_default();
+        let mut secrets = BTreeMap::new();
+        if let Ok(stored) = self
+            .secrets
+            .list_for_owner(OwnerKind::Instance, &id.to_string())
+        {
+            for secret in stored
+                .iter()
+                .filter(|s| s.kind == CredentialKind::UserConfigSecret.as_str())
+            {
+                if let Some(field) = secret.label.clone()
+                    && let Ok(value) = self.secrets.get(&secret.id)
+                {
+                    secrets.insert(field, value);
+                }
+            }
+        }
+        crate::native::NativeConfig { public, secrets }
+    }
+
     /// A native connector's tools come from its own code, so "connect" means recording what it
     /// offers. There is no process to start and nothing to authorize.
     async fn record_native(
@@ -682,9 +729,10 @@ impl ConnectorService {
         instance: &ConnectorInstanceDto,
     ) -> Result<Vec<ToolInfo>, GantryError> {
         let catalog_id = instance.catalog_id.as_deref().unwrap_or_default();
-        let defs = crate::native::definitions(catalog_id).ok_or_else(|| {
-            GantryError::internal(format!("{} has no code in this build", instance.name))
-        })?;
+        let defs = crate::native::definitions(catalog_id, &self.native_config(instance.id))
+            .ok_or_else(|| {
+                GantryError::internal(format!("{} has no code in this build", instance.name))
+            })?;
         let manifest = self.catalog.get(catalog_id);
         let tools = tool_infos(&defs, manifest.as_deref());
         let id = instance.id;
@@ -923,6 +971,7 @@ impl ConnectorService {
                 continue;
             }
             if instance.kind == ConnectorKind::Native {
+                let config = self.native_config(instance.id);
                 match instance.catalog_id.as_deref().and_then(|catalog_id| {
                     crate::native::build(
                         catalog_id,
@@ -930,6 +979,7 @@ impl ConnectorService {
                         instance.id,
                         &self.workspace,
                         &self.shell_env,
+                        &config,
                     )
                 }) {
                     Some(connector) => self.registry.register(connector),
@@ -1126,7 +1176,124 @@ fn place_key(
 
 #[cfg(test)]
 mod tests {
+    use gantry_secrets::ExposeSecret;
+
     use super::*;
+
+    /// A service on a temporary database and a vault with a known key, so a test can watch a
+    /// secret go in one end and come out the other.
+    fn service() -> (tempfile::TempDir, ConnectorService) {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(gantry_store::Store::open(dir.path().join("t.db")).unwrap());
+        let blobs = Arc::new(gantry_store::BlobStore::open(dir.path().join("blobs")).unwrap());
+        let secrets = Arc::new(SecretVault::with_key(
+            [7u8; 32],
+            store.clone(),
+            gantry_secrets::SecretStoreStatus::FileFallback {
+                path: "test".into(),
+            },
+        ));
+        let registry = Arc::new(ConnectorRegistry::new());
+        let workspace = Arc::new(Workspace::new(
+            store.clone(),
+            blobs,
+            dir.path().join("app-data"),
+        ));
+        let service = ConnectorService::new(
+            store,
+            secrets,
+            registry,
+            workspace,
+            Arc::new(ShellEnv::inherited()),
+        );
+        (dir, service)
+    }
+
+    /// The BYOK round trip end to end (03 §5, §11 step 2): the key the user types reaches the
+    /// connector, and reaches it from the vault rather than from a row anybody can read.
+    #[tokio::test]
+    async fn a_search_key_turns_the_search_tool_on_without_being_written_to_the_database() {
+        let (_dir, service) = service();
+        let id = service.install("web").await.unwrap();
+        // Install writes the row; the UI then connects, which for a native connector means
+        // recording what its code offers. That is the order the app does it in.
+        let recorded = service.connect(id).await.unwrap();
+        assert_eq!(
+            recorded.iter().map(|t| t.name.as_str()).collect::<Vec<_>>(),
+            ["fetch_url"],
+            "with no key there is no search tool to record"
+        );
+
+        // Before any key: the connector is there and offers only what needs no account.
+        assert_eq!(offered(&service).await, ["fetch_url"]);
+
+        service
+            .set_user_config(
+                id,
+                BTreeMap::from([
+                    ("SEARCH_PROVIDER".to_owned(), "brave".to_owned()),
+                    ("SEARCH_API_KEY".to_owned(), "  a-real-key\n".to_owned()),
+                ]),
+            )
+            .await
+            .unwrap();
+
+        // The tool the key pays for is now offered, and the recorded list agrees with it.
+        assert_eq!(offered(&service).await, ["fetch_url", "search"]);
+        let listed: Vec<String> = service
+            .instance(id)
+            .unwrap()
+            .tools
+            .into_iter()
+            .map(|t| t.name)
+            .collect();
+        assert_eq!(listed, ["fetch_url", "search"], "the connector's page");
+
+        // And the key is not in the database: the row keeps the provider and nothing else.
+        let public = service
+            .store
+            .read(move |c| repos::connectors::user_config(c, id))
+            .unwrap();
+        assert_eq!(
+            public.get("SEARCH_PROVIDER").map(String::as_str),
+            Some("brave")
+        );
+        assert!(
+            !public.contains_key("SEARCH_API_KEY"),
+            "a sensitive answer never reaches the config row (06 §3): {public:?}"
+        );
+        let instance = service.instance(id).unwrap();
+        let rendered = format!("{:?}", instance.config);
+        assert!(!rendered.contains("a-real-key"), "{rendered}");
+
+        // It is in the vault, trimmed on the way in, under the name of the field it fills.
+        let stored = service
+            .secrets
+            .list_for_owner(OwnerKind::Instance, &id.to_string())
+            .unwrap();
+        let secret = stored
+            .iter()
+            .find(|s| s.label.as_deref() == Some("SEARCH_API_KEY"))
+            .expect("the key is in the vault");
+        assert_eq!(secret.kind, CredentialKind::UserConfigSecret.as_str());
+        assert_eq!(
+            service.secrets.get(&secret.id).unwrap().expose_secret(),
+            "a-real-key"
+        );
+    }
+
+    /// What the registered `web` connector says it offers right now — the same question the
+    /// turn loop asks when it assembles a turn's tools.
+    async fn offered(service: &ConnectorService) -> Vec<String> {
+        let connector = service.registry.get("web").expect("web is registered");
+        connector
+            .tools()
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|d| d.name)
+            .collect()
+    }
 
     #[test]
     fn a_second_instance_gets_its_own_namespace() {

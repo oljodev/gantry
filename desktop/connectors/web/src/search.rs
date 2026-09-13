@@ -123,13 +123,14 @@ impl Search {
     /// Build from the two `user_config` answers, or `None` when either is missing — which is how
     /// "no key configured" reaches `definitions` as a plain `bool`.
     #[must_use]
-    pub fn from_config(provider: Option<&str>, key: Option<SecretString>) -> Option<Self> {
+    pub fn from_config(provider: Option<&str>, key: Option<&SecretString>) -> Option<Self> {
         // Trimmed, not merely tested for emptiness after trimming: a key pasted with a trailing
         // newline is the ordinary way to paste one, and sending it as typed is a 401 the user
         // has no way to explain.
         let key = key
             .map(|k| SecretString::from(k.expose_secret().trim().to_owned()))
             .filter(|k| !k.expose_secret().is_empty())?;
+
         // A key with no provider named is very likely Brave, which is the field's default; but
         // guessing which service to send a secret to is not a guess worth making.
         let provider = Provider::parse(provider?)?;
@@ -331,13 +332,13 @@ mod tests {
     #[test]
     fn search_is_configured_only_when_both_answers_are_there() {
         let key = || SecretString::from("k".to_owned());
-        assert!(Search::from_config(Some("brave"), Some(key())).is_some());
-        assert!(Search::from_config(None, Some(key())).is_none());
+        assert!(Search::from_config(Some("brave"), Some(&key())).is_some());
+        assert!(Search::from_config(None, Some(&key())).is_none());
         assert!(Search::from_config(Some("brave"), None).is_none());
-        assert!(Search::from_config(Some("nope"), Some(key())).is_none());
+        assert!(Search::from_config(Some("nope"), Some(&key())).is_none());
         // A field left blank is not a key.
         assert!(
-            Search::from_config(Some("brave"), Some(SecretString::from("   ".to_owned())))
+            Search::from_config(Some("brave"), Some(&SecretString::from("   ".to_owned())))
                 .is_none()
         );
     }
@@ -348,7 +349,7 @@ mod tests {
         // the untrimmed one is a 401 the user has no way to explain.
         let search = Search::from_config(
             Some("brave"),
-            Some(SecretString::from("  a-real-key\n".to_owned())),
+            Some(&SecretString::from("  a-real-key\n".to_owned())),
         )
         .expect("a key with whitespace around it is still a key");
         assert_eq!(search.key.expose_secret(), "a-real-key");

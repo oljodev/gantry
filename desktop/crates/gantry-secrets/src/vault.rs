@@ -58,7 +58,10 @@ pub enum CredentialKind {
 }
 
 impl CredentialKind {
-    fn as_str(self) -> &'static str {
+    /// The string the credential is filed under. Public because a reader has to ask for the
+    /// kind it wants back — `user_config_secret` and nothing else, when resolving a form answer.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
         match self {
             CredentialKind::ApiKey => "api_key",
             CredentialKind::OauthToken => "oauth_token",

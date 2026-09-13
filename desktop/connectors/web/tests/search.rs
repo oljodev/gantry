@@ -106,7 +106,7 @@ async fn a_live_search_returns_results() {
     let provider = std::env::var("GANTRY_SEARCH_PROVIDER").unwrap_or_else(|_| "brave".into());
     let key = std::env::var("GANTRY_SEARCH_KEY")
         .expect("set GANTRY_SEARCH_KEY to the key you want to spend");
-    let search = Search::from_config(Some(&provider), Some(SecretString::from(key)))
+    let search = Search::from_config(Some(&provider), Some(&SecretString::from(key)))
         .expect("GANTRY_SEARCH_PROVIDER must be brave, tavily or exa");
 
     let http = reqwest::Client::builder()
