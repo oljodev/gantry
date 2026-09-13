@@ -6,22 +6,15 @@
 
 use std::sync::Arc;
 
-use gantry_connector_web::{Provider, Search, Web, definitions};
+use gantry_connector_web::{Web, definitions};
 use gantry_connectors::{
     ChatScope, Connector, ConnectorError, NoopToolEvents, ToolCallRequest, ToolOutcome,
 };
 use gantry_core::{CallId, ChatId, InstanceId, Mode, ResultPart, TurnId};
-use secrecy::SecretString;
 use tokio_util::sync::CancellationToken;
 
-fn web(with_key: bool) -> Web {
-    let search = with_key.then(|| {
-        Search::new(
-            Provider::Brave,
-            SecretString::from("not-a-real-key".to_owned()),
-        )
-    });
-    Web::new("web".to_owned(), InstanceId::new(), search)
+fn web() -> Web {
+    Web::new("web".to_owned(), InstanceId::new())
 }
 
 async fn call(
@@ -63,8 +56,8 @@ fn refusal(outcome: &ToolOutcome) -> String {
 }
 
 #[tokio::test]
-async fn without_a_key_the_search_tool_is_not_there() {
-    let names: Vec<String> = web(false)
+async fn the_connector_offers_reading_and_nothing_else_yet() {
+    let names: Vec<String> = web()
         .tools()
         .await
         .unwrap()
@@ -75,35 +68,19 @@ async fn without_a_key_the_search_tool_is_not_there() {
 }
 
 #[tokio::test]
-async fn with_a_key_the_search_tool_appears() {
-    let names: Vec<String> = web(true)
-        .tools()
+async fn a_search_call_from_an_older_build_is_answered_rather_than_panicking() {
+    // A chat from the build that had a bring-your-own-key `search` can replay that tool name.
+    // It gets the same unknown-tool error as any other name this connector does not have —
+    // which is the honest answer, because there is no key to add that would make it work.
+    let err = call(&web(), "search", serde_json::json!({"query": "x"}))
         .await
-        .unwrap()
-        .into_iter()
-        .map(|d| d.name)
-        .collect();
-    assert_eq!(names, ["fetch_url", "search"]);
-}
-
-#[tokio::test]
-async fn a_tool_that_is_not_offered_is_still_answered_when_it_is_called() {
-    // The model can name `search` from an earlier turn after the key was removed. It gets a
-    // sentence saying what to do, not a panic and not an unknown-tool error.
-    let outcome = call(&web(false), "search", serde_json::json!({"query": "x"}))
-        .await
-        .unwrap();
-    let message = refusal(&outcome);
-    assert!(message.contains("no search key is configured"), "{message}");
-    assert!(
-        message.contains("Customize"),
-        "it names where to go: {message}"
-    );
+        .expect_err("search is not a tool here");
+    assert!(matches!(err, ConnectorError::UnknownTool(name) if name == "search"));
 }
 
 #[tokio::test]
 async fn a_tool_this_connector_does_not_have_is_an_unknown_tool() {
-    let err = call(&web(true), "crawl_site", serde_json::json!({}))
+    let err = call(&web(), "crawl_site", serde_json::json!({}))
         .await
         .unwrap_err();
     assert!(matches!(err, ConnectorError::UnknownTool(name) if name == "crawl_site"));
@@ -111,7 +88,7 @@ async fn a_tool_this_connector_does_not_have_is_an_unknown_tool() {
 
 #[tokio::test]
 async fn a_missing_argument_is_an_invalid_argument() {
-    let err = call(&web(false), "fetch_url", serde_json::json!({}))
+    let err = call(&web(), "fetch_url", serde_json::json!({}))
         .await
         .unwrap_err();
     assert!(matches!(err, ConnectorError::InvalidArgs(m) if m.contains("url")));
@@ -125,7 +102,7 @@ async fn a_scheme_this_tool_does_not_fetch_is_refused_without_a_request() {
         "data:text/html,<b>hi</b>",
         "javascript:alert(1)",
     ] {
-        let outcome = call(&web(false), "fetch_url", serde_json::json!({"url": url}))
+        let outcome = call(&web(), "fetch_url", serde_json::json!({"url": url}))
             .await
             .unwrap();
         let message = refusal(&outcome);
@@ -148,7 +125,7 @@ async fn this_machine_and_this_network_are_refused_without_a_request() {
         "http://192.168.1.1/",
         "http://[::ffff:127.0.0.1]/",
     ] {
-        let outcome = call(&web(false), "fetch_url", serde_json::json!({"url": url}))
+        let outcome = call(&web(), "fetch_url", serde_json::json!({"url": url}))
             .await
             .unwrap();
         let message = refusal(&outcome);
@@ -165,7 +142,7 @@ async fn localhost_by_name_is_refused_too() {
     // machine whose hosts file lacks `localhost` would refuse it for the other reason. Either
     // refusal is correct; what must never happen is the fetch going through.
     let outcome = call(
-        &web(false),
+        &web(),
         "fetch_url",
         serde_json::json!({"url": "http://localhost:5432/"}),
     )
@@ -182,7 +159,7 @@ async fn localhost_by_name_is_refused_too() {
 #[tokio::test]
 async fn something_that_is_not_a_url_says_so() {
     let outcome = call(
-        &web(false),
+        &web(),
         "fetch_url",
         serde_json::json!({"url": "example.com/page"}),
     )
@@ -199,7 +176,7 @@ async fn something_that_is_not_a_url_says_so() {
 #[tokio::test]
 async fn an_unknown_format_names_the_three_that_exist() {
     let outcome = call(
-        &web(false),
+        &web(),
         "fetch_url",
         serde_json::json!({"url": "https://example.com", "format": "pdf"}),
     )
@@ -213,7 +190,7 @@ async fn an_unknown_format_names_the_three_that_exist() {
 async fn a_cancelled_call_stops_rather_than_waiting_out_the_timeout() {
     let cancelled = CancellationToken::new();
     cancelled.cancel();
-    let outcome = web(false)
+    let outcome = web()
         .call(
             ToolCallRequest {
                 call_id: CallId::new(),
@@ -240,7 +217,7 @@ async fn a_cancelled_call_stops_rather_than_waiting_out_the_timeout() {
 
 #[test]
 fn the_declared_schemas_agree_with_what_the_code_accepts() {
-    for def in definitions(true) {
+    for def in definitions() {
         let schema = &def.input_schema;
         assert_eq!(schema["type"], "object", "{}", def.name);
         // `additionalProperties: false` is what stops a model inventing an argument and getting

@@ -319,14 +319,20 @@ Why it is the riskiest connector: arbitrary code as the user, and scope cannot b
 
 **Command classifier** (`gantry-core::classify`, so the connector and the permission engine share one answer). Tokenize with `shell-words`, split on `;`, `&&`, `||`, `|`. Every segment's program must be on the read-only allowlist (`ls`, `cat`, `head`, `tail`, `wc`, `stat`, `file`, `tree`, `du`, `df`, `pwd`, `echo`, `which`, `grep`, `rg`, `find` without `-delete`/`-exec`, `git status|log|diff|show|branch|blame|rev-parse|ls-files`, `cargo metadata|tree`, `npm ls`, version flags, `ps`, `uname`, `date`; PowerShell `Get-*`, `dir`, `type`, `Select-String`), with no redirections, no `sudo`, no `$(…)`/backticks. Anything else is `execute`. Two corrections from building it: a bare version flag is allowed only for listed toolchain programs, because `./deploy.sh --version` runs `deploy.sh`; and wrapper programs (`env`, `nice`, `xargs`, `timeout`, `nohup`) are unwrapped and what they run is classified instead, since allowlisting the wrapper would launder anything behind it.
 
-### `web` — fetch and search
+### `web` — fetch, and one day a keyless search
 
 | Tool | Input → output | Tier |
 |------|----------------|------|
 | `fetch_url` | `{ url, offset?, max_chars?, format?: markdown\|text\|html }` → extracted content, title, final URL, and where this window sits in the page | read (internet) |
-| `search` | `{ query, max_results? }` → results; present only when a search API key (Brave, Tavily or Exa) is configured in `user_config` | read (internet) |
 
-`fetch_url`: 5 MB cap, ≤5 redirects, 20 s timeout, no cookies, private and loopback address ranges blocked. A page longer than `max_chars` is returned one window at a time rather than cut off: the result carries `first_char`, `total_chars`, `more` and `next_offset`, and `offset` is where the next call resumes — the same shape as `filesystem.read_file`'s `offset`/`total_lines`/`more`, in characters rather than lines. The document is held for five minutes so a page turn is neither a second download nor a second chance for the offsets to have moved, which also makes reading the same page twice in a chat cost one fetch. Provider-native web search (Anthropic, OpenAI, Gemini, xAI, OpenRouter plugin) is handled by the provider layer and preferred; this connector is the fallback and the "read this page" tool.
+**This connector is free and local by rule, and asks the user for nothing** — no API key field,
+no account, no quota to buy. `docs/connectors/web.md` §1 is the rule and §6 is the search
+architecture that follows from it: a query router over purpose-built keyless APIs first, the
+user's own SearXNG if they run one, a rationed general engine after that, independent indexes
+when that is spent. A `search` built on bring-your-own-key Brave, Tavily or Exa shipped in M11
+and was removed; the shape of the tool was right and the key was not.
+
+`fetch_url`: 5 MB cap, ≤5 redirects, 20 s timeout, no cookies, private and loopback address ranges blocked. A page longer than `max_chars` is returned one window at a time rather than cut off: the result carries `first_char`, `total_chars`, `more` and `next_offset`, and `offset` is where the next call resumes — the same shape as `filesystem.read_file`'s `offset`/`total_lines`/`more`, in characters rather than lines. The document is held for five minutes so a page turn is neither a second download nor a second chance for the offsets to have moved, which also makes reading the same page twice in a chat cost one fetch. Provider-native web search (Anthropic, OpenAI, Gemini, xAI, OpenRouter plugin) is handled by the provider layer and is what finds pages today; this connector is the "read this page" tool until its own keyless search exists. The provider layer is unaffected by the rule above: that search is part of a model call the user is already paying for, not an account Gantry asks them to open.
 
 ## 6. MCP runtime
 

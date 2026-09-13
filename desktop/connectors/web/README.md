@@ -1,17 +1,30 @@
 # Web
 
-Fetch pages as readable text and search the web with your own search key.
+Fetch pages as readable text. No key, no account, nothing to pay for.
 
-First-party, native (Rust) connector. Design: `docs/plan/03-connector-system.md` §5.
+First-party, native (Rust) connector. Design: `docs/plan/03-connector-system.md` §5, and
+`docs/connectors/web.md` for where search is going.
+
+## The rule
+
+**Free and local, always.** This connector asks the user for no key, holds no account, and has
+no quota anybody can exhaust or buy their way out of. That is rule 1 of `docs/connectors/web.md`
+§1 and it is not negotiable against convenience.
+
+An earlier build of this connector took a Brave, Tavily or Exa key through `user_config`. It was
+removed: a key field is precisely the thing this connector may not have, whoever pays for it.
+`tests` asserts the manifest asks for nothing, so it cannot come back by accident.
 
 ## Tools
 
 | Tool | Input → output | Tier |
 |------|----------------|------|
-| `fetch_url` | `{ url, format?: markdown\|text\|html, max_chars? }` → `{ url, title, content, status, chars, truncated, redirects }` | read (internet) |
-| `search` | `{ query, max_results? }` → `{ results: { title, url, snippet }[] }` | read (internet) |
+| `fetch_url` | `{ url, offset?, max_chars?, format?: markdown\|text\|html }` → `{ url, title, content, status, chars, first_char, total_chars, more, next_offset, redirects }` | read (internet) |
 
-`search` is offered only when a search key is configured; see below.
+Searching is not built. When it is, it will be keyless: a query router over purpose-built free
+APIs first (Wikipedia, Stack Exchange, crates.io, OpenAlex, RFC Editor…), the user's own SearXNG
+if they run one, a rationed general engine after that, and independent indexes when that is
+spent. `docs/connectors/web.md` §6 has the measurements behind each tier.
 
 ## What it may reach
 
@@ -45,44 +58,38 @@ reading one is bounded on both sides:
 - **Blocking.** Parsing happens on a blocking thread. Nothing in it awaits, so on an async
   worker it would hold a runtime thread for its whole duration and the turn's cancellation could
   never interrupt it.
-- **Size.** 5 MB on the wire, and `max_chars` on what reaches the model, with both losses
-  reported separately so the model knows which it is looking at.
+- **Size.** 5 MB on the wire, and `max_chars` on what reaches one reply. Only the first is a
+  loss: past `max_chars` the page is paged rather than cut, and the two are reported separately
+  so the model knows which it is looking at.
 
-## Search keys (BYOK)
+## Reading a long page
 
-Gantry has no search account and buys nobody's quota. Two `user_config` fields, both optional:
+`fetch_url` returns a window, not a truncation. `offset` says where to start; the result says
+where the window sits (`first_char`, `total_chars`, `more`) and, when there is more, the
+`next_offset` to pass back. The names match `filesystem.read_file`'s rather than the MCP fetch
+server's `start_index`/`max_length`, so a model holding both tools meets one convention.
 
-- `SEARCH_PROVIDER` — `brave`, `tavily` or `exa`. Deliberately without a default: a key pasted
-  against a pre-filled provider name would be sent to a service that did not issue it.
-- `SEARCH_API_KEY` — the user's own key, declared `sensitive`, so it goes to the vault as a
-  `user_config_secret` credential and the config row keeps only the field name (03 §11 step 2,
-  06 §3).
+`src/cache.rs` keeps the extracted document for five minutes, bounded at 8 pages and 4 M
+characters. That is what makes paging worth doing — reading on is neither a second download nor
+a second parse, and the offsets cannot go stale between two calls — and it also means a chat
+that reads one URL twice pays for it once. What is cached is public content fetched anonymously
+with no cookies, so one cache across the connector leaks nothing between chats; a result served
+from it says `cached` and how old it is.
 
-With no key the `search` tool is not in the tool list at all rather than failing when it is
-called: a tool the model can see and cannot use costs a round to find out.
+## Upgrading an old install
 
 An instance installed from an earlier release — when this manifest declared no tools — catches
 up on the next start: `rebuild` reconciles a native connector's recorded tool list with what the
 build offers, so the Connectors page stops saying "No tools yet" without anyone pressing
 **Refresh tools**.
 
-The app side of that is `NativeConfig` in `desktop/app/src/native.rs`: the public answers come
-from the instance row and the sensitive ones from the vault, and `ConnectorService::native_config`
-is what puts the two together. Filling in the form re-records the connector's tools, so the
-Connectors page and the model agree about whether `search` exists.
-
 ## Tests
 
-`tests/` is offline. HTML and search responses are recorded in `tests/fixtures/`, and `cargo
-test` reaches no host on the internet — verified under `strace`, which shows loopback and
-nothing else. The refusal tests in `tests/tools.rs` in particular prove their point only because
+`tests/` is offline. Pages are recorded in `tests/fixtures/`, and `cargo test` reaches no host
+on the internet — verified under `strace`, which shows loopback and nothing else. The refusal tests in `tests/tools.rs` in particular prove their point only because
 no request is made. The one socket the suite does open is a local resolver lookup for
 `localhost`, which is why that test accepts either refusal: on a machine whose hosts file lacks
 the name, it is refused as unresolvable rather than as private, and both are correct.
 
-The one live test is `#[ignore]`d and reads its key from the environment:
-
-```
-GANTRY_SEARCH_PROVIDER=brave GANTRY_SEARCH_KEY=… \
-  cargo test -p gantry-connector-web --test search -- --ignored --nocapture
-```
+No test here needs a key, because nothing here takes one. When search lands, its tests record
+each backend's response the same way.

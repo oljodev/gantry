@@ -76,14 +76,22 @@ The transcript is `messages` ordered by `seq`. It is append-only; edits to histo
 - **credentials** — `id, kind (api_key|oauth_token|oauth_client_secret|user_config_secret|search_api_key), owner_kind (provider|instance), owner_id, label, ciphertext BLOB, nonce BLOB, expires_at NULL, meta_json` (issuer, scopes, last-four hint), `created_at, updated_at` · index `(owner_kind, owner_id)`
 
   *As built (2026-09-13).* A `sensitive` answer is filed as **`user_config_secret`** with the
-  `user_config` field name as its `label`, and that includes the `web` connector's BYOK search
-  key — not `search_api_key`, which this list had anticipated for it. The key arrives through the
-  `user_config` form like any other sensitive answer (03 §11 step 2), and `set_user_config` is
-  what writes it; giving one form field a kind of its own would mean a second write path and a
-  second read path for a value that is not special. `search_api_key` is therefore unused, and is
-  kept for a search key that belongs to no connector instance. The label is how a value is found
-  again: `ConnectorService::native_config` reads an instance's credentials, keeps the
-  `user_config_secret` ones, and hands them to the connector by field name.
+  `user_config` field name as its `label`, not under a kind of its own: giving one form field a
+  private kind would mean a second write path and a second read path for a value that is not
+  special. `set_user_config` is what writes it (03 §11 step 2). `search_api_key` is unused and
+  now expected to stay that way — it was anticipated for the `web` connector, which asks for no
+  key at all and by rule never will (`docs/connectors/web.md` §1).
+
+  The reader that turned a stored secret back into a native connector's configuration
+  (`ConnectorService::native_config`) was written for that search key and removed with it the
+  same day. The write path is unchanged and still general: any connector whose manifest
+  declares a `sensitive` field files it this way. None does. The three that declare
+  `user_config` today (`make`, `minimax`, `qdrant`) declare only public fields, which
+  `config_with` substitutes into the server's command or URL, and an MCP server's real secrets
+  are its `secret_env` and `secret_headers`, filed under `api_key` rather than here. So
+  `user_config_secret` is written by a path nothing currently triggers and read by nothing at
+  all — dormant rather than dead, and worth proving against a real consumer before it is trusted
+  again.
 
 ### Artifacts, skills and memory
 

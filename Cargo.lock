@@ -1794,7 +1794,6 @@ dependencies = [
  "gantry-core",
  "log",
  "reqwest",
- "secrecy",
  "serde_json",
  "tokio",
  "tokio-util",

@@ -2,8 +2,8 @@
   "manifest_version": "1",
   "id": "web",
   "name": "Web",
-  "description": "Fetch pages as readable text and search the web with your own search key.",
-  "long_description": "Reads a page the way a reader mode does: navigation, cookie banners, share rails and comment threads are stripped, and what comes back is the article, its title and the address it ended up at after redirects.\n\nA page too long for one reply is not cut off: it comes back a window at a time, and the model reads on from where it stopped without fetching it again.\n\nOnly http and https, and only the public internet. Anything that resolves to this machine or to your own network — a router's admin page, a database on localhost, a cloud metadata service — is refused, and the check runs again on every redirect, so a public address cannot bounce the fetch inward. No cookies are sent or kept, so a page is fetched as a stranger sees it and never as you.\n\nSearch is optional and brings its own key. Gantry has no search account; paste a key from Brave, Tavily or Exa below and the search tool appears. Without one the connector simply fetches pages. The key is stored in your system keychain, never in Gantry's database, and is sent to the service you chose and nowhere else.\n\nWhere the chat's model has web search of its own, that is used first — this connector is the fallback, and the tool for \"read this page\".",
+  "description": "Fetch pages as readable text. No key, no account, nothing to pay for.",
+  "long_description": "Reads a page the way a reader mode does: navigation, cookie banners, share rails and comment threads are stripped, and what comes back is the article, its title and the address it ended up at after redirects.\n\nA page too long for one reply is not cut off: it comes back a window at a time, and the model reads on from where it stopped without fetching it again.\n\nOnly http and https, and only the public internet. Anything that resolves to this machine or to your own network — a router's admin page, a database on localhost, a cloud metadata service — is refused, and the check runs again on every redirect, so a public address cannot bounce the fetch inward. No cookies are sent or kept, so a page is fetched as a stranger sees it and never as you.\n\nThis connector is free and stays free. It asks for no key, keeps no account, and has no quota you can exhaust or buy your way out of. Searching the web is not built yet; when it is, it will be keyless too.\n\nWhere the chat's model has web search of its own, that is used for finding pages. This is the tool for reading them.",
   "version": "0.1.0",
   "icon": "icon.svg",
   "category": "local",
@@ -12,7 +12,6 @@
     "fetch",
     "url",
     "page",
-    "search",
     "browse",
     "read",
     "article"
@@ -36,26 +35,11 @@
     "network": "internet",
     "local_system": "none",
     "default_tool_tier": "read",
-    "notes": "Reads pages from the public internet and nothing on this machine. Private, loopback and link-local addresses are refused, on the first request and on every redirect. No cookies are sent or stored. A search key, if you configure one, goes to your system keychain and is sent only to the search service you chose."
-  },
-  "user_config": {
-    "SEARCH_PROVIDER": {
-      "type": "string",
-      "title": "Search provider",
-      "description": "brave, tavily or exa — whichever issued the key below. There is no default on purpose: a key pasted against the wrong name would be sent to a service it does not belong to. Leave both fields empty to fetch pages only.",
-      "required": false
-    },
-    "SEARCH_API_KEY": {
-      "type": "string",
-      "title": "Search API key",
-      "description": "Your own key from the provider above. Stored in your system keychain, never in Gantry's database. Without it the search tool is not offered.",
-      "required": false,
-      "sensitive": true
-    }
+    "notes": "Reads pages from the public internet and nothing on this machine. Private, loopback and link-local addresses are refused, on the first request and on every redirect. No cookies are sent or stored, and no credentials of any kind are asked for or held."
   },
   "tools_generated": true,
   "prompt": {
-    "system_addendum": "Prefer fetch_url over guessing at a page's contents from its URL. A page's text is what it says now; quote it rather than recalling it. When a search returns snippets, follow the promising ones with fetch_url before answering — snippets are truncated and often misleading on their own. A long page arrives one window at a time: when a result says more, call fetch_url again with the next_offset it gives you rather than answering from the first part alone. Reading on is free — the page is already in memory and is not fetched twice."
+    "system_addendum": "Prefer fetch_url over guessing at a page's contents from its URL. A page's text is what it says now; quote it rather than recalling it. A long page arrives one window at a time: when a result says more, call fetch_url again with the next_offset it gives you rather than answering from the first part alone. Reading on is free — the page is already in memory and is not fetched twice."
   },
   "compatibility": {
     "platforms": [
@@ -71,8 +55,6 @@
       "url",
       "page",
       "website",
-      "search",
-      "look up",
       "read this",
       "link"
     ],

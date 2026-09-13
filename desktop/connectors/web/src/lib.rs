@@ -1,18 +1,22 @@
 //! First-party connector: Web (`docs/plan/03-connector-system.md` §5).
 //!
-//! Two tools: read a page, and search the web. Unlike the other three first-party connectors
-//! this one touches nothing on disk, so it does not sit on `gantry-workspace` and has no roots
-//! to enforce. Its boundary is the other way round: what it may *reach*. `guard` holds that —
-//! http and https only, and nothing that resolves inside this machine or this network, rechecked
-//! on every redirect.
-//!
-//! `search` is bring-your-own-key and is simply absent until there is one (§11 step 2). That is
-//! why `tools()` is computed rather than constant: the model is shown the tools it can actually
-//! use, and never spends a round discovering that one of them is unconfigured.
+//! One tool for now: read a page. Unlike the other three first-party connectors this one touches
+//! nothing on disk, so it does not sit on `gantry-workspace` and has no roots to enforce. Its
+//! boundary is the other way round: what it may *reach*. `guard` holds that — http and https
+//! only, and nothing that resolves inside this machine or this network, rechecked on every
+//! redirect.
 //!
 //! A page longer than the budget comes back a window at a time rather than cut off, and `cache`
 //! holds the document in between so turning the page is neither a second download nor a second
 //! chance for the offsets to have gone stale.
+//!
+//! **Searching is not built, and when it is it will be keyless.** This connector is free and
+//! local by rule: no API key field, no account, no quota to buy, nothing that turns a search
+//! into a bill. `docs/connectors/web.md` §6 is the architecture — a query router over
+//! purpose-built keyless APIs first, the user's own SearXNG if they run one, a rationed general
+//! engine after that, and independent indexes when that is spent. An earlier build of this
+//! connector took a Brave, Tavily or Exa key; it was removed because a key field is the one
+//! thing this connector may not have.
 
 #![forbid(unsafe_code)]
 
@@ -20,7 +24,6 @@ mod cache;
 mod extract;
 mod fetch;
 mod guard;
-mod search;
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -35,7 +38,6 @@ use tokio_util::sync::CancellationToken;
 pub use cache::{Cache, MAX_CHARS as CACHE_MAX_CHARS, MAX_PAGES, Page, TTL as CACHE_TTL};
 pub use extract::{Article, Format, Window, article, nests_too_deep, window};
 pub use fetch::{MAX_BYTES, MAX_REDIRECTS, TIMEOUT, USER_AGENT};
-pub use search::{DEFAULT_RESULTS, Hit, MAX_RESULTS, Provider, Search, SearchError, parse_hits};
 
 /// The connector manifest, embedded at build time (`docs/plan/03-connector-system.md` §3).
 pub const MANIFEST: &str = include_str!("../manifest.json");
@@ -56,16 +58,13 @@ pub const MAX_MAX_CHARS: usize = 200_000;
 pub struct Web {
     descriptor: ConnectorDescriptor,
     http: reqwest::Client,
-    /// `None` until the user configures a search key, and the reason `search` is or is not in
-    /// the tool list.
-    search: Option<Search>,
     /// What has been read recently, so a page turn is free. See `cache`.
     pages: Cache,
 }
 
 impl Web {
     #[must_use]
-    pub fn new(namespace: String, instance_id: InstanceId, search: Option<Search>) -> Self {
+    pub fn new(namespace: String, instance_id: InstanceId) -> Self {
         Self {
             descriptor: ConnectorDescriptor {
                 id: namespace,
@@ -74,14 +73,8 @@ impl Web {
                 first_party: true,
             },
             http: fetch::client(),
-            search,
             pages: Cache::new(),
         }
-    }
-
-    #[must_use]
-    pub fn has_search(&self) -> bool {
-        self.search.is_some()
     }
 }
 
@@ -92,7 +85,7 @@ impl Connector for Web {
     }
 
     async fn tools(&self) -> Result<Vec<ToolDef>, ConnectorError> {
-        Ok(definitions(self.has_search()))
+        Ok(definitions())
     }
 
     async fn call(
@@ -113,13 +106,6 @@ impl Connector for Web {
                     biased;
                     () = cancel.cancelled() => Ok(ToolOutcome::error("the fetch was cancelled.")),
                     outcome = self.fetch_url(&req.args) => outcome,
-                }
-            }
-            "search" => {
-                tokio::select! {
-                    biased;
-                    () = cancel.cancelled() => Ok(ToolOutcome::error("the search was cancelled.")),
-                    outcome = self.search(&req.args) => outcome,
                 }
             }
             other => Err(ConnectorError::UnknownTool(other.to_owned())),
@@ -205,33 +191,6 @@ impl Web {
         ));
         self.pages.put(&url, format, Arc::clone(&page));
         Ok(render(&page, format, offset, max_chars, None))
-    }
-
-    async fn search(&self, args: &serde_json::Value) -> Result<ToolOutcome, ConnectorError> {
-        let query = required(args, "query")?;
-        let Some(search) = &self.search else {
-            // Unreachable through the tool list, which leaves `search` out entirely without a
-            // key. It is here for the call that arrives anyway — a model replaying an earlier
-            // turn's tool name after the key was removed.
-            return Ok(ToolOutcome::error(
-                "no search key is configured. Add one in Customize → Connectors → Web, or ask \
-                 the user to, then try again.",
-            ));
-        };
-        let max_results = number(args, "max_results").map_or(DEFAULT_RESULTS, |n| n as usize);
-        match search.run(&self.http, &query, max_results).await {
-            Ok(hits) => Ok(ToolOutcome::json(serde_json::json!({
-                "query": query,
-                "provider": search.provider.label(),
-                "results": hits.iter().map(|hit| serde_json::json!({
-                    "title": hit.title,
-                    "url": hit.url,
-                    "snippet": hit.snippet,
-                })).collect::<Vec<_>>(),
-                "count": hits.len(),
-            }))),
-            Err(err) => Ok(ToolOutcome::error(err.to_string())),
-        }
     }
 }
 
@@ -350,13 +309,14 @@ fn number(args: &serde_json::Value, key: &str) -> Option<u64> {
         .or_else(|| value.as_str()?.trim().parse().ok())
 }
 
-/// The tools of §5. Both are `read` tier and reach the internet, both are `parallel_safe` —
-/// fetching three pages at once is the normal way to use this — and neither is hidden in Plan
-/// mode, which is where reading around a problem belongs.
+/// The tools of §5. `read` tier, reaching the internet, `parallel_safe` — fetching three pages
+/// at once is the normal way to use this — and not hidden in Plan mode, which is where reading
+/// around a problem belongs.
 ///
-/// `with_search` is what decides whether `search` is in the list at all; see `search.rs`.
+/// A list rather than one constant because a keyless `search` joins it later; see the module
+/// documentation for why that one is not here yet.
 #[must_use]
-pub fn definitions(with_search: bool) -> Vec<ToolDef> {
+pub fn definitions() -> Vec<ToolDef> {
     let mut defs = vec![ToolDef::new(
         "fetch_url",
         "Fetch a web page and read it as text. HTML comes back as the article — navigation, \
@@ -385,25 +345,6 @@ pub fn definitions(with_search: bool) -> Vec<ToolDef> {
         RiskTier::Read,
     )];
 
-    if with_search {
-        defs.push(ToolDef::new(
-            "search",
-            "Search the web and get back titles, URLs and snippets. Follow a result with \
-             fetch_url to read the page itself — snippets are short and often cut mid-sentence.",
-            serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "query": { "type": "string", "description": "What to search for." },
-                    "max_results": { "type": "integer", "minimum": 1, "maximum": MAX_RESULTS,
-                                     "default": DEFAULT_RESULTS }
-                },
-                "required": ["query"],
-                "additionalProperties": false
-            }),
-            RiskTier::Read,
-        ));
-    }
-
     for def in &mut defs {
         // Reading pages is the one thing a model should be doing several of at once.
         def.parallel_safe = true;
@@ -425,41 +366,40 @@ mod tests {
     }
 
     #[test]
-    fn search_is_offered_only_once_a_key_is_configured() {
-        // The tools of a native connector come from this code, not from the manifest
-        // (`tools_generated`), which is what lets the offered set depend on the configuration.
+    fn the_tools_come_from_the_code_and_not_from_the_manifest() {
+        // `tools_generated`, like the other three first-party connectors: the code is the source
+        // of truth, which is what will let a keyless `search` appear without a manifest change.
         let manifest: serde_json::Value = serde_json::from_str(MANIFEST).unwrap();
         assert_eq!(manifest["tools_generated"], true);
-        assert_eq!(names(false), ["fetch_url"]);
-        assert_eq!(names(true), ["fetch_url", "search"]);
+        assert_eq!(names(), ["fetch_url"]);
     }
 
     #[test]
-    fn the_search_key_is_a_sensitive_user_config_field() {
-        // Parsed the way the app parses it, so this also proves the manifest is installable.
+    fn the_connector_asks_the_user_for_nothing() {
+        // The rule this connector is built to (`docs/connectors/web.md` §1): free, always. No
+        // key field, no account, no quota to buy. An earlier build asked for a Brave, Tavily or
+        // Exa key, and a `user_config` field reappearing here is how that comes back by
+        // accident — so the absence is asserted rather than merely true.
         let manifest = gantry_connectors::manifest::Manifest::parse(MANIFEST).unwrap();
-        let field = |key: &str| {
-            manifest
-                .user_config_fields()
-                .into_iter()
-                .find(|f| f.key == key)
-                .unwrap_or_else(|| panic!("{key} is not in user_config"))
-        };
-        // §11 step 2: `sensitive` is what sends the value to the vault instead of the config
-        // row, and it is the whole of the BYOK promise on the storage side.
-        let api_key = field("SEARCH_API_KEY");
-        assert!(api_key.sensitive);
-        // Not required: the connector fetches pages perfectly well without a search key, and a
-        // required field would make install impossible for anyone who has none.
-        assert!(!api_key.required);
-        let provider = field("SEARCH_PROVIDER");
-        assert!(!provider.sensitive, "the provider name is not a secret");
-        assert!(!provider.required);
+        assert!(
+            manifest.user_config_fields().is_empty(),
+            "the web connector may not ask for a key"
+        );
+        assert_eq!(
+            manifest.auth.kind(),
+            gantry_core::AuthType::None,
+            "and it may not ask for one through `auth` either"
+        );
+        // Nothing in what the model is told may suggest buying one either.
+        let text = MANIFEST.to_lowercase();
+        for word in ["api key", "brave", "tavily", "exa.ai", "byok"] {
+            assert!(!text.contains(word), "the manifest still mentions {word}");
+        }
     }
 
     #[test]
-    fn both_tools_read_and_run_in_parallel() {
-        for def in definitions(true) {
+    fn every_tool_reads_and_runs_in_parallel() {
+        for def in definitions() {
             assert_eq!(def.tier, RiskTier::Read, "{}", def.name);
             assert!(def.parallel_safe, "{}", def.name);
             assert!(!def.always_confirm, "{}", def.name);
@@ -611,10 +551,7 @@ mod tests {
         assert_eq!(out["more"], false);
     }
 
-    fn names(with_search: bool) -> Vec<String> {
-        definitions(with_search)
-            .into_iter()
-            .map(|d| d.name)
-            .collect()
+    fn names() -> Vec<String> {
+        definitions().into_iter().map(|d| d.name).collect()
     }
 }

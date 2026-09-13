@@ -7,9 +7,15 @@ The ambition is Tavily's or Firecrawl's output quality with none of their econom
 key, no account, no monthly cap, no per-call billing, nothing leaving the machine except the
 requests themselves. However heavily the model uses it, it costs the user nothing.
 
-Status: planning, nothing built. Everything marked **measured** was tested against the live web
-on 2026-09-07 from a residential connection, which is the position a Gantry user actually
-occupies. `docs/plan/03-connector-system.md` §5 holds the one-paragraph summary this replaces.
+Status: §7's fetching is built and shipped as `fetch_url` (M11, 2026-09-13); §5's `query`
+parameter, §6's search and `research` are not. Everything marked **measured** was tested against
+the live web on 2026-09-07 from a residential connection, which is the position a Gantry user
+actually occupies. `docs/plan/03-connector-system.md` §5 holds the one-paragraph summary this
+replaces.
+
+One correction against the built connector: M11 shipped a `search` over a bring-your-own Brave,
+Tavily or Exa key, against §1 rule 1. It was removed on 2026-09-13, the same day, and the rule
+restated — free, always, no key field. §6 is what replaces it and nothing else is.
 
 ---
 
@@ -749,7 +755,7 @@ Changes from the placeholder in `desktop/connectors/web/manifest.json`:
 
 | Field | Value |
 |-------|-------|
-| `description` | Rewritten. The current text promises "search the web with your own search key", which D1 removes |
+| `description` | Done 2026-09-13: the text that promised "search the web with your own search key" is gone, and `user_config` with it. A test now asserts the manifest asks for no key, so D1 cannot be undone by accident |
 | `risk.local_system` | `execute`, because of §8. Descriptive only; it does not change gating |
 | `risk.network` | `internet`, unchanged |
 | `risk.default_tool_tier` | `read`, unchanged |

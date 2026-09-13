@@ -54,7 +54,7 @@ export const connectors: ConnectorEntry[] = [
     name: 'Web',
     category: 'web',
     kind: 'native',
-    does: 'Fetch pages as readable text and search',
+    does: 'Fetch pages as readable text',
   },
   {
     id: 'github',
