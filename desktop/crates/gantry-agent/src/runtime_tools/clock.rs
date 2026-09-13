@@ -1,7 +1,13 @@
-//! `gantry__clock`: the current date and time on the user's machine. Models do not know what
-//! day it is, so the tool is useful on its own; it is also the first tool that exercises the
-//! loop and the permission card (09 M3). It observes nothing but the clock, so it is `read`
-//! tier on purpose rather than `app`: in Manual mode it asks, like every other read.
+//! `gantry__clock`: the current date and time on the user's machine. It observes nothing but
+//! the clock, so it is `read` tier on purpose rather than `app`: in Manual mode it asks, like
+//! every other read. It was also the first tool that exercised the loop and the permission card
+//! (09 M3).
+//!
+//! Since the prompt carries `<gantry_now>` with today's date, this tool is for the clock and
+//! not the calendar, and its description says so: a model that called it to find out what day
+//! it was spent a round — and a permission card, in Manual — on something already in front of
+//! it. The time is deliberately not in the prompt, because it would invalidate the cached
+//! prefix every turn, so the remaining questions are real ones.
 
 use chrono::{Datelike, Local, Utc};
 use gantry_connectors::ToolOutcome;
@@ -14,9 +20,11 @@ pub const NAME: &str = "clock";
 pub fn definition() -> ToolDef {
     let mut def = ToolDef::new(
         NAME,
-        "The current date and time on the user's computer: local time with its UTC offset, UTC, \
-         the weekday and the Unix timestamp. Call it whenever an answer depends on what day or \
-         time it is now; do not guess the date.",
+        "The current time on the user's computer: local time with its UTC offset, UTC, the \
+         weekday, the ISO week and the Unix timestamp. Today's date is already in your prompt \
+         under <gantry_now>, so do not call this to find out what day it is — call it when you \
+         need the hour, the minute, a timestamp, or the date after the conversation has been \
+         open long enough for it to have changed.",
         json!({
             "type": "object",
             "properties": {},

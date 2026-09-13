@@ -17,7 +17,7 @@ What stays non-editable: the identity and tone floor, the tool-calling conventio
 The system prompt of a chat is assembled once, at chat creation, from these blocks in this order, and stored as `chats.system_snapshot` (02 §6, 06 §3):
 
 ```
-<gantry_core version="7">                     1. fixed scaffold, identical for every chat
+<gantry_core version="8">                     1. fixed scaffold, identical for every chat
   …identity, conventions, protocols, precedence rule…
   <mode>…manual | auto_edit | plan | auto…</mode>
 </gantry_core>
@@ -85,6 +85,25 @@ paragraph also tells the model to search before it writes and pass `replaces_id`
 holds one sentence per idea, and to prune freely, because a store nobody prunes stops being
 worth reading. An incognito chat (15 A21) is given no `<memory>` block and none of these tools,
 so none of this paragraph applies inside one.
+
+Version 8 (2026-09-13) changes one sentence of the Plan mode fragment: a plan longer than a few
+lines goes in a `markdown` artifact, and the chat carries the decision rather than a second copy
+of the plan. A plan is read more than once, argued with and edited, which is the definition of
+an artifact; in the transcript it scrolls away and has to be re-read from the top to find the
+third deliverable. The `writing-a-plan` skill says the same thing at more length.
+
+### `<gantry_now>`: what day it is (M12 follow-up)
+
+Assembled per turn beside the connector and skill inventories, for the same reason they are:
+the frozen snapshot cannot carry it. A chat opened on Friday and continued on Monday would
+insist it was Friday, which is worse than a model that knows it does not know.
+
+It carries **the date, the weekday and the UTC offset, and not the time.** The block sits in the
+cached prefix, so a clock in it would invalidate the provider's prompt cache on every single
+turn to supply something almost no answer needs; the date changes once a day. `gantry__clock`
+keeps the questions that are really about the hour, and its description now says so — before
+this, a model that wanted to know what day it was spent a round, and a permission card in
+Manual mode, finding out.
 
 ### The untrusted-content rule (core version 5, M7)
 

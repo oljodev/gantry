@@ -673,6 +673,12 @@ Three changes, all from Olav using it.
   and is deleted when the window closes — or at the next startup, if a crash beat it to the
   close handler. Migration 0013. Skills still apply inside one.
 - **The window controls sit on their own ground**, with **Use incognito** to their left (15 §7).
+- **`<gantry_now>`**: the date, the weekday and the UTC offset, per turn beside the inventories,
+  because a model with no clock spends a round — and a permission card, in Manual — asking what
+  day it is. Not the time, which would invalidate the cached prefix every turn. `gantry__clock`
+  keeps the questions that are actually about the hour. Core prompt version **8**, which also
+  tells Plan mode that a plan longer than a few lines belongs in a `markdown` artifact rather
+  than in the transcript; the `writing-a-plan` skill says the same at more length.
 
 ## M13 — Hardening and release (2 weeks)
 

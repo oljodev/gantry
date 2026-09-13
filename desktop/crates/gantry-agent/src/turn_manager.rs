@@ -26,7 +26,7 @@ use crate::{
     skills::Skills,
     system_prompt::{
         CORE_VERSION, PromptContext, SystemPromptBuilder, connector_inventory, mode_note,
-        with_roots,
+        now_block, with_roots,
     },
     title,
     tools::ToolSet,
@@ -494,6 +494,9 @@ impl TurnManager {
                 settings.chat.suggest_connectors
             )
         );
+        // What day it is, beside the inventories and for the same reason: it changes outside
+        // the chat, so a snapshot frozen at creation would be wrong by the second sitting.
+        input.system = format!("{}\n{}\n", input.system.trim_end(), now_block());
         // The skill list rides with the turn for the connector inventory's reason: a skill
         // written after this chat started is still a skill this chat can load, and a list
         // frozen at creation would go on denying it exists (10 §2).

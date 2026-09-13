@@ -5,11 +5,26 @@ license: FSL-1.1-ALv2
 metadata:
   gantry-triggers: "plan, design doc, proposal, approach, strategy, roadmap, break this down, how should we"
   gantry-always: "false"
-  gantry-version: "1"
+  gantry-version: "2"
   author: Gantry
 ---
 
 # Writing a plan
+
+## Where it goes
+
+**A plan is an artifact, not a reply.** Call `gantry__create_artifact` with type `markdown`,
+titled for the work rather than for the document — "Chess engine in Rust", not "Plan for a chess
+engine" — and put the whole plan in it. In the chat, say in a sentence or two what you decided
+and what the reader should look at first; do not repeat the plan underneath it.
+
+A plan is read more than once, gets argued with, and gets edited. That is the definition of an
+artifact: it opens beside the conversation, it keeps its versions, and it is still there when
+the chat has scrolled past. A plan pasted into the transcript has none of that and has to be
+re-read from the top every time somebody wants the third deliverable.
+
+The one exception is a plan of three or four lines, which is an answer wearing a plan's clothes.
+Say it in the chat.
 
 ## When to use
 

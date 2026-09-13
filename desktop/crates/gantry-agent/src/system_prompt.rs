@@ -4,7 +4,7 @@
 use gantry_core::{AuthState, ConnectorInstanceDto, Mode};
 
 /// Bumped whenever `assets/prompts/core.md` or a mode fragment changes meaning.
-pub const CORE_VERSION: u32 = 7;
+pub const CORE_VERSION: u32 = 8;
 
 const CORE: &str = include_str!("../../../assets/prompts/core.md");
 const MODE_MANUAL: &str = include_str!("../../../assets/prompts/modes/manual.md");
@@ -137,6 +137,31 @@ pub fn with_roots(system: &str, roots: &[String]) -> String {
         format!("workspace: {}", roots.join(", "))
     };
     format!("{}{line}{}", &system[..from], &system[to..])
+}
+
+/// What day it is, per turn (10 §2).
+///
+/// A model has no clock, so without this it either guesses the date or spends a round asking
+/// `gantry__clock` for it — and it asks for more than you would think, because half of writing
+/// anything is knowing whether "last Tuesday" has happened yet. The date cannot live in the
+/// frozen snapshot: a chat opened on Friday and continued on Monday would insist it was still
+/// Friday, which is worse than not knowing.
+///
+/// **The date and not the time**, deliberately. This block sits in the cached prefix, so the
+/// time would invalidate the provider's prompt cache on every single turn to tell the model
+/// something it almost never needs. It changes once a day, and `gantry__clock` is still there
+/// for the questions that are actually about the hour.
+#[must_use]
+pub fn now_block() -> String {
+    let now = chrono::Local::now();
+    format!(
+        "<gantry_now>
+today: {} ({}), UTC{}
+</gantry_now>",
+        now.format("%Y-%m-%d"),
+        chrono::Datelike::weekday(&now),
+        now.format("%:z"),
+    )
 }
 
 /// The connector inventory (03 §9, 04 §9, 10 §2): what this chat can reach, what is installed
@@ -274,5 +299,32 @@ mod tests {
         // Detaching the last one says so again, and a prompt without the line is left alone.
         assert!(with_roots(&attached, &[]).contains("workspace: none attached"));
         assert_eq!(with_roots("no context here", &[]), "no context here");
+    }
+
+    /// The date is a per-turn block, not part of the frozen snapshot: a chat opened on Friday
+    /// and continued on Monday must not go on insisting it is Friday. The time is left out on
+    /// purpose — it would invalidate the cached prefix on every turn.
+    #[test]
+    fn the_now_block_carries_a_date_and_no_clock_time() {
+        let block = now_block();
+        assert!(block.starts_with("<gantry_now>"));
+        assert!(block.ends_with("</gantry_now>"));
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+        assert!(block.contains(&today), "{block}");
+        assert!(
+            !block.contains(&chrono::Local::now().format("%H:%M").to_string()),
+            "the hour belongs to gantry__clock, not to the cached prefix: {block}"
+        );
+        let frozen = SystemPromptBuilder::new(
+            Mode::Plan,
+            PromptContext {
+                platform: "linux".into(),
+                app_version: "0.1.0".into(),
+                workspace_roots: Vec::new(),
+                project_name: None,
+            },
+        )
+        .build();
+        assert!(!frozen.contains("<gantry_now>"));
     }
 }
