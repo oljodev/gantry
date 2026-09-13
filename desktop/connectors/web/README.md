@@ -46,6 +46,18 @@ Two rules the live APIs taught, both now tests:
 - **The word that routed the query must not be searched for.** crates.io searched for `serde
   crate` ranks `serde_core` and `serde-big-array` above `serde`, because the literal word
   matches no package and dilutes the word that does. `registry_query` strips it.
+- **Searching a registry is not enough, and re-ranking cannot save it.** Both registries match
+  every word against name *and* description, so `tokio async runtime` does not return `tokio`
+  anywhere in thirty results — tokio's own description never says "runtime". The package
+  everybody meant is not in the list to re-rank. Every search is therefore paired with an exact
+  by-name lookup of up to three words from the query (`/api/v1/crates/{name}`,
+  `registry.npmjs.org/{name}/latest`), which 404s for a word that is not a package and costs
+  nothing when it does.
+- **Not every namesake deserves a slot.** `runtime` is a real crate at 0.0.0 with 100 thousand
+  downloads; `tokio` has 962 million. `dominant` keeps an exact match only if it is within a
+  thousandth of the most-used one — relative, because "popular" is not a number that holds
+  across ecosystems. `serde` and `json` are comparable and both stay; `runtime` and
+  `serialization` go. A lone match is always kept.
 
 The known weakness is the router itself: it is keyword matching, so it will always miss
 something. `realistic_queries_reach_the_index_that_can_answer_them` pins down a table of hand-

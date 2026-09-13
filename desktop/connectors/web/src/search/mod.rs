@@ -29,7 +29,7 @@ use std::fmt;
 // Re-exported so the tests can drive each parser against a recorded reply without a socket.
 // The request and the parsing are separate for that reason: what breaks in a backend is the
 // shape of what comes back, and that is testable only if it can be fed in.
-pub use registries::{parse_crates, parse_npm};
+pub use registries::{lookups, parse_crate, parse_crates, parse_npm, parse_package};
 pub use stack::parse as parse_stack;
 pub use wikipedia::parse as parse_wikipedia;
 

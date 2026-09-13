@@ -41,8 +41,8 @@ pub use cache::{Cache, MAX_CHARS as CACHE_MAX_CHARS, MAX_PAGES, Page, TTL as CAC
 pub use extract::{Article, Format, Window, article, nests_too_deep, window};
 pub use fetch::{MAX_BYTES, MAX_REDIRECTS, TIMEOUT, USER_AGENT};
 pub use search::{
-    DEFAULT_RESULTS, Hit, MAX_RESULTS, SearchError, Source, parse_crates, parse_npm, parse_stack,
-    parse_wikipedia, route,
+    DEFAULT_RESULTS, Hit, MAX_RESULTS, SearchError, Source, lookups, parse_crate, parse_crates,
+    parse_npm, parse_package, parse_stack, parse_wikipedia, registry_query, route, sources_of,
 };
 
 /// The connector manifest, embedded at build time (`docs/plan/03-connector-system.md` §3).
@@ -213,8 +213,13 @@ impl Web {
     ///
     /// # Errors
     /// When no index covers the query, none had anything, or none could be reached.
-    pub async fn search_for(&self, query: &str, limit: usize) -> Result<Vec<Hit>, SearchError> {
-        search::run(&self.http, query, limit, None).await
+    pub async fn search_for(
+        &self,
+        query: &str,
+        limit: usize,
+        source: Option<Source>,
+    ) -> Result<Vec<Hit>, SearchError> {
+        search::run(&self.http, query, limit, source).await
     }
 
     async fn search(&self, args: &serde_json::Value) -> Result<ToolOutcome, ConnectorError> {
@@ -234,7 +239,7 @@ impl Web {
             },
         };
 
-        let hits = match search::run(&self.http, &query, limit, only).await {
+        let hits = match self.search_for(&query, limit, only).await {
             Ok(hits) => hits,
             // Every one of these is a sentence saying what to do next, not an empty list: a
             // model handed `[]` concludes the thing does not exist (`search` §6.8).

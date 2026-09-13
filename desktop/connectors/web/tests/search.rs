@@ -15,7 +15,9 @@
 //! `link`, `owner` and `content_license` — the attribution the licence asks for is in the file.
 //! Trim the bodies if that ever needs to be tighter; the parsers only read the first paragraph.
 
-use gantry_connector_web::{Hit, Source, parse_crates, parse_npm, parse_stack, parse_wikipedia};
+use gantry_connector_web::{
+    Hit, Source, parse_crate, parse_crates, parse_npm, parse_package, parse_stack, parse_wikipedia,
+};
 
 fn json(name: &str) -> serde_json::Value {
     let raw = std::fs::read_to_string(format!(
@@ -121,6 +123,44 @@ fn an_npm_hit_uses_the_registry_s_own_link() {
 }
 
 #[test]
+fn a_crate_looked_up_by_name_is_the_package_everybody_meant() {
+    // The endpoint that fixes the defect this pairing exists for: searching crates.io for
+    // "tokio async runtime" does not return `tokio` in thirty results, because its description
+    // never says "runtime". Asking for the name directly always does.
+    //
+    // This fixture is the live reply with its `versions` array dropped — 195 entries and 440 KB
+    // of publish history the parser never reads. The `crate` object it does read is verbatim.
+    let hit = parse_crate(&json("crates-exact.json")).expect("tokio is a crate");
+    assert_eq!(hit.source, Source::CratesIo);
+    assert_eq!(hit.title, "tokio 1.53.1");
+    assert_eq!(hit.url, "https://crates.io/crates/tokio");
+    assert!(
+        hit.snippet.starts_with("An event-driven"),
+        "{}",
+        hit.snippet
+    );
+    // The two endpoints have different envelopes and must not be read by the wrong parser.
+    assert!(
+        parse_crate(&json("crates.json")).is_none(),
+        "that is the search shape"
+    );
+}
+
+#[test]
+fn a_package_looked_up_by_name_reads_the_bare_manifest() {
+    // npm's by-name endpoint returns the manifest with no envelope at all, unlike its search.
+    let hit = parse_package(&json("npm-exact.json")).expect("react is a package");
+    assert_eq!(hit.source, Source::Npm);
+    assert!(hit.title.starts_with("react 19"), "{}", hit.title);
+    assert_eq!(hit.url, "https://www.npmjs.com/package/react");
+    assert!(
+        hit.snippet.contains("JavaScript library"),
+        "{}",
+        hit.snippet
+    );
+}
+
+#[test]
 fn a_body_in_the_wrong_shape_is_no_results_rather_than_a_panic() {
     // An API that changes, an error document, a proxy's login page. Every parser answers the
     // same way: nothing found, which `run` turns into a sentence.
@@ -137,6 +177,8 @@ fn a_body_in_the_wrong_shape_is_no_results_rather_than_a_panic() {
         assert!(parse_stack(&body).is_empty(), "{body}");
         assert!(parse_crates(&body).is_empty(), "{body}");
         assert!(parse_npm(&body).is_empty(), "{body}");
+        assert!(parse_crate(&body).is_none(), "{body}");
+        assert!(parse_package(&body).is_none(), "{body}");
     }
 }
 
@@ -180,7 +222,7 @@ async fn a_live_search_returns_results_from_every_index() {
             Source::StackOverflow,
         ),
     ] {
-        let hits = web.search_for(query, 6).await.unwrap_or_else(|err| {
+        let hits = web.search_for(query, 6, None).await.unwrap_or_else(|err| {
             panic!("{query}: {err}");
         });
         println!("\n{query} -> {} hits", hits.len());
@@ -191,6 +233,30 @@ async fn a_live_search_returns_results_from_every_index() {
             hits.iter().any(|hit| hit.source == expected),
             "{query} returned nothing from {}",
             expected.label()
+        );
+    }
+
+    // The case that motivated pairing search with a by-name lookup, and the one a model
+    // actually hit: asked for crates.io directly with a descriptive phrase, crates.io's own
+    // search does not return `tokio` in thirty results, because its description never says
+    // "runtime". The lookup puts it first anyway.
+    for (query, wanted) in [
+        ("tokio async runtime", "tokio"),
+        ("serde json serialization", "serde"),
+    ] {
+        let hits = web
+            .search_for(query, 6, Some(Source::CratesIo))
+            .await
+            .unwrap_or_else(|err| panic!("{query}: {err}"));
+        println!("\ncrates.io forced: {query}");
+        for hit in &hits {
+            println!("  {} — {}", hit.title, hit.url);
+        }
+        assert_eq!(
+            hits.first()
+                .map(|hit| hit.title.split(' ').next().unwrap_or_default()),
+            Some(wanted),
+            "{query} should lead with {wanted}"
         );
     }
 }
