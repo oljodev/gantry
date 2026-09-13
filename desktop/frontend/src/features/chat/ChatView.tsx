@@ -45,6 +45,8 @@ import { useFollowBottom } from '@/lib/followBottom';
 import { pickFolder } from '@/lib/folders';
 import { useArtifacts } from '@/lib/ipc/hooks/artifacts';
 import { useChat, useChatMutations } from '@/lib/ipc/hooks/chats';
+import { FileToolsDialog } from '@/features/connectors/FileToolsDialog';
+import { hasFileTools } from '@/features/connectors/fileTools';
 import { MoveToProjectDialog } from '@/features/projects/MoveToProjectDialog';
 import { useProject } from '@/lib/ipc/hooks/projects';
 import { useSkills } from '@/lib/ipc/hooks/skills';
@@ -122,6 +124,8 @@ export function ChatView({
   const [unguarding, setUnguarding] = useState(false);
   // Filing the chat from the composer, as well as from its row in the sidebar (09 M11).
   const [movingToProject, setMovingToProject] = useState(false);
+  /** The folder just added to a chat that has no way to read one (03 §11). */
+  const [folderWithoutTools, setFolderWithoutTools] = useState<string | null>(null);
   const unguardedOk = useUiStore((s) => s.unguarded.includes(chatId));
   const rememberUnguarded = useUiStore((s) => s.rememberUnguarded);
   const [asking, setAsking] = useState<{
@@ -627,7 +631,19 @@ export function ChatView({
           project={project.data ? { id: project.data.id, name: project.data.name } : undefined}
           onAddRoot={() => {
             void pickFolder().then((path) => {
-              if (path) addRoot.mutate({ chatId, path });
+              if (!path) return;
+              addRoot.mutate(
+                { chatId, path },
+                {
+                  // A folder nothing can read is the menu item quietly not working, so the
+                  // offer comes with the folder rather than with the first failed question.
+                  onSuccess: () => {
+                    if (!hasFileTools(installedConnectors.data ?? [], chatConnectors.data ?? [])) {
+                      setFolderWithoutTools(path);
+                    }
+                  },
+                },
+              );
             });
           }}
           onRemoveRoot={(path) => removeRoot.mutate({ chatId, path })}
@@ -718,6 +734,13 @@ export function ChatView({
             }
             setAsking(null);
           }}
+        />
+      )}
+      {folderWithoutTools !== null && (
+        <FileToolsDialog
+          chatId={chatId}
+          root={folderWithoutTools}
+          onClose={() => setFolderWithoutTools(null)}
         />
       )}
       {movingToProject && (

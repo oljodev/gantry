@@ -4,6 +4,8 @@ import { useMemo, useState } from 'react';
 
 import type { ReasoningEffort } from '@/bindings';
 import { Composer } from '@/components/gantry/composer/Composer';
+import { FileToolsDialog } from '@/features/connectors/FileToolsDialog';
+import { hasFileTools } from '@/features/connectors/fileTools';
 import { Kbd } from '@/components/ui/kbd';
 import { toast } from '@/components/ui/toast';
 import type { Mode, ModelRef } from '@/fixtures/types';
@@ -64,6 +66,8 @@ export function Welcome({ projectId }: { projectId?: string } = {}) {
   // chat behind every time somebody opened the menu and changed their mind.
   const [roots, setRoots] = useState<string[]>([]);
   const [connectors, setConnectors] = useState<string[]>([]);
+  /** The folder just chosen on a machine with no file tools yet (03 §11). */
+  const [folderWithoutTools, setFolderWithoutTools] = useState<string | null>(null);
 
   const connectorChoices = useMemo(
     () =>
@@ -157,8 +161,13 @@ export function Welcome({ projectId }: { projectId?: string } = {}) {
         roots={roots}
         onAddRoot={() => {
           void pickFolder().then((path) => {
-            if (path)
-              setRoots((current) => (current.includes(path) ? current : [...current, path]));
+            if (!path) return;
+            setRoots((current) => (current.includes(path) ? current : [...current, path]));
+            // The first folder anyone attaches is usually on a machine where nothing is
+            // installed yet, and a folder nothing can read is the menu item not working.
+            if (!hasFileTools(installedConnectors.data ?? [], connectors)) {
+              setFolderWithoutTools(path);
+            }
           });
         }}
         onRemoveRoot={(path) => setRoots((current) => current.filter((r) => r !== path))}
@@ -178,6 +187,15 @@ export function Welcome({ projectId }: { projectId?: string } = {}) {
         onBrowseConnectors={() => openCustomize('connectors')}
         onSend={(text, attachments) => void onSend(text, attachments)}
       />
+      {folderWithoutTools !== null && (
+        <FileToolsDialog
+          chatId={null}
+          root={folderWithoutTools}
+          onClose={() => setFolderWithoutTools(null)}
+          // There is no chat yet, so the instances join what the first message attaches.
+          onTurnedOn={(ids) => setConnectors((current) => [...new Set([...current, ...ids])])}
+        />
+      )}
       <div className="flex h-8 items-center justify-center gap-1.5 text-meta text-fg-3">
         Add files, folders and connectors with <Kbd>+</Kbd> · search anything with <Kbd>⌘</Kbd>
         <Kbd>K</Kbd>
