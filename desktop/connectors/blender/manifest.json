@@ -1,0 +1,72 @@
+{
+  "manifest_version": "1",
+  "id": "blender",
+  "name": "Blender",
+  "description": "Build and change a scene in Blender that is open on this machine.",
+  "long_description": "A community server — not Blender's — that drives Blender from a conversation: read the scene and the objects in it, create and move geometry, apply materials, pull assets from Poly Haven, Sketchfab and Poly Pizza, and take a viewport screenshot to look at what came out.\n\nIt needs two halves. This half is a Python process Gantry starts; the other is an add-on inside Blender that opens a socket on port 9876 for it to talk to. Install the add-on once with `uvx blender-mcp install-addon`, then enable **Interface: MCP for Blender** under Edit → Preferences → Add-ons and start the server from the sidebar. Nothing works until Blender is running with that switched on.\n\nTwo defaults Gantry sets for you. The server's telemetry — which uploads your prompts, the code the model writes, viewport screenshots and scene data to its author — is **off**. And its script validator is **on**, so Python written by the model is checked before it crosses the socket; asset names and descriptions from the internet reach the model here, and that is a short path from a page somebody else wrote to code running in your Blender.",
+  "version": "0.1.0",
+  "icon": "icon.svg",
+  "category": "productivity",
+  "keywords": ["blender", "3d", "modeling", "render", "scene", "geometry"],
+  "publisher": {
+    "name": "Siddharth Ahuja",
+    "url": "https://github.com/ahujasid"
+  },
+  "first_party": false,
+  "homepage": "https://github.com/ahujasid/blender-mcp",
+  "license": "MIT",
+  "runtime": {
+    "kind": "mcp-stdio",
+    "command": "uvx",
+    "args": ["blender-mcp"],
+    "env": {
+      "BLENDER_MCP_DISABLE_TELEMETRY": "1",
+      "BLENDER_MCP_SAFE_MODE": "1"
+    },
+    "requires": {
+      "uv": ">=0.5"
+    }
+  },
+  "auth": {
+    "type": "none"
+  },
+  "risk": {
+    "network": "internet",
+    "local_system": "execute",
+    "default_tool_tier": "execute",
+    "notes": "Runs Python inside the Blender open on this machine, and downloads assets from the internet into your scene."
+  },
+  "tool_overrides": {
+    "get_scene_info": { "risk": "read" },
+    "get_object_info": { "risk": "read" },
+    "get_viewport_screenshot": { "risk": "read" },
+    "get_addon_status": { "risk": "read" },
+    "get_polyhaven_status": { "risk": "read" },
+    "get_polyhaven_categories": { "risk": "read" },
+    "search_polyhaven_assets": { "risk": "read" },
+    "get_polypizza_status": { "risk": "read" },
+    "search_polypizza_models": { "risk": "read" },
+    "get_sketchfab_status": { "risk": "read" },
+    "search_sketchfab_models": { "risk": "read" },
+    "get_sketchfab_model_preview": { "risk": "read" },
+    "get_hyper3d_status": { "risk": "read" },
+    "get_hunyuan3d_status": { "risk": "read" },
+    "poll_rodin_job_status": { "risk": "read" },
+    "poll_hunyuan_job_status": { "risk": "read" },
+    "execute_blender_code": { "risk": "destructive", "always_confirm": true },
+    "generate_hyper3d_model_via_text": { "risk": "destructive", "always_confirm": true },
+    "generate_hyper3d_model_via_images": { "risk": "destructive", "always_confirm": true },
+    "generate_hunyuan3d_model": { "risk": "destructive", "always_confirm": true },
+    "record_trajectory_feedback": { "risk": "write_external", "always_confirm": true }
+  },
+  "tools_generated": true,
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "gantry": ">=0.1.0"
+  },
+  "catalog": {
+    "featured": false,
+    "sort_weight": 78,
+    "suggest_for": ["blender", "3d model", "render this", "make a scene", "modeling"]
+  }
+}

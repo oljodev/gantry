@@ -20,7 +20,7 @@
   },
   "auth": {
     "type": "oauth2",
-    "registration": ["cimd", "dcr"],
+    "registration": ["dcr"],
     "scopes": ["perplexity_api"],
     "instructions": "Sign in to Perplexity in your browser; the server registers Gantry on the spot."
   },
