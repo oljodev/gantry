@@ -144,6 +144,8 @@ impl ProviderSource for Source {
 struct Fake {
     descriptor: ConnectorDescriptor,
     calls: Mutex<Vec<ToolCallRequest>>,
+    /// Released to let `stream` finish; unset means it returns at once.
+    hold: Mutex<Option<Arc<tokio::sync::Notify>>>,
 }
 
 #[async_trait]
@@ -169,6 +171,12 @@ impl Connector for Fake {
                 serde_json::json!({}),
                 RiskTier::Write,
             ),
+            ToolDef::new(
+                "stream",
+                "Prints as it goes",
+                serde_json::json!({}),
+                RiskTier::Read,
+            ),
         ])
     }
     async fn call(
@@ -184,6 +192,20 @@ impl Connector for Fake {
             )),
             "write" => Ok(ToolOutcome::text("written")),
             "boom" | "crash" => Err(ConnectorError::Failed("kaboom".into())),
+            "stream" => {
+                for line in ["compiling gantry-core\n", "compiling gantry-agent\n"] {
+                    _sink.output(
+                        &req.call_id,
+                        gantry_connectors::OutputStream::Stdout,
+                        line.as_bytes(),
+                    );
+                }
+                let hold = self.hold.lock().unwrap().clone();
+                if let Some(hold) = hold {
+                    hold.notified().await;
+                }
+                Ok(ToolOutcome::text("done"))
+            }
             other => Err(ConnectorError::UnknownTool(other.into())),
         }
     }
@@ -291,6 +313,19 @@ impl Harness {
         self.provider.guard_inputs.lock().unwrap().clone()
     }
 
+    /// The tail the snapshot would carry for a turn, or `None` when the turn is over: the
+    /// state is gone with it, which is itself the answer a finished call gives.
+    fn snapshot_output(&self, turn: gantry_core::TurnId) -> Option<Vec<String>> {
+        let sink = Arc::new(Collect::default());
+        self.m.subscribe(turn, 0, sink.clone()).ok()?;
+        match sink.kinds().first()? {
+            AgentEventKind::TurnSnapshot { snapshot } => {
+                Some(snapshot.output.values().flatten().cloned().collect())
+            }
+            _ => None,
+        }
+    }
+
     /// A chat with the fake connector installed and attached, which is what a chat looks like
     /// once the user has added a connector to it (03 §11). A chat with nothing attached sees
     /// only the runtime tools, which is what `a_chat_sees_only_what_it_attached` checks.
@@ -363,6 +398,7 @@ fn manager_windowed(
             first_party: true,
         },
         calls: Mutex::new(Vec::new()),
+        hold: Mutex::new(None),
     });
     let registry = Arc::new(ConnectorRegistry::new());
     registry.register(fake.clone());
@@ -503,6 +539,7 @@ async fn a_text_turn_completes_and_is_recorded() {
             "fake__write",
             "fake__boom",
             "fake__crash",
+            "fake__stream",
             "gantry__clock",
             "gantry__search_connectors",
             "gantry__request_access",
@@ -1072,6 +1109,7 @@ async fn plan_mode_offers_only_tools_it_would_allow() {
         [
             "fake__echo",
             "fake__boom",
+            "fake__stream",
             "gantry__clock",
             "gantry__search_connectors",
             "gantry__request_access",
@@ -1914,4 +1952,141 @@ async fn a_mode_change_never_gives_an_incognito_chat_the_memory_core_set() {
         !carries(private.id),
         "the re-freeze handed an incognito chat the memory it exists to do without"
     );
+}
+
+/// A view that reattaches while a command is still running sees what it has printed so far
+/// (05 §3). `tool_call.output` is transient — nothing replays it — so before the snapshot
+/// carried a tail, opening a chat in the middle of a two-minute build showed a row with no
+/// output at all until the command finished.
+#[tokio::test]
+async fn a_late_subscriber_sees_what_a_running_command_has_printed() {
+    let m = manager_with(
+        vec![
+            tool_round("call_1", "fake__stream", serde_json::json!({})),
+            vec![text("built"), end()],
+        ],
+        Duration::ZERO,
+        Settings::default(),
+    );
+    let hold = Arc::new(tokio::sync::Notify::new());
+    *m.fake.hold.lock().unwrap() = Some(hold.clone());
+
+    let chat = m.chat();
+    let sink = Arc::new(Collect::default());
+    let turn = m
+        .start(
+            chat.id,
+            "build it".into(),
+            Vec::new(),
+            Vec::new(),
+            sink.clone(),
+        )
+        .unwrap();
+    wait_for(|| sink.names().contains(&"tool_call.output")).await;
+
+    let late = Arc::new(Collect::default());
+    m.subscribe(turn, 0, late.clone()).unwrap();
+    let AgentEventKind::TurnSnapshot { snapshot } = late.kinds()[0].clone() else {
+        panic!("snapshot first");
+    };
+    let tail = snapshot
+        .output
+        .values()
+        .next()
+        .expect("the running call's output belongs in the snapshot")
+        .clone();
+    assert!(
+        tail.iter().any(|l| l.contains("compiling gantry-agent")),
+        "the tail should carry what was printed: {tail:?}"
+    );
+
+    hold.notify_waiters();
+    wait_for(|| sink.completed().is_some()).await;
+
+    // Once the call has ended its result carries the output, so the tail is dropped rather
+    // than sent a second time in a different shape.
+    let state = m.snapshot_output(turn);
+    assert!(state.is_none() || state.unwrap().is_empty());
+}
+
+/// Plan mode's read prompt offers **Allow all reads for this chat** (04 §4), and a folder
+/// narrower than that when the call names a file. The roadmap carried this as unbuilt work; it
+/// was reachable from the tier rule all along, and this is what says so.
+#[tokio::test]
+async fn a_read_prompt_in_plan_mode_offers_all_reads_and_a_folder() {
+    let m = manager_with(
+        vec![tool_round(
+            "call_1",
+            "fake__echo",
+            serde_json::json!({ "path": "/home/olav/dev/gantry/Cargo.toml" }),
+        )],
+        Duration::ZERO,
+        Settings::default(),
+    );
+    let chat = m.chat();
+    m.update_chat(
+        chat.id,
+        ChatPatch {
+            mode: Some(Mode::Plan),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let sink = Arc::new(Collect::default());
+    m.start(
+        chat.id,
+        "read it".into(),
+        Vec::new(),
+        Vec::new(),
+        sink.clone(),
+    )
+    .unwrap();
+    wait_for(|| !m.interactions().list_pending(Some(chat.id)).is_empty()).await;
+
+    let pending = m.interactions().list_pending(Some(chat.id));
+    let gantry_core::InteractionPayload::Permission { request } = &pending[0].payload else {
+        panic!("not a permission prompt");
+    };
+    assert_eq!(
+        request.scopes,
+        vec![
+            gantry_core::GrantScope::PathPrefix {
+                prefix: "/home/olav/dev/gantry".into()
+            },
+            gantry_core::GrantScope::Tool,
+            gantry_core::GrantScope::AllReads,
+        ],
+        "narrowest first: this folder, this tool, every read"
+    );
+
+    // Taking the folder grant answers the next read under it without asking again, and leaves
+    // a read somewhere else to ask.
+    m.resolve_interaction(
+        pending[0].id,
+        InteractionResolution::Permission {
+            decision: PermissionDecision::AllowChat {
+                scope: gantry_core::GrantScope::PathPrefix {
+                    prefix: "/home/olav/dev/gantry".into(),
+                },
+            },
+            message: None,
+        },
+    )
+    .unwrap();
+    wait_for(|| sink.completed().is_some()).await;
+
+    let grants = m.chats().grants(chat.id).unwrap();
+    assert_eq!(grants.len(), 1);
+    assert!(grants[0].covers(
+        "fake",
+        "echo",
+        RiskTier::Read,
+        &serde_json::json!({ "path": "/home/olav/dev/gantry/src/main.rs" })
+    ));
+    assert!(!grants[0].covers(
+        "fake",
+        "echo",
+        RiskTier::Read,
+        &serde_json::json!({ "path": "/etc/passwd" })
+    ));
 }

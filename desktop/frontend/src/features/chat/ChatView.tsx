@@ -9,6 +9,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import type {
   CatalogEntryDto,
+  GrantScope,
   MemoryProposal,
   PermissionDecision,
   SkillProposal,
@@ -36,7 +37,7 @@ import { ToolCallDetail } from '@/components/gantry/pane/ToolCallDetail';
 import { ArtifactPanel } from '@/features/artifacts/ArtifactPanel';
 import { useArtifactStore } from '@/features/artifacts/store';
 import { RememberSelection } from '@/features/chat/RememberSelection';
-import type { ActivityItem, ModelRef } from '@/fixtures/types';
+import type { ActivityItem, ModelRef, Permission } from '@/fixtures/types';
 import { copyText, openExternal } from '@/lib/clipboard';
 import { rememberCommand } from '@/lib/composer/slash';
 import { commands, unwrap } from '@/lib/ipc/client';
@@ -327,12 +328,12 @@ export function ChatView({
   const skillChoices = (skills.data ?? [])
     .filter((s) => s.enabled)
     .map((s) => ({ name: s.name, description: s.description }));
-  const decide = (interactionId: string, answer: PermissionAnswer) => {
+  const decide = (permission: Permission, answer: PermissionAnswer) => {
     const resolution =
       answer.kind === 'allow'
         ? {
             kind: 'permission' as const,
-            decision: grantDecision(answer.scope),
+            decision: grantDecision(permission.scopes.find((s) => s.id === answer.scope)),
             message: null,
           }
         : {
@@ -340,7 +341,7 @@ export function ChatView({
             decision: { kind: 'deny' as const },
             message: answer.message ?? null,
           };
-    void resolve(chatId, interactionId, resolution).catch((err) =>
+    void resolve(chatId, permission.id, resolution).catch((err) =>
       toast.add({ title: 'Could not answer', description: describe(err), type: 'error' }),
     );
   };
@@ -726,11 +727,14 @@ export function ChatView({
   );
 }
 
-/** The card's scope choice as the backend's decision (04 §8). */
-function grantDecision(scope: string): PermissionDecision {
-  if (scope === 'tool') return { kind: 'allow_chat', scope: 'tool' };
-  if (scope === 'all_reads') return { kind: 'allow_chat', scope: 'all_reads' };
-  return { kind: 'allow_once' };
+/**
+ * The card's scope choice as the backend's decision (04 §8).
+ *
+ * The chosen option carries the grant, so nothing here has to reconstruct a path prefix from a
+ * label. "Allow once" is the option with no grant, and is the default.
+ */
+function grantDecision(option?: { grant?: GrantScope }): PermissionDecision {
+  return option?.grant ? { kind: 'allow_chat', scope: option.grant } : { kind: 'allow_once' };
 }
 
 function describe(err: unknown): string {

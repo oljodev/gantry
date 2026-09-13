@@ -96,8 +96,26 @@ pub struct TurnState {
     pub messages: Vec<LiveMessage>,
     pub tool_calls: Vec<ToolCallDto>,
     pub pending: Vec<Interaction>,
+    /// The tail of each running call's output, for the snapshot a reattaching view is sent
+    /// (05 §3). Dropped when the call ends, because from then on its result carries the output.
+    pub output: HashMap<gantry_core::CallId, Vec<String>>,
     pub usage: Option<Usage>,
     pub started_at: i64,
+}
+
+impl TurnState {
+    /// Appends a chunk to a call's tail, keeping the last [`gantry_core::LIVE_OUTPUT_LINES`]
+    /// lines. Both streams go in one list in the order they arrived, which is what a terminal
+    /// shows; separating them here would reorder a command's own interleaving.
+    pub fn push_output(&mut self, call_id: &gantry_core::CallId, chunk: &str) {
+        let lines = self.output.entry(call_id.clone()).or_default();
+        let joined = format!("{}{chunk}", lines.join("\n"));
+        let mut next: Vec<String> = joined.split('\n').map(str::to_owned).collect();
+        if next.len() > gantry_core::LIVE_OUTPUT_LINES {
+            next.drain(..next.len() - gantry_core::LIVE_OUTPUT_LINES);
+        }
+        *lines = next;
+    }
 }
 
 pub struct ActiveTurn {
@@ -534,6 +552,7 @@ impl TurnManager {
                 messages: Vec::new(),
                 tool_calls: Vec::new(),
                 pending: Vec::new(),
+                output: HashMap::new(),
                 usage: None,
                 started_at: now_ms(),
             }),
@@ -706,6 +725,7 @@ impl TurnManager {
             messages: state.messages.iter().map(LiveMessage::to_message).collect(),
             tool_calls: state.tool_calls.clone(),
             pending: state.pending.clone(),
+            output: state.output.clone(),
             usage: state.usage,
             started_at: state.started_at,
             seq,

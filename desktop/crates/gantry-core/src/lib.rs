@@ -41,7 +41,7 @@ pub use connector::{
     RuntimeRequirement, ServerInfo, ToolInfo, UserConfigField, UserConfigKind,
 };
 pub use error::{ErrorDto, GantryError, ProviderErrorKind};
-pub use event::{AgentEvent, AgentEventBatch, AgentEventKind, TurnSnapshot};
+pub use event::{AgentEvent, AgentEventBatch, AgentEventKind, LIVE_OUTPUT_LINES, TurnSnapshot};
 pub use file::{EditOp, FileEditDto};
 pub use grant::{ArgScope, ChatGrant, GrantScope, GrantSource};
 pub use guardrail::{

@@ -766,6 +766,12 @@ fn complete_decided(
         c.ended_at = Some(now_ms());
         c.duration_ms = Some(duration_ms);
     });
+    {
+        // The tail existed only for a view that reattached while the call ran; from here the
+        // result carries the output, and keeping both would send it twice.
+        let mut state = ctx.active.state.lock().unwrap_or_else(|e| e.into_inner());
+        state.output.remove(id);
+    }
     ctx.active.batcher.push(AgentEventKind::ToolCallCompleted {
         call_id: id.clone(),
         status,
@@ -1000,6 +1006,7 @@ async fn run_calls(
     asking.sort_by_key(|(i, _, _, _)| *i);
     for (i, entry, guardrail, guard_note) in asking {
         let call = &calls[i];
+        let guardrail_kind = guardrail.as_ref().map(|g| g.kind);
         let interaction = Interaction::pending(
             ctx.input.chat_id,
             ctx.input.turn_id,
@@ -1017,7 +1024,16 @@ async fn run_calls(
                     description: entry.def.description.clone(),
                     guardrail,
                     guard: guard_note,
-                    scopes: GrantScope::for_tier(entry.def.tier),
+                    // Only the scopes the engine would honour on a later call: a guardrail
+                    // is never answered by a grant (04 §5), and `always_confirm` asks by
+                    // definition, so offering "for this chat" on either would write a grant
+                    // that changes nothing and ask again next turn.
+                    scopes: GrantScope::for_call(
+                        entry.def.tier,
+                        &call.args,
+                        guardrail_kind,
+                        entry.def.always_confirm,
+                    ),
                 },
             },
         );
@@ -1053,7 +1069,7 @@ async fn run_calls(
             let mut s = ctx.active.state.lock().unwrap_or_else(|e| e.into_inner());
             s.pending.retain(|p| p.id != interaction.id);
         }
-        match resolution {
+        match &resolution {
             InteractionResolution::Permission { decision, .. } if decision.allows() => {
                 // "Allow for this chat" is remembered before the call runs, so a crash in the
                 // middle of the call cannot lose the answer the user just gave (04 §8).
@@ -1106,7 +1122,7 @@ async fn run_calls(
             // kind cannot reach a permission card, and is refused the same way if it does.
             other => {
                 let message = match other {
-                    InteractionResolution::Permission { message, .. } => message,
+                    InteractionResolution::Permission { message, .. } => message.clone(),
                     _ => None,
                 };
                 batcher.push(AgentEventKind::DecisionResolved {
@@ -1403,14 +1419,24 @@ impl TurnToolEvents {
 impl ToolEventSink for TurnToolEvents {
     /// A running call's output, on its way to the feed. Transient by design (05 §2): the end
     /// state is the call's result, so nothing here is persisted or replayed.
+    ///
+    /// A bounded tail is kept on the turn all the same, and only while the call runs. Transient
+    /// means "not in the transcript", not "unavailable to a view that arrives late": without
+    /// it, reattaching in the middle of a two-minute build showed a row with no output at all
+    /// until the command finished.
     fn output(&self, call_id: &gantry_core::CallId, stream: OutputStream, chunk: &[u8]) {
         if chunk.is_empty() {
             return;
         }
+        let chunk = String::from_utf8_lossy(chunk).into_owned();
+        {
+            let mut s = self.active.state.lock().unwrap_or_else(|e| e.into_inner());
+            s.push_output(call_id, &chunk);
+        }
         self.batcher.push(AgentEventKind::ToolCallOutput {
             call_id: call_id.clone(),
             stream,
-            chunk: String::from_utf8_lossy(chunk).into_owned(),
+            chunk,
         });
     }
 

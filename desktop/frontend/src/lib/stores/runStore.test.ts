@@ -36,7 +36,7 @@ const interaction: Interaction = {
       guard: null,
       why: 'Let me check',
       description: 'The time',
-      scopes: ['tool', 'all_reads'],
+      scopes: [{ kind: 'tool' }, { kind: 'all_reads' }],
     },
   },
   status: 'pending',
@@ -214,6 +214,7 @@ describe('the run store follows a tool call through a permission prompt', () => 
               ],
               tool_calls: [],
               pending: [],
+              output: { 'call-1': ['compiling gantry-core', 'compiling gantry-agent'] },
               usage: null,
               started_at: 0,
               seq: 10,
@@ -235,6 +236,9 @@ describe('the run store follows a tool call through a permission prompt', () => 
       ],
     });
     expect(live.messages[0]?.parts[0]).toEqual({ kind: 'text', text: 'so far and more' });
+    // 05 §3: `tool_call.output` is transient, so the snapshot is the only thing that can tell a
+    // view that arrived late what a command still running has printed.
+    expect(live.output['call-1']).toEqual(['compiling gantry-core', 'compiling gantry-agent']);
   });
 });
 

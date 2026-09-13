@@ -1129,12 +1129,23 @@ export type FileDiffDto = {
 /**  A standing permission for one chat (04 §8). */
 export type GrantId = string;
 
-/**  The scopes a permission card can offer, in the order they are shown (04 §7, §8). */
+/**
+ *  The scopes a permission card can offer, in the order they are shown (04 §7, §8).
+ * 
+ *  The argument scopes carry the prefix the card will grant rather than leaving the user to
+ *  type one: the whole point is one click on an offer they can read, and a text field asking a
+ *  person to write a path correctly under a prompt is a worse permission model than asking
+ *  every time.
+ */
 export type GrantScope = 
 /**  This tool, from this connector, for the rest of this chat. */
-"tool" | 
+{ kind: "tool" } | 
 /**  Every read from this connector for the rest of this chat. */
-"all_reads";
+{ kind: "all_reads" } | 
+/**  This tool, for the rest of this chat, only where the path is under this directory. */
+{ kind: "path_prefix"; prefix: string } | 
+/**  This tool, for the rest of this chat, only for commands beginning with these words. */
+{ kind: "command_prefix"; prefix: string };
 
 /**  Where a grant came from (04 §8). */
 export type GrantSource = 
@@ -2225,6 +2236,16 @@ export type TurnSnapshot_Deserialize = {
 	messages: Message_Deserialize[],
 	tool_calls: ToolCallDto[],
 	pending: Interaction[],
+	/**
+	 *  The last [`LIVE_OUTPUT_LINES`] lines of each call still running, by call id (05 §3).
+	 * 
+	 *  A `tool_call.output` event is transient — the end state is the call's result, so nothing
+	 *  replays it — which left a view that reattached in the middle of a two-minute build
+	 *  staring at a row with no output until the command finished. The snapshot is the one
+	 *  place that can answer for the events a subscriber was not there for, so it carries the
+	 *  same window the view keeps. A finished call is not here: its result has the output.
+	 */
+	output: { [key in CallId]: string[] },
 	usage: Usage | null,
 	started_at: number,
 	/**  The last `seq` this snapshot covers; live events continue from `seq + 1`. */
@@ -2242,6 +2263,16 @@ export type TurnSnapshot_Serialize = {
 	messages: Message_Serialize[],
 	tool_calls: ToolCallDto[],
 	pending: Interaction[],
+	/**
+	 *  The last [`LIVE_OUTPUT_LINES`] lines of each call still running, by call id (05 §3).
+	 * 
+	 *  A `tool_call.output` event is transient — the end state is the call's result, so nothing
+	 *  replays it — which left a view that reattached in the middle of a two-minute build
+	 *  staring at a row with no output until the command finished. The snapshot is the one
+	 *  place that can answer for the events a subscriber was not there for, so it carries the
+	 *  same window the view keeps. A finished call is not here: its result has the output.
+	 */
+	output: { [key in CallId]: string[] },
 	usage: Usage | null,
 	started_at: number,
 	/**  The last `seq` this snapshot covers; live events continue from `seq + 1`. */

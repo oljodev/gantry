@@ -205,7 +205,7 @@ impl InteractionPayload {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, specta::Type)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, specta::Type)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum PermissionDecision {
     AllowOnce,
@@ -218,7 +218,7 @@ pub enum PermissionDecision {
 
 impl PermissionDecision {
     #[must_use]
-    pub fn allows(self) -> bool {
+    pub fn allows(&self) -> bool {
         matches!(
             self,
             PermissionDecision::AllowOnce | PermissionDecision::AllowChat { .. }
@@ -335,7 +335,7 @@ mod tests {
                 description: String::new(),
                 guardrail: None,
                 guard: None,
-                scopes: GrantScope::for_tier(RiskTier::Read),
+                scopes: GrantScope::for_call(RiskTier::Read, &serde_json::json!({}), None, false),
             },
         };
         assert_eq!(serde_json::to_value(&p).unwrap()["kind"], "permission");
@@ -347,7 +347,20 @@ mod tests {
         };
         let json = serde_json::to_value(&chat_grant).unwrap();
         assert_eq!(json["decision"]["kind"], "allow_chat");
-        assert_eq!(json["decision"]["scope"], "all_reads");
+        // The scope is tagged too since it grew a payload: an argument scope carries the prefix
+        // it will grant, so the card can show exactly what the user is about to agree to.
+        assert_eq!(json["decision"]["scope"]["kind"], "all_reads");
+        let scoped = InteractionResolution::Permission {
+            decision: PermissionDecision::AllowChat {
+                scope: GrantScope::PathPrefix {
+                    prefix: "/home/olav/dev/gantry".into(),
+                },
+            },
+            message: None,
+        };
+        let json = serde_json::to_value(&scoped).unwrap();
+        assert_eq!(json["decision"]["scope"]["kind"], "path_prefix");
+        assert_eq!(json["decision"]["scope"]["prefix"], "/home/olav/dev/gantry");
         let r = InteractionResolution::Permission {
             decision: PermissionDecision::Deny,
             message: Some("no".into()),

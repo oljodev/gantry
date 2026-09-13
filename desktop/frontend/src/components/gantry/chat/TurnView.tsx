@@ -22,7 +22,7 @@ import { TurnActions, type TurnActionsProps } from '@/components/gantry/chat/Tur
 import { UserMessage } from '@/components/gantry/chat/UserMessage';
 import { Markdown } from '@/components/gantry/markdown/Markdown';
 import { commands, isTauri } from '@/lib/ipc/client';
-import type { ActivityItem, Block, Turn } from '@/fixtures/types';
+import type { ActivityItem, Block, Permission, Turn } from '@/fixtures/types';
 
 /** Consecutive reasoning and activity blocks fold into one steps line (15 A7). */
 type Group = Block | { kind: 'steps'; steps: StepBlock[] };
@@ -73,7 +73,8 @@ export function TurnView({
   /** **Revert** on an edit row, by path (16 §5). */
   onRevert?: (path: string) => void;
   /** Answers a permission card; absent in the gallery. */
-  onDecide?: (interactionId: string, answer: PermissionAnswer) => void;
+  /** The permission travels with the answer: its scope options carry what would be granted. */
+  onDecide?: (permission: Permission, answer: PermissionAnswer) => void;
   /** Answers an access request (04 §9). */
   onAccess?: (interactionId: string, answer: AccessAnswer) => void;
   /** A server's mid-call question (03 §6). */
@@ -169,9 +170,7 @@ export function TurnView({
                   key={block.permission.id}
                   permission={block.permission}
                   hotkeys={isLast === true && i === firstCard}
-                  onDecide={
-                    onDecide ? (answer) => onDecide(block.permission.id, answer) : undefined
-                  }
+                  onDecide={onDecide ? (answer) => onDecide(block.permission, answer) : undefined}
                 />
               );
             case 'access':

@@ -216,6 +216,10 @@ export function applyBatch(
       next.calls = Object.fromEntries(s.tool_calls.map((c) => [c.id, c]));
       next.callOrder = s.tool_calls.map((c) => c.id);
       next.pending = [...s.pending];
+      // What the running calls have printed so far (05 §3). `tool_call.output` is transient, so
+      // without this a view that reattached mid-build showed the row with no output until the
+      // command finished; the snapshot is the only thing that can answer for events it missed.
+      next.output = { ...s.output };
       next.usage = s.usage ?? undefined;
       next.startedAt = s.started_at;
       next.seq = s.seq;

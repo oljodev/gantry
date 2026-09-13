@@ -616,11 +616,35 @@ export function elicitationOf(i: Interaction): ElicitationAsk {
   };
 }
 
-/** A grant scope as the card's dropdown shows it (04 §8). */
-function scopeOption(scope: GrantScope, tool: string): { id: string; label: string } {
-  return scope === 'all_reads'
-    ? { id: 'all_reads', label: 'Allow all reads for this chat' }
-    : { id: 'tool', label: `Allow ${tool} for this chat` };
+/**
+ * A grant scope as the card's dropdown shows it (04 §8).
+ *
+ * The scope itself travels with the option, because an argument scope carries the prefix it
+ * will grant: the label and what is granted come from one value, so the card cannot promise a
+ * folder and grant a different one.
+ */
+function scopeOption(
+  scope: GrantScope,
+  tool: string,
+): { id: string; label: string; grant: GrantScope } {
+  switch (scope.kind) {
+    case 'all_reads':
+      return { id: 'all_reads', label: 'Allow all reads for this chat', grant: scope };
+    case 'path_prefix':
+      return {
+        id: 'path_prefix',
+        label: `Allow ${tool} under ${scope.prefix} for this chat`,
+        grant: scope,
+      };
+    case 'command_prefix':
+      return {
+        id: 'command_prefix',
+        label: `Allow \`${scope.prefix}…\` for this chat`,
+        grant: scope,
+      };
+    default:
+      return { id: 'tool', label: `Allow ${tool} for this chat`, grant: scope };
+  }
 }
 
 function textOf(messages: Message[]): string | undefined {

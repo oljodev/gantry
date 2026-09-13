@@ -173,7 +173,9 @@ function Cards() {
                 reason: 'a force push rewrites history that other people may already have',
               },
               why: 'The remote has the old commits, so the branch needs replacing.',
-              scopes: [{ id: 'tool', label: 'Allow run_command for this chat' }],
+              // A guardrail-raised card offers no standing scope at all (04 §5): a grant never
+              // answers a guardrail, so "for this chat" would ask again on the next turn.
+              scopes: [{ id: 'once', label: 'Allow once' }],
             }}
           />
         </div>

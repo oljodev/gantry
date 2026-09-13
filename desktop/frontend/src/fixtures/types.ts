@@ -1,4 +1,4 @@
-import type { ElicitationField, MemoryProposal, SkillProposal } from '@/bindings';
+import type { ElicitationField, GrantScope, MemoryProposal, SkillProposal } from '@/bindings';
 
 /**
  * View-model shapes the chat components render (docs/plan/README.md, 05 §1). Backend truth is
@@ -150,7 +150,13 @@ export interface Permission {
   guard?: string;
   /** The assistant's last sentence before the call (04 §7). */
   why?: string;
-  scopes: { id: string; label: string }[];
+  /**
+   * The standing scopes this call may be granted (04 §8), narrowest first, with "Allow once"
+   * prepended. `id` is what the dropdown selects by; `grant` is what the backend is sent, and
+   * carries the prefix an argument scope will be written with — so the card promises exactly
+   * what it grants rather than a label that has to be kept in step with a lookup elsewhere.
+   */
+  scopes: { id: string; label: string; grant?: GrantScope }[];
 }
 
 /** A mid-conversation access request (04 §9): installed, but not attached to this chat. */

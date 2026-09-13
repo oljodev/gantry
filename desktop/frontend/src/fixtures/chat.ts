@@ -226,7 +226,11 @@ export const authChat: ChatDetail = {
             // wholesale scope.
             scopes: [
               { id: 'once', label: 'Allow once' },
-              { id: 'tool', label: 'Allow create_pull_request for this chat' },
+              {
+                id: 'tool',
+                label: 'Allow create_pull_request for this chat',
+                grant: { kind: 'tool' },
+              },
             ],
           },
         },

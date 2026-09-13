@@ -8,6 +8,12 @@
 
 use serde::{Deserialize, Serialize};
 
+/// How many lines of a running call's output the app keeps (05 §3): enough that a reattached
+/// view sees what a terminal would show, bounded so a command that prints a million lines does
+/// not become a million lines of state. The frontend's run store keeps the same window, and the
+/// snapshot hands over exactly that.
+pub const LIVE_OUTPUT_LINES: usize = 400;
+
 use crate::{
     artifact::VersionSource,
     chat::TurnStatus,
@@ -238,6 +244,14 @@ pub struct TurnSnapshot {
     pub messages: Vec<Message>,
     pub tool_calls: Vec<ToolCallDto>,
     pub pending: Vec<Interaction>,
+    /// The last [`LIVE_OUTPUT_LINES`] lines of each call still running, by call id (05 §3).
+    ///
+    /// A `tool_call.output` event is transient — the end state is the call's result, so nothing
+    /// replays it — which left a view that reattached in the middle of a two-minute build
+    /// staring at a row with no output until the command finished. The snapshot is the one
+    /// place that can answer for the events a subscriber was not there for, so it carries the
+    /// same window the view keeps. A finished call is not here: its result has the output.
+    pub output: std::collections::HashMap<CallId, Vec<String>>,
     pub usage: Option<Usage>,
     #[specta(type = specta_typescript::Number)]
     pub started_at: i64,
