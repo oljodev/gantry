@@ -676,6 +676,12 @@ export type ChatDetail_Deserialize = {
 	web_search: boolean,
 	active_turn: TurnId | null,
 	turns: TurnDto_Deserialize[],
+	/**
+	 *  An incognito session (15 A21). The view reads it to keep the three paths that write a
+	 *  memory by hand — `/remember`, **Remember this**, the Memory page's own editor — out of a
+	 *  window whose whole promise is that it keeps nothing.
+	 */
+	incognito: boolean,
 };
 
 /**  Everything the chat view needs. */
@@ -697,6 +703,12 @@ export type ChatDetail_Serialize = {
 	web_search: boolean,
 	active_turn: TurnId | null,
 	turns: TurnDto_Serialize[],
+	/**
+	 *  An incognito session (15 A21). The view reads it to keep the three paths that write a
+	 *  memory by hand — `/remember`, **Remember this**, the Memory page's own editor — out of a
+	 *  window whose whole promise is that it keeps nothing.
+	 */
+	incognito: boolean,
 };
 
 /**

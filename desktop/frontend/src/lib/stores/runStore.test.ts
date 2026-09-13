@@ -50,6 +50,7 @@ const chat = (turn: Partial<TurnDto>): ChatDetail => ({
   title: 't',
   pinned: false,
   archived: false,
+  incognito: false,
   project_id: null,
   surface: 'chat',
   roots: [],

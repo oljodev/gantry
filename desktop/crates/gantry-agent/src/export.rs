@@ -110,6 +110,7 @@ mod tests {
             title: "T".into(),
             pinned: false,
             archived: false,
+            incognito: false,
             project_id: None,
             created_at: 0,
             last_message_at: 0,

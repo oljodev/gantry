@@ -979,6 +979,7 @@ fn detail(
             .find(|t| t.status == TurnStatus::Running)
             .map(|t| t.id),
         turns: turn_dtos,
+        incognito: chat.incognito,
     }
 }
 

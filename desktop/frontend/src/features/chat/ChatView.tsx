@@ -534,7 +534,8 @@ export function ChatView({
 
   return (
     <div className="relative flex h-full min-w-0">
-      <RememberSelection chatId={chatId} scroller="[data-transcript]" />
+      {/* Nothing is written by hand out of an incognito window either (15 A21). */}
+      {!detail.incognito && <RememberSelection chatId={chatId} scroller="[data-transcript]" />}
       <div className="flex min-w-0 flex-1 flex-col">
         <div
           ref={feedRef}
@@ -644,7 +645,7 @@ export function ChatView({
           onSend={(text, attachments, invoked) => {
             // `/remember …` writes a memory instead of sending a turn (12 §B3): it is not a
             // question, and answering it would be noise.
-            const remember = rememberCommand(text);
+            const remember = detail.incognito ? null : rememberCommand(text);
             if (remember) {
               void unwrap(
                 commands.createMemory({

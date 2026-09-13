@@ -152,6 +152,10 @@ pub struct ChatDetail {
     pub web_search: bool,
     pub active_turn: Option<TurnId>,
     pub turns: Vec<TurnDto>,
+    /// An incognito session (15 A21). The view reads it to keep the three paths that write a
+    /// memory by hand — `/remember`, **Remember this**, the Memory page's own editor — out of a
+    /// window whose whole promise is that it keeps nothing.
+    pub incognito: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
