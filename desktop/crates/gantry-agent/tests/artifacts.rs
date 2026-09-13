@@ -39,6 +39,8 @@ fn chat(book: &ChatBook) -> ChatId {
         system_snapshot_version: 1,
         connectors: Vec::new(),
         incognito: false,
+        project: None,
+        grants: Vec::new(),
     })
     .unwrap()
     .id

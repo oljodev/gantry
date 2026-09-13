@@ -5,8 +5,8 @@ use std::sync::Arc;
 
 use gantry_core::{
     ChatDetail, ChatGrant, ChatId, ChatSummary, ContentPart, Feedback, GantryError, MediaSource,
-    Message, MessageId, Mode, ModelRef, ReasoningEffort, Role, StopReason, Surface, ToolCallDto,
-    TurnDto, TurnId, TurnStatus, Usage, now_ms,
+    Message, MessageId, Mode, ModelRef, ProjectGrant, ProjectId, ReasoningEffort, Role, StopReason,
+    Surface, ToolCallDto, TurnDto, TurnId, TurnStatus, Usage, now_ms,
 };
 use gantry_store::{
     BlobStore, Store,
@@ -81,6 +81,12 @@ pub struct NewChat {
     /// A session that never joins the history (15 A21): no memory in, no memory out, absent
     /// from every list, and deleted with its window.
     pub incognito: bool,
+    /// The project this chat is filed in, which is where its instructions, knowledge, defaults
+    /// and the artifacts it can see come from (09 M11, 13 §9).
+    pub project: Option<ProjectId>,
+    /// Standing permissions the project hands to every chat it opens (04 §8), recorded with
+    /// `GrantSource::ProjectDefault` so the Permissions page can say where they came from.
+    pub grants: Vec<ProjectGrant>,
 }
 
 /// Chat settings the composer and the sidebar can change; `None` leaves a field alone.
@@ -175,12 +181,14 @@ impl ChatBook {
             system_snapshot_version,
             connectors,
             incognito,
+            project,
+            grants,
         } = new;
         let now = now_ms();
         let chat = ChatRecord {
             id: ChatId::new(),
             surface,
-            project_id: None,
+            project_id: project,
             title: "New chat".to_owned(),
             title_source: "auto".into(),
             pinned: false,
@@ -217,6 +225,26 @@ impl ChatBook {
                             )?;
                         }
                     }
+                }
+                // A project's standing permissions, written as this chat's own (04 §8). They are
+                // grants like any other from here on: the Permissions panel lists them, says
+                // they came from the project, and revokes them for this chat alone.
+                for grant in &grants {
+                    gantry_store::repos::grants::insert(
+                        conn,
+                        &gantry_core::ChatGrant {
+                            id: gantry_core::GrantId::new(),
+                            chat_id: chat.id,
+                            instance_id: grant.instance_name.clone(),
+                            instance_name: grant.instance_name.clone(),
+                            tool_name: grant.tool_name.clone(),
+                            tier_ceiling: grant.tier_ceiling,
+                            arg_scope: None,
+                            source: gantry_core::GrantSource::ProjectDefault,
+                            created_at: now,
+                            revoked_at: None,
+                        },
+                    )?;
                 }
                 Ok(())
             })
@@ -1119,6 +1147,8 @@ mod tests {
                 system_snapshot_version: 1,
                 connectors: Vec::new(),
                 incognito: false,
+                project: None,
+                grants: Vec::new(),
             })
             .unwrap();
         (dir, book, c.id)

@@ -172,6 +172,42 @@ fn ingest_one(blobs: &BlobStore, input: AttachmentInput) -> Result<Ingested, Gan
     })
 }
 
+/// One knowledge file of a project (09 M11): the same reading, classifying, size-checking and
+/// extracting as an attachment, landing as a row rather than as a message part.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Knowledge {
+    pub name: String,
+    pub mime: String,
+    pub size: i64,
+    pub blob_hash: String,
+    /// What goes into the prompt of every chat in the project.
+    pub text: String,
+}
+
+/// Reads one file into a project's knowledge.
+///
+/// An image is refused here although it is a perfectly good attachment: knowledge is frozen into
+/// the prompt of every chat in the project, and a picture cannot be. Attaching it to a message,
+/// where the model really does look at it, still works.
+pub fn knowledge(blobs: &BlobStore, input: AttachmentInput) -> Result<Knowledge, GantryError> {
+    let ingested = ingest_one(blobs, input)?;
+    let record = ingested.record;
+    let Some(text) = record.extracted_text else {
+        return Err(GantryError::invalid(format!(
+            "{} has no text in it, so it cannot be project knowledge. Attach it to a message \
+             instead, where the model can look at it.",
+            record.name
+        )));
+    };
+    Ok(Knowledge {
+        name: record.name,
+        mime: record.mime,
+        size: record.size,
+        blob_hash: record.blob_hash,
+        text,
+    })
+}
+
 fn is_text_mime(mime: &str) -> bool {
     matches!(
         mime,

@@ -45,6 +45,27 @@ pub fn core_block(entries: &[MemoryDto]) -> (String, Vec<gantry_core::MemoryId>)
     (block, ids)
 }
 
+/// The skills behind a list of pinned ids, with their bodies, ready for [`pinned_block`].
+///
+/// A pin that names a skill which is gone, or disabled, is skipped rather than rendered as an
+/// empty tag: the pin is a row in another table, and the skill it points at can be uninstalled.
+#[must_use]
+pub fn bodies(conn: &Connection, ids: &[String]) -> Vec<(SkillDto, String)> {
+    let mut out = Vec::with_capacity(ids.len());
+    for id in ids {
+        let Ok(Some(skill)) = repos::skills::get(conn, id) else {
+            continue;
+        };
+        if !skill.enabled {
+            continue;
+        }
+        if let Some(body) = skill_body(conn, &skill) {
+            out.push((skill, body));
+        }
+    }
+    out
+}
+
 /// The pinned skills a frozen prompt carries (10 §2, layer 7).
 #[must_use]
 pub fn pinned_block(skills: &[(SkillDto, String)]) -> String {

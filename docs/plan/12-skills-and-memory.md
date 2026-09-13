@@ -290,10 +290,13 @@ forgotten the user's own playbooks is not more private, only worse.
 
 ### Not built
 
-- **Project scope.** `MemoryScopeKind::Project` and `project_skills` exist in the schema and in
-  the types, and nothing writes them: `projects` arrives with M11, and a project-scoped memory
-  is unreachable until a chat can belong to one. The selector already filters on scope, so M11
-  adds a project id and nothing else.
+- ~~**Project scope.**~~ **Built 2026-09-13 with M11.** A chat in a project reads the global
+  memories and that project's; `gantry__propose_memory` with `scope: project` writes the chat's
+  project id, and asked for a project scope in a chat that is in none it writes the entry
+  globally and says so — the alternative is a memory with a scope matching nothing, invisible to
+  every chat including the one that asked for it. Pinning a skill to a project now also does what
+  §A6 said it did: pinned skills are assembled into the frozen prompt as layer 7, which nothing
+  did before, so a pin used to remove a skill from matching without adding it anywhere.
 - **The shared community catalog**, still deferred for the reasons in §A5 flow 3.
 - **`references/` in the editor.** A skill can carry them, they are imported, exported, indexed
   and readable with `gantry__read_skill_file`; the editor does not yet let you write one.

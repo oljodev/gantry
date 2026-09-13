@@ -1,7 +1,10 @@
 //! Assembling a chat's system prompt from the fixed core and the additive layers, in the order
 //! of docs/plan/10 §2. Built once per chat and frozen as its `system_snapshot`.
 
-use gantry_core::{AuthState, ConnectorInstanceDto, Mode};
+use gantry_core::{
+    AuthState, ConnectorInstanceDto, Mode, PROJECT_INSTRUCTIONS_MAX_CHARS,
+    PROJECT_KNOWLEDGE_MAX_CHARS,
+};
 
 /// Bumped whenever `assets/prompts/core.md` or a mode fragment changes meaning.
 pub const CORE_VERSION: u32 = 8;
@@ -30,7 +33,10 @@ pub struct SystemPromptBuilder {
     mode: Mode,
     context: PromptContext,
     memory: String,
+    knowledge: String,
     global_instructions: String,
+    project_instructions: String,
+    skills: String,
 }
 
 impl SystemPromptBuilder {
@@ -40,7 +46,10 @@ impl SystemPromptBuilder {
             mode,
             context,
             memory: String::new(),
+            knowledge: String::new(),
             global_instructions: String::new(),
+            project_instructions: String::new(),
+            skills: String::new(),
         }
     }
 
@@ -65,6 +74,34 @@ impl SystemPromptBuilder {
         self
     }
 
+    /// The project's knowledge files (layer 3b), already rendered and capped by
+    /// [`knowledge_block`].
+    #[must_use]
+    pub fn knowledge(mut self, block: &str) -> Self {
+        self.knowledge = block.trim().to_owned();
+        self
+    }
+
+    /// `projects.instructions` (layer 5). Truncated to the cap.
+    #[must_use]
+    pub fn project_instructions(mut self, text: &str) -> Self {
+        self.project_instructions = text
+            .trim()
+            .chars()
+            .take(PROJECT_INSTRUCTIONS_MAX_CHARS)
+            .collect();
+        self
+    }
+
+    /// Skills pinned to the project or the chat (layer 7), already rendered by
+    /// `memory::selector::pinned_block`. A pinned skill is in the frozen prompt and is never
+    /// matched per message (12 §A4 rule 4), which only holds if it is really in here.
+    #[must_use]
+    pub fn pinned_skills(mut self, block: &str) -> Self {
+        self.skills = block.trim().to_owned();
+        self
+    }
+
     #[must_use]
     pub fn build(&self) -> String {
         let mut blocks: Vec<String> = Vec::new();
@@ -77,11 +114,26 @@ impl SystemPromptBuilder {
         if !self.memory.is_empty() {
             blocks.push(self.memory.clone());
         }
+        // Knowledge sits with the facts rather than with the rules: it is reference material the
+        // user put in the project, not an instruction about how to behave, and the instruction
+        // layers below read as instructions precisely because nothing else is mixed into them.
+        if !self.knowledge.is_empty() {
+            blocks.push(self.knowledge.clone());
+        }
         if !self.global_instructions.is_empty() {
             blocks.push(format!(
                 "<instructions scope=\"global\">\n{}\n</instructions>",
                 self.global_instructions
             ));
+        }
+        if !self.project_instructions.is_empty() {
+            blocks.push(format!(
+                "<instructions scope=\"project\">\n{}\n</instructions>",
+                self.project_instructions
+            ));
+        }
+        if !self.skills.is_empty() {
+            blocks.push(self.skills.clone());
         }
         let mut out = blocks.join("\n\n");
         out.push('\n');
@@ -113,6 +165,59 @@ impl SystemPromptBuilder {
         lines.push("</gantry_context>".to_owned());
         lines.join("\n")
     }
+}
+
+/// The project's knowledge files as one block (layer 3b), inside
+/// [`PROJECT_KNOWLEDGE_MAX_CHARS`].
+///
+/// The budget is shared by water-filling rather than first-come: each file gets an equal share of
+/// what is left, and a file smaller than its share hands the surplus back to the others. Filling
+/// in order would let one long file take everything and leave the four files after it out of the
+/// prompt entirely, which is the failure the user cannot see.
+///
+/// A file that is cut says so, in its own tag, with both numbers. A prompt that quietly holds the
+/// first third of a specification is worse than one that says it holds a third: the model can ask
+/// for the rest of a file it knows is cut.
+#[must_use]
+pub fn knowledge_block(files: &[(String, String)]) -> String {
+    let files: Vec<&(String, String)> =
+        files.iter().filter(|(_, t)| !t.trim().is_empty()).collect();
+    if files.is_empty() {
+        return String::new();
+    }
+    let mut order: Vec<usize> = (0..files.len()).collect();
+    order.sort_by_key(|&i| files[i].1.chars().count());
+    let mut shares = vec![0usize; files.len()];
+    let mut left = PROJECT_KNOWLEDGE_MAX_CHARS;
+    for (taken, &i) in order.iter().enumerate() {
+        let share = left / (files.len() - taken);
+        let want = files[i].1.chars().count();
+        shares[i] = want.min(share);
+        left -= shares[i];
+    }
+    let mut out = String::from("<project_knowledge>\n");
+    for (i, (name, text)) in files.iter().enumerate() {
+        let total = text.chars().count();
+        let kept = shares[i];
+        if kept == 0 {
+            out.push_str(&format!(
+                "<file name=\"{name}\" included=\"nothing: the knowledge budget was spent on the \
+                 other files\"/>\n"
+            ));
+            continue;
+        }
+        if kept < total {
+            out.push_str(&format!(
+                "<file name=\"{name}\" included=\"the first {kept} characters of {total}\">\n"
+            ));
+        } else {
+            out.push_str(&format!("<file name=\"{name}\">\n"));
+        }
+        out.push_str(text.chars().take(kept).collect::<String>().trim_end());
+        out.push_str("\n</file>\n");
+    }
+    out.push_str("</project_knowledge>");
+    out
 }
 
 /// The chat's folders, as of this turn (16 §7).

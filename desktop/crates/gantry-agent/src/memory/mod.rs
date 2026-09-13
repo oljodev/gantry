@@ -35,6 +35,16 @@ impl Memories {
             .read(move |c| repos::memories::list(c, filter, &query))?)
     }
 
+    /// The project a chat is filed in, which is the scope a memory proposed in it may take.
+    pub fn project_of(&self, chat: ChatId) -> Option<ProjectId> {
+        self.store
+            .read(move |c| Ok(repos::chats::get(c, chat)?.and_then(|c| c.project_id)))
+            .unwrap_or_else(|err| {
+                log::warn!("could not read the chat's project: {err}");
+                None
+            })
+    }
+
     pub fn get(&self, id: MemoryId) -> Result<Option<MemoryDto>, GantryError> {
         Ok(self.store.read(move |c| repos::memories::get(c, id))?)
     }

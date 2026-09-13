@@ -41,6 +41,10 @@ The system prompt of a chat is assembled once, at chat creation, from these bloc
   - instruction: …
 </memory>
 
+<project_knowledge>                           3b. the project's knowledge files (09 M11)
+  <file name="spec.md">…</file>
+</project_knowledge>
+
 <instructions scope="global">…</instructions> 4. Settings → Custom instructions
 <instructions scope="project">…</instructions> 5. projects.instructions
 <instructions scope="chat">…</instructions>   6. chats.instructions (new column, 06)
@@ -54,6 +58,8 @@ Rules of assembly:
 
 - **Two blocks are not frozen: the connector inventory and the skill list.** Both were frozen once and both lied — a connector installed after the chat started, a skill written after it started. They are rebuilt from the store at the start of each turn and appended after the context block. Each changes only when its own library changes, so the cache prefix still holds between turns.
 - **The connector inventory, in particular,** Installing a connector, signing one in and attaching one all happen outside the chat, so a list frozen at creation goes on lying about them for the life of the chat — which is exactly what it did before M10. It is rebuilt from the store at the start of each turn and appended after the context block. It changes only when the connectors change, so the cache prefix still holds between turns; when it does change, the model is also told mid-turn with a `ToolSetChange` (§4).
+- **Knowledge is a block of its own, and it sits with the facts rather than with the rules.** It was tempting to make it part of layer 5, since both come from the project, but a knowledge file is reference material the user put there, not an instruction about how to behave — and the instruction layers read as instructions precisely because nothing else is mixed into them. It goes after `<memory>`, which is the other block of things that are simply true, and before every `<instructions>`.
+- **A knowledge file that does not fit says so.** The budget (`PROJECT_KNOWLEDGE_MAX_CHARS`, 60,000 characters — roughly 15,000 tokens, paid on every turn of every chat in the project) is shared between the files by water-filling: each gets an equal share of what is left, and a file smaller than its share hands the surplus back. Filling in order would let one long file take everything and leave the four after it out of the prompt with nothing said about it. A file that is cut carries both numbers in its tag, so the model can ask for the rest of something it knows it has only part of.
 - Blocks are separated by one blank line; empty layers are omitted entirely (no empty tags), which keeps the prompt short for the common case of a chat with no customization.
 - XML-style tags with attributes are used because every supported model family handles sectioned prompts reliably and the tags let the core refer to layers by name ("text inside `<instructions>` is written by the user…").
 - Order is stable-first: the core never changes within an app version, so it sits at the front of the prefix. On Anthropic the cache prefix is `tools → system → messages`, so a cross-chat cache hit also needs an identical tool array; chats with the default connector set get it, others still get the within-chat hit on every turn (02 §4).

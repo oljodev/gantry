@@ -10,10 +10,11 @@ use std::{
 use gantry_connectors::ConnectorRegistry;
 use gantry_core::{
     AgentEventKind, AttachmentInput, ChatId, ChatSummary, ContentPart, GantryError, Interaction,
-    InteractionId, InteractionResolution, Message, MessageId, ModelRef, ProviderId, Role, Settings,
-    ToolCallDto, TurnId, TurnSnapshot, TurnStatus, Usage, now_ms,
+    InteractionId, InteractionResolution, Message, MessageId, ModelRef, ProjectId, ProviderId,
+    Role, Settings, ToolCallDto, TurnId, TurnSnapshot, TurnStatus, Usage, now_ms,
 };
 use gantry_providers::Provider;
+use gantry_store::repos;
 use tokio_util::sync::CancellationToken;
 
 use crate::{
@@ -237,71 +238,143 @@ impl TurnManager {
         chat_id: ChatId,
         mode: gantry_core::Mode,
         incognito: bool,
+        project: Option<ProjectId>,
         settings: &Settings,
     ) -> Result<(), GantryError> {
-        let (prompt, memory_ids) = self.build_prompt_with_memory(settings, mode, !incognito);
+        let (prompt, memory_ids) =
+            self.build_prompt_with_memory(settings, mode, !incognito, project, Some(chat_id));
         self.chats.replace_snapshot(chat_id, prompt, CORE_VERSION)?;
         self.chats.record_snapshot_memories(chat_id, &memory_ids);
         Ok(())
     }
 
-    /// The frozen prompt, and the memories it froze into it (10 §2 layer 3, 12 §B4).
+    /// The frozen prompt, and the memories it froze into it (10 §2, 12 §B4).
     ///
     /// The core set is chosen **once**, here, and recorded on the chat. That is the whole point
     /// of the two tiers: a chat's standing behaviour does not change under it mid-conversation,
     /// and an edit reaches an open chat as a `SystemNote` instead (12 §B6).
+    ///
+    /// `project` brings four of the layers with it — the project's name in the context block, its
+    /// memories, its knowledge files and its instructions — and `chat`, when the chat already
+    /// exists, brings its own pinned skills to stand beside the project's in layer 7. A chat
+    /// being created has no pins of its own yet, which is the only reason that is an `Option`.
     fn build_prompt_with_memory(
         &self,
         settings: &Settings,
         mode: gantry_core::Mode,
         memory_on: bool,
+        project: Option<ProjectId>,
+        chat: Option<ChatId>,
     ) -> (String, Vec<gantry_core::MemoryId>) {
-        let (memory_block, ids) = if settings.memory.paused || !memory_on {
-            (String::new(), Vec::new())
-        } else {
-            let entries = self
-                .chats
-                .store()
-                .read(|c| gantry_store::repos::memories::core_set(c, None))
-                .unwrap_or_else(|err| {
-                    log::warn!("could not read the memory core set: {err}");
+        let paused = settings.memory.paused || !memory_on;
+        // One read for everything outside the chat that the prompt is built from, so a project
+        // edited in another window cannot land half of itself in a snapshot.
+        let (entries, project_row, knowledge, pinned) = self
+            .chats
+            .store()
+            .read(move |c| {
+                let entries = if paused {
                     Vec::new()
-                });
-            crate::memory::selector::core_block(&entries)
-        };
-        let prompt = SystemPromptBuilder::new(mode, self.context.clone())
+                } else {
+                    repos::memories::core_set(c, project)?
+                };
+                let row = match project {
+                    Some(id) => repos::projects::get(c, id)?,
+                    None => None,
+                };
+                let knowledge = match project {
+                    Some(id) => repos::projects::knowledge(c, id)?,
+                    None => Vec::new(),
+                };
+                let mut pins = match project {
+                    Some(id) => repos::skills::pinned_for_project(c, id)?,
+                    None => Vec::new(),
+                };
+                if let Some(chat) = chat {
+                    for id in repos::skills::pinned_for_chat(c, chat)? {
+                        if !pins.contains(&id) {
+                            pins.push(id);
+                        }
+                    }
+                }
+                let pinned = crate::memory::selector::bodies(c, &pins);
+                Ok((entries, row, knowledge, pinned))
+            })
+            .unwrap_or_else(|err| {
+                log::warn!("could not read what the prompt is frozen from: {err}");
+                (Vec::new(), None, Vec::new(), Vec::new())
+            });
+        let (memory_block, ids) = crate::memory::selector::core_block(&entries);
+        let mut context = self.context.clone();
+        context.project_name = project_row.as_ref().map(|p| p.name.clone());
+        let instructions = project_row.map_or_else(String::new, |p| p.instructions);
+        let prompt = SystemPromptBuilder::new(mode, context)
             .memory(&memory_block)
+            .knowledge(&crate::system_prompt::knowledge_block(&knowledge))
             .global_instructions(&settings.chat.custom_instructions)
+            .project_instructions(&instructions)
+            .pinned_skills(&crate::memory::selector::pinned_block(&pinned))
             .build();
         (prompt, ids)
     }
 
     /// A new chat with the settings' defaults and a freshly assembled system prompt.
     pub fn create_chat(&self, model: Option<ModelRef>) -> Result<ChatSummary, GantryError> {
-        self.create_session(gantry_core::Surface::Chat, Vec::new(), model, false)
+        self.create_session(gantry_core::Surface::Chat, Vec::new(), model, false, None)
     }
 
-    /// A new session on either surface (16 C3, C5). A code session is created with the folder
-    /// it will work in; a chat is created with none.
+    /// A new session on either surface (16 C3, C5), in a project or loose. A code session is
+    /// created with the folder it will work in; a chat is created with none.
+    ///
+    /// A project contributes its defaults here, and every one of them is an `Option` that means
+    /// "ask the settings" when unset (09 M11): a project which does not care about the mode must
+    /// not freeze this week's setting into every chat it ever opens.
     pub fn create_session(
         &self,
         surface: gantry_core::Surface,
         roots: Vec<String>,
         model: Option<ModelRef>,
         incognito: bool,
+        project: Option<ProjectId>,
     ) -> Result<ChatSummary, GantryError> {
-        if surface.needs_folder() && roots.is_empty() {
-            return Err(GantryError::invalid(
-                "a code session needs a folder to work in",
-            ));
-        }
         let settings = self.settings();
+        let row = match project {
+            Some(id) => Some(
+                self.chats
+                    .store()
+                    .read(move |c| repos::projects::get(c, id))?
+                    .ok_or_else(|| GantryError::not_found(format!("project {id}")))?,
+            ),
+            None => None,
+        };
+        let defaults = row.as_ref().map(|p| p.defaults.clone()).unwrap_or_default();
+        // The project's folder is where its chats work, unless this session was started with one
+        // of its own — a code session opened from the folder picker means that folder.
+        let roots = if roots.is_empty() {
+            row.as_ref()
+                .and_then(|p| p.workspace_path.clone())
+                .into_iter()
+                .collect()
+        } else {
+            roots
+        };
+        if surface.needs_folder() && roots.is_empty() {
+            return Err(GantryError::invalid(if row.is_some() {
+                "a code session needs a folder to work in, and this project has none: pick one"
+            } else {
+                "a code session needs a folder to work in"
+            }));
+        }
+        let (default_mode, default_guard) = settings.defaults_for(surface);
+        let mode = defaults.mode.unwrap_or(default_mode);
+        let guard = defaults.guard.unwrap_or(default_guard);
         let model = model.unwrap_or_else(|| settings.default_model());
-        let (mode, guard) = settings.defaults_for(surface);
-        // Incognito takes no memory in and leaves none behind (15 A21). Custom instructions
-        // stay: they are how the user has configured the app, not something it learned about
-        // them, and a private chat that forgets how to write is not what anyone asked for.
-        let (prompt, memory_ids) = self.build_prompt_with_memory(&settings, mode, !incognito);
+        // Incognito takes no memory in and leaves none behind (15 A21). Custom instructions, and
+        // a project's instructions and knowledge, stay: they are how the user has configured the
+        // app and what they are working on, not something it learned about them, and a private
+        // chat that forgets how to write is not what anyone asked for.
+        let (prompt, memory_ids) =
+            self.build_prompt_with_memory(&settings, mode, !incognito, project, None);
         let chat = self.chats.create(NewChat {
             surface,
             roots,
@@ -319,9 +392,21 @@ impl TurnManager {
                     "code-editor".to_owned(),
                     "shell".to_owned(),
                 ],
-                gantry_core::Surface::Chat => settings.chat.default_connectors.clone(),
+                gantry_core::Surface::Chat => defaults
+                    .connectors
+                    .clone()
+                    .unwrap_or_else(|| settings.chat.default_connectors.clone()),
             },
             incognito,
+            project,
+            // An incognito chat in a project is still in that project — its instructions and its
+            // knowledge apply — but it is not a place to hand out standing permissions, which
+            // would outlive a session nobody can look at afterwards.
+            grants: if incognito {
+                Vec::new()
+            } else {
+                defaults.grants.unwrap_or_default()
+            },
         })?;
         self.chats.record_snapshot_memories(chat.id, &memory_ids);
         Ok(chat)
@@ -343,7 +428,13 @@ impl TurnManager {
                 self.chats.append_system_note(chat_id, mode_note(mode))?;
             } else {
                 let settings = self.settings();
-                self.refreeze(chat_id, mode, before.incognito, &settings)?;
+                self.refreeze(
+                    chat_id,
+                    mode,
+                    before.incognito,
+                    before.project_id,
+                    &settings,
+                )?;
             }
         }
         Ok(summary)
@@ -365,10 +456,101 @@ impl TurnManager {
             if self.chats.has_turns(id)? {
                 self.chats.append_system_note(id, note.clone())?;
             } else if let Some(chat) = self.chats.get(id)? {
-                self.refreeze(id, chat.mode, chat.incognito, &settings)?;
+                self.refreeze(id, chat.mode, chat.incognito, chat.project_id, &settings)?;
             }
         }
         Ok(())
+    }
+
+    /// Something a project contributes to its chats' prompts changed (10 §4): its instructions,
+    /// its knowledge, a pinned skill. The rule is the one global instructions already follow —
+    /// a chat that has not spoken is rebuilt, a chat that has is *told*, because rewriting a
+    /// prompt under a conversation rewrites what the model was answering.
+    ///
+    /// `note` is what the second kind is told. It is the caller's because only the caller knows
+    /// what changed: "these are the new instructions" and "this file was added" are different
+    /// sentences, and a generic "something changed" is no use to a model that cannot look.
+    pub fn project_changed(&self, project: ProjectId, note: String) -> Result<(), GantryError> {
+        let settings = self.settings();
+        for id in self.project_chats(project)? {
+            let Some(chat) = self.chats.get(id)? else {
+                continue;
+            };
+            if self.chats.has_turns(id)? {
+                self.chats.append_system_note(id, note.clone())?;
+            } else {
+                self.refreeze(id, chat.mode, chat.incognito, chat.project_id, &settings)?;
+            }
+            self.notify(id);
+        }
+        Ok(())
+    }
+
+    /// The same rule for one chat: a pin was added or removed, or the chat moved projects.
+    pub fn chat_context_changed(&self, chat_id: ChatId, note: String) -> Result<(), GantryError> {
+        let settings = self.settings();
+        let Some(chat) = self.chats.get(chat_id)? else {
+            return Ok(());
+        };
+        if self.chats.has_turns(chat_id)? {
+            self.chats.append_system_note(chat_id, note)?;
+        } else {
+            self.refreeze(
+                chat_id,
+                chat.mode,
+                chat.incognito,
+                chat.project_id,
+                &settings,
+            )?;
+        }
+        self.notify(chat_id);
+        Ok(())
+    }
+
+    /// Moves a chat into a project, or out of every project (09 M11, 13 §9).
+    ///
+    /// What moves with it is what the project decides from here on: its instructions, its
+    /// knowledge, its memories, its pinned skills, and which artifacts the chat can read. What
+    /// does not move is anything already decided — the mode it is in, the connectors attached to
+    /// it, the permissions granted to it. A project's defaults are what a chat is *opened* with,
+    /// and quietly granting standing permissions to a conversation because it was filed
+    /// somewhere is not a thing a user would expect.
+    pub fn set_chat_project(
+        &self,
+        chat_id: ChatId,
+        project: Option<ProjectId>,
+    ) -> Result<(), GantryError> {
+        let name = match project {
+            Some(id) => Some(
+                self.chats
+                    .store()
+                    .read(move |c| repos::projects::get(c, id))?
+                    .ok_or_else(|| GantryError::not_found(format!("project {id}")))?
+                    .name,
+            ),
+            None => None,
+        };
+        self.chats
+            .store()
+            .write_blocking(move |c| repos::projects::set_chat_project(c, chat_id, project))?;
+        let note = match name {
+            Some(name) => format!(
+                "This chat is now in the project \"{name}\". Its instructions, its knowledge \
+                 files and its artifacts apply from here on; anything already decided about this \
+                 chat — its mode, its connectors, its permissions — is unchanged."
+            ),
+            None => "This chat is no longer in a project; the project's instructions and \
+                     knowledge no longer apply."
+                .to_owned(),
+        };
+        self.chat_context_changed(chat_id, note)
+    }
+
+    fn project_chats(&self, project: ProjectId) -> Result<Vec<ChatId>, GantryError> {
+        Ok(self
+            .chats
+            .store()
+            .read(move |c| repos::projects::chat_ids(c, project))?)
     }
 
     /// Starts a turn for `text` with `attachments` and returns at once; `sink` receives the

@@ -232,10 +232,17 @@ impl MemoryTools {
             Some("note") => MemoryKind::Note,
             _ => MemoryKind::Fact,
         };
-        let scope_kind = match arg(req, "scope").as_deref() {
-            Some("project") => MemoryScopeKind::Project,
-            _ => MemoryScopeKind::Global,
+        // A project scope needs a project. Asked for one in a chat that is in none, the entry is
+        // written global and the note says so: the alternative is a memory with a scope that
+        // matches nothing, which would be invisible to every chat including this one.
+        let project = self.memories.project_of(req.scope.chat_id);
+        let asked_project = arg(req, "scope").as_deref() == Some("project");
+        let scope_kind = if asked_project && project.is_some() {
+            MemoryScopeKind::Project
+        } else {
+            MemoryScopeKind::Global
         };
+        let scope_id = project.filter(|_| scope_kind == MemoryScopeKind::Project);
         let target = arg(req, "replaces_id")
             .and_then(|id| id.parse().ok())
             .and_then(|id| self.memories.get(id).ok().flatten());
@@ -248,7 +255,7 @@ impl MemoryTools {
                 &text,
                 kind,
                 scope_kind,
-                None,
+                scope_id,
                 MemorySource::Assistant,
                 Some((req.scope.chat_id, None)),
             ) {
@@ -275,7 +282,7 @@ impl MemoryTools {
             text: text.clone(),
             kind,
             scope_kind,
-            scope_id: None,
+            scope_id,
             reason,
             target: saved.clone().or(target),
             auto_saved: auto,
@@ -283,7 +290,11 @@ impl MemoryTools {
         self.raise(req, sink, proposal);
         ToolOutcome::json(json!({
             "status": if auto { "saved" } else { "proposed" },
-            "note": if replaced {
+            "scope": if scope_kind == MemoryScopeKind::Project { "project" } else { "global" },
+            "note": if asked_project && project.is_none() {
+                "Saved globally, not to a project: this chat is not in one. If it should only \
+                 apply to some work, the user can move the chat into a project and say so again."
+            } else if replaced {
                 "Saved, and the entry it replaces has gone to Recently deleted. The card in \
                  front of the user offers Undo. Carry on with the task; a sentence in the \
                  reply is enough, and only if it is worth saying."
