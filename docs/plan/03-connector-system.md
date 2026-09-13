@@ -323,10 +323,10 @@ Why it is the riskiest connector: arbitrary code as the user, and scope cannot b
 
 | Tool | Input → output | Tier |
 |------|----------------|------|
-| `fetch_url` | `{ url, max_chars?, format?: markdown\|text\|html }` → extracted content, title, final URL | read (internet) |
+| `fetch_url` | `{ url, offset?, max_chars?, format?: markdown\|text\|html }` → extracted content, title, final URL, and where this window sits in the page | read (internet) |
 | `search` | `{ query, max_results? }` → results; present only when a search API key (Brave, Tavily or Exa) is configured in `user_config` | read (internet) |
 
-`fetch_url`: 5 MB cap, ≤5 redirects, 20 s timeout, no cookies, private and loopback address ranges blocked. Provider-native web search (Anthropic, OpenAI, Gemini, xAI, OpenRouter plugin) is handled by the provider layer and preferred; this connector is the fallback and the "read this page" tool.
+`fetch_url`: 5 MB cap, ≤5 redirects, 20 s timeout, no cookies, private and loopback address ranges blocked. A page longer than `max_chars` is returned one window at a time rather than cut off: the result carries `first_char`, `total_chars`, `more` and `next_offset`, and `offset` is where the next call resumes — the same shape as `filesystem.read_file`'s `offset`/`total_lines`/`more`, in characters rather than lines. The document is held for five minutes so a page turn is neither a second download nor a second chance for the offsets to have moved, which also makes reading the same page twice in a chat cost one fetch. Provider-native web search (Anthropic, OpenAI, Gemini, xAI, OpenRouter plugin) is handled by the provider layer and preferred; this connector is the fallback and the "read this page" tool.
 
 ## 6. MCP runtime
 

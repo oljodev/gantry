@@ -9,15 +9,21 @@
 //! `search` is bring-your-own-key and is simply absent until there is one (§11 step 2). That is
 //! why `tools()` is computed rather than constant: the model is shown the tools it can actually
 //! use, and never spends a round discovering that one of them is unconfigured.
+//!
+//! A page longer than the budget comes back a window at a time rather than cut off, and `cache`
+//! holds the document in between so turning the page is neither a second download nor a second
+//! chance for the offsets to have gone stale.
 
 #![forbid(unsafe_code)]
 
+mod cache;
 mod extract;
 mod fetch;
 mod guard;
 mod search;
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use async_trait::async_trait;
 use gantry_connectors::{
@@ -26,7 +32,8 @@ use gantry_connectors::{
 use gantry_core::{InstanceId, RiskTier, ToolDef};
 use tokio_util::sync::CancellationToken;
 
-pub use extract::{Article, Format, article, clamp, nests_too_deep};
+pub use cache::{Cache, MAX_CHARS as CACHE_MAX_CHARS, MAX_PAGES, Page, TTL as CACHE_TTL};
+pub use extract::{Article, Format, Window, article, nests_too_deep, window};
 pub use fetch::{MAX_BYTES, MAX_REDIRECTS, TIMEOUT, USER_AGENT};
 pub use search::{DEFAULT_RESULTS, Hit, MAX_RESULTS, Provider, Search, SearchError, parse_hits};
 
@@ -36,12 +43,14 @@ pub const MANIFEST: &str = include_str!("../manifest.json");
 /// The connector id; equals the folder name and the tool namespace prefix.
 pub const ID: &str = "web";
 
-/// Characters of page text returned when the model does not say. A long article is 20–40 000;
-/// this fits most of them whole while keeping a single fetch from eating a context window.
+/// Characters of page text returned in one window when the model does not say. A long article
+/// is 20–40 000; this fits most of them whole while keeping a single fetch from eating a
+/// context window. Anything past it is a page turn away, not lost.
 pub const DEFAULT_MAX_CHARS: usize = 40_000;
 
 /// The ceiling on `max_chars`. Past this the answer is not a page to read but a file to search,
-/// and 5 MB of text through a prompt helps nobody.
+/// and 5 MB of text through a prompt helps nobody. A model that wants more asks for the next
+/// window.
 pub const MAX_MAX_CHARS: usize = 200_000;
 
 pub struct Web {
@@ -50,6 +59,8 @@ pub struct Web {
     /// `None` until the user configures a search key, and the reason `search` is or is not in
     /// the tool list.
     search: Option<Search>,
+    /// What has been read recently, so a page turn is free. See `cache`.
+    pages: Cache,
 }
 
 impl Web {
@@ -64,6 +75,7 @@ impl Web {
             },
             http: fetch::client(),
             search,
+            pages: Cache::new(),
         }
     }
 
@@ -129,18 +141,21 @@ impl Web {
                 }
             },
         };
+        let offset = number(args, "offset").unwrap_or(0) as usize;
         let max_chars = number(args, "max_chars")
             .map_or(DEFAULT_MAX_CHARS, |n| (n as usize).clamp(1, MAX_MAX_CHARS));
+
+        // The second window of a document, and the second read of the same page, both land
+        // here and neither touches the network.
+        if let Some((page, age)) = self.pages.get(&url, format) {
+            return Ok(render(&page, format, offset, max_chars, Some(age)));
+        }
 
         let fetched = match fetch::get(&self.http, &url).await {
             Ok(fetched) => fetched,
             Err(err) => return Ok(ToolOutcome::error(err.to_string())),
         };
 
-        // An HTTP error still has a body, and a 404 page's text is often the useful part of the
-        // answer ("moved to /docs/new"). It comes back as an error the model can read, with the
-        // status named, rather than as a success that pretends nothing happened.
-        let failed = !(200..300).contains(&fetched.status);
         let mime = fetch::mime(fetched.content_type.as_deref());
         if !fetch::is_readable(&mime) {
             return Ok(ToolOutcome::error(format!(
@@ -158,7 +173,8 @@ impl Web {
         let html = fetch::is_html(&mime) || looks_like_html(&text);
         if html && extract::nests_too_deep(&text) {
             return Ok(ToolOutcome::error(format!(
-                "{} nests HTML too deeply to read. Parsing it would cost more time than any page                  is worth; this is a property of the page, not of the address.",
+                "{} nests HTML too deeply to read. Parsing it would cost more time than any page \
+                 is worth; this is a property of the page, not of the address.",
                 fetched.final_url
             )));
         }
@@ -177,37 +193,18 @@ impl Web {
         } else {
             (None, text.trim().to_owned())
         };
-        let (body, clamped) = extract::clamp(&body, max_chars);
 
-        let mut out = serde_json::json!({
-            "url": fetched.final_url.to_string(),
-            "status": fetched.status,
-            "content_type": mime,
-            "format": match format { Format::Markdown => "markdown", Format::Text => "text", Format::Html => "html" },
-            "content": body,
-            "chars": body.chars().count(),
-            // Two different losses, and a model that has to decide whether to fetch a second
-            // time needs to know which one it is looking at (D9).
-            "truncated": clamped,
-            "response_truncated": fetched.truncated,
-        });
-        let fields = out.as_object_mut().expect("a json object");
-        if let Some(title) = title {
-            fields.insert("title".into(), title.into());
-        }
-        if !fetched.redirects.is_empty() {
-            fields.insert("redirects".into(), fetched.redirects.clone().into());
-        }
-        if failed {
-            // `is_error` so the turn loop and the feed both show it as a failure, with the page
-            // body still attached for the model to read.
-            return Ok(ToolOutcome::Complete {
-                content: vec![gantry_core::ResultPart::Json { json: out.clone() }],
-                structured: Some(out),
-                is_error: true,
-            });
-        }
-        Ok(ToolOutcome::json(out))
+        let page = Arc::new(Page::new(
+            fetched.final_url.to_string(),
+            fetched.status,
+            mime,
+            title,
+            fetched.redirects,
+            fetched.truncated,
+            body,
+        ));
+        self.pages.put(&url, format, Arc::clone(&page));
+        Ok(render(&page, format, offset, max_chars, None))
     }
 
     async fn search(&self, args: &serde_json::Value) -> Result<ToolOutcome, ConnectorError> {
@@ -236,6 +233,85 @@ impl Web {
             Err(err) => Ok(ToolOutcome::error(err.to_string())),
         }
     }
+}
+
+/// One window of a page, as the model sees it.
+///
+/// Separate from the fetch because everything here is a pure function of a document that has
+/// already been read — which is what lets the shape of the result, page turns included, be
+/// tested without reaching the network.
+fn render(
+    page: &Page,
+    format: Format,
+    offset: usize,
+    max_chars: usize,
+    age: Option<Duration>,
+) -> ToolOutcome {
+    let view = extract::window(&page.body, offset, max_chars);
+    let chars = view.text.chars().count();
+    let mut out = serde_json::json!({
+        "url": page.final_url,
+        "status": page.status,
+        "content_type": page.content_type,
+        "format": match format {
+            Format::Markdown => "markdown",
+            Format::Text => "text",
+            Format::Html => "html",
+        },
+        "content": view.text,
+        "chars": chars,
+        // Where this window sits in the document, so a model can say where a quotation came
+        // from and can ask for the next part without guessing (D9: nothing is silently cut).
+        "first_char": view.first,
+        "total_chars": view.total,
+        "more": view.more(),
+        // A different loss, and one a page turn cannot fix: the response itself was cut at the
+        // 5 MB cap, so the document is short of the real page.
+        "response_truncated": page.response_truncated,
+    });
+    let fields = out.as_object_mut().expect("a json object");
+    if view.more() {
+        // Named rather than left as arithmetic on `first_char` + `chars`, which is off by
+        // however much the window backed up to end on a whole line.
+        fields.insert("next_offset".into(), view.last.into());
+    }
+    if let Some(title) = &page.title {
+        fields.insert("title".into(), title.clone().into());
+    }
+    if !page.redirects.is_empty() {
+        fields.insert("redirects".into(), page.redirects.clone().into());
+    }
+    if let Some(age) = age {
+        // Said plainly, because it is the one thing about this result that is not what the
+        // network would say right now. A model asked to check whether a page has changed can
+        // see that this copy would not show it.
+        fields.insert("cached".into(), true.into());
+        fields.insert("cached_seconds_ago".into(), age.as_secs().into());
+    }
+    if chars == 0 && view.total > 0 {
+        fields.insert(
+            "note".into(),
+            format!(
+                "offset {offset} is past the end of this page, which is {} characters.",
+                view.total
+            )
+            .into(),
+        );
+    }
+
+    // An HTTP error still has a body, and a 404 page's text is often the useful part of the
+    // answer ("moved to /docs/new"). It comes back as an error the model can read, with the
+    // status named, rather than as a success that pretends nothing happened.
+    if !(200..300).contains(&page.status) {
+        // `is_error` so the turn loop and the feed both show it as a failure, with the page
+        // body still attached for the model to read.
+        return ToolOutcome::Complete {
+            content: vec![gantry_core::ResultPart::Json { json: out.clone() }],
+            structured: Some(out),
+            is_error: true,
+        };
+    }
+    ToolOutcome::json(out)
 }
 
 /// A body served as `text/plain` that is plainly HTML, which servers do more often than they
@@ -286,7 +362,9 @@ pub fn definitions(with_search: bool) -> Vec<ToolDef> {
         "Fetch a web page and read it as text. HTML comes back as the article — navigation, \
          ads and comments removed — with the page title and the final URL after any redirects. \
          Use this to read a page the user linked, to check documentation, or to follow a search \
-         result. http and https only, and only addresses on the public internet.",
+         result. A page longer than the budget is not cut off: the result carries `more` and \
+         `next_offset`, and calling again with that `offset` continues from there at no extra \
+         cost. http and https only, and only addresses on the public internet.",
         serde_json::json!({
             "type": "object",
             "properties": {
@@ -295,9 +373,11 @@ pub fn definitions(with_search: bool) -> Vec<ToolDef> {
                 "format": { "type": "string", "enum": ["markdown", "text", "html"],
                             "default": "markdown",
                             "description": "markdown keeps headings, links and lists; text is prose only; html is the extracted markup." },
+                "offset": { "type": "integer", "minimum": 0, "default": 0,
+                            "description": "First character to return, counting from 0. Pass the previous result's next_offset to read on." },
                 "max_chars": { "type": "integer", "minimum": 1, "default": DEFAULT_MAX_CHARS,
                                "maximum": MAX_MAX_CHARS,
-                               "description": "Characters of content to return. The result says whether anything was cut." }
+                               "description": "Characters of content to return in this window. The result says how long the whole page is and where this window stopped." }
             },
             "required": ["url"],
             "additionalProperties": false
@@ -415,6 +495,120 @@ mod tests {
         assert!(!looks_like_html(
             "# A markdown file\n\nwith <angle> brackets"
         ));
+    }
+
+    /// A document that has already been read, so the result shape can be tested for what it
+    /// is: a pure function of a page, with no network anywhere near it.
+    fn page(body: &str) -> Page {
+        Page::new(
+            "https://example.com/article".to_owned(),
+            200,
+            "text/html".to_owned(),
+            Some("An article".to_owned()),
+            Vec::new(),
+            false,
+            body.to_owned(),
+        )
+    }
+
+    fn result(outcome: &ToolOutcome) -> serde_json::Value {
+        let ToolOutcome::Complete { structured, .. } = outcome;
+        structured.clone().expect("a structured result")
+    }
+
+    #[test]
+    fn a_page_that_fits_is_one_window_with_nothing_after_it() {
+        let page = page("# Title\n\nA short article.");
+        let out = result(&render(&page, Format::Markdown, 0, DEFAULT_MAX_CHARS, None));
+
+        assert_eq!(out["content"], "# Title\n\nA short article.");
+        assert_eq!(out["first_char"], 0);
+        assert_eq!(out["total_chars"], 25);
+        assert_eq!(out["more"], false);
+        assert_eq!(out["title"], "An article");
+        assert_eq!(out["url"], "https://example.com/article");
+        // No next page, so no offset to point at one.
+        assert!(out.get("next_offset").is_none());
+        // Nothing was served from memory, so nothing claims to have been.
+        assert!(out.get("cached").is_none());
+    }
+
+    #[test]
+    fn a_long_page_hands_back_the_offset_to_carry_on_from() {
+        let body: String = (0..200).map(|n| format!("Line {n}.\n")).collect();
+        let page = page(&body);
+        let first = result(&render(&page, Format::Markdown, 0, 100, None));
+
+        assert_eq!(first["more"], true);
+        assert_eq!(first["first_char"], 0);
+        let next = first["next_offset"]
+            .as_u64()
+            .expect("somewhere to carry on");
+        assert!(next > 0 && next <= 100, "{next}");
+
+        // The model passes it straight back, and the second window starts exactly there.
+        let second = result(&render(&page, Format::Markdown, next as usize, 100, None));
+        assert_eq!(second["first_char"], next);
+        assert_eq!(second["total_chars"], first["total_chars"]);
+        // The two windows together are the start of the document, in order and with no
+        // content lost between them.
+        let joined = format!(
+            "{}\n{}",
+            first["content"].as_str().unwrap(),
+            second["content"].as_str().unwrap()
+        );
+        assert!(body.starts_with(joined.trim_end()), "{joined}");
+    }
+
+    #[test]
+    fn a_window_past_the_end_says_how_long_the_page_actually_is() {
+        let page = page("short");
+        let out = result(&render(
+            &page,
+            Format::Markdown,
+            4_000,
+            DEFAULT_MAX_CHARS,
+            None,
+        ));
+
+        assert_eq!(out["content"], "");
+        assert_eq!(out["total_chars"], 5);
+        assert_eq!(out["more"], false);
+        assert!(
+            out["note"].as_str().unwrap().contains("past the end"),
+            "a model that guessed too far should be told, not left with an empty string"
+        );
+    }
+
+    #[test]
+    fn a_page_answered_from_memory_says_that_it_is_not_fresh() {
+        let page = page("cached prose");
+        let out = result(&render(
+            &page,
+            Format::Markdown,
+            0,
+            DEFAULT_MAX_CHARS,
+            Some(Duration::from_secs(42)),
+        ));
+
+        assert_eq!(out["cached"], true);
+        assert_eq!(out["cached_seconds_ago"], 42);
+        assert_eq!(out["content"], "cached prose");
+    }
+
+    #[test]
+    fn an_http_error_is_an_error_with_the_page_still_attached() {
+        let mut page = page("The page you asked for moved to /docs/new.");
+        page.status = 404;
+        let outcome = render(&page, Format::Markdown, 0, DEFAULT_MAX_CHARS, None);
+
+        let ToolOutcome::Complete { is_error, .. } = &outcome;
+        assert!(is_error, "a 404 is not a success");
+        let out = result(&outcome);
+        assert_eq!(out["status"], 404);
+        assert!(out["content"].as_str().unwrap().contains("/docs/new"));
+        // And it pages like any other document.
+        assert_eq!(out["more"], false);
     }
 
     fn names(with_search: bool) -> Vec<String> {

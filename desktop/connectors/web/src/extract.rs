@@ -572,20 +572,75 @@ fn tidy(text: &str) -> String {
     out.trim().to_owned()
 }
 
-/// Cut to a character budget on a line boundary where there is one nearby, so the model is not
-/// handed half a word. Returns whether anything was dropped, which the result reports (D9:
-/// nothing is silently truncated).
-#[must_use]
-pub fn clamp(text: &str, max_chars: usize) -> (String, bool) {
-    if text.chars().count() <= max_chars {
-        return (text.to_owned(), false);
+/// One window of a document: what was returned, and where in the whole it came from.
+///
+/// Positions are characters, counted from 0, and they are metadata — never written into the
+/// text (D8). `last` is where the *next* window starts, so a model paging through a document
+/// passes it straight back as `offset` and loses nothing between the two.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Window {
+    pub text: String,
+    /// Character this window starts at.
+    pub first: usize,
+    /// Character the next window starts at; `total` when this was the last one.
+    pub last: usize,
+    /// Characters in the whole document.
+    pub total: usize,
+}
+
+impl Window {
+    /// Whether there is anything after this window.
+    #[must_use]
+    pub fn more(&self) -> bool {
+        self.last < self.total
     }
-    let cut: String = text.chars().take(max_chars).collect();
-    let on_a_line = cut
-        .rfind('\n')
-        .filter(|at| *at * 4 > cut.len() * 3)
-        .map_or(cut.as_str(), |at| &cut[..at]);
-    (on_a_line.trim_end().to_owned(), true)
+}
+
+/// Cut `max_chars` from `text`, starting at `offset`, on a line boundary where there is one
+/// near the end — so the model is not handed half a word, and the next window does not begin
+/// mid-sentence. Nothing is ever silently dropped: what was left is in `last` and `total`
+/// (D9).
+///
+/// An `offset` past the end is not an error. It returns nothing, says so, and reports the real
+/// length, which is what a model that guessed too far needs in order to correct itself.
+///
+/// A window always advances: `last` is greater than `first` whenever there is anything left, so
+/// a caller that keeps passing `last` back in terminates. That is why a budget of zero is read
+/// as one character rather than as nothing — a zero-width window with more after it is a loop
+/// that never ends.
+#[must_use]
+pub fn window(text: &str, offset: usize, max_chars: usize) -> Window {
+    let total = text.chars().count();
+    let first = offset.min(total);
+    let short = |last: usize, text: String| Window {
+        text,
+        first,
+        last,
+        total,
+    };
+    if first == total {
+        return short(first, String::new());
+    }
+
+    let taken: String = text.chars().skip(first).take(max_chars.max(1)).collect();
+    let end = first + taken.chars().count();
+    if end == total {
+        // The rest of the document, so there is no boundary to be tidy about.
+        return short(end, taken.trim_end().to_owned());
+    }
+
+    // Back up to the last line break, but only if it is late enough that doing so does not
+    // throw away most of the budget. `rfind` and `len` are both in bytes, which is what makes
+    // them comparable; the ratio is the same either way.
+    match taken.rfind('\n').filter(|at| *at * 4 > taken.len() * 3) {
+        // The break itself is consumed as the separator, so the next window opens on the line
+        // after it rather than on a newline.
+        Some(at) => short(
+            first + taken[..at].chars().count() + 1,
+            taken[..at].trim_end().to_owned(),
+        ),
+        None => short(end, taken.trim_end().to_owned()),
+    }
 }
 
 #[cfg(test)]

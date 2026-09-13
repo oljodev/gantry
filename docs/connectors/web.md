@@ -164,6 +164,16 @@ passages is only safe when the rest is reachable; otherwise a tool that cannot f
 reports that it does not exist. The truncation marker carries the instruction for resuming, in
 words, because that is what makes models resume.
 
+**What shipped instead, and why.** The connector built in M11 paginates with `offset` and
+`max_chars`, not `start_index` and `max_length`, and reports `first_char`, `total_chars`, `more`
+and `next_offset`. The argument above is about recognition across products; the argument that
+won is recognition across Gantry, where `filesystem.read_file` already takes `offset` and answers
+`total_lines` and `more`. A model holding both tools in one turn meets one convention rather than
+two, and `max_chars` was already shipped, so the pair this paragraph describes was half broken
+anyway. Resuming is carried by the `next_offset` field rather than by a marker inside the text:
+positions belong in metadata, never in the content (D8 of the plan's tool rules). If a future
+`query` parameter lands, it inherits these names.
+
 ### `research`
 
 Answer a question from several sources in one call. The tool that replaces Tavily.

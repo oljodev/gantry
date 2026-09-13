@@ -127,34 +127,101 @@ fn an_empty_document_is_not_a_panic() {
 }
 
 #[test]
-fn a_page_cut_to_a_budget_says_that_it_was_cut() {
-    use gantry_connector_web::clamp;
+fn a_page_cut_to_a_budget_says_where_it_stopped() {
+    use gantry_connector_web::window;
 
     let body = article(ARTICLE, Format::Markdown).body;
-    assert!(
-        body.chars().count() > 200,
-        "the fixture should be long enough to cut"
-    );
+    let total = body.chars().count();
+    assert!(total > 200, "the fixture should be long enough to cut");
 
     // Under the budget: returned whole, and reported as whole.
-    let (whole, cut) = clamp(&body, 100_000);
-    assert_eq!(whole, body);
-    assert!(!cut);
+    let whole = window(&body, 0, 100_000);
+    assert_eq!(whole.text, body);
+    assert_eq!(whole.total, total);
+    assert!(!whole.more());
+    assert_eq!(whole.last, total);
 
     // Over it: shortened, and reported as shortened. Nothing is ever silently dropped (D9).
-    let (short, cut) = clamp(&body, 200);
-    assert!(cut);
-    assert!(short.chars().count() <= 200);
-    assert!(short.starts_with("# Bounded fetching"));
+    let short = window(&body, 0, 200);
+    assert!(short.more());
+    assert!(short.text.chars().count() <= 200);
+    assert!(short.text.starts_with("# Bounded fetching"));
+    assert_eq!(short.total, total);
+    assert!(short.last <= 200 && short.last > 0);
     // Cut on a line boundary where there is one late enough to keep most of the budget, so the
     // model is not handed half a word.
-    assert_eq!(short.trim_end(), short);
+    assert_eq!(short.text.trim_end(), short.text);
 
-    // The degenerate budgets do not panic or produce something longer than they asked for.
-    for budget in [1, 2, 3] {
-        let (tiny, cut) = clamp(&body, budget);
-        assert!(cut);
-        assert!(tiny.chars().count() <= budget);
+    // The degenerate budgets do not panic or produce something longer than they asked for, and
+    // every one of them still advances — a window that returned nothing with more to come is a
+    // model paging forever on the same offset.
+    for budget in [0, 1, 2, 3] {
+        let tiny = window(&body, 0, budget);
+        assert!(tiny.more());
+        assert!(tiny.text.chars().count() <= budget.max(1));
+        assert!(tiny.last > 0, "a budget of {budget} made no progress");
+    }
+}
+
+#[test]
+fn the_windows_of_a_page_join_back_up_into_the_page() {
+    use gantry_connector_web::window;
+
+    let body = article(ARTICLE, Format::Markdown).body;
+    let total = body.chars().count();
+    let all: Vec<char> = body.chars().collect();
+
+    // Walk the whole document in small windows the way a model would, following next_offset.
+    let mut at = 0;
+    let mut seen = 0;
+    let mut windows = 0;
+    while at < total {
+        let view = window(&body, at, 64);
+        assert_eq!(view.first, at);
+        assert_eq!(view.total, total);
+        assert!(
+            view.last > at,
+            "a window has to advance, or paging never ends"
+        );
+
+        // Every character returned is the character at that position in the original: the
+        // window is a view of the document, not a rewrite of it.
+        let from = &all[view.first..view.first + view.text.chars().count()];
+        assert_eq!(view.text.chars().collect::<Vec<_>>(), from);
+
+        seen += view.text.chars().count();
+        at = view.last;
+        windows += 1;
+        assert!(windows < 10_000, "paging should terminate");
+    }
+    assert!(windows > 3, "the fixture should take several windows");
+    // The only characters dropped between windows are the line breaks the cut landed on and
+    // trailing whitespace, never content.
+    assert!(
+        seen + windows * 4 >= total,
+        "{seen} of {total} characters in {windows} windows"
+    );
+    assert!(
+        body.contains(window(&body, total / 2, 200).text.trim()),
+        "a window from the middle is still a piece of the page"
+    );
+}
+
+#[test]
+fn an_offset_past_the_end_says_so_instead_of_failing() {
+    use gantry_connector_web::window;
+
+    let body = article(ARTICLE, Format::Markdown).body;
+    let total = body.chars().count();
+    for offset in [total, total + 1, usize::MAX] {
+        let view = window(&body, offset, 1000);
+        assert_eq!(view.text, "");
+        assert_eq!(view.total, total, "the real length is still reported");
+        assert!(!view.more());
+        assert_eq!(
+            view.first, total,
+            "clamped to the end rather than echoed back"
+        );
     }
 }
 

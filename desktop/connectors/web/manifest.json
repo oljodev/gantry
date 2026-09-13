@@ -3,7 +3,7 @@
   "id": "web",
   "name": "Web",
   "description": "Fetch pages as readable text and search the web with your own search key.",
-  "long_description": "Reads a page the way a reader mode does: navigation, cookie banners, share rails and comment threads are stripped, and what comes back is the article, its title and the address it ended up at after redirects.\n\nOnly http and https, and only the public internet. Anything that resolves to this machine or to your own network — a router's admin page, a database on localhost, a cloud metadata service — is refused, and the check runs again on every redirect, so a public address cannot bounce the fetch inward. No cookies are sent or kept, so a page is fetched as a stranger sees it and never as you.\n\nSearch is optional and brings its own key. Gantry has no search account; paste a key from Brave, Tavily or Exa below and the search tool appears. Without one the connector simply fetches pages. The key is stored in your system keychain, never in Gantry's database, and is sent to the service you chose and nowhere else.\n\nWhere the chat's model has web search of its own, that is used first — this connector is the fallback, and the tool for \"read this page\".",
+  "long_description": "Reads a page the way a reader mode does: navigation, cookie banners, share rails and comment threads are stripped, and what comes back is the article, its title and the address it ended up at after redirects.\n\nA page too long for one reply is not cut off: it comes back a window at a time, and the model reads on from where it stopped without fetching it again.\n\nOnly http and https, and only the public internet. Anything that resolves to this machine or to your own network — a router's admin page, a database on localhost, a cloud metadata service — is refused, and the check runs again on every redirect, so a public address cannot bounce the fetch inward. No cookies are sent or kept, so a page is fetched as a stranger sees it and never as you.\n\nSearch is optional and brings its own key. Gantry has no search account; paste a key from Brave, Tavily or Exa below and the search tool appears. Without one the connector simply fetches pages. The key is stored in your system keychain, never in Gantry's database, and is sent to the service you chose and nowhere else.\n\nWhere the chat's model has web search of its own, that is used first — this connector is the fallback, and the tool for \"read this page\".",
   "version": "0.1.0",
   "icon": "icon.svg",
   "category": "local",
@@ -55,7 +55,7 @@
   },
   "tools_generated": true,
   "prompt": {
-    "system_addendum": "Prefer fetch_url over guessing at a page's contents from its URL. A page's text is what it says now; quote it rather than recalling it. When a search returns snippets, follow the promising ones with fetch_url before answering — snippets are truncated and often misleading on their own."
+    "system_addendum": "Prefer fetch_url over guessing at a page's contents from its URL. A page's text is what it says now; quote it rather than recalling it. When a search returns snippets, follow the promising ones with fetch_url before answering — snippets are truncated and often misleading on their own. A long page arrives one window at a time: when a result says more, call fetch_url again with the next_offset it gives you rather than answering from the first part alone. Reading on is free — the page is already in memory and is not fetched twice."
   },
   "compatibility": {
     "platforms": [
