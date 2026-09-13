@@ -57,6 +57,7 @@ const chat = (turn: Partial<TurnDto>): ChatDetail => ({
   created_at: 0,
   last_message_at: 0,
   model: { provider: 'openrouter', model: 'm' },
+  instructions: '',
   mode: 'manual',
   guard: true,
   effort: 'off',

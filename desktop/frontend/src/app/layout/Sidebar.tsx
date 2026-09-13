@@ -14,6 +14,7 @@ import { Logo } from '@/components/gantry/Logo';
 import { SurfaceToggle } from '@/components/gantry/sidebar/SurfaceToggle';
 import { PermissionsDialog } from '@/components/gantry/chat/PermissionsDialog';
 import { SystemPromptDialog } from '@/components/gantry/chat/SystemPromptDialog';
+import { ChatInstructionsDialog } from '@/features/chat/ChatInstructionsDialog';
 import { ChatRow } from '@/components/gantry/sidebar/ChatRow';
 import { useNewCodeSession } from '@/features/code/session';
 import { MoveToProjectDialog } from '@/features/projects/MoveToProjectDialog';
@@ -51,6 +52,7 @@ export function Sidebar() {
   const [promptFor, setPromptFor] = useState<string | null>(null);
   const [permissionsFor, setPermissionsFor] = useState<string | null>(null);
   const [movingToProject, setMovingToProject] = useState<string | null>(null);
+  const [instructionsFor, setInstructionsFor] = useState<string | null>(null);
   const exportOne = async (c: ChatSummary) => {
     const { save } = await import('@tauri-apps/plugin-dialog');
     const path = await save({
@@ -103,6 +105,7 @@ export function Sidebar() {
       onDelete={() => remove.mutate(c.id)}
       onExport={() => void exportOne(c)}
       onViewPermissions={() => setPermissionsFor(c.id)}
+      onEditInstructions={() => setInstructionsFor(c.id)}
       onMoveToProject={() => setMovingToProject(c.id)}
       onViewPrompt={developer ? () => setPromptFor(c.id) : undefined}
       to={code ? '/code/$sessionId' : '/chat/$chatId'}
@@ -244,6 +247,7 @@ export function Sidebar() {
       <div className="pointer-events-none absolute inset-y-0 right-0 w-px bg-line" />
       <SystemPromptDialog chatId={promptFor} onClose={() => setPromptFor(null)} />
       <PermissionsDialog chatId={permissionsFor} onClose={() => setPermissionsFor(null)} />
+      <ChatInstructionsDialog chatId={instructionsFor} onClose={() => setInstructionsFor(null)} />
       {movingToProject && (
         <MoveToProjectDialog chatId={movingToProject} onClose={() => setMovingToProject(null)} />
       )}

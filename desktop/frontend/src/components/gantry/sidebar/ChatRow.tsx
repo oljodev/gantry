@@ -32,6 +32,8 @@ export interface ChatRowActions {
   onViewPrompt?: () => void;
   /** Opens the chat's Permissions panel (04 §8). */
   onViewPermissions?: () => void;
+  /** Opens the chat's own instructions (10 §2, layer 6). */
+  onEditInstructions?: () => void;
 }
 
 type ItemProps = {
@@ -66,6 +68,9 @@ export function ChatRow({
       <Item onClick={() => actions.onExport?.()} disabled={!actions.onExport}>
         Export…
       </Item>
+      {actions.onEditInstructions && (
+        <Item onClick={actions.onEditInstructions}>Instructions…</Item>
+      )}
       {actions.onViewPermissions && <Item onClick={actions.onViewPermissions}>Permissions…</Item>}
       {actions.onViewPrompt && <Item onClick={actions.onViewPrompt}>View system prompt</Item>}
       <Separator />
