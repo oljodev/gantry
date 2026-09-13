@@ -26,11 +26,17 @@ import {
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Kbd } from '@/components/ui/kbd';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import type { ReasoningEffort } from '@/bindings';
 import type { Mode, ModelRef } from '@/fixtures/types';
 import {
   fromFiles,
@@ -58,6 +64,20 @@ function pastedFiles(data: DataTransfer): File[] {
     .filter((f): f is File => f !== null);
 }
 
+/**
+ * The thinking levels, in the order they are offered. `off` is one of them rather than a
+ * separate switch: "how hard should it think" has an answer that is *not at all*, and a
+ * checkbox plus a level is two controls for one decision (docs/plan/15 A13).
+ */
+const EFFORTS: ReasoningEffort[] = ['off', 'low', 'medium', 'high', 'max'];
+const EFFORT_LABEL: Record<ReasoningEffort, string> = {
+  off: 'Off',
+  low: 'Low',
+  medium: 'Medium',
+  high: 'High',
+  max: 'Max',
+};
+
 export interface ComposerProps {
   mode: Mode;
   guard: boolean;
@@ -72,9 +92,9 @@ export interface ComposerProps {
   onRemoveRoot?: (root: string) => void;
   running?: boolean;
   placeholder?: string;
-  /** Controlled thinking toggle; uncontrolled when absent (the gallery). */
-  thinking?: boolean;
-  onThinkingChange?: (on: boolean) => void;
+  /** Controlled reasoning effort; uncontrolled when absent (the gallery). */
+  effort?: ReasoningEffort;
+  onEffortChange?: (effort: ReasoningEffort) => void;
   /** The provider's own web search (02 §3); shown only when the model has one. */
   webSearch?: boolean;
   onWebSearchChange?: (on: boolean) => void;
@@ -89,6 +109,8 @@ export interface ComposerProps {
   onConnectorChange?: (instanceId: string, attached: boolean) => void;
   /** Opens the Customize dialog, for when there is nothing to attach yet. */
   onBrowseConnectors?: () => void;
+  /** Opens the project picker (09 M11). Absent on a screen with no chat to file yet. */
+  onChooseProject?: () => void;
   onModeChange: (m: Mode) => void;
   onGuardChange: (g: boolean) => void;
   onModelChange: (m: ModelRef) => void;
@@ -128,8 +150,8 @@ export function Composer({
   onRemoveRoot,
   running,
   placeholder,
-  thinking: thinkingProp,
-  onThinkingChange,
+  effort: effortProp,
+  onEffortChange,
   webSearch = false,
   onWebSearchChange,
   capabilities,
@@ -138,6 +160,7 @@ export function Composer({
   connectors,
   onConnectorChange,
   onBrowseConnectors,
+  onChooseProject,
   onModeChange,
   onGuardChange,
   onModelChange,
@@ -150,14 +173,20 @@ export function Composer({
   const [slashIndex, setSlashIndex] = useState(0);
   const field = useRef<HTMLTextAreaElement | null>(null);
   const [attachments, setAttachments] = useState<PendingAttachment[]>(initialAttachments ?? []);
-  const [thinkingLocal, setThinkingLocal] = useState(true);
+  const [effortLocal, setEffortLocal] = useState<ReasoningEffort>('medium');
   const canThink = capabilities?.thinking ?? true;
   const canSearch = capabilities?.webSearch ?? false;
-  const thinking = canThink && (thinkingProp ?? thinkingLocal);
-  const setThinking = (on: boolean) => {
-    setThinkingLocal(on);
-    onThinkingChange?.(on);
+  const effort = canThink ? (effortProp ?? effortLocal) : 'off';
+  const thinking = effort !== 'off';
+  const setEffort = (next: ReasoningEffort) => {
+    setEffortLocal(next);
+    onEffortChange?.(next);
   };
+  // The level the brain button turns thinking back on at: the last one in use, so that off and
+  // on again is not a silent demotion to medium. Adjusted during render, the way the prefill
+  // nonce below is, because it follows a prop rather than an event.
+  const [lastOn, setLastOn] = useState<ReasoningEffort>('medium');
+  if (effort !== 'off' && effort !== lastOn) setLastOn(effort);
   // A new prefill nonce replaces the draft; adjusting state during render avoids an extra pass.
   const [appliedNonce, setAppliedNonce] = useState<number | undefined>(undefined);
   if (prefill && prefill.nonce !== appliedNonce) {
@@ -344,6 +373,14 @@ export function Composer({
                 <FolderPlusIcon />
                 Add folder to workspace
               </DropdownMenuItem>
+              {/* Only where there is a chat to file: the welcome screen has none yet, and an
+                  incognito one is gone the moment you leave it. */}
+              {onChooseProject && (
+                <DropdownMenuItem onClick={onChooseProject}>
+                  <FolderSimpleIcon />
+                  {project ? 'Move to project…' : 'Add to project…'}
+                </DropdownMenuItem>
+              )}
               <DropdownMenuSeparator />
               <DropdownMenuGroup>
                 <DropdownMenuLabel>Connectors</DropdownMenuLabel>
@@ -381,17 +418,33 @@ export function Composer({
                   <span className="ml-auto text-meta text-fg-3">Not on this model</span>
                 )}
               </DropdownMenuCheckboxItem>
-              <DropdownMenuCheckboxItem
-                checked={thinking}
-                disabled={!canThink}
-                onCheckedChange={setThinking}
-              >
-                <BrainIcon />
-                Thinking
-                {!canThink && (
+              {canThink ? (
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger>
+                    <BrainIcon />
+                    Thinking
+                    <span className="ml-auto pr-1 text-meta text-fg-3">{EFFORT_LABEL[effort]}</span>
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent>
+                    <DropdownMenuRadioGroup
+                      value={effort}
+                      onValueChange={(v) => setEffort(v as ReasoningEffort)}
+                    >
+                      {EFFORTS.map((level) => (
+                        <DropdownMenuRadioItem key={level} value={level}>
+                          {EFFORT_LABEL[level]}
+                        </DropdownMenuRadioItem>
+                      ))}
+                    </DropdownMenuRadioGroup>
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+              ) : (
+                <DropdownMenuItem disabled>
+                  <BrainIcon />
+                  Thinking
                   <span className="ml-auto text-meta text-fg-3">Not on this model</span>
-                )}
-              </DropdownMenuCheckboxItem>
+                </DropdownMenuItem>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
           <ModeChip
@@ -434,7 +487,7 @@ export function Composer({
                     aria-pressed={thinking}
                     aria-label="Thinking"
                     disabled={!canThink}
-                    onClick={() => setThinking(!thinking)}
+                    onClick={() => setEffort(thinking ? 'off' : lastOn)}
                     className={cn(thinking && 'text-fg')}
                   />
                 }
@@ -442,7 +495,9 @@ export function Composer({
                 <BrainIcon weight={thinking ? 'fill' : 'regular'} />
               </TooltipTrigger>
               <TooltipContent>
-                {canThink ? `Thinking ${thinking ? 'on' : 'off'}` : 'This model does not think'}
+                {canThink
+                  ? `Thinking ${thinking ? EFFORT_LABEL[effort].toLowerCase() : 'off'}`
+                  : 'This model does not think'}
               </TooltipContent>
             </Tooltip>
             {running ? (

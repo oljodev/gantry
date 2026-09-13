@@ -41,10 +41,8 @@ export function IncognitoWelcome({ chatId }: { chatId: ChatId }) {
         model={chat.model}
         roots={[]}
         running={busy}
-        thinking={chat.effort !== 'off'}
-        onThinkingChange={(on) =>
-          update.mutate({ chatId, update: { effort: on ? 'medium' : 'off' } })
-        }
+        effort={chat.effort}
+        onEffortChange={(effort) => update.mutate({ chatId, update: { effort } })}
         onModeChange={(mode) => update.mutate({ chatId, update: { mode } })}
         onGuardChange={(guard) => update.mutate({ chatId, update: { guard } })}
         onModelChange={(model: ModelRef) => update.mutate({ chatId, update: { model } })}

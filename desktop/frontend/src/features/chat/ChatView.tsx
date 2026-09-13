@@ -45,6 +45,7 @@ import { useFollowBottom } from '@/lib/followBottom';
 import { pickFolder } from '@/lib/folders';
 import { useArtifacts } from '@/lib/ipc/hooks/artifacts';
 import { useChat, useChatMutations } from '@/lib/ipc/hooks/chats';
+import { MoveToProjectDialog } from '@/features/projects/MoveToProjectDialog';
 import { useProject } from '@/lib/ipc/hooks/projects';
 import { useSkills } from '@/lib/ipc/hooks/skills';
 import {
@@ -119,6 +120,8 @@ export function ChatView({
   // Turning the guard off is confirmed once per chat (04 §5), so the second time in the same
   // conversation is not a second interruption about a decision already made.
   const [unguarding, setUnguarding] = useState(false);
+  // Filing the chat from the composer, as well as from its row in the sidebar (09 M11).
+  const [movingToProject, setMovingToProject] = useState(false);
   const unguardedOk = useUiStore((s) => s.unguarded.includes(chatId));
   const rememberUnguarded = useUiStore((s) => s.rememberUnguarded);
   const [asking, setAsking] = useState<{
@@ -316,8 +319,6 @@ export function ChatView({
   const detail = chat.data;
   const running = live?.status === 'running' || detail.active_turn !== null;
   const turns = toTurns(detail, live, (ref) => modelLabel(providers, ref), artifacts);
-  const defaultEffort = settings.data?.chat?.default_effort ?? 'medium';
-  const thinking = detail.effort !== 'off';
   // Capability-driven controls (02 §2): the catalog says what the model can do; an unlisted
   // model keeps thinking available and hides web search.
   const caps = modelCapabilities(providers, detail.model);
@@ -631,8 +632,8 @@ export function ChatView({
           }}
           onRemoveRoot={(path) => removeRoot.mutate({ chatId, path })}
           running={running}
-          thinking={thinking}
-          onThinkingChange={(on) => patch({ effort: on ? defaultEffort : 'off' })}
+          effort={detail.effort}
+          onEffortChange={(effort) => patch({ effort })}
           webSearch={detail.web_search}
           onWebSearchChange={(on) => patch({ web_search: on })}
           capabilities={capabilities}
@@ -641,6 +642,7 @@ export function ChatView({
             attachConnector.mutate({ chatId, instanceId, attached })
           }
           onBrowseConnectors={() => openCustomize('connectors')}
+          onChooseProject={() => setMovingToProject(true)}
           onModeChange={(mode) => patch({ mode })}
           onGuardChange={(guard) => {
             // 04 §5: turning the guard off is a real decision, and it is asked once per chat.
@@ -717,6 +719,9 @@ export function ChatView({
             setAsking(null);
           }}
         />
+      )}
+      {movingToProject && (
+        <MoveToProjectDialog chatId={chatId} onClose={() => setMovingToProject(false)} />
       )}
       {paneOpen && tabs.length > 0 && (
         <RightPane
