@@ -713,7 +713,20 @@ Three changes, all from Olav using it.
 
 - ~~Context management: tool-result caps, client-side simple compaction, keep-tail compaction for other providers, the "summarized" notice.~~ **Done** 2026-09-11, pulled forward out of M13 because it is what bites first in ordinary use: a long chat simply stopped working. `gantry-agent/src/context.rs` with the summarizer prompt in `assets/prompts/compaction.md`, the decisions recorded in 02 §6 "As built". The tool-result cap became a setting (Settings → Advanced). Still in M13: Anthropic's **server-side** context editing and compaction, which are beta request shapes no test here can verify, and the full tool output as a blob.
 - The Anthropic append-only conformance check (the three-step check with `prefix_mismatch_behavior: "error"` in a test, `drop_block` in production where a tool set had to be rebuilt); prompt-cache hit verification in usage; the memory and instruction `SystemNote` paths included.
-- The automated sandbox conformance test for artifacts (13 §5).
+- ~~The automated sandbox conformance test for artifacts (13 §5).~~ **Done** 2026-09-13.
+  `desktop/crates/gantry-agent/tests/artifacts_sandbox.rs` is one test per rule §5 claims to
+  enforce. Thirty-two of them mount a hostile artifact from
+  `desktop/artifact-runtime/src/conformance/cases.json` in a real WebKitGTK view —
+  `scripts/sandbox-conformance.py`, one case per document — behind the CSP and the `sandbox`
+  attribute the test reads out of the shipped frontend source, and require the engine to deny
+  it. The rest hold the bridge's own rules to `artifacts::sandbox`, which states §5 once in
+  Rust. `GANTRY_SANDBOX_ENGINE=1` makes a missing engine a failure, for a Linux CI job. One
+  test runs the whole suite again with every withheld flag granted and a policy that allows
+  everything, and requires the cases to notice. Two rules do not hold and have `#[ignore]`d
+  tests saying what they prove — an artifact can navigate its own frame to a remote URL
+  (§5 "nothing navigates"), and an `html` artifact's inline scripts never get the loop-guard
+  pass (§5 hang risk 1) — and a third, the toolbar's **Stop** (hang risk 2), was never built.
+  Fixing the three is the remaining artifact work in this milestone.
 - Performance pass on WebKitGTK and WebView2: batching thresholds, virtualization, markdown memoization, long outputs, artifact mount time.
 - Crash recovery and cancellation tests across all connectors; the blob sweeper; database backup before migration.
 - ~~Fill the licensor name in `LICENSE`~~ **done 2026-09-11** (Olav Jodal), ahead of the repository going public; the first row of the conversion table in `LICENSING.md` still waits for the release date. Remove the `full-matrix` gate in `build.yml` once the repository is public — on a public repository, standard runners are free on every platform, which is the only reason the gate exists.
