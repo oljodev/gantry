@@ -5,7 +5,7 @@ import { useMemo, useState } from 'react';
 import type { ReasoningEffort } from '@/bindings';
 import { Composer } from '@/components/gantry/composer/Composer';
 import { FileToolsDialog } from '@/features/connectors/FileToolsDialog';
-import { hasFileTools } from '@/features/connectors/fileTools';
+import { hasFileTools } from '@/features/connectors/fileConnectors';
 import { Kbd } from '@/components/ui/kbd';
 import { toast } from '@/components/ui/toast';
 import type { Mode, ModelRef } from '@/fixtures/types';

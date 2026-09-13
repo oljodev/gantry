@@ -88,6 +88,17 @@ const extra: ActivityItem[] = [
   },
   { kind: 'notice', id: 'x6', text: 'Earlier conversation summarized.' },
   { kind: 'context', id: 'x7', skills: ['rust-idioms'], memories: 2 },
+  {
+    kind: 'web',
+    id: 'x9',
+    query: 'gantry crane span',
+    status: 'done',
+    results: [
+      { title: 'Gantry crane — Wikipedia', url: 'https://en.wikipedia.org/wiki/Gantry_crane' },
+      { title: 'Span and clearance in port cranes', url: 'https://example.org/span' },
+    ],
+  },
+  { kind: 'web', id: 'x10', query: 'what a gantry is', status: 'running', results: [] },
 ];
 
 /** What Stop leaves behind: a call that never finished, on a turn that is no longer running. */

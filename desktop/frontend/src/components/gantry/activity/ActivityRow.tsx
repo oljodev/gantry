@@ -5,6 +5,7 @@ import {
   CaretRightIcon,
   CheckIcon,
   FileTextIcon,
+  GlobeIcon,
   InfoIcon,
   MagnifyingGlassIcon,
   PencilSimpleIcon,
@@ -21,6 +22,7 @@ import { ConnectorMark } from '@/components/gantry/ConnectorMark';
 import { Button } from '@/components/ui/button';
 import { connectorName } from '@/fixtures/connectors';
 import type { ActivityItem, GuardMark } from '@/fixtures/types';
+import { openExternal } from '@/lib/clipboard';
 import { cn } from '@/lib/utils';
 
 export interface ActivityRowProps {
@@ -114,6 +116,26 @@ export function ActivityRow({
             </span>
           }
           onOpen={open}
+        />
+      );
+    case 'web':
+      return (
+        <Row
+          icon={<GlobeIcon />}
+          title="Searched the web"
+          summary={item.query ? `“${item.query}”` : undefined}
+          status={
+            item.status === 'running' ? (
+              <Spinner />
+            ) : item.results.length > 0 ? (
+              <span className="text-meta text-fg-3 tnum">
+                {item.results.length} {item.results.length === 1 ? 'result' : 'results'}
+              </span>
+            ) : (
+              <Done />
+            )
+          }
+          below={item.results.length > 0 ? <WebResults results={item.results} /> : undefined}
         />
       );
     case 'edit':
@@ -483,6 +505,33 @@ function CompactedRow({ item }: { item: Extract<ActivityItem, { kind: 'compacted
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * The pages a provider search returned, under the row. The link is the model's, not the user's,
+ * so `openExternal` asks before it opens one — the same rule as a link inside an answer.
+ */
+function WebResults({ results }: { results: { title: string; url: string }[] }) {
+  return (
+    <ul className="flex flex-col gap-0.5 pt-1">
+      {results.slice(0, 6).map((r) => (
+        <li key={r.url} className="flex min-w-0">
+          <button
+            type="button"
+            onClick={() => void openExternal(r.url)}
+            title={r.url}
+            className="flex min-w-0 items-center gap-1.5 rounded-2 px-1 py-0.5 text-left text-meta text-fg-2 transition-colors duration-(--dur-1) hover:bg-hover hover:text-fg"
+          >
+            <span className="min-w-0 truncate">{r.title}</span>
+            <ArrowSquareOutIcon className="size-3 shrink-0 text-fg-3" />
+          </button>
+        </li>
+      ))}
+      {results.length > 6 && (
+        <li className="px-1 text-meta text-fg-3">and {results.length - 6} more</li>
+      )}
+    </ul>
   );
 }
 

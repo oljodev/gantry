@@ -18,6 +18,7 @@ export function summarize(items: ActivityItem[]): string {
   let commands = 0;
   let blocked = 0;
   let ruled = 0;
+  let webSearches = 0;
   const order: string[] = [];
   const note = (key: string) => {
     if (!order.includes(key)) order.push(key);
@@ -49,6 +50,10 @@ export function summarize(items: ActivityItem[]): string {
       case 'search':
         searches++;
         note('search');
+        break;
+      case 'web':
+        webSearches++;
+        note('web');
         break;
       case 'edit':
         edits.add(item.path);
@@ -82,6 +87,10 @@ export function summarize(items: ActivityItem[]): string {
     if (key === 'read') fragments.push(`read ${count(reads.size, 'file')}`);
     else if (key === 'search')
       fragments.push(searches === 1 ? 'searched' : `searched ${searches} times`);
+    else if (key === 'web')
+      fragments.push(
+        webSearches === 1 ? 'searched the web' : `searched the web ${webSearches} times`,
+      );
     else if (key === 'edit') fragments.push(`edited ${count(edits.size, 'file')}`);
     else if (key === 'command') fragments.push(`ran ${count(commands, 'command')}`);
     else if (key === 'created') fragments.push(`created ${count(created.size, 'artifact')}`);

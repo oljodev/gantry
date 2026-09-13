@@ -46,7 +46,7 @@ import { pickFolder } from '@/lib/folders';
 import { useArtifacts } from '@/lib/ipc/hooks/artifacts';
 import { useChat, useChatMutations } from '@/lib/ipc/hooks/chats';
 import { FileToolsDialog } from '@/features/connectors/FileToolsDialog';
-import { hasFileTools } from '@/features/connectors/fileTools';
+import { hasFileTools } from '@/features/connectors/fileConnectors';
 import { MoveToProjectDialog } from '@/features/projects/MoveToProjectDialog';
 import { useProject } from '@/lib/ipc/hooks/projects';
 import { useSkills } from '@/lib/ipc/hooks/skills';

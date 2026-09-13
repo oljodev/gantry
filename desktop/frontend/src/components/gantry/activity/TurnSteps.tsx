@@ -155,6 +155,8 @@ function inProgressLabel(item: ActivityItem): string | undefined {
     case 'command':
       if (item.status === 'waiting') return 'Waiting for your decision';
       return item.status === 'running' ? 'Running a command…' : undefined;
+    case 'web':
+      return item.status === 'running' ? 'Searching the web…' : undefined;
     case 'connector':
       if (item.status === 'waiting') return 'Waiting for your decision';
       if (item.status === 'running' || item.status === 'proposed')

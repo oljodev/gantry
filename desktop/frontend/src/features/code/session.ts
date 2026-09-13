@@ -6,7 +6,7 @@ import type { ModelRef } from '@/bindings';
 import { commands, isTauri, unwrap } from '@/lib/ipc/client';
 import { pickFolder } from '@/lib/folders';
 import { useChatMutations } from '@/lib/ipc/hooks/chats';
-import { CODE_CONNECTORS, useTurnOnConnectors } from '@/features/connectors/fileTools';
+import { CODE_CONNECTORS, useTurnOnConnectors } from '@/features/connectors/fileConnectors';
 
 /**
  * Starting a code session: pick a folder, make the session, turn on the file tools.

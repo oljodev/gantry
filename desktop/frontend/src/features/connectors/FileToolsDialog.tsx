@@ -10,7 +10,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { toast } from '@/components/ui/toast';
-import { CHAT_FILE_CONNECTORS, useTurnOnConnectors } from '@/features/connectors/fileTools';
+import { CHAT_FILE_CONNECTORS, useTurnOnConnectors } from '@/features/connectors/fileConnectors';
 import { folderName } from '@/lib/folders';
 
 /**

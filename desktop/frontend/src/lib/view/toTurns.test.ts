@@ -77,6 +77,17 @@ function chat(calls: ToolCallDto[]): ChatDetail {
   } as unknown as ChatDetail;
 }
 
+/** A turn whose assistant message is the given parts verbatim, for the opaque-block cases. */
+function partRows(parts: unknown[]): ActivityItem[] {
+  const base = chat([]);
+  const turn = {
+    ...base.turns[0]!,
+    messages: [{ id: 'm1', role: 'assistant', parts }],
+  } as unknown as TurnDto;
+  const [only] = toTurns({ ...base, turns: [turn] }, undefined, (r) => r.model);
+  return only!.blocks.flatMap((b) => (b.kind === 'activity' ? b.items : []));
+}
+
 function rows(calls: ToolCallDto[]): ActivityItem[] {
   const [turn] = toTurns(chat(calls), undefined, (r) => r.model);
   return turn!.blocks.flatMap((b) => (b.kind === 'activity' ? b.items : []));
@@ -226,5 +237,61 @@ describe('the artifact card reports its own turn (13 §10)', () => {
       a1: { title: 'Invite', type: 'react', version: 3 },
     });
     expect(card).toMatchObject({ version: 3 });
+  });
+});
+
+describe("a provider's own web search, which no permission card ever mentioned (02 §5)", () => {
+  it('shows the query and the pages it came back with', () => {
+    const items = partRows([
+      {
+        kind: 'provider_opaque',
+        provider: 'anthropic',
+        block_kind: 'server_tool_use',
+        json: { id: 'srvtoolu_01', name: 'web_search', input: { query: 'gantry crane' } },
+      },
+      {
+        kind: 'provider_opaque',
+        provider: 'anthropic',
+        block_kind: 'web_search_tool_result',
+        json: {
+          tool_use_id: 'srvtoolu_01',
+          content: [
+            { type: 'web_search_result', title: 'Gantry crane', url: 'https://example.org/g' },
+          ],
+        },
+      },
+    ]);
+    expect(items).toHaveLength(1);
+    const row = items[0]!;
+    expect(row.kind).toBe('web');
+    if (row.kind !== 'web') return;
+    expect(row.query).toBe('gantry crane');
+    expect(row.status).toBe('done');
+    expect(row.results).toEqual([{ title: 'Gantry crane', url: 'https://example.org/g' }]);
+  });
+
+  it('reads the Responses shape too, which reports one item and no results', () => {
+    const items = partRows([
+      {
+        kind: 'provider_opaque',
+        provider: 'openai_responses',
+        block_kind: 'web_search_call',
+        json: { id: 'ws_01', status: 'completed', action: { type: 'search', query: 'gantry' } },
+      },
+    ]);
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({ kind: 'web', query: 'gantry', status: 'done' });
+  });
+
+  it('leaves every other opaque block alone rather than guessing at it', () => {
+    const items = partRows([
+      {
+        kind: 'provider_opaque',
+        provider: 'anthropic',
+        block_kind: 'code_execution_tool_result',
+        json: { tool_use_id: 'x', content: [] },
+      },
+    ]);
+    expect(items).toEqual([]);
   });
 });
