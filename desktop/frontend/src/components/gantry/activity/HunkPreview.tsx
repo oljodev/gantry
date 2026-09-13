@@ -1,26 +1,38 @@
+import { useMemo } from 'react';
+
+import { DiffLineText } from '@/components/gantry/activity/DiffLine';
 import type { Hunk } from '@/fixtures/types';
+import { languageForPath, pairChanges, useDiffTokens } from '@/lib/diff';
 import { cn } from '@/lib/utils';
 
 /**
  * The first hunks of an edit inline in the row: tinted lines with a 2 px bar, no gutter, mono
  * 12 px (15 A19). `full` renders every hunk with line numbers, for the pane.
+ *
+ * `path` is what gives the lines syntax colour — the extension picks the grammar. Without it
+ * the diff renders exactly as it did before, which is what the gallery and any caller with no
+ * file in hand get.
  */
 export function HunkPreview({
   hunks,
+  path,
   full = false,
   onShowAll,
 }: {
   hunks: Hunk[];
+  path?: string;
   full?: boolean;
   onShowAll?: () => void;
 }) {
   const shown = full ? hunks : hunks.slice(0, 2);
+  const tokens = useDiffTokens(hunks, languageForPath(path));
+  const spans = useMemo(() => pairChanges(hunks.flatMap((h) => h.lines)), [hunks]);
   return (
     <div className="selectable overflow-x-auto rounded-2 border border-line-subtle bg-inset font-mono text-mono">
       {/* The rows are as wide as the longest line, not as wide as the box. A block row inside a
           horizontal scroller is only the scroller's width, so a tinted line scrolled sideways
           runs out of background halfway across while its text keeps going. */}
-      <div className="min-w-max">
+      <div className="diff-tokens min-w-max">
         {shown.map((h, i) => (
           <div key={i}>
             <div className="px-3 py-1 text-fg-3">{h.header}</div>
@@ -44,9 +56,11 @@ export function HunkPreview({
                   </>
                 )}
                 <span className="w-4 shrink-0 select-none text-center text-fg-3">
-                  {l.kind === 'add' ? '+' : l.kind === 'del' ? '−' : ' '}
+                  {l.kind === 'add' ? '+' : l.kind === 'del' ? '\u2212' : ' '}
                 </span>
-                <span className="pr-3 text-fg">{l.text}</span>
+                <span className="pr-3 text-fg">
+                  <DiffLineText line={l} tokens={tokens} span={spans.get(l)} />
+                </span>
               </div>
             ))}
           </div>

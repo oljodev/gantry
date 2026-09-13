@@ -56,6 +56,10 @@
   --info-subtle: rgb(9 105 218 / 0.1);
   --diff-add-bg: rgb(21 117 47 / 0.1);
   --diff-del-bg: rgb(207 34 46 / 0.1);
+  /* The part of a replaced line that actually changed, over the line tint (15 A19). Neutral
+     rather than a stronger green or red: the line's own colour already says which side it is,
+     and a second hue on top of it reads as a third state. */
+  --diff-word-bg: rgb(0 0 0 / 0.09);
 
   /* Elevation (15 §6): level 2 and 3 only */
   --shadow-float: 0 8px 24px rgb(0 0 0 / 0.1);
@@ -97,6 +101,7 @@
     --info-subtle: rgb(88 166 255 / 0.12);
     --diff-add-bg: rgb(63 185 80 / 0.15);
     --diff-del-bg: rgb(248 81 73 / 0.15);
+    --diff-word-bg: rgb(255 255 255 / 0.14);
     --shadow-float: 0 8px 24px rgb(0 0 0 / 0.35);
     --highlight-top: rgb(255 255 255 / 0.04);
   }
@@ -137,6 +142,7 @@
   --info-subtle: rgb(88 166 255 / 0.12);
   --diff-add-bg: rgb(63 185 80 / 0.15);
   --diff-del-bg: rgb(248 81 73 / 0.15);
+  --diff-word-bg: rgb(255 255 255 / 0.14);
   --shadow-float: 0 8px 24px rgb(0 0 0 / 0.35);
   --highlight-top: rgb(255 255 255 / 0.04);
 }

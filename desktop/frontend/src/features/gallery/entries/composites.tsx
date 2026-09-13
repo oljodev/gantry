@@ -26,7 +26,7 @@ import { KeyStatus } from '@/features/settings/Providers';
 import { State, type GalleryEntry } from '@/features/gallery/types';
 import { authChat, authDiff } from '@/fixtures/chat';
 import { connectors } from '@/fixtures/connectors';
-import type { ActivityItem, Tier } from '@/fixtures/types';
+import type { ActivityItem, Hunk, Tier } from '@/fixtures/types';
 import type { PendingAttachment } from '@/lib/attachments';
 import { PlugIcon } from '@phosphor-icons/react';
 import { useEffect, useState } from 'react';
@@ -337,6 +337,26 @@ function ComposerEntry() {
   );
 }
 
+/** A replaced constant inside an otherwise unchanged line (15 A19). */
+const oneValueChanged = {
+  header: '@@ -41,5 +41,5 @@ impl Session {',
+  lines: [
+    { kind: 'ctx', old: 41, new: 41, text: '    pub fn refresh(&mut self, now: Instant) {' },
+    {
+      kind: 'del',
+      old: 42,
+      text: '        let deadline = now + Duration::from_secs(1800);',
+    },
+    {
+      kind: 'add',
+      new: 42,
+      text: '        let deadline = now + Duration::from_secs(3600);',
+    },
+    { kind: 'ctx', old: 43, new: 43, text: '        self.expires_at = deadline;' },
+    { kind: 'ctx', old: 44, new: 44, text: '    }' },
+  ],
+} satisfies Hunk;
+
 function Pane() {
   return (
     <>
@@ -347,7 +367,16 @@ function Pane() {
       </State>
       <State label="Hunk preview (inline)">
         <div className="w-full max-w-(--measure)">
-          {edit?.kind === 'edit' && <HunkPreview hunks={edit.hunks} onShowAll={() => undefined} />}
+          {edit?.kind === 'edit' && (
+            <HunkPreview hunks={edit.hunks} path={edit.path} onShowAll={() => undefined} />
+          )}
+        </div>
+      </State>
+      {/* What 15 A19's word-level emphasis is for: one value replaced in a long line, where a
+          whole-line tint tells you a line changed and leaves finding the change to the reader. */}
+      <State label="Hunk preview (one value changed)">
+        <div className="w-full max-w-(--measure)">
+          <HunkPreview path="crates/api/src/auth.rs" hunks={[oneValueChanged]} full />
         </div>
       </State>
       <State label="Command output">

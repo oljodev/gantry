@@ -559,6 +559,7 @@ export function ChatView({
                     });
                   });
                 }}
+                onRevert={revertPath}
                 onDecide={decide}
                 onAccess={answerAccess}
                 onElicit={answerElicit}

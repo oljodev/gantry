@@ -27,6 +27,7 @@ export function TurnSteps({
   detailed = false,
   onOpen,
   onAllowAnyway,
+  onRevert,
 }: {
   steps: StepBlock[];
   running?: boolean;
@@ -40,6 +41,8 @@ export function TurnSteps({
   onOpen?: (item: ActivityItem) => void;
   /** **Allow anyway** on a call the guard blocked (04 §6). */
   onAllowAnyway?: (callId: string) => void;
+  /** **Revert** on an edit row, by path (16 §5). */
+  onRevert?: (path: string) => void;
 }) {
   const [open, setOpen] = useState(defaultOpen || detailed);
   const items = steps.flatMap((s) => (s.kind === 'activity' ? s.items : []));
@@ -118,6 +121,7 @@ export function TurnSteps({
                     expandable={detailed}
                     onOpen={onOpen}
                     onAllowAnyway={onAllowAnyway}
+                    onRevert={onRevert}
                   />
                 ))
             ),

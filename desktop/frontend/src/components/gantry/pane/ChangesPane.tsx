@@ -119,7 +119,7 @@ export function ChangesPane({ chatId }: { chatId: string }) {
             This file is not text, so there is no diff to show. Revert still puts it back.
           </p>
         ) : diff.data ? (
-          <HunkPreview hunks={hunksOf(diff.data.hunks)} full />
+          <HunkPreview hunks={hunksOf(diff.data.hunks)} path={current ?? undefined} full />
         ) : null}
       </div>
     </div>

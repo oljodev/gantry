@@ -40,6 +40,7 @@
   --color-info-subtle: var(--info-subtle);
   --color-diff-add: var(--diff-add-bg);
   --color-diff-del: var(--diff-del-bg);
+  --color-diff-word: var(--diff-word-bg);
   --color-transparent: transparent;
   --color-current: currentColor;
 
@@ -235,21 +236,25 @@
     font-family: var(--font-mono);
   }
   .shiki-host .shiki,
-  .shiki-host .shiki span {
+  .shiki-host .shiki span,
+  .diff-tokens span[style*='--shiki-light'] {
     color: var(--shiki-light);
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme='light']) .shiki-host .shiki,
-    :root:not([data-theme='light']) .shiki-host .shiki span {
+    :root:not([data-theme='light']) .shiki-host .shiki span,
+    :root:not([data-theme='light']) .diff-tokens span[style*='--shiki-dark'] {
       color: var(--shiki-dark);
     }
   }
   [data-theme='dark'] .shiki-host .shiki,
-  [data-theme='dark'] .shiki-host .shiki span {
+  [data-theme='dark'] .shiki-host .shiki span,
+  [data-theme='dark'] .diff-tokens span[style*='--shiki-dark'] {
     color: var(--shiki-dark);
   }
   [data-theme='light'] .shiki-host .shiki,
-  [data-theme='light'] .shiki-host .shiki span {
+  [data-theme='light'] .shiki-host .shiki span,
+  [data-theme='light'] .diff-tokens span[style*='--shiki-light'] {
     color: var(--shiki-light);
   }
 }

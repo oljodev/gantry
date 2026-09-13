@@ -1,5 +1,6 @@
 import {
   ArchiveIcon,
+  ArrowCounterClockwiseIcon,
   ArrowSquareOutIcon,
   CaretRightIcon,
   CheckIcon,
@@ -44,6 +45,15 @@ export interface ActivityRowProps {
    * call did not run and stops there.
    */
   onAllowAnyway?: (callId: string) => void;
+  /**
+   * **Revert** on an edit row (16 §5), by path. It puts the whole file back to what it was when
+   * the session started, which is what the Changes pane's button does — deliberately the same
+   * meaning of the word in both places, because a per-edit undo is `code-editor__undo` and two
+   * meanings of Revert on one screen would be worse than one.
+   *
+   * Absent where nothing can be reverted: the gallery, an export, a chat with no journal.
+   */
+  onRevert?: (path: string) => void;
 }
 
 /**
@@ -62,9 +72,18 @@ function GuardTick({ guard }: { guard?: GuardMark }) {
 }
 
 /** One activity item (05 §1, 15 §8): icon, title, mono summary, status at the right. */
-export function ActivityRow({ item, onOpen, expandable, bare, onAllowAnyway }: ActivityRowProps) {
+export function ActivityRow({
+  item,
+  onOpen,
+  expandable,
+  bare,
+  onAllowAnyway,
+  onRevert,
+}: ActivityRowProps) {
   const detail = expandable ? inlineDetail(item, onOpen) : undefined;
-  if (detail) return <ExpandableRow item={item} detail={detail} onOpen={onOpen} />;
+  if (detail) {
+    return <ExpandableRow item={item} detail={detail} onOpen={onOpen} onRevert={onRevert} />;
+  }
   const open = onOpen ? () => onOpen(item) : undefined;
   switch (item.kind) {
     case 'read':
@@ -109,10 +128,13 @@ export function ActivityRow({ item, onOpen, expandable, bare, onAllowAnyway }: A
               <span className="text-meta text-good tnum">+{item.added}</span>
               <span className="text-meta text-bad tnum">−{item.removed}</span>
               {item.status === 'running' ? <Spinner /> : <Done />}
+              <RevertButton item={item} onRevert={onRevert} />
             </span>
           }
           onOpen={open}
-          below={bare ? undefined : <HunkPreview hunks={item.hunks} onShowAll={open} />}
+          below={
+            bare ? undefined : <HunkPreview hunks={item.hunks} path={item.path} onShowAll={open} />
+          }
         />
       );
     case 'command':
@@ -294,10 +316,12 @@ function ExpandableRow({
   item,
   detail,
   onOpen,
+  onRevert,
 }: {
   item: ActivityItem;
   detail: ReactNode;
   onOpen?: (item: ActivityItem) => void;
+  onRevert?: (path: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   return (
@@ -315,7 +339,7 @@ function ExpandableRow({
           />
         </button>
         <div className="min-w-0 flex-1">
-          <ActivityRow item={item} bare onOpen={() => setOpen((o) => !o)} />
+          <ActivityRow item={item} bare onOpen={() => setOpen((o) => !o)} onRevert={onRevert} />
         </div>
       </div>
       {open && (
@@ -510,7 +534,7 @@ function Row({
   const mainClass =
     'flex min-h-(--row) min-w-0 flex-1 items-center gap-2 rounded-2 px-1 text-left text-ui text-fg';
   return (
-    <div className={cn('flex min-w-0 flex-col gap-1.5 rounded-2', className)}>
+    <div className={cn('group/row flex min-w-0 flex-col gap-1.5 rounded-2', className)}>
       <div className="flex items-center">
         {onOpen ? (
           <button
@@ -527,6 +551,42 @@ function Row({
       </div>
       {below && <div className="min-w-0 pr-1 pl-7">{below}</div>}
     </div>
+  );
+}
+
+/**
+ * **Revert** on a finished edit row (16 §5).
+ *
+ * On hover rather than always, because the row's job is to say what happened and a button that
+ * is always lit reads as the row's purpose. It stops the click reaching the row underneath,
+ * which would otherwise open the pane at the same moment the file changed under it.
+ *
+ * Nothing here confirms: reverting is itself the undo, the Changes pane lists what is still
+ * changed, and a dialog between a person and a one-key mistake they can see is friction, not
+ * safety.
+ */
+function RevertButton({
+  item,
+  onRevert,
+}: {
+  item: Extract<ActivityItem, { kind: 'edit' }>;
+  onRevert?: (path: string) => void;
+}) {
+  if (!onRevert || item.status !== 'done') return null;
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      title={`Revert ${item.path} to what it was before this session`}
+      onClick={(e) => {
+        e.stopPropagation();
+        onRevert(item.path);
+      }}
+      className="opacity-0 transition-opacity duration-(--dur-1) group-hover/row:opacity-100 focus-visible:opacity-100"
+    >
+      <ArrowCounterClockwiseIcon />
+      Revert
+    </Button>
   );
 }
 

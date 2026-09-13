@@ -352,8 +352,23 @@ tools, and the feed.
 
 **In the feed**
 
-- Read and search rows; edit rows with live argument streaming and inline hunks; the diff drawer
-  on CodeMirror merge; **Revert** from the row as well as from the pane.
+- ~~Read and search rows; edit rows with live argument streaming and inline hunks; the diff drawer
+  on CodeMirror merge; **Revert** from the row as well as from the pane.~~ **Done** 2026-09-13,
+  with one deviation: **not CodeMirror merge.** `@codemirror/merge` is a full editor — state,
+  view, language, a grammar pack per language — bought for a read-only pane, and the app already
+  carries **shiki** for code blocks and code artifacts. The diff now takes its colour from that
+  instead: each side of a hunk is tokenised on its own, so a string or a comment spanning several
+  lines is read as the source it belongs to rather than as a diff that interleaves two files.
+  What CodeMirror would have added on top is collapsible unchanged regions, which the hunk format
+  makes moot — the backend already sends only the context around each change.
+  <br>What the plan did not ask for and the diff needed more: **word-level emphasis.** A
+  whole-line tint says a line changed; on a long line with one renamed identifier, finding the
+  change is still the reader's job. `lib/diff/words.ts` trims the common prefix and suffix, backs
+  off to word boundaries so an identifier is never cut in half, and declines to emphasise anything
+  when the lines share too little for the answer to be narrower than the line itself.
+  <br>**Revert** sits on the edit row on hover, with the same meaning it has in the Changes pane —
+  the whole file back to what it was when the session started. Deliberately one meaning of the
+  word on one screen; a per-edit undo is `code-editor__undo`.
 - **Auto-edit** mode: edits apply without asking, everything else still asks.
 
 **The four defects to fix while the code is open**, found reviewing the connector documents

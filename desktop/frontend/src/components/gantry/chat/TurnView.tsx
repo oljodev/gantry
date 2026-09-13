@@ -50,6 +50,7 @@ export function TurnView({
   turn,
   onOpenItem,
   onAllowAnyway,
+  onRevert,
   onDecide,
   onAccess,
   onElicit,
@@ -69,6 +70,8 @@ export function TurnView({
   onOpenItem?: (item: ActivityItem) => void;
   /** **Allow anyway** on a call the guard blocked (04 §6); absent in the gallery. */
   onAllowAnyway?: (callId: string) => void;
+  /** **Revert** on an edit row, by path (16 §5). */
+  onRevert?: (path: string) => void;
   /** Answers a permission card; absent in the gallery. */
   onDecide?: (interactionId: string, answer: PermissionAnswer) => void;
   /** Answers an access request (04 §9). */
@@ -121,6 +124,7 @@ export function TurnView({
                   detailed={detailed}
                   onOpen={onOpenItem}
                   onAllowAnyway={onAllowAnyway}
+                  onRevert={onRevert}
                 />
               );
             case 'artifact':
