@@ -23,7 +23,7 @@ export function installShortcuts(router: AnyRouter) {
         e.preventDefault();
         // ⇧ makes it private, the same way every browser spells it (15 A21).
         if (e.shiftKey) {
-          void openIncognito().catch(() => {});
+          void openIncognito(router).catch(() => {});
         } else {
           void router.navigate({ to: '/chat' });
         }

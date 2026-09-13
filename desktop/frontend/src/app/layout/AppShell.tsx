@@ -7,12 +7,14 @@ import { TitleStrip } from '@/app/layout/TitleStrip';
 import { DeviceCodeDialog } from '@/features/connectors/DeviceCodeDialog';
 import { CustomizeDialog } from '@/features/customize/CustomizeDialog';
 import { SettingsDialog } from '@/features/settings/SettingsDialog';
+import { commands, isTauri } from '@/lib/ipc/client';
 import { useUiStore } from '@/lib/stores/uiStore';
 
 /** Sidebar + content, the content carrying its own title strip (docs/plan/15 §7). */
 export function AppShell({ children }: { children: ReactNode }) {
   const collapsed = useUiStore((s) => s.sidebarCollapsed);
   useRememberedSurface();
+  useIncognitoLifecycle();
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-base text-fg">
       {!collapsed && <Sidebar />}
@@ -41,6 +43,27 @@ function useRememberedSurface() {
     if (path.startsWith('/code')) remember('code', path);
     else if (path.startsWith('/chat')) remember('chat', path);
   }, [path, remember]);
+}
+
+/**
+ * An incognito session lives exactly as long as it is on screen (15 A21).
+ *
+ * Watching the route rather than a component's unmount, for two reasons. React's StrictMode
+ * unmounts and remounts every component once in development, so a cleanup that deleted the chat
+ * would delete it a moment after it was made. And this is the honest statement of the rule: the
+ * session ends when you navigate away from it, which is one event, not a lifecycle that also
+ * fires on a re-render, a hot reload or a suspense boundary.
+ *
+ * Quitting the app with one open is the case this cannot see; the startup sweep answers it.
+ */
+function useIncognitoLifecycle() {
+  const path = useRouterState({ select: (s) => s.location.pathname });
+  const chatId = useUiStore((s) => s.incognitoChatId);
+  useEffect(() => {
+    if (!chatId || path.startsWith('/incognito')) return;
+    useUiStore.getState().setIncognitoChat(null);
+    if (isTauri()) void commands.deleteChat(chatId);
+  }, [path, chatId]);
 }
 
 /** Title strip over the whole window, no sidebar: onboarding and other full-window screens. */

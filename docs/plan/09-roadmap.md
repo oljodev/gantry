@@ -668,10 +668,12 @@ Three changes, all from Olav using it.
   it is the reversible direction and it is what keeps the store worth reading. `search_memory`
   takes no query, which is where a tidy-up starts, and a replacement archives what it replaces.
   Core prompt version **7**. Recorded in 12 "Revised after M12".
-- **Incognito** (15 A21): a chat in its own window that reads no memory, writes none, has the
-  memory tools dropped from its tool set, appears in no list, no search and no artifact library,
-  and is deleted when the window closes — or at the next startup, if a crash beat it to the
-  close handler. Migration 0013. Skills still apply inside one.
+- **Incognito** (15 A21): a chat that reads no memory, writes none, has the memory tools
+  dropped from its tool set, appears in no list, no search and no artifact library, and is
+  deleted when you navigate away from it — or at the next startup, if the app was quit inside
+  one. Migration 0013. Skills still apply. Built first as a second OS window and changed the
+  same day to open in the window you are in: a separate window is another thing to arrange, and
+  it leaves behind the app you were working in.
 - **The window controls sit on their own ground**, with **Use incognito** to their left (15 §7).
 - **`<gantry_now>`**: the date, the weekday and the UTC offset, per turn beside the inventories,
   because a model with no clock spends a round — and a permission card, in Manual — asking what

@@ -32,6 +32,14 @@ interface UiState {
    */
   unguarded: string[];
   rememberUnguarded: (chatId: string) => void;
+  /**
+   * The incognito chat on screen, or null (15 A21). Held here rather than read off the route so
+   * that leaving the route can delete it: the session lives exactly as long as it is showing,
+   * and a component-lifecycle cleanup would fire on StrictMode's second mount in development.
+   * Deliberately not persisted — a restart must not resurrect one.
+   */
+  incognitoChatId: string | null;
+  setIncognitoChat: (chatId: string | null) => void;
   /** The open section of each dialog, or null when it is closed (15 A18). */
   settings: Section | null;
   customize: CustomizeSection | null;
@@ -97,6 +105,8 @@ export const useUiStore = create<UiState>()(
         set((s) => ({
           recentModels: [key, ...s.recentModels.filter((k) => k !== key)].slice(0, RECENT_MODELS),
         })),
+      incognitoChatId: null,
+      setIncognitoChat: (incognitoChatId) => set({ incognitoChatId }),
       settings: null,
       customize: null,
       // Only one of the two is ever open: they are the same kind of surface.

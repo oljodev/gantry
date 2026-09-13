@@ -30,8 +30,7 @@ function Root() {
   const bare = useRouterState({
     select: (s) =>
       s.location.pathname.startsWith('/onboarding') ||
-      s.location.pathname.startsWith('/artifact-window') ||
-      s.location.pathname.startsWith('/incognito'),
+      s.location.pathname.startsWith('/artifact-window'),
   });
   return (
     <Providers>

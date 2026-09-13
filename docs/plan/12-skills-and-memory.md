@@ -279,8 +279,9 @@ arrives is in every prompt until somebody notices it.
 
 ### Incognito takes memory out of the loop
 
-15 A21. An incognito session reads no memory and writes none, and the memory tools are dropped
-from its tool set rather than left to refuse — the same reasoning as `paused`: a tool that is
+15 A21. An incognito session — a chat in the ordinary window, deleted when you leave it — reads
+no memory and writes none, and the memory tools are dropped from its tool set rather than left
+to refuse — the same reasoning as `paused`: a tool that is
 not in the list cannot be reached for, and the model does not spend a round finding out.
 
 Skills are unaffected, which is a line worth writing down: a skill is how the user works, a

@@ -59,22 +59,21 @@ export const commands = {
 /**  Working inside a folder on this machine. */
 "code" | null, roots: string[] | null) => typedError<ChatSummary, ErrorDto>(__TAURI_INVOKE("create_chat", { model, surface, roots })),
 	/**
-	 *  Opens an incognito chat in its own window (docs/plan/15 A21).
+	 *  Starts an incognito chat (docs/plan/15 A21).
 	 * 
-	 *  The chat is created here rather than by the frontend, and the window is given its id, so the
-	 *  window owns the session from the first frame: the close handler below has something to
-	 *  delete however the window ends, and no path exists where a webview creates an incognito chat
-	 *  and then fails to claim it.
+	 *  It creates the session and nothing else: the window that asked for it shows it, the way it
+	 *  shows any other chat. An earlier version opened a second OS window for it, on the reasoning
+	 *  that a separate window makes "is this being kept" a question you answer by looking. In use
+	 *  that was wrong twice over — a second window is a second thing to arrange on screen, and it
+	 *  left the app you were working in behind to do it.
 	 * 
-	 *  A separate window rather than a mode inside the main one, for the same reason the artifact
-	 *  windows are separate: a private conversation that shares a sidebar with the history is one
-	 *  keystroke from being in it, and "which window am I in" is a question a person can answer at
-	 *  a glance.
+	 *  The session is deleted when the view leaves it, and the startup sweep deletes any that a
+	 *  crash or a quit left behind; between them nothing survives the window it was typed in.
 	 */
-	openIncognitoWindow: (model: {
+	startIncognito: (model: {
 	provider: ProviderId,
 	model: string,
-} | null) => typedError<ChatSummary, ErrorDto>(__TAURI_INVOKE("open_incognito_window", { model })),
+} | null) => typedError<ChatSummary, ErrorDto>(__TAURI_INVOKE("start_incognito", { model })),
 	/**
 	 *  A `data:` URL for an image on disk, so the composer can show what is attached before the
 	 *  message is sent. Anything that is not a supported image, or is over the image cap, answers
