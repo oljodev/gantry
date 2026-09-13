@@ -20,7 +20,7 @@ import { Route as ChatChatIdRouteImport } from './routes/chat.$chatId'
 import { Route as CodeIndexRouteImport } from './routes/code.index'
 import { Route as CodeSessionIdRouteImport } from './routes/code.$sessionId'
 import { Route as DevGalleryRouteImport } from './routes/dev.gallery'
-import { Route as ProjectsProjectIdRouteImport } from './routes/projects.$projectId'
+import { Route as ProjectsProjectIdRouteImport } from './routes/projects_.$projectId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -78,9 +78,9 @@ const DevGalleryRoute = DevGalleryRouteImport.update({
   getParentRoute: () => rootRouteImport,
 } as any)
 const ProjectsProjectIdRoute = ProjectsProjectIdRouteImport.update({
-  id: '/$projectId',
-  path: '/$projectId',
-  getParentRoute: () => ProjectsRoute,
+  id: '/projects_/$projectId',
+  path: '/projects/$projectId',
+  getParentRoute: () => rootRouteImport,
 } as any)
 
 export interface FileRoutesByFullPath {
@@ -89,7 +89,7 @@ export interface FileRoutesByFullPath {
   '/artifacts': typeof ArtifactsRoute
   '/incognito': typeof IncognitoRoute
   '/onboarding': typeof OnboardingRoute
-  '/projects': typeof ProjectsRouteWithChildren
+  '/projects': typeof ProjectsRoute
   '/chat/$chatId': typeof ChatChatIdRoute
   '/code/$sessionId': typeof CodeSessionIdRoute
   '/dev/gallery': typeof DevGalleryRoute
@@ -103,7 +103,7 @@ export interface FileRoutesByTo {
   '/artifacts': typeof ArtifactsRoute
   '/incognito': typeof IncognitoRoute
   '/onboarding': typeof OnboardingRoute
-  '/projects': typeof ProjectsRouteWithChildren
+  '/projects': typeof ProjectsRoute
   '/chat/$chatId': typeof ChatChatIdRoute
   '/code/$sessionId': typeof CodeSessionIdRoute
   '/dev/gallery': typeof DevGalleryRoute
@@ -118,11 +118,11 @@ export interface FileRoutesById {
   '/artifacts': typeof ArtifactsRoute
   '/incognito': typeof IncognitoRoute
   '/onboarding': typeof OnboardingRoute
-  '/projects': typeof ProjectsRouteWithChildren
+  '/projects': typeof ProjectsRoute
   '/chat/$chatId': typeof ChatChatIdRoute
   '/code/$sessionId': typeof CodeSessionIdRoute
   '/dev/gallery': typeof DevGalleryRoute
-  '/projects/$projectId': typeof ProjectsProjectIdRoute
+  '/projects_/$projectId': typeof ProjectsProjectIdRoute
   '/chat/': typeof ChatIndexRoute
   '/code/': typeof CodeIndexRoute
 }
@@ -166,7 +166,7 @@ export interface FileRouteTypes {
     | '/chat/$chatId'
     | '/code/$sessionId'
     | '/dev/gallery'
-    | '/projects/$projectId'
+    | '/projects_/$projectId'
     | '/chat/'
     | '/code/'
   fileRoutesById: FileRoutesById
@@ -177,10 +177,11 @@ export interface RootRouteChildren {
   ArtifactsRoute: typeof ArtifactsRoute
   IncognitoRoute: typeof IncognitoRoute
   OnboardingRoute: typeof OnboardingRoute
-  ProjectsRoute: typeof ProjectsRouteWithChildren
+  ProjectsRoute: typeof ProjectsRoute
   ChatChatIdRoute: typeof ChatChatIdRoute
   CodeSessionIdRoute: typeof CodeSessionIdRoute
   DevGalleryRoute: typeof DevGalleryRoute
+  ProjectsProjectIdRoute: typeof ProjectsProjectIdRoute
   ChatIndexRoute: typeof ChatIndexRoute
   CodeIndexRoute: typeof CodeIndexRoute
 }
@@ -264,27 +265,15 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DevGalleryRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/projects/$projectId': {
-      id: '/projects/$projectId'
-      path: '/$projectId'
+    '/projects_/$projectId': {
+      id: '/projects_/$projectId'
+      path: '/projects/$projectId'
       fullPath: '/projects/$projectId'
       preLoaderRoute: typeof ProjectsProjectIdRouteImport
-      parentRoute: typeof ProjectsRoute
+      parentRoute: typeof rootRouteImport
     }
   }
 }
-
-interface ProjectsRouteChildren {
-  ProjectsProjectIdRoute: typeof ProjectsProjectIdRoute
-}
-
-const ProjectsRouteChildren: ProjectsRouteChildren = {
-  ProjectsProjectIdRoute: ProjectsProjectIdRoute,
-}
-
-const ProjectsRouteWithChildren = ProjectsRoute._addFileChildren(
-  ProjectsRouteChildren,
-)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
@@ -292,10 +281,11 @@ const rootRouteChildren: RootRouteChildren = {
   ArtifactsRoute: ArtifactsRoute,
   IncognitoRoute: IncognitoRoute,
   OnboardingRoute: OnboardingRoute,
-  ProjectsRoute: ProjectsRouteWithChildren,
+  ProjectsRoute: ProjectsRoute,
   ChatChatIdRoute: ChatChatIdRoute,
   CodeSessionIdRoute: CodeSessionIdRoute,
   DevGalleryRoute: DevGalleryRoute,
+  ProjectsProjectIdRoute: ProjectsProjectIdRoute,
   ChatIndexRoute: ChatIndexRoute,
   CodeIndexRoute: CodeIndexRoute,
 }
