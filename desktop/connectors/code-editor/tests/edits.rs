@@ -78,12 +78,11 @@ impl Fixture {
         self.work.path().join(name).display().to_string()
     }
 
-    /// What `filesystem__read_file` will do when it lands: read the file and remember it.
-    fn read(&self, name: &str) {
+    /// What `filesystem__read_file` does: read the file and remember it.
+    async fn read(&self, name: &str) {
         let roots = self.workspace.roots(self.chat).unwrap();
-        self.workspace
-            .read(&roots, self.chat, &self.path(name))
-            .unwrap();
+        let scoped = roots.resolve(&self.path(name)).unwrap();
+        self.workspace.read(self.chat, &scoped).await.unwrap();
     }
 
     async fn call(&self, tool: &str, args: serde_json::Value) -> (String, bool) {
@@ -144,7 +143,7 @@ async fn a_file_must_be_read_before_it_is_edited() {
 #[tokio::test]
 async fn a_replace_changes_the_file_and_reports_its_hunks() {
     let f = fixture();
-    f.read("main.rs");
+    f.read("main.rs").await;
     let (message, is_error) = f
         .call(
             "replace",
@@ -173,7 +172,7 @@ async fn a_replace_changes_the_file_and_reports_its_hunks() {
 #[tokio::test]
 async fn a_near_miss_names_the_indentation_and_writes_nothing() {
     let f = fixture();
-    f.read("main.rs");
+    f.read("main.rs").await;
     let (message, is_error) = f
         .call(
             "replace",
@@ -193,7 +192,7 @@ async fn a_near_miss_names_the_indentation_and_writes_nothing() {
 #[tokio::test]
 async fn a_file_changed_underneath_is_refused_with_what_to_do() {
     let f = fixture();
-    f.read("main.rs");
+    f.read("main.rs").await;
     std::fs::write(
         f.work.path().join("main.rs"),
         "fn main() {\n    let y = 7;\n}\n",
@@ -213,7 +212,7 @@ async fn a_file_changed_underneath_is_refused_with_what_to_do() {
 #[tokio::test]
 async fn an_edit_elsewhere_in_a_changed_file_still_applies_and_says_so() {
     let f = fixture();
-    f.read("main.rs");
+    f.read("main.rs").await;
     // The user's own editor adds a line above; the passage is untouched.
     std::fs::write(
         f.work.path().join("main.rs"),
@@ -235,7 +234,7 @@ async fn an_edit_elsewhere_in_a_changed_file_still_applies_and_says_so() {
 #[tokio::test]
 async fn insert_and_patch_and_undo_walk_the_file_back() {
     let f = fixture();
-    f.read("main.rs");
+    f.read("main.rs").await;
     let (_, is_error) = f
         .call(
             "insert",
@@ -285,7 +284,7 @@ async fn insert_and_patch_and_undo_walk_the_file_back() {
 #[tokio::test]
 async fn undo_refuses_when_someone_else_wrote_the_file() {
     let f = fixture();
-    f.read("main.rs");
+    f.read("main.rs").await;
     f.call(
         "replace",
         serde_json::json!({ "path": f.path("main.rs"), "old": "let x = 1;", "new": "let x = 2;" }),
@@ -333,7 +332,7 @@ async fn a_path_outside_the_folder_asks_for_the_folder_instead_of_writing() {
 async fn a_credential_file_is_edited_only_once_the_user_has_said_so() {
     let f = fixture();
     std::fs::write(f.work.path().join(".env"), "TOKEN=abc\n").unwrap();
-    f.read(".env");
+    f.read(".env").await;
     let (message, is_error) = f
         .call(
             "replace",
@@ -348,7 +347,7 @@ async fn a_credential_file_is_edited_only_once_the_user_has_said_so() {
 async fn line_endings_survive_an_edit() {
     let f = fixture();
     std::fs::write(f.work.path().join("crlf.txt"), "one\r\ntwo\r\n").unwrap();
-    f.read("crlf.txt");
+    f.read("crlf.txt").await;
     let (message, is_error) = f
         .call(
             "replace",

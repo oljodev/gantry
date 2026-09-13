@@ -10,12 +10,14 @@ publish.workspace = true
 
 [dependencies]
 gantry-core.workspace = true
+gantry-documents.workspace = true
 gantry-store.workspace = true
 cap-std.workspace = true
 diffy.workspace = true
 globset.workspace = true
 ignore.workspace = true
 regex.workspace = true
+tokio = { workspace = true, features = ["rt"] }
 trash.workspace = true
 log.workspace = true
 serde.workspace = true

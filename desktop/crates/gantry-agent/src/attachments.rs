@@ -1,10 +1,16 @@
-//! Turning attachment inputs into blobs and message parts. Text files and images only in M2;
-//! PDFs and other documents arrive with their extractors later.
+//! Turning attachment inputs into blobs and message parts: text, images, and the documents
+//! `gantry-documents` can turn into text.
+//!
+//! A document is stored twice, on purpose. The file itself is a blob, because the attachment is
+//! that file and a later version of Gantry may hand it to a provider that reads PDFs natively;
+//! its text is a second blob, because the text is what the message carries into the prompt, and
+//! a provider handed a PDF's raw bytes as text receives line noise.
 
 use std::path::Path;
 
 use gantry_core::{
-    AttachmentInput, ContentPart, GantryError, MAX_IMAGE_BYTES, MAX_TEXT_BYTES, MediaSource,
+    AttachmentInput, ContentPart, GantryError, MAX_DOCUMENT_BYTES, MAX_IMAGE_BYTES, MAX_TEXT_BYTES,
+    MediaSource,
 };
 use gantry_store::BlobStore;
 
@@ -90,6 +96,47 @@ fn ingest_one(blobs: &BlobStore, input: AttachmentInput) -> Result<Ingested, Gan
             },
         });
     }
+    if let Some(kind) = gantry_documents::kind_of(&name, &bytes) {
+        if size > MAX_DOCUMENT_BYTES {
+            return Err(GantryError::invalid(format!(
+                "{name} is {} MB; documents are limited to {} MB",
+                size / (1024 * 1024),
+                MAX_DOCUMENT_BYTES / (1024 * 1024)
+            )));
+        }
+        // Every refusal the extractor can give is already a sentence for a person: a scan with no
+        // text in it, a password nobody has, a file that is damaged.
+        let extracted = gantry_documents::extract(kind, &name, &bytes)
+            .map_err(|err| GantryError::invalid(err.to_string()))?;
+        if extracted.text.len() > MAX_TEXT_BYTES {
+            return Err(GantryError::invalid(format!(
+                "{name} is {} pages, which come to {} KB of text — more than the {} KB a message \
+                 can carry. Add the folder it is in to the chat instead, so it can be read a \
+                 piece at a time.",
+                extracted.pages,
+                extracted.text.len() / 1024,
+                MAX_TEXT_BYTES / 1024
+            )));
+        }
+        let hash = blobs.put(&bytes)?;
+        let text = blobs.put(extracted.text.as_bytes())?;
+        return Ok(Ingested {
+            // The part points at the text, which is what a prompt can hold; the record points at
+            // the document, which is what the user attached.
+            part: ContentPart::Document {
+                source: MediaSource::Blob { hash: text },
+                mime: "text/plain".to_owned(),
+                name: name.clone(),
+            },
+            record: NewAttachment {
+                name,
+                mime: kind.mime().to_owned(),
+                size: size as i64,
+                blob_hash: hash,
+                extracted_text: Some(extracted.text),
+            },
+        });
+    }
     if size > MAX_TEXT_BYTES {
         return Err(GantryError::invalid(format!(
             "{name} is {} KB; text files are limited to {} KB",
@@ -99,7 +146,7 @@ fn ingest_one(blobs: &BlobStore, input: AttachmentInput) -> Result<Ingested, Gan
     }
     if bytes.contains(&0) || std::str::from_utf8(&bytes).is_err() {
         return Err(GantryError::invalid(format!(
-            "{name} is not a text file or an image; other documents are not supported yet"
+            "{name} is not text, an image, or a document Gantry can read"
         )));
     }
     let mime = if mime.starts_with("text/") || is_text_mime(&mime) {
@@ -209,6 +256,54 @@ mod tests {
     }
 
     #[test]
+    fn a_pdf_is_ingested_as_its_text_and_keeps_the_file_beside_it() {
+        let (_dir, b) = blobs();
+        let pdf = gantry_documents::sample::pdf(&["A note about gantries."]);
+        use base64::Engine;
+        let out = ingest(
+            &b,
+            vec![AttachmentInput::Bytes {
+                name: "note.pdf".into(),
+                mime: "application/pdf".into(),
+                data_base64: base64::engine::general_purpose::STANDARD.encode(&pdf),
+            }],
+        )
+        .unwrap();
+        let text = out[0].record.extracted_text.as_deref().unwrap();
+        assert!(text.contains("A note about gantries."), "{text}");
+        assert_eq!(out[0].record.mime, "application/pdf");
+        assert_eq!(out[0].record.size, pdf.len() as i64);
+        // The row keeps the document, so nothing about the attachment is lost; the part carries
+        // the text, because a provider handed a PDF's bytes as text receives line noise.
+        assert_eq!(b.get(&out[0].record.blob_hash).unwrap(), pdf);
+        let ContentPart::Document {
+            source: MediaSource::Blob { hash },
+            ..
+        } = &out[0].part
+        else {
+            panic!("a document part, got {:?}", out[0].part)
+        };
+        assert_eq!(b.get(hash).unwrap(), text.as_bytes());
+    }
+
+    #[test]
+    fn a_scan_says_it_has_no_text_rather_than_arriving_empty() {
+        let (_dir, b) = blobs();
+        use base64::Engine;
+        let err = ingest(
+            &b,
+            vec![AttachmentInput::Bytes {
+                name: "scan.pdf".into(),
+                mime: "application/pdf".into(),
+                data_base64: base64::engine::general_purpose::STANDARD
+                    .encode(gantry_documents::sample::pdf(&[""])),
+            }],
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("character recognition"), "{err}");
+    }
+
+    #[test]
     fn binaries_and_oversized_files_are_refused() {
         let (_dir, b) = blobs();
         let err = ingest(
@@ -220,7 +315,10 @@ mod tests {
             }],
         )
         .unwrap_err();
-        assert!(err.to_string().contains("not a text file"));
+        assert!(
+            err.to_string()
+                .contains("not text, an image, or a document")
+        );
         let big = "a".repeat(MAX_TEXT_BYTES + 1);
         use base64::Engine;
         let err = ingest(

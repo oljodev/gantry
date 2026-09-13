@@ -115,8 +115,10 @@ gantry/
 │   │   │       ├── auth/{mod.rs, discovery.rs, flow.rs}   # metadata, registration; PKCE, loopback, tokens
 │   │   │       ├── tests/live.rs         # ignored: a real MCP server, no account needed
 │   │   │       └── later: native/, runtimes.rs, resources.rs, catalog overlay (03 §11)
+│   │   ├── gantry-documents/
+│   │   │   └── src/{lib.rs, pdf.rs, sample.rs}   # document text: PDF on pdf-extract + lopdf; sample.rs builds one for the tests either side of it
 │   │   ├── gantry-workspace/
-│   │   │   └── src/{lib.rs, scope.rs, text.rs, edit.rs, walk.rs, session.rs, guard.rs, journal.rs; later runner.rs, classify.rs}
+│   │   │   └── src/{lib.rs, scope.rs, text.rs, document.rs, edit.rs, walk.rs, session.rs, guard.rs, journal.rs; later runner.rs, classify.rs}
 │   │   │                                 # scope.rs: the capability open on cap-std; session.rs: what this chat has read
 │   │   ├── gantry-agent/
 │   │   │   ├── build.rs                  # validates and embeds ../../skills/*/SKILL.md (M12)

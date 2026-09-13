@@ -189,6 +189,69 @@ async fn reading_says_what_to_use_instead_when_the_path_is_a_folder_or_binary() 
     assert!(message.contains("a PNG image"), "{message}");
 }
 
+/// A real PDF, built rather than checked in: `gantry_documents::sample` says why.
+fn note() -> Vec<u8> {
+    gantry_documents::sample::pdf(&["A note about gantries.\nSecond line of it."])
+}
+
+#[tokio::test]
+async fn a_document_is_read_as_its_text_with_pages_instead_of_line_endings() {
+    let f = fixture();
+    std::fs::write(f.work.path().join("note.pdf"), note()).unwrap();
+    let result = f
+        .ok(
+            "read_file",
+            serde_json::json!({ "path": f.path("note.pdf") }),
+        )
+        .await;
+    let content = result["content"].as_str().unwrap();
+    assert!(content.contains("A note about gantries."), "{content}");
+    assert!(content.contains("Second line of it."), "{content}");
+    assert_eq!(result["document"], "PDF document");
+    assert_eq!(result["pages"], 1);
+    assert_eq!(result["first_page"], 1);
+    assert_eq!(result["last_page"], 1);
+    assert_eq!(result["more"], false);
+    // Nothing about the bytes on disk is reported, because they are not the text: a document has
+    // no line ending to preserve and nothing here may be written back.
+    assert!(result.get("line_ending").is_none(), "{result}");
+    assert!(result.get("encoding").is_none(), "{result}");
+
+    // And the reverse: a file whose name claims to be a document but holds text is read as the
+    // text it is.
+    std::fs::write(f.work.path().join("notes.pdf"), "not really a pdf\n").unwrap();
+    let result = f
+        .ok(
+            "read_file",
+            serde_json::json!({ "path": f.path("notes.pdf") }),
+        )
+        .await;
+    assert_eq!(result["content"], "not really a pdf");
+    assert_eq!(result["line_ending"], "LF");
+}
+
+#[tokio::test]
+async fn a_document_that_was_read_is_still_not_something_write_file_may_replace() {
+    let f = fixture();
+    let path = f.work.path().join("note.pdf");
+    std::fs::write(&path, note()).unwrap();
+    f.ok(
+        "read_file",
+        serde_json::json!({ "path": f.path("note.pdf") }),
+    )
+    .await;
+    // Reading it does not make it writable. Having read a PDF is exactly when a model is most
+    // likely to write to it, and the write would replace the document with its own text.
+    let message = f
+        .refused(
+            "write_file",
+            serde_json::json!({ "path": f.path("note.pdf"), "content": "rewritten" }),
+        )
+        .await;
+    assert!(message.contains("another path"), "{message}");
+    assert_eq!(std::fs::read(&path).unwrap(), note());
+}
+
 #[tokio::test]
 async fn a_missing_file_names_the_nearest_folder_that_does_exist() {
     let f = fixture();

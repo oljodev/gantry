@@ -335,8 +335,13 @@ tools, and the feed.
 **The connectors** (16 §8, C6 as revised)
 
 - ~~`desktop/connectors/filesystem` complete, per its document: read, write, list, glob, search,
-  move, document text extraction.~~ **Done**, all ten tools, apart from document text extraction,
-  which stays open with §17's second question. Two deviations are recorded in that document as
+  move, document text extraction.~~ **Done**, all ten tools. Document text extraction followed on
+  2026-09-13 in `gantry-documents`, answering §17's second question with PDF and only PDF: it is
+  the one binary document with a usable pure-Rust extractor, and everything listed beside it is
+  already text. `read_file` reports the pages a window covered, a scan says it is a scan rather
+  than coming back empty, and a file that is not text is no longer replaced with text by
+  `write_file` — which extraction is what made reachable. The same extractor is what an attached
+  PDF now goes through, and what M11's knowledge files will use. Two deviations are recorded in that document as
   built: sensitive files are refused on write rather than confirmed (§6), and the folder access
   request of §8 is a refusal that names the folder until the Code surface adds the one-click
   version.
@@ -645,7 +650,7 @@ Done when: "what's in my Google Drive?" in a chat without Drive leads to a sugge
 
 ## M11 — Projects, composer, web (1–2 weeks)
 
-- Projects: create, pin, instructions (layer 5 of 10 §2), workspace folder (default roots and cwd), default mode/guard/connectors/grants/pinned skills, knowledge files with text extraction (text, markdown, code, CSV, JSON, PDF text), the project page listing its chats and its **Artifacts** tab (13 §9); "Add to project" and "move to project"; **Continue in new chat** on an artifact.
+- Projects: create, pin, instructions (layer 5 of 10 §2), workspace folder (default roots and cwd), default mode/guard/connectors/grants/pinned skills, knowledge files with text extraction (text, markdown, code, CSV, JSON, PDF text — `gantry-documents` is already there, from 2026-09-13), the project page listing its chats and its **Artifacts** tab (13 §9); "Add to project" and "move to project"; **Continue in new chat** on an artifact.
 - Chat-level instructions (layer 6) in the chat settings panel.
 - The attach menu complete: files, folder (with the install-all-three dialog), project, connectors checklist, web search toggle (provider server tools with opaque-part rendering; `web` connector fallback, installed on demand), thinking selector.
 - `desktop/connectors/web` (`fetch_url`, optional `search` with a BYOK search key).

@@ -68,7 +68,8 @@ impl Fixture {
     async fn edit(&self, name: &str, old: &str, new: &str) {
         let roots = self.workspace.roots(self.chat).unwrap();
         let path = self.path(name);
-        self.workspace.read(&roots, self.chat, &path).unwrap();
+        let scoped = roots.resolve(&path).unwrap();
+        self.workspace.read(self.chat, &scoped).await.unwrap();
         self.workspace
             .apply(
                 &roots,

@@ -8,9 +8,9 @@ undone by closing a window. This one cannot. So the design is organised around a
 boundary, stated once and enforced in one place, and around never doing anything surprising to a
 file the user did not mean to change.
 
-Status: **built 2026-09-08**, all ten tools of §5. What is not built is named where it belongs:
-document text extraction (§5), the one-click folder access request (§8), the guardrail
-confirmation for sensitive files (§6), bulk operations and archives (§15). Choices this document
+Status: **built 2026-09-08**, all ten tools of §5; document text extraction followed on
+**2026-09-13**. What is not built is named where it belongs: the one-click folder access request
+(§8), the guardrail confirmation for sensitive files (§6), bulk operations and archives (§15). Choices this document
 left to build time are recorded in §13, and the two places where the shipped behaviour differs
 from what is written above them are marked **as built** in §6 and §7.
 
@@ -250,9 +250,22 @@ Behaviour that has to be right:
   write has to preserve what was found.
 - **Line endings are detected and reported**, for the same reason.
 - **Binary is refused honestly** (D10) with its type and size, so the model stops trying.
-- **Documents are extracted to text** where that is possible in pure Rust. Which formats those
-  are is decided **at build time**; PDF matters most and has the most awkward library situation
-  in pure Rust, so it may not make the first version.
+- **Documents are extracted to text** where that is possible in pure Rust. **Built 2026-09-13**,
+  and the format list is PDF, which is the only binary document with a usable pure-Rust
+  extractor; the crates are in §13 and §17's second question is answered there. Three things
+  about it are part of the interface rather than of the library:
+  - **The bytes are asked first, then the name.** An uncompressed PDF is valid UTF-8 with no NUL
+    byte in it, so "does this decode?" would hand the model a document's own source as if it
+    were the text. A `.pdf` that really does hold text is still read as the text it is.
+  - **Pages are metadata** (D8), never `--- page 3 ---` inside the content: the result carries
+    the document's page count and which pages the returned lines came from.
+  - **A scan is not an empty document.** A page of images has no text layer, and returning
+    nothing for it reads as "this file is blank"; it says what it is, and that reading it would
+    need character recognition Gantry does not have. A password nobody has, and a file that is
+    damaged, say so the same way.
+  - **An extraction is not a read an edit can stand on.** A text read is recorded for the
+    freshness rule of `code-editor.md` §5; an extraction is not, because the text is not what is
+    on disk.
 - **Large files truncate visibly** (D9): what was returned, what remains, how to continue.
 
 ### `glob` and `grep`
@@ -275,6 +288,13 @@ excluded from results can still be read by name.
 `write_file` replaces a whole file. `create_directory`, `move_path` and `copy_path` do what they
 say. All four are `write` tier, so Auto-edit performs them without asking and the user sees the
 result in the activity feed.
+
+**What is already there decides whether this is a write at all.** Both connectors write text, so
+a file whose bytes are not text is not theirs to replace with text, and a document Gantry can read
+is refused by name: having just read a PDF is exactly when a model is most likely to write to it,
+and the write would put text where the document was. Revert is unaffected, because it restores
+bytes rather than writing text. **Added 2026-09-13**, with extraction, which is what made the
+mistake reachable.
 
 Writes must preserve what reading detected: encoding, byte-order mark, line endings, and whether
 the file ended with a newline. A tool that quietly rewrites a CRLF file as LF produces a diff
@@ -478,8 +498,21 @@ needs a C toolchain. Encoding detection is deliberately not a crate yet: UTF-8 w
 byte-order mark is decoded, anything else is refused honestly as not-text, and a legacy-encoding
 fallback can be added behind the same `TextFile` without changing a single caller. Content search
 is `regex` over the walker rather than `grep-searcher`: fewer dependencies for the same answer at
-this scale, and the seam is one function wide if that stops being true. Document text extraction
-is not built, so §17's second question stays open.
+this scale, and the seam is one function wide if that stops being true.
+
+**Document text extraction, chosen 2026-09-13**: `pdf-extract` (MIT) with `lopdf` (MIT)
+underneath it, in `gantry-documents`. Both are pure Rust and need no C toolchain; `cargo deny`
+passes, the new transitive licences being MIT, Apache-2.0 and the BSD-3-Clause arm of
+`encoding_rs`, all already allowed. Two things about the choice are worth writing down. It is the
+only pure-Rust crate that carries the font tables a PDF needs before its bytes mean anything — a
+PDF stores glyph codes in each font's own encoding, so "pull the strings out of the content
+stream" yields mojibake for every document that is not plain WinAnsi Helvetica. And it panics on
+some malformed files rather than returning an error, so every call runs inside `catch_unwind`: a
+corrupt PDF in an attached folder is an ordinary thing to meet and must not take the app down.
+The pages are walked one at a time through `lopdf` rather than through the library's one-call
+helper, which is what lets the page count be known before the text is, a password-protected file
+be recognised as one, and a page that fails to render stop the walk instead of silently emptying
+the result.
 
 Two constraints are fixed. Every dependency must be permissively licensed, because Gantry ships
 under a commercial licence; an audit during the web connector's planning caught a crate that
@@ -537,7 +570,12 @@ confirmation and one journal entry, is the right shape. Not in the first version
 1. **The boundary with the code editor.** Deferred by decision to the code-editor planning
    session. §19 lists what is in play.
 2. **Document extraction.** Which formats are realistically supported in pure Rust with a
-   permissive licence, and whether PDF is one of them.
+   permissive licence, and whether PDF is one of them. **Answered 2026-09-13: PDF, and only
+   PDF.** Everything else the roadmap lists beside it — text, Markdown, code, CSV, JSON — is
+   already text and is read by decoding the bytes; inventing an extractor for those would only
+   stand between the model and the file. The Office formats are zip-plus-XML and reachable, but
+   each is a format to get right rather than a dependency to add, and none of them is what people
+   have on disk the way PDFs are. The crates and what they cost are in §13.
 3. **Trash on every platform.** Whether a usable recoverable delete exists on Linux without a
    desktop session, and what `delete_path` promises when it does not. **Answered in shape, not in
    fact (2026-09-08):** the result carries `trashed`, so the promise is never assumed — a delete

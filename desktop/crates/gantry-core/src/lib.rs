@@ -31,7 +31,7 @@ pub use artifact::{
     ArtifactContent, ArtifactDto, ArtifactVersionDto, RenderError, RenderReport, RenderStatus,
     VersionSource,
 };
-pub use attachment::{AttachmentInput, MAX_IMAGE_BYTES, MAX_TEXT_BYTES};
+pub use attachment::{AttachmentInput, MAX_DOCUMENT_BYTES, MAX_IMAGE_BYTES, MAX_TEXT_BYTES};
 pub use chat::{
     ChatDetail, ChatSummary, Feedback, SearchHit, SearchHitKind, Surface, TurnDto, TurnStatus,
 };

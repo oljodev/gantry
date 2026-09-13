@@ -130,6 +130,10 @@ export const commands = {
 	 *  Starts a turn and returns at once; the channel carries the turn's events until it ends.
 	 *  Attachments are read and stored before anything is sent; a bad one fails the whole call.
 	 *  `skills` are the ones the composer's `/name` forced for this message (12 §A4 rule 5).
+	 * 
+	 *  Async, and the start itself on a blocking thread, because of those attachments: reading them
+	 *  is file IO and a document is parsed before it is text, which for a long PDF is seconds. A
+	 *  synchronous command would spend them on the thread the window is drawn on.
 	 */
 	sendMessage: (chatId: ChatId, text: string, attachments: AttachmentInput[], skills: string[], onEvent: Channel<AgentEventBatch_Deserialize>) => typedError<TurnId, ErrorDto>(__TAURI_INVOKE("send_message", { chatId, text, attachments, skills, onEvent })),
 	/**  Drops the chat's last turn and sends its user message again over a fresh channel. */

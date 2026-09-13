@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
 use gantry_agent::EventSink;
-use gantry_core::{AgentEventBatch, AttachmentInput, CallId, ChatId, ErrorDto, TurnId};
+use gantry_core::{
+    AgentEventBatch, AttachmentInput, CallId, ChatId, ErrorDto, GantryError, TurnId,
+};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, State, ipc::Channel};
 use tauri_specta::Event;
@@ -28,9 +30,13 @@ pub struct ActiveTurn {
 /// Starts a turn and returns at once; the channel carries the turn's events until it ends.
 /// Attachments are read and stored before anything is sent; a bad one fails the whole call.
 /// `skills` are the ones the composer's `/name` forced for this message (12 §A4 rule 5).
+///
+/// Async, and the start itself on a blocking thread, because of those attachments: reading them
+/// is file IO and a document is parsed before it is text, which for a long PDF is seconds. A
+/// synchronous command would spend them on the thread the window is drawn on.
 #[tauri::command]
 #[specta::specta]
-pub fn send_message(
+pub async fn send_message(
     app: AppHandle,
     state: State<'_, AppState>,
     chat_id: ChatId,
@@ -39,13 +45,18 @@ pub fn send_message(
     skills: Vec<String>,
     on_event: Channel<AgentEventBatch>,
 ) -> Result<TurnId, ErrorDto> {
-    let turn = state.turns.start(
-        chat_id,
-        text,
-        attachments,
-        skills,
-        Arc::new(ChannelSink(on_event)),
-    )?;
+    let turns = state.turns.clone();
+    let turn = tokio::task::spawn_blocking(move || {
+        turns.start(
+            chat_id,
+            text,
+            attachments,
+            skills,
+            Arc::new(ChannelSink(on_event)),
+        )
+    })
+    .await
+    .map_err(|_| GantryError::internal("sending the message was interrupted"))??;
     let _ = ChatsChanged {
         chat_ids: vec![chat_id],
     }

@@ -26,6 +26,7 @@ gantry-secrets = { path = "desktop/crates/gantry-secrets" }
 gantry-providers = { path = "desktop/crates/gantry-providers" }
 gantry-connectors = { path = "desktop/crates/gantry-connectors" }
 gantry-workspace = { path = "desktop/crates/gantry-workspace" }
+gantry-documents = { path = "desktop/crates/gantry-documents" }
 gantry-agent = { path = "desktop/crates/gantry-agent" }
 gantry-connector-filesystem = { path = "desktop/connectors/filesystem" }
 gantry-connector-code-editor = { path = "desktop/connectors/code-editor" }
@@ -66,6 +67,9 @@ ignore = "0.4"
 globset = "0.4"
 regex = "1"
 trash = "5"
+pdf-extract = "0.12"
+# Matching what pdf-extract resolves, so the document crate and its extractor share one copy.
+lopdf = { version = "0.42", default-features = false }
 toml = "0.9"
 shell-words = "1"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }

@@ -11,6 +11,7 @@
 #![forbid(unsafe_code)]
 
 pub mod changes;
+pub mod document;
 pub mod edit;
 pub mod journal;
 pub mod scope;
@@ -24,7 +25,9 @@ use gantry_core::{ChatId, EditOp};
 use gantry_store::{BlobStore, Store, repos};
 
 pub use changes::{FileChange, FileDiff, Reverted};
+pub use document::Reading;
 pub use edit::{Anchor, Change, Diff, EditError, Hunk};
+pub use gantry_documents::{DocumentKind, Extracted};
 pub use journal::{FileEditRecord, Journal, JournalError};
 pub use scope::{Roots, ScopeError, Scoped};
 pub use session::{Freshness, Sessions};
@@ -39,6 +42,19 @@ pub enum WorkspaceError {
     Scope(#[from] ScopeError),
     #[error("{0}")]
     Text(#[from] TextError),
+    #[error("{0}")]
+    Document(#[from] gantry_documents::DocumentError),
+    /// A file whose text can be read but must not be rewritten. Both connectors write text; a
+    /// document's bytes are not its text, and writing the one over the other destroys it.
+    #[error(
+        "{path} is a {kind}. Gantry can read its text but not write it — putting text where the \
+         document's bytes are would destroy it. Write to another path instead."
+    )]
+    NotEditable { path: String, kind: &'static str },
+    /// The extraction was taken down with its thread — the app is shutting down, or the task was
+    /// aborted. Not a fact about the file, so it says so rather than blaming the document.
+    #[error("reading {path} was interrupted before it finished")]
+    Interrupted { path: String },
     #[error("{0}")]
     Edit(#[from] EditError),
     #[error("{0}")]
@@ -68,13 +84,6 @@ pub enum WorkspaceError {
     Unchanged { path: String },
     #[error("{0}")]
     Store(String),
-}
-
-/// A file as it was read: the text, how it is spelled on disk, and where it lives.
-pub struct ReadFile<'a> {
-    pub scoped: Scoped<'a>,
-    pub file: TextFile,
-    pub bytes: Vec<u8>,
 }
 
 /// What a write left behind: the same shape whether it created the file or replaced it.
@@ -119,6 +128,8 @@ pub struct Workspace {
     sessions: Sessions,
     /// Gantry's own data, which is never writable whatever the roots say (D6).
     denied: Vec<PathBuf>,
+    /// The documents already turned into text.
+    extracted: document::Extractions,
     /// Whether deletion may use the system trash. Off in tests, so a test run never puts
     /// anything in the developer's own trash, and available for the platforms where §17's third
     /// open question turns out to have the answer "there is no usable trash here".
@@ -133,6 +144,7 @@ impl Workspace {
             store,
             sessions: Sessions::new(),
             denied: vec![data_dir],
+            extracted: document::Extractions::default(),
             trash: true,
         }
     }
@@ -170,22 +182,43 @@ impl Workspace {
         Ok(roots)
     }
 
-    /// Reads a file and remembers what it saw, which is what later makes an edit possible.
-    pub fn read<'a>(
-        &self,
-        roots: &'a Roots,
-        chat: ChatId,
-        path: &str,
-    ) -> Result<ReadFile<'a>, WorkspaceError> {
-        let scoped = roots.resolve(path)?;
+    /// Reads a file a reader can put in front of a model: decoded when the bytes are text,
+    /// extracted when they are a document Gantry can read (`filesystem.md` §5).
+    ///
+    /// A text read is remembered, which is what later makes an edit possible. An extraction is
+    /// not: the text is not what is on disk, so nothing may be edited on the strength of it.
+    pub async fn read(&self, chat: ChatId, scoped: &Scoped<'_>) -> Result<Reading, WorkspaceError> {
+        let display = scoped.path.display().to_string();
         let bytes = scoped.read()?;
-        let file = TextFile::decode(&scoped.path.display().to_string(), &bytes)?;
-        self.sessions.record(chat, &scoped.path, text::hash(&bytes));
-        Ok(ReadFile {
-            scoped,
-            file,
-            bytes,
-        })
+        // The bytes decide, then the name. A `.pdf` holding nothing but text is read as the text
+        // it is, and a PDF saved under any name at all is still extracted.
+        let kind = if let Some(kind) = gantry_documents::by_bytes(&bytes) {
+            kind
+        } else {
+            match TextFile::decode(&display, &bytes) {
+                Ok(file) => {
+                    self.sessions.record(chat, &scoped.path, text::hash(&bytes));
+                    return Ok(Reading::Text(file));
+                }
+                Err(not_text) => gantry_documents::by_name(&display).ok_or(not_text)?,
+            }
+        };
+        let hash = text::hash(&bytes);
+        if let Some(hit) = self.extracted.get(&scoped.path, &hash) {
+            return Ok(Reading::Document(hit));
+        }
+        // Seconds, not milliseconds, for a long document: off the runtime's workers, so the rest
+        // of the turn — the stream, a Stop — is not waiting behind a book.
+        let named = display.clone();
+        let doc =
+            tokio::task::spawn_blocking(move || gantry_documents::extract(kind, &named, &bytes))
+                .await
+                .map_err(|_| WorkspaceError::Interrupted {
+                    path: display.clone(),
+                })??;
+        let doc = Arc::new(doc);
+        self.extracted.put(&scoped.path, hash, doc.clone());
+        Ok(Reading::Document(doc))
     }
 
     /// Applies one change: the freshness rules of `code-editor.md` §5, the change itself, an
@@ -201,7 +234,7 @@ impl Workspace {
         let scoped = roots.resolve(path)?;
         let display = scoped.path.display().to_string();
         let before_bytes = scoped.read()?;
-        let file = TextFile::decode(&display, &before_bytes)?;
+        let file = must_be_text(&display, &before_bytes)?;
         let current = text::hash(&before_bytes);
         let freshness = self.sessions.freshness(chat, &scoped.path, &current);
         if freshness == Freshness::Unseen {
@@ -284,6 +317,13 @@ impl Workspace {
         let scoped = roots.resolve(path)?;
         let display = scoped.path.display().to_string();
         let before = scoped.read().ok();
+        // What is already there decides whether this is a write at all: a document, or anything
+        // else that is not text, is not this connector's to replace with text. Revert still puts
+        // such a file back, because it restores bytes rather than writing text.
+        let before_text = before
+            .as_deref()
+            .map(|bytes| must_be_text(&display, bytes))
+            .transpose()?;
         if let Some(before) = &before {
             let current = text::hash(before);
             if self.sessions.freshness(chat, &scoped.path, &current) == Freshness::Changed {
@@ -297,14 +337,9 @@ impl Workspace {
         scoped.write_atomically(bytes)?;
         self.sessions.record(chat, &scoped.path, text::hash(bytes));
 
-        // A diff only exists when both sides are text; a replaced image is still journaled, it
-        // simply has no hunks to show.
-        let diff = match (
-            before
-                .as_deref()
-                .and_then(|b| TextFile::decode(&display, b).ok()),
-            TextFile::decode(&display, bytes).ok(),
-        ) {
+        // A diff only exists when both sides are text. A file created from bytes that are not
+        // text — there is no such tool today — would still be journaled, with no hunks to show.
+        let diff = match (before_text, TextFile::decode(&display, bytes).ok()) {
             (Some(old), Some(new)) => edit::diff(&old.text, &new.text),
             (None, Some(new)) => edit::diff("", &new.text),
             _ => Diff::default(),
@@ -471,4 +506,17 @@ impl Workspace {
             directory: stat.is_dir,
         })
     }
+}
+
+/// The bytes a write is allowed to stand on. A document Gantry can read is named as one, so the
+/// refusal says what the file is rather than that it failed to decode — and because an
+/// uncompressed PDF is valid UTF-8, "does it decode?" is not the same question.
+fn must_be_text(display: &str, bytes: &[u8]) -> Result<TextFile, WorkspaceError> {
+    if let Some(kind) = gantry_documents::by_bytes(bytes) {
+        return Err(WorkspaceError::NotEditable {
+            path: display.to_owned(),
+            kind: kind.label(),
+        });
+    }
+    Ok(TextFile::decode(display, bytes)?)
 }

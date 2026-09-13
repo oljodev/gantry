@@ -19,3 +19,6 @@ pub enum AttachmentInput {
 /// Limits the ingest applies (bytes).
 pub const MAX_IMAGE_BYTES: usize = 10 * 1024 * 1024;
 pub const MAX_TEXT_BYTES: usize = 256 * 1024;
+/// A document is measured twice: the file against this, and the text extracted out of it against
+/// `MAX_TEXT_BYTES`, because the text is what a message carries.
+pub const MAX_DOCUMENT_BYTES: usize = 10 * 1024 * 1024;

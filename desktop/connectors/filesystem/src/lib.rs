@@ -20,7 +20,7 @@ use gantry_connectors::{
     Connector, ConnectorDescriptor, ConnectorError, ToolCallRequest, ToolEventSink, ToolOutcome,
 };
 use gantry_core::{InstanceId, RiskTier, ToolDef};
-use gantry_workspace::{Roots, Scoped, TextFile, Workspace, WorkspaceError, walk};
+use gantry_workspace::{Reading, Roots, Scoped, TextFile, Workspace, WorkspaceError, walk};
 use tokio_util::sync::CancellationToken;
 
 /// The connector manifest, embedded at build time (`docs/plan/03-connector-system.md` §3).
@@ -81,7 +81,7 @@ impl Connector for Filesystem {
         let call_id = req.call_id.as_str();
 
         let outcome = match req.tool.as_str() {
-            "read_file" => self.read_file(&roots, chat, args),
+            "read_file" => self.read_file(&roots, chat, args).await,
             "list_directory" => list_directory(&roots, args),
             "stat" => stat(&roots, args),
             "glob" => glob(&roots, args),
@@ -100,7 +100,7 @@ impl Connector for Filesystem {
 }
 
 impl Filesystem {
-    fn read_file(
+    async fn read_file(
         &self,
         roots: &Roots,
         chat: gantry_core::ChatId,
@@ -122,9 +122,15 @@ impl Filesystem {
                 )));
             }
             Ok(stat) if stat.size > MAX_READ_BYTES => {
+                // grep reads text, so it is no help for a document: saying so is better than
+                // sending the model to a tool that will refuse it too.
+                let instead = if gantry_documents::by_name(&path).is_some() {
+                    "Gantry cannot read a document this large."
+                } else {
+                    "Use grep to find what you need in it."
+                };
                 return Ok(ToolOutcome::error(format!(
-                    "{} is {} bytes, which is too large to read whole. Use grep to find what \
-                     you need in it.",
+                    "{} is {} bytes, which is too large to read whole. {instead}",
                     scoped.path.display(),
                     stat.size
                 )));
@@ -133,11 +139,11 @@ impl Filesystem {
             Err(err) => return Ok(refuse(roots, &path, &err.into())),
         }
 
-        let read = match self.workspace.read(roots, chat, &path) {
-            Ok(read) => read,
+        let reading = match self.workspace.read(chat, &scoped).await {
+            Ok(reading) => reading,
             Err(err) => return Ok(refuse(roots, &path, &err)),
         };
-        let lines: Vec<&str> = read.file.text.lines().collect();
+        let lines: Vec<&str> = reading.text().lines().collect();
         let total = lines.len();
         let end = offset.saturating_add(limit).min(total);
         let shown = lines.get(offset..end).unwrap_or_default().join("\n");
@@ -145,16 +151,37 @@ impl Filesystem {
         // Position is metadata, never a prefix inside the text (D8): a line number in the
         // content bleeds into what the model writes back, and shows up as an edit indented one
         // level too deep. Nothing is silently truncated either (D9).
-        Ok(ToolOutcome::json(serde_json::json!({
-            "path": read.scoped.path.display().to_string(),
+        let mut out = serde_json::json!({
+            "path": scoped.path.display().to_string(),
             "content": shown,
             "first_line": offset + 1,
             "last_line": end,
             "total_lines": total,
             "more": end < total,
-            "encoding": read.file.encoding(),
-            "line_ending": read.file.line_ending(),
-        })))
+        });
+        let fields = out.as_object_mut().expect("a json object");
+        match &reading {
+            Reading::Text(file) => {
+                // What a later write has to put back, and the reason both are reported (§5).
+                fields.insert("encoding".into(), file.encoding().into());
+                fields.insert("line_ending".into(), file.line_ending().into());
+            }
+            Reading::Document(doc) => {
+                // A document has pages where a file has line endings, and nothing about the
+                // bytes on disk is worth reporting: they are not the text.
+                fields.insert("document".into(), doc.kind.label().into());
+                fields.insert("pages".into(), doc.pages.into());
+                if let Some((first, last)) = doc.pages_for(offset + 1, end) {
+                    fields.insert("first_page".into(), first.into());
+                    fields.insert("last_page".into(), last.into());
+                }
+                if !doc.whole() {
+                    fields.insert("pages_read".into(), doc.pages_read().into());
+                    fields.insert("more".into(), true.into());
+                }
+            }
+        }
+        Ok(ToolOutcome::json(out))
     }
 
     async fn write_file(
@@ -445,8 +472,9 @@ pub fn definitions() -> Vec<ToolDef> {
     let mut defs = vec![
         ToolDef::new(
             "read_file",
-            "Read the text of a file inside a folder attached to this chat. Read a file before \
-             editing it. Line positions come back as fields, not inside the text.",
+            "Read the text of a file inside a folder attached to this chat, or the text of a \
+             document such as a PDF. Read a file before editing it. Line positions come back as \
+             fields, not inside the text.",
             serde_json::json!({
                 "type": "object",
                 "properties": {

@@ -72,7 +72,7 @@ export async function pickFiles(): Promise<PendingAttachment[]> {
     title: 'Add files or images',
     filters: [
       {
-        name: 'Text and images',
+        name: 'Text, documents and images',
         extensions: [
           'txt',
           'md',
@@ -82,6 +82,7 @@ export async function pickFiles(): Promise<PendingAttachment[]> {
           'yml',
           'csv',
           'log',
+          'pdf',
           'rs',
           'ts',
           'tsx',

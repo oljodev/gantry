@@ -1,0 +1,15 @@
+[package]
+name = "gantry-documents"
+description = "Turning documents into text: the formats Gantry can read in pure Rust."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+log.workspace = true
+lopdf.workspace = true
+pdf-extract.workspace = true
+thiserror.workspace = true

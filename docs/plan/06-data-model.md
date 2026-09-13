@@ -55,7 +55,7 @@ Types are indicative; the migrations are the source of truth.
 
 - **turns** — `id, chat_id, seq, status (running|completed|cancelled|failed|interrupted), provider_id, model_id, started_at, ended_at, usage_json, stop_reason_json, error_json, feedback (good|bad|NULL), tool_call_count`. `interrupted` is set at startup for every turn still `running`: the previous process died mid-stream (crash recovery, 09 M2).
 - **messages** — `id, chat_id, turn_id NULL, seq, role (user|assistant|tool|system), parts_json` (the `ContentPart[]` of 02 §2; media parts reference blobs), `text` (the concatenated text parts, for search), `origin_provider NULL, stop_reason NULL, usage_json NULL, created_at`. `turn_id` is `NULL` for the `SystemNote` messages appended between turns (10 §4).
-- **attachments** — `id, message_id, chat_id, name, mime, size, blob_hash, extracted_text NULL, created_at`
+- **attachments** — `id, message_id, chat_id, name, mime, size, blob_hash, extracted_text NULL, created_at`. `blob_hash` is always the file the user attached. For a document whose text had to be extracted — a PDF — the text is stored as a *second* blob, and that is the one the message part points at: the row keeps the document, and the prompt gets the text rather than a PDF's bytes run through a lossy decode.
 
 The transcript is `messages` ordered by `seq`. It is append-only; edits to history are never made in place (02 §6). Compaction inserts a `system` message whose `ContentPart::Compacted` carries the summary and the id of the last message it covers; older rows stay for the UI, and a turn's projection is the only thing that skips them. No migration was needed for it: a content part is JSON inside the row it already had.
 
