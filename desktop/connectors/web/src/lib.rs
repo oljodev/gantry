@@ -217,8 +217,8 @@ impl Web {
             // key. It is here for the call that arrives anyway — a model replaying an earlier
             // turn's tool name after the key was removed.
             return Ok(ToolOutcome::error(
-                "no search key is configured. Add one in Settings → Connectors → Web, or ask the \
-                 user to, then try again.",
+                "no search key is configured. Add one in Customize → Connectors → Web, or ask \
+                 the user to, then try again.",
             ));
         };
         let max_results = number(args, "max_results").map_or(DEFAULT_RESULTS, |n| n as usize);

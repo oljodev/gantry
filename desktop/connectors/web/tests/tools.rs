@@ -95,7 +95,10 @@ async fn a_tool_that_is_not_offered_is_still_answered_when_it_is_called() {
         .unwrap();
     let message = refusal(&outcome);
     assert!(message.contains("no search key is configured"), "{message}");
-    assert!(message.contains("Settings"), "{message}");
+    assert!(
+        message.contains("Customize"),
+        "it names where to go: {message}"
+    );
 }
 
 #[tokio::test]

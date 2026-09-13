@@ -2,6 +2,7 @@ import {
   ArrowClockwiseIcon,
   MagnifyingGlassIcon,
   PlusIcon,
+  SlidersHorizontalIcon,
   TerminalIcon,
   TrashIcon,
   WarningCircleIcon,
@@ -16,11 +17,14 @@ import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import type { CatalogEntryDto, ConnectorInstanceDto, InstanceId } from '@/bindings';
 import { AddCustomServer } from '@/features/connectors/AddCustomServer';
+import { effectiveValues, missingRequired } from '@/features/connectors/config';
+import { ConfigForm } from '@/features/connectors/ConfigForm';
 import { useInstallFlow } from '@/features/connectors/install';
 import { InstallDialog } from '@/features/connectors/InstallDialog';
 import { isTauri } from '@/lib/ipc/client';
 import {
   useCatalog,
+  useConnectorConfig,
   useConnectorLogs,
   useConnectorMutations,
   useConnectors,
@@ -241,6 +245,82 @@ function CatalogRow({
   );
 }
 
+/**
+ * The `user_config` answers for a connector that is already installed (docs/plan/03 §11 step 2).
+ *
+ * The form existed only inside the install dialog, which left two states it could not reach: a
+ * connector installed *before* its manifest asked for anything, and one whose answer has to
+ * change later. `web` was the first of both — it shipped as a manifest with no fields, gained a
+ * bring-your-own-key search key, and the key had nowhere to be typed. The tool was built, the
+ * vault held it, and no interface could turn it on.
+ *
+ * Only rendered when the manifest asks for something, so an ordinary connector's row is
+ * unchanged, and the query runs when a row is opened rather than once per row in the list. A
+ * server added by hand has no manifest and so no form; the caller checks that before mounting
+ * this.
+ */
+function ConnectorSettings({ instance }: { instance: ConnectorInstanceDto }) {
+  const form = useConnectorConfig(instance.catalog_id, instance.id);
+  const { setConfig } = useConnectorMutations();
+  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const fields = form.data?.fields ?? [];
+  const stored = form.data?.values ?? {};
+  const values = effectiveValues(fields, stored, answers);
+  // A sensitive answer is never sent back (06 §5), so "has been configured" is judged by the
+  // public answers — which is also what tells the form that an empty secret means "keep".
+  const configured = Object.keys(stored).length > 0;
+  const missing = missingRequired(fields, values, configured);
+  const dirty = Object.keys(answers).length > 0;
+
+  if (fields.length === 0) return null;
+
+  const save = async () => {
+    setError(null);
+    try {
+      await setConfig.mutateAsync({ instanceId: instance.id, values });
+      setAnswers({});
+      setSaved(true);
+    } catch (err) {
+      setError(describe(err));
+    }
+  };
+
+  return (
+    <div className="mt-3 flex flex-col gap-3 border-t border-line-subtle pt-3">
+      <div className="flex items-center gap-1.5 text-meta text-fg-3">
+        <SlidersHorizontalIcon className="size-3.5" />
+        Settings
+      </div>
+      <ConfigForm
+        fields={fields}
+        values={values}
+        hasSaved={configured}
+        onChange={(key, value) => {
+          setSaved(false);
+          setAnswers((a) => ({ ...a, [key]: value }));
+        }}
+      />
+      <div className="flex items-center gap-2">
+        <Button
+          size="sm"
+          disabled={!dirty || missing.length > 0 || setConfig.isPending}
+          onClick={() => void save()}
+        >
+          {setConfig.isPending ? 'Saving…' : 'Save'}
+        </Button>
+        {missing.length > 0 && (
+          <span className="text-meta text-fg-3">{missing.join(', ')} still needed</span>
+        )}
+        {saved && !dirty && <span className="text-meta text-fg-2">Saved</span>}
+      </div>
+      {error && <span className="selectable text-meta text-bad">{error}</span>}
+    </div>
+  );
+}
+
 /** One installed instance: its state, its tools, and what to do when it stops working. */
 function InstalledRow({
   instance,
@@ -323,6 +403,7 @@ function InstalledRow({
               ))}
             </ul>
           )}
+          {instance.catalog_id && <ConnectorSettings instance={instance} />}
           <div className="mt-3 flex items-center gap-2">
             <Button variant="secondary" size="sm" onClick={onReconnect}>
               <ArrowClockwiseIcon />

@@ -88,7 +88,7 @@ impl std::fmt::Display for SearchError {
         match self {
             Self::Rejected { status, message } if *status == 401 || *status == 403 => write!(
                 f,
-                "the search key was rejected ({status}). Check it in Settings → Connectors → \
+                "the search key was rejected ({status}). Check it in Customize → Connectors → \
                  Web. {message}"
             ),
             Self::Rejected { status, message } if *status == 429 => write!(
