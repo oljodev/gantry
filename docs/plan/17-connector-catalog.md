@@ -229,9 +229,14 @@ day and one sign-in from Olav.
 | **B11a** ✅ | proven shapes only | Granola, Cal.com, Resend, MailerLite, Tally, Jotform, Lovable, incident.io, Datadog, Grafana Cloud, Postman, LangSmith, Replicate, Cloudinary, Perplexity, Airtable, Axiom | Shipped 2026-09-12, seventeen at once. Every one is a remote OAuth server that offers dynamic registration, which is the shape B2 proved; the work was reading each vendor's scopes and asking for the narrow ones — Jotform's `readOnly`, Grafana's read-and-query without write, Airtable's three reads, Cloudinary's asset management without upload or generation, Resend's `emails:send` rather than `full_access` |
 | **B11b** | proven shapes only | What is left: Microsoft Fabric (Entra, an app registration in your own tenant), Windsor, Cardboard, Zapier (a per-user URL), Make, Hostinger, 21st.dev, Twilio, Clarity, Browserbase, Firecrawl, Docker, JetBrains, 1Password, Rive, Lottie | Fabric needs the `github` shape plus a tenant; Zapier needs `user_config` in the URL (B10); Browserbase and Firecrawl need the two gaps B5 found |
 
+**Blender, on request** (2026-09-13). Not from a batch — Olav asked for it — and the shape was
+B7's, `uvx` against a PyPI package, so the work was all judgement rather than mechanism. It is
+the first entry whose *own defaults* had to be overridden to be shippable, which §6 now records
+as a rule.
+
 B0–B2 landed with M9. B3–B7, B9 and B11a landed together on 2026-09-12, in one afternoon, which
-is the thing this document was written to make possible: sixty-three connectors, of which four are
-Gantry's own and fifty-nine are manifests describing somebody else's server, every one of them
+is the thing this document was written to make possible: sixty-four connectors, of which four are
+Gantry's own and sixty are manifests describing somebody else's server, every one of them
 probed. B8, B10 and B11b are what is left, and each is blocked on a mechanism rather than on
 typing: a client id you supply for Google, a host you supply for the self-hosted servers, and —
 for Slack, HubSpot and Microsoft Fabric — the confidential-client question below.
@@ -353,6 +358,26 @@ suggestion, never silently:
 The last row is a judgement, not a regex: PayPal's `create_order`, Slack's `post_message` and
 Vercel's `create_deployment` are all "create" and all get confirmed every time. Where the probe's
 suggestion and the reviewer disagree, the reviewer wins and the override records why.
+
+### A server whose defaults are wrong for this catalogue (2026-09-13)
+
+Blender was the first: `blender-mcp` collects telemetry with `enabled = True` in its source and
+the consent box ticked in its add-on, and what it uploads is the user's prompt text, the tool
+called, an install id and viewport screenshots. It also ships a script validator, off by default,
+that is the direct mitigation for the injection path its own docstring describes.
+
+The rule that came out of it. **Where a server's default would surprise the person installing it,
+the manifest sets the other one, and the README says which and why in its own section.** Not a
+`user_config` toggle: both of those environment variables fail *open* — the server reads anything
+that is not a recognised yes as a no — so a setting that went missing, on an upgrade or a config
+row written before the key existed, would turn the protection off in silence. A literal in
+`runtime.env` cannot go missing.
+
+The line to hold: this is for defaults that would surprise, not for defaults we merely dislike. A
+connector that phones home with its own version number is ordinary; one that uploads what the user
+typed and a picture of their screen is not, and neither is a security check its author left off.
+Anyone who wants the vendor's defaults can add the server by hand under **Add a server**, and the
+README says so rather than leaving them to discover it.
 
 ## 7. The website
 
