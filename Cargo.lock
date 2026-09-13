@@ -1785,9 +1785,18 @@ dependencies = [
 name = "gantry-connector-web"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
+ "dom_query",
+ "futures-util",
+ "gantry-connectors",
  "gantry-core",
- "gantry-workspace",
+ "log",
+ "reqwest",
+ "secrecy",
  "serde_json",
+ "tokio",
+ "tokio-util",
+ "url",
 ]
 
 [[package]]

@@ -10,7 +10,22 @@ publish.workspace = true
 
 [dependencies]
 gantry-core.workspace = true
-gantry-workspace.workspace = true
+gantry-connectors.workspace = true
+async-trait.workspace = true
+futures-util.workspace = true
+log.workspace = true
+reqwest.workspace = true
+secrecy.workspace = true
+serde_json.workspace = true
+tokio = { workspace = true, features = ["net", "time", "macros", "rt"] }
+tokio-util.workspace = true
+url.workspace = true
+
+# Reading HTML. Pinned here rather than in the workspace table, the way `shell` pins `nix`:
+# one connector needs it and nothing else does. It is already in the tree underneath Tauri, so
+# it costs no new third-party crate — and its `markdown` default feature is what `format:
+# markdown` is built on, so the default features are kept.
+dom_query = "0.27"
 
 [dev-dependencies]
-serde_json.workspace = true
+tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros"] }

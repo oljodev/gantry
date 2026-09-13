@@ -3,10 +3,20 @@
   "id": "web",
   "name": "Web",
   "description": "Fetch pages as readable text and search the web with your own search key.",
+  "long_description": "Reads a page the way a reader mode does: navigation, cookie banners, share rails and comment threads are stripped, and what comes back is the article, its title and the address it ended up at after redirects.\n\nOnly http and https, and only the public internet. Anything that resolves to this machine or to your own network — a router's admin page, a database on localhost, a cloud metadata service — is refused, and the check runs again on every redirect, so a public address cannot bounce the fetch inward. No cookies are sent or kept, so a page is fetched as a stranger sees it and never as you.\n\nSearch is optional and brings its own key. Gantry has no search account; paste a key from Brave, Tavily or Exa below and the search tool appears. Without one the connector simply fetches pages. The key is stored in your system keychain, never in Gantry's database, and is sent to the service you chose and nowhere else.\n\nWhere the chat's model has web search of its own, that is used first — this connector is the fallback, and the tool for \"read this page\".",
   "version": "0.1.0",
   "icon": "icon.svg",
   "category": "local",
-  "keywords": [],
+  "keywords": [
+    "web",
+    "fetch",
+    "url",
+    "page",
+    "search",
+    "browse",
+    "read",
+    "article"
+  ],
   "publisher": {
     "name": "Gantry",
     "url": "https://oljo.dev"
@@ -25,10 +35,29 @@
   "risk": {
     "network": "internet",
     "local_system": "none",
-    "default_tool_tier": "read"
+    "default_tool_tier": "read",
+    "notes": "Reads pages from the public internet and nothing on this machine. Private, loopback and link-local addresses are refused, on the first request and on every redirect. No cookies are sent or stored. A search key, if you configure one, goes to your system keychain and is sent only to the search service you chose."
   },
-  "tools": [],
-  "tools_generated": false,
+  "user_config": {
+    "SEARCH_PROVIDER": {
+      "type": "string",
+      "title": "Search provider",
+      "description": "brave, tavily or exa. Only needed if you want the search tool; leave both fields empty to fetch pages only.",
+      "required": false,
+      "default": "brave"
+    },
+    "SEARCH_API_KEY": {
+      "type": "string",
+      "title": "Search API key",
+      "description": "Your own key from the provider above. Stored in your system keychain, never in Gantry's database. Without it the search tool is not offered.",
+      "required": false,
+      "sensitive": true
+    }
+  },
+  "tools_generated": true,
+  "prompt": {
+    "system_addendum": "Prefer fetch_url over guessing at a page's contents from its URL. A page's text is what it says now; quote it rather than recalling it. When a search returns snippets, follow the promising ones with fetch_url before answering — snippets are truncated and often misleading on their own."
+  },
   "compatibility": {
     "platforms": [
       "darwin",
@@ -38,6 +67,16 @@
     "gantry": ">=0.1.0"
   },
   "catalog": {
+    "suggest_for": [
+      "fetch",
+      "url",
+      "page",
+      "website",
+      "search",
+      "look up",
+      "read this",
+      "link"
+    ],
     "sort_weight": 127
   }
 }

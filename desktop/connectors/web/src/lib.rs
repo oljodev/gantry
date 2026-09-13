@@ -1,9 +1,34 @@
-//! First-party connector: Web. See `docs/plan/03-connector-system.md` §5.
+//! First-party connector: Web (`docs/plan/03-connector-system.md` §5).
 //!
-//! Stub: the manifest is embedded and validated; tools arrive with the milestone that owns
-//! this connector (`docs/plan/09-roadmap.md`).
+//! Two tools: read a page, and search the web. Unlike the other three first-party connectors
+//! this one touches nothing on disk, so it does not sit on `gantry-workspace` and has no roots
+//! to enforce. Its boundary is the other way round: what it may *reach*. `guard` holds that —
+//! http and https only, and nothing that resolves inside this machine or this network, rechecked
+//! on every redirect.
+//!
+//! `search` is bring-your-own-key and is simply absent until there is one (§11 step 2). That is
+//! why `tools()` is computed rather than constant: the model is shown the tools it can actually
+//! use, and never spends a round discovering that one of them is unconfigured.
 
 #![forbid(unsafe_code)]
+
+mod extract;
+mod fetch;
+mod guard;
+mod search;
+
+use std::sync::Arc;
+
+use async_trait::async_trait;
+use gantry_connectors::{
+    Connector, ConnectorDescriptor, ConnectorError, ToolCallRequest, ToolEventSink, ToolOutcome,
+};
+use gantry_core::{InstanceId, RiskTier, ToolDef};
+use tokio_util::sync::CancellationToken;
+
+pub use extract::{Article, Format, article};
+pub use fetch::{MAX_BYTES, MAX_REDIRECTS, TIMEOUT, USER_AGENT};
+pub use search::{DEFAULT_RESULTS, Hit, MAX_RESULTS, Provider, Search};
 
 /// The connector manifest, embedded at build time (`docs/plan/03-connector-system.md` §3).
 pub const MANIFEST: &str = include_str!("../manifest.json");
@@ -11,14 +36,337 @@ pub const MANIFEST: &str = include_str!("../manifest.json");
 /// The connector id; equals the folder name and the tool namespace prefix.
 pub const ID: &str = "web";
 
+/// Characters of page text returned when the model does not say. A long article is 20–40 000;
+/// this fits most of them whole while keeping a single fetch from eating a context window.
+pub const DEFAULT_MAX_CHARS: usize = 40_000;
+
+/// The ceiling on `max_chars`. Past this the answer is not a page to read but a file to search,
+/// and 5 MB of text through a prompt helps nobody.
+pub const MAX_MAX_CHARS: usize = 200_000;
+
+pub struct Web {
+    descriptor: ConnectorDescriptor,
+    http: reqwest::Client,
+    /// `None` until the user configures a search key, and the reason `search` is or is not in
+    /// the tool list.
+    search: Option<Search>,
+}
+
+impl Web {
+    #[must_use]
+    pub fn new(namespace: String, instance_id: InstanceId, search: Option<Search>) -> Self {
+        Self {
+            descriptor: ConnectorDescriptor {
+                id: namespace,
+                name: "Web".to_owned(),
+                instance_id: Some(instance_id),
+                first_party: true,
+            },
+            http: fetch::client(),
+            search,
+        }
+    }
+
+    #[must_use]
+    pub fn has_search(&self) -> bool {
+        self.search.is_some()
+    }
+}
+
+#[async_trait]
+impl Connector for Web {
+    fn descriptor(&self) -> &ConnectorDescriptor {
+        &self.descriptor
+    }
+
+    async fn tools(&self) -> Result<Vec<ToolDef>, ConnectorError> {
+        Ok(definitions(self.has_search()))
+    }
+
+    async fn call(
+        &self,
+        req: ToolCallRequest,
+        _sink: Arc<dyn ToolEventSink>,
+        cancel: CancellationToken,
+    ) -> Result<ToolOutcome, ConnectorError> {
+        match req.tool.as_str() {
+            "fetch_url" => {
+                // Cancelling a turn should stop a 20-second fetch with it, rather than leaving
+                // the user waiting on a result nobody will read.
+                tokio::select! {
+                    outcome = self.fetch_url(&req.args) => outcome,
+                    () = cancel.cancelled() => Ok(ToolOutcome::error("the fetch was cancelled.")),
+                }
+            }
+            "search" => {
+                tokio::select! {
+                    outcome = self.search(&req.args) => outcome,
+                    () = cancel.cancelled() => Ok(ToolOutcome::error("the search was cancelled.")),
+                }
+            }
+            other => Err(ConnectorError::UnknownTool(other.to_owned())),
+        }
+    }
+}
+
+impl Web {
+    async fn fetch_url(&self, args: &serde_json::Value) -> Result<ToolOutcome, ConnectorError> {
+        let url = required(args, "url")?;
+        let format = match args.get("format").and_then(serde_json::Value::as_str) {
+            None => Format::default(),
+            Some(name) => match Format::parse(name) {
+                Some(format) => format,
+                None => {
+                    return Ok(ToolOutcome::error(format!(
+                        "`{name}` is not a format. Use markdown, text or html."
+                    )));
+                }
+            },
+        };
+        let max_chars = number(args, "max_chars")
+            .map_or(DEFAULT_MAX_CHARS, |n| (n as usize).clamp(1, MAX_MAX_CHARS));
+
+        let fetched = match fetch::get(&self.http, &url).await {
+            Ok(fetched) => fetched,
+            Err(err) => return Ok(ToolOutcome::error(err.to_string())),
+        };
+
+        // An HTTP error still has a body, and a 404 page's text is often the useful part of the
+        // answer ("moved to /docs/new"). It comes back as an error the model can read, with the
+        // status named, rather than as a success that pretends nothing happened.
+        let failed = !(200..300).contains(&fetched.status);
+        let mime = fetch::mime(fetched.content_type.as_deref());
+        if !fetch::is_readable(&mime) {
+            return Ok(ToolOutcome::error(format!(
+                "{} is {mime}, which is not text this tool can read. It is {} bytes{}.",
+                fetched.final_url,
+                fetched.body.len(),
+                if fetched.truncated { " or more" } else { "" }
+            )));
+        }
+
+        // Lossy, and deliberately: a page whose bytes are not UTF-8 is still mostly readable as
+        // UTF-8, and a connector that refuses it outright is less useful than one that returns
+        // the text with a few replacement characters in it.
+        let text = String::from_utf8_lossy(&fetched.body);
+        let (title, body) = if fetch::is_html(&mime) || looks_like_html(&text) {
+            let article = extract::article(&text, format);
+            (article.title, article.body)
+        } else {
+            (None, text.trim().to_owned())
+        };
+        let (body, clamped) = extract::clamp(&body, max_chars);
+
+        let mut out = serde_json::json!({
+            "url": fetched.final_url.to_string(),
+            "status": fetched.status,
+            "content_type": mime,
+            "format": match format { Format::Markdown => "markdown", Format::Text => "text", Format::Html => "html" },
+            "content": body,
+            "chars": body.chars().count(),
+            // Two different losses, and a model that has to decide whether to fetch a second
+            // time needs to know which one it is looking at (D9).
+            "truncated": clamped,
+            "response_truncated": fetched.truncated,
+        });
+        let fields = out.as_object_mut().expect("a json object");
+        if let Some(title) = title {
+            fields.insert("title".into(), title.into());
+        }
+        if !fetched.redirects.is_empty() {
+            fields.insert("redirects".into(), fetched.redirects.clone().into());
+        }
+        if failed {
+            // `is_error` so the turn loop and the feed both show it as a failure, with the page
+            // body still attached for the model to read.
+            return Ok(ToolOutcome::Complete {
+                content: vec![gantry_core::ResultPart::Json { json: out.clone() }],
+                structured: Some(out),
+                is_error: true,
+            });
+        }
+        Ok(ToolOutcome::json(out))
+    }
+
+    async fn search(&self, args: &serde_json::Value) -> Result<ToolOutcome, ConnectorError> {
+        let query = required(args, "query")?;
+        let Some(search) = &self.search else {
+            // Unreachable through the tool list, which leaves `search` out entirely without a
+            // key. It is here for the call that arrives anyway — a model replaying an earlier
+            // turn's tool name after the key was removed.
+            return Ok(ToolOutcome::error(
+                "no search key is configured. Add one in Settings → Connectors → Web, or ask the \
+                 user to, then try again.",
+            ));
+        };
+        let max_results = number(args, "max_results").map_or(DEFAULT_RESULTS, |n| n as usize);
+        match search.run(&self.http, &query, max_results).await {
+            Ok(hits) => Ok(ToolOutcome::json(serde_json::json!({
+                "query": query,
+                "provider": search.provider.label(),
+                "results": hits.iter().map(|hit| serde_json::json!({
+                    "title": hit.title,
+                    "url": hit.url,
+                    "snippet": hit.snippet,
+                })).collect::<Vec<_>>(),
+                "count": hits.len(),
+            }))),
+            Err(err) => Ok(ToolOutcome::error(err.to_string())),
+        }
+    }
+}
+
+/// A body served as `text/plain` that is plainly HTML, which servers do more often than they
+/// should. Cheap enough to be worth trying before handing markup to the model as prose.
+fn looks_like_html(text: &str) -> bool {
+    let head = text.trim_start();
+    let head = &head[..head.len().min(1024)].to_lowercase();
+    head.starts_with("<!doctype html") || head.starts_with("<html") || head.contains("<body")
+}
+
+fn required(args: &serde_json::Value, key: &str) -> Result<String, ConnectorError> {
+    args.get(key)
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_owned)
+        .ok_or_else(|| ConnectorError::InvalidArgs(format!("`{key}` is required")))
+}
+
+fn number(args: &serde_json::Value, key: &str) -> Option<u64> {
+    args.get(key).and_then(serde_json::Value::as_u64)
+}
+
+/// The tools of §5. Both are `read` tier and reach the internet, both are `parallel_safe` —
+/// fetching three pages at once is the normal way to use this — and neither is hidden in Plan
+/// mode, which is where reading around a problem belongs.
+///
+/// `with_search` is what decides whether `search` is in the list at all; see `search.rs`.
+#[must_use]
+pub fn definitions(with_search: bool) -> Vec<ToolDef> {
+    let mut defs = vec![ToolDef::new(
+        "fetch_url",
+        "Fetch a web page and read it as text. HTML comes back as the article — navigation, \
+         ads and comments removed — with the page title and the final URL after any redirects. \
+         Use this to read a page the user linked, to check documentation, or to follow a search \
+         result. http and https only, and only addresses on the public internet.",
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "url": { "type": "string",
+                         "description": "The full URL, including https://." },
+                "format": { "type": "string", "enum": ["markdown", "text", "html"],
+                            "default": "markdown",
+                            "description": "markdown keeps headings, links and lists; text is prose only; html is the extracted markup." },
+                "max_chars": { "type": "integer", "minimum": 1, "default": DEFAULT_MAX_CHARS,
+                               "maximum": MAX_MAX_CHARS,
+                               "description": "Characters of content to return. The result says whether anything was cut." }
+            },
+            "required": ["url"],
+            "additionalProperties": false
+        }),
+        RiskTier::Read,
+    )];
+
+    if with_search {
+        defs.push(ToolDef::new(
+            "search",
+            "Search the web and get back titles, URLs and snippets. Follow a result with \
+             fetch_url to read the page itself — snippets are short and often cut mid-sentence.",
+            serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "query": { "type": "string", "description": "What to search for." },
+                    "max_results": { "type": "integer", "minimum": 1, "maximum": MAX_RESULTS,
+                                     "default": DEFAULT_RESULTS }
+                },
+                "required": ["query"],
+                "additionalProperties": false
+            }),
+            RiskTier::Read,
+        ));
+    }
+
+    for def in &mut defs {
+        // Reading pages is the one thing a model should be doing several of at once.
+        def.parallel_safe = true;
+    }
+    defs
+}
+
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     #[test]
     fn manifest_is_valid_json_with_the_right_id() {
-        let manifest: serde_json::Value = serde_json::from_str(super::MANIFEST).unwrap();
+        let manifest: serde_json::Value = serde_json::from_str(MANIFEST).unwrap();
         assert_eq!(manifest["manifest_version"], "1");
-        assert_eq!(manifest["id"], super::ID);
+        assert_eq!(manifest["id"], ID);
         assert_eq!(manifest["runtime"]["kind"], "native");
         assert_eq!(manifest["runtime"]["crate"], env!("CARGO_PKG_NAME"));
+    }
+
+    #[test]
+    fn search_is_offered_only_once_a_key_is_configured() {
+        // The tools of a native connector come from this code, not from the manifest
+        // (`tools_generated`), which is what lets the offered set depend on the configuration.
+        let manifest: serde_json::Value = serde_json::from_str(MANIFEST).unwrap();
+        assert_eq!(manifest["tools_generated"], true);
+        assert_eq!(names(false), ["fetch_url"]);
+        assert_eq!(names(true), ["fetch_url", "search"]);
+    }
+
+    #[test]
+    fn the_search_key_is_a_sensitive_user_config_field() {
+        // Parsed the way the app parses it, so this also proves the manifest is installable.
+        let manifest = gantry_connectors::manifest::Manifest::parse(MANIFEST).unwrap();
+        let field = |key: &str| {
+            manifest
+                .user_config_fields()
+                .into_iter()
+                .find(|f| f.key == key)
+                .unwrap_or_else(|| panic!("{key} is not in user_config"))
+        };
+        // §11 step 2: `sensitive` is what sends the value to the vault instead of the config
+        // row, and it is the whole of the BYOK promise on the storage side.
+        let api_key = field("SEARCH_API_KEY");
+        assert!(api_key.sensitive);
+        // Not required: the connector fetches pages perfectly well without a search key, and a
+        // required field would make install impossible for anyone who has none.
+        assert!(!api_key.required);
+        let provider = field("SEARCH_PROVIDER");
+        assert!(!provider.sensitive, "the provider name is not a secret");
+        assert!(!provider.required);
+    }
+
+    #[test]
+    fn both_tools_read_and_run_in_parallel() {
+        for def in definitions(true) {
+            assert_eq!(def.tier, RiskTier::Read, "{}", def.name);
+            assert!(def.parallel_safe, "{}", def.name);
+            assert!(!def.always_confirm, "{}", def.name);
+            assert_eq!(
+                def.plan_mode,
+                gantry_core::PlanModePolicy::Allow,
+                "reading around a problem is what Plan mode is for ({})",
+                def.name
+            );
+        }
+    }
+
+    #[test]
+    fn html_is_recognised_even_when_it_is_served_as_plain_text() {
+        assert!(looks_like_html("<!DOCTYPE html><html>"));
+        assert!(looks_like_html("\n  <html lang=\"en\">"));
+        assert!(looks_like_html("<div><body>x</body></div>"));
+        assert!(!looks_like_html(
+            "# A markdown file\n\nwith <angle> brackets"
+        ));
+    }
+
+    fn names(with_search: bool) -> Vec<String> {
+        definitions(with_search)
+            .into_iter()
+            .map(|d| d.name)
+            .collect()
     }
 }
