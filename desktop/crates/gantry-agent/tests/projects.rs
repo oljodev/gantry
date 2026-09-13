@@ -400,6 +400,46 @@ async fn a_file_with_no_text_in_it_is_refused_as_knowledge() {
     assert!(err.to_string().contains("no text in it"), "{err}");
 }
 
+#[tokio::test]
+async fn a_chat_reads_an_artifact_another_chat_in_the_project_made() {
+    let w = world();
+    let id = w.project("Gantry");
+    let maker =
+        w.m.create_session(Surface::Chat, Vec::new(), None, false, Some(id))
+            .unwrap();
+    let reader =
+        w.m.create_session(Surface::Chat, Vec::new(), None, false, Some(id))
+            .unwrap();
+    let outsider = w.m.create_chat(None).unwrap();
+    let artifacts = Arc::new(gantry_agent::Artifacts::new(
+        w.store.clone(),
+        Arc::new(gantry_store::BlobStore::open(w._dir.path().join("blobs")).unwrap()),
+    ));
+    let made = artifacts
+        .create(
+            maker.id,
+            gantry_agent::artifacts::CreateRequest {
+                artifact_type: "markdown".into(),
+                title: "The plan".into(),
+                language: None,
+                content: "Build the gantry.".into(),
+                summary: None,
+            },
+            gantry_agent::artifacts::Origin::default(),
+        )
+        .unwrap();
+
+    // 13 §9: the chat owns it, the project sees it. Writing stays with the owner, because the
+    // transcript that explains an artifact is the owner's.
+    assert!(artifacts.readable(made.id, reader.id).is_ok());
+    assert!(artifacts.writable(made.id, reader.id).is_err());
+    assert!(artifacts.readable(made.id, outsider.id).is_err());
+
+    // Taking the maker out of the project takes its artifacts out of view with it.
+    w.m.set_chat_project(maker.id, None).unwrap();
+    assert!(artifacts.readable(made.id, reader.id).is_err());
+}
+
 fn base64(text: &str) -> String {
     use base64::Engine;
     base64::engine::general_purpose::STANDARD.encode(text)
