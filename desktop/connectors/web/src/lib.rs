@@ -25,6 +25,7 @@ mod cache;
 mod extract;
 mod fetch;
 mod guard;
+mod locate;
 mod search;
 
 use std::sync::Arc;
@@ -40,6 +41,7 @@ use tokio_util::sync::CancellationToken;
 pub use cache::{Cache, MAX_CHARS as CACHE_MAX_CHARS, MAX_PAGES, Page, TTL as CACHE_TTL};
 pub use extract::{Article, Format, Window, article, nests_too_deep, window};
 pub use fetch::{MAX_BYTES, MAX_REDIRECTS, TIMEOUT, USER_AGENT};
+pub use locate::{Found, Heading, MAX_HEADINGS, MAX_MATCHES, find, outline};
 pub use search::{
     DEFAULT_RESULTS, Hit, MAX_RESULTS, SearchError, Source, lookups, parse_crate, parse_crates,
     parse_npm, parse_package, parse_stack, parse_wikipedia, registry_query, route, sources_of,
@@ -114,6 +116,13 @@ impl Connector for Web {
                     outcome = self.fetch_url(&req.args) => outcome,
                 }
             }
+            "find_in_page" => {
+                tokio::select! {
+                    biased;
+                    () = cancel.cancelled() => Ok(ToolOutcome::error("the lookup was cancelled.")),
+                    outcome = self.find_in_page(&req.args) => outcome,
+                }
+            }
             "search" => {
                 tokio::select! {
                     biased;
@@ -129,40 +138,155 @@ impl Connector for Web {
 impl Web {
     async fn fetch_url(&self, args: &serde_json::Value) -> Result<ToolOutcome, ConnectorError> {
         let url = required(args, "url")?;
-        let format = match args.get("format").and_then(serde_json::Value::as_str) {
-            None => Format::default(),
-            Some(name) => match Format::parse(name) {
-                Some(format) => format,
-                None => {
-                    return Ok(ToolOutcome::error(format!(
-                        "`{name}` is not a format. Use markdown, text or html."
-                    )));
-                }
-            },
+        let format = match format_of(args) {
+            Ok(format) => format,
+            Err(refusal) => return Ok(refusal),
         };
         let offset = number(args, "offset").unwrap_or(0) as usize;
         let max_chars = number(args, "max_chars")
             .map_or(DEFAULT_MAX_CHARS, |n| (n as usize).clamp(1, MAX_MAX_CHARS));
 
-        // The second window of a document, and the second read of the same page, both land
-        // here and neither touches the network.
-        if let Some((page, age)) = self.pages.get(&url, format) {
-            return Ok(render(&page, format, offset, max_chars, Some(age)));
+        match self.document(&url, format).await? {
+            Got::Refused(refusal) => Ok(refusal),
+            Got::Page(page, age) => Ok(render(&page, format, offset, max_chars, age)),
+        }
+    }
+
+    async fn find_in_page(&self, args: &serde_json::Value) -> Result<ToolOutcome, ConnectorError> {
+        let url = required(args, "url")?;
+        let format = match format_of(args) {
+            Ok(format) => format,
+            Err(refusal) => return Ok(refusal),
+        };
+        // Built the way `filesystem.grep` builds one, down to the default, so a pattern that
+        // works in one works in the other.
+        let pattern = match args.get("pattern").and_then(serde_json::Value::as_str) {
+            None => None,
+            Some(source) => {
+                let sensitive = args
+                    .get("case_sensitive")
+                    .and_then(serde_json::Value::as_bool)
+                    .unwrap_or(false);
+                match regex::RegexBuilder::new(source)
+                    .case_insensitive(!sensitive)
+                    .build()
+                {
+                    Ok(pattern) => Some(pattern),
+                    Err(err) => {
+                        return Ok(ToolOutcome::error(format!(
+                            "that is not a valid regular expression: {err}"
+                        )));
+                    }
+                }
+            }
+        };
+
+        let (page, age) = match self.document(&url, format).await? {
+            Got::Refused(refusal) => return Ok(refusal),
+            Got::Page(page, age) => (page, age),
+        };
+
+        let mut out = serde_json::json!({
+            "url": page.final_url,
+            // Positions are counted in this rendering and mean nothing in another, so the one
+            // they were measured in is part of the answer.
+            "format": format.label(),
+            "total_chars": page.chars,
+        });
+        let fields = out.as_object_mut().expect("a json object");
+        match &pattern {
+            Some(pattern) => {
+                let (found, more) = locate::find(&page.body, pattern, locate::MAX_MATCHES);
+                fields.insert("pattern".into(), pattern.as_str().into());
+                fields.insert(
+                    "matches".into(),
+                    found
+                        .iter()
+                        .map(|hit| {
+                            let mut one = serde_json::json!({
+                                "offset": hit.offset,
+                                "line": hit.line,
+                            });
+                            if let Some(section) = &hit.section {
+                                one.as_object_mut()
+                                    .expect("a json object")
+                                    .insert("section".into(), section.clone().into());
+                            }
+                            one
+                        })
+                        .collect::<Vec<_>>()
+                        .into(),
+                );
+                fields.insert("count".into(), found.len().into());
+                fields.insert("more".into(), more.into());
+                if found.is_empty() {
+                    fields.insert(
+                        "note".into(),
+                        "that pattern is not on this page. The page was read; it simply does \
+                         not contain it."
+                            .into(),
+                    );
+                }
+            }
+            None => {
+                let (headings, more) = locate::outline(&page.body);
+                fields.insert(
+                    "headings".into(),
+                    headings
+                        .iter()
+                        .map(|heading| {
+                            serde_json::json!({
+                                "level": heading.level,
+                                "title": heading.title,
+                                "offset": heading.offset,
+                            })
+                        })
+                        .collect::<Vec<_>>()
+                        .into(),
+                );
+                fields.insert("count".into(), headings.len().into());
+                fields.insert("more".into(), more.into());
+                if headings.is_empty() {
+                    fields.insert(
+                        "note".into(),
+                        "this page has no headings to list. Give a `pattern` to find a place in \
+                         it, or read it from the start with fetch_url."
+                            .into(),
+                    );
+                }
+            }
+        }
+        if let Some(age) = age {
+            fields.insert("cached".into(), true.into());
+            fields.insert("cached_seconds_ago".into(), age.as_secs().into());
+        }
+        Ok(ToolOutcome::json(out))
+    }
+
+    /// The extracted document for a URL, from memory when it is there.
+    ///
+    /// Shared by both tools that read a page, which is the point: an outline and the window it
+    /// points into have to be measured in the same string, or the offsets are fiction. Going
+    /// through one cache is what guarantees that, and it also means locating something in a page
+    /// and then reading it is one download rather than two.
+    async fn document(&self, url: &str, format: Format) -> Result<Got, ConnectorError> {
+        if let Some((page, age)) = self.pages.get(url, format) {
+            return Ok(Got::Page(page, Some(age)));
         }
 
-        let fetched = match fetch::get(&self.http, &url).await {
+        let fetched = match fetch::get(&self.http, url).await {
             Ok(fetched) => fetched,
-            Err(err) => return Ok(ToolOutcome::error(err.to_string())),
+            Err(err) => return Ok(Got::Refused(ToolOutcome::error(err.to_string()))),
         };
 
         let mime = fetch::mime(fetched.content_type.as_deref());
         if !fetch::is_readable(&mime) {
-            return Ok(ToolOutcome::error(format!(
+            return Ok(Got::Refused(ToolOutcome::error(format!(
                 "{} is {mime}, which is not text this tool can read. It is {} bytes{}.",
                 fetched.final_url,
                 fetched.body.len(),
                 if fetched.truncated { " or more" } else { "" }
-            )));
+            ))));
         }
 
         // Lossy, and deliberately: a page whose bytes are not UTF-8 is still mostly readable as
@@ -171,16 +295,16 @@ impl Web {
         let text = String::from_utf8_lossy(&fetched.body).into_owned();
         let html = fetch::is_html(&mime) || looks_like_html(&text);
         if html && extract::nests_too_deep(&text) {
-            return Ok(ToolOutcome::error(format!(
+            return Ok(Got::Refused(ToolOutcome::error(format!(
                 "{} nests HTML too deeply to read. Parsing it would cost more time than any page \
                  is worth; this is a property of the page, not of the address.",
                 fetched.final_url
-            )));
+            ))));
         }
 
         // Reading a page is CPU work — parsing up to 5 MB of HTML and walking the tree — and it
-        // does not belong on an async worker: nothing in it awaits, so the `select!` above could
-        // not interrupt it and the runtime thread would be held for the whole of it.
+        // does not belong on an async worker: nothing in it awaits, so the `select!` in `call`
+        // could not interrupt it and the runtime thread would be held for the whole of it.
         let (title, body) = if html {
             let owned = text;
             tokio::task::spawn_blocking(move || {
@@ -202,8 +326,8 @@ impl Web {
             fetched.truncated,
             body,
         ));
-        self.pages.put(&url, format, Arc::clone(&page));
-        Ok(render(&page, format, offset, max_chars, None))
+        self.pages.put(url, format, Arc::clone(&page));
+        Ok(Got::Page(page, None))
     }
 
     /// The search behind the tool, without the JSON envelope around it.
@@ -262,6 +386,26 @@ impl Web {
     }
 }
 
+/// A document, or the refusal that stands in for one.
+enum Got {
+    /// The page, and how long ago it was read when it came from memory.
+    Page(Arc<Page>, Option<Duration>),
+    Refused(ToolOutcome),
+}
+
+/// The `format` argument, shared by both tools that read a page — they have to agree, because
+/// an offset found in one rendering is meaningless in another.
+fn format_of(args: &serde_json::Value) -> Result<Format, ToolOutcome> {
+    match args.get("format").and_then(serde_json::Value::as_str) {
+        None => Ok(Format::default()),
+        Some(name) => Format::parse(name).ok_or_else(|| {
+            ToolOutcome::error(format!(
+                "`{name}` is not a format. Use markdown, text or html."
+            ))
+        }),
+    }
+}
+
 /// One window of a page, as the model sees it.
 ///
 /// Separate from the fetch because everything here is a pure function of a document that has
@@ -280,11 +424,7 @@ fn render(
         "url": page.final_url,
         "status": page.status,
         "content_type": page.content_type,
-        "format": match format {
-            Format::Markdown => "markdown",
-            Format::Text => "text",
-            Format::Html => "html",
-        },
+        "format": format.label(),
         "content": view.text,
         "chars": chars,
         // Where this window sits in the document, so a model can say where a quotation came
@@ -414,6 +554,33 @@ pub fn definitions() -> Vec<ToolDef> {
     )];
 
     defs.push(ToolDef::new(
+        "find_in_page",
+        "Find where something is in a page without reading the whole page. With a `pattern`, \
+         returns every line that matches and the character offset of each, with the section it \
+         is in. Without one, returns the page's headings and where each begins. Hand an offset \
+         straight back to fetch_url as its `offset` to read from exactly there. Use this before \
+         paging through anything long: a 300,000-character article is seven reads from the \
+         start and one from the right place. The page is fetched once and shared with \
+         fetch_url, so this costs no extra download.",
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "url": { "type": "string",
+                         "description": "The full URL, including https://." },
+                "pattern": { "type": "string",
+                             "description": "A regular expression. Leave it out to get the page's headings instead." },
+                "case_sensitive": { "type": "boolean", "default": false },
+                "format": { "type": "string", "enum": ["markdown", "text", "html"],
+                            "default": "markdown",
+                            "description": "Offsets are measured in this rendering, so read the page with the same one." }
+            },
+            "required": ["url"],
+            "additionalProperties": false
+        }),
+        RiskTier::Read,
+    ));
+
+    defs.push(ToolDef::new(
         "search",
         "Search the web for pages to read. Covers Wikipedia for facts and people, Stack \
          Overflow for programming questions and errors, and crates.io and npm for packages — \
@@ -465,7 +632,7 @@ mod tests {
         // of truth, which is what will let a keyless `search` appear without a manifest change.
         let manifest: serde_json::Value = serde_json::from_str(MANIFEST).unwrap();
         assert_eq!(manifest["tools_generated"], true);
-        assert_eq!(names(), ["fetch_url", "search"]);
+        assert_eq!(names(), ["fetch_url", "find_in_page", "search"]);
     }
 
     #[test]

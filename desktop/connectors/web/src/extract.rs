@@ -33,6 +33,16 @@ pub enum Format {
 }
 
 impl Format {
+    /// The name this format goes by in a tool's arguments and in its result.
+    #[must_use]
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Markdown => "markdown",
+            Self::Text => "text",
+            Self::Html => "html",
+        }
+    }
+
     /// The manifest's `format` argument. Anything unrecognised is `None`, so the tool can say so
     /// rather than silently returning something else.
     #[must_use]

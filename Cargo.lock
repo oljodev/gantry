@@ -1793,6 +1793,7 @@ dependencies = [
  "gantry-connectors",
  "gantry-core",
  "log",
+ "regex",
  "reqwest",
  "serde_json",
  "tokio",

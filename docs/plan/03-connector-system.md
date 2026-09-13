@@ -324,6 +324,7 @@ Why it is the riskiest connector: arbitrary code as the user, and scope cannot b
 | Tool | Input → output | Tier |
 |------|----------------|------|
 | `fetch_url` | `{ url, offset?, max_chars?, format?: markdown\|text\|html }` → extracted content, title, final URL, and where this window sits in the page | read (internet) |
+| `find_in_page` | `{ url, pattern?, case_sensitive?, format? }` → the page's headings, or every line matching a pattern, each with the character offset to read from | read (internet) |
 | `search` | `{ query, source?, max_results? }` → results, each labelled with the index that answered | read (internet) |
 
 **This connector is free and local by rule, and asks the user for nothing** — no API key field,
@@ -337,7 +338,7 @@ none of them covers returns a sentence saying so — never an empty list, which 
 proof the thing does not exist (§6.8). The tiers below it are not built: the user's own SearXNG
 (§6.3), a rationed DuckDuckGo Lite with a circuit breaker (§6.4), independent indexes (§6.5).
 
-`fetch_url`: 5 MB cap, ≤5 redirects, 20 s timeout, no cookies, private and loopback address ranges blocked. A page longer than `max_chars` is returned one window at a time rather than cut off: the result carries `first_char`, `total_chars`, `more` and `next_offset`, and `offset` is where the next call resumes — the same shape as `filesystem.read_file`'s `offset`/`total_lines`/`more`, in characters rather than lines. The document is held for five minutes so a page turn is neither a second download nor a second chance for the offsets to have moved, which also makes reading the same page twice in a chat cost one fetch. Provider-native web search (Anthropic, OpenAI, Gemini, xAI, OpenRouter plugin) is handled by the provider layer and remains the broader of the two: it searches everything, where this connector searches four indexes well. The provider layer is unaffected by the rule above — that search is part of a model call the user is already paying for, not an account Gantry asks them to open.
+`fetch_url`: 5 MB cap, ≤5 redirects, 20 s timeout, no cookies, private and loopback address ranges blocked. A page longer than `max_chars` is returned one window at a time rather than cut off: the result carries `first_char`, `total_chars`, `more` and `next_offset`, and `offset` is where the next call resumes — the same shape as `filesystem.read_file`'s `offset`/`total_lines`/`more`, in characters rather than lines. The document is held for five minutes so a page turn is neither a second download nor a second chance for the offsets to have moved, which also makes reading the same page twice in a chat cost one fetch. `find_in_page` reads that same document — headings, or a regular expression's matches, each with the offset to resume at — so locating a section and then reading it is one download and the offsets are measured in the string they will be used against. Provider-native web search (Anthropic, OpenAI, Gemini, xAI, OpenRouter plugin) is handled by the provider layer and remains the broader of the two: it searches everything, where this connector searches four indexes well. The provider layer is unaffected by the rule above — that search is part of a model call the user is already paying for, not an account Gantry asks them to open.
 
 ## 6. MCP runtime
 

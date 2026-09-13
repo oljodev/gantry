@@ -20,6 +20,7 @@ removed: a key field is precisely the thing this connector may not have, whoever
 | Tool | Input → output | Tier |
 |------|----------------|------|
 | `fetch_url` | `{ url, offset?, max_chars?, format?: markdown\|text\|html }` → `{ url, title, content, status, chars, first_char, total_chars, more, next_offset, redirects }` | read (internet) |
+| `find_in_page` | `{ url, pattern?, case_sensitive?, format? }` → `{ headings }` or `{ matches: { offset, line, section }[] }`, with `total_chars` | read (internet) |
 | `search` | `{ query, source?, max_results? }` → `{ results: { title, url, snippet, source }[], searched, count }` | read (internet) |
 
 ## Search without an account
@@ -118,6 +119,18 @@ reading one is bounded on both sides:
 where the window sits (`first_char`, `total_chars`, `more`) and, when there is more, the
 `next_offset` to pass back. The names match `filesystem.read_file`'s rather than the MCP fetch
 server's `start_index`/`max_length`, so a model holding both tools meets one convention.
+
+`find_in_page` is the index to that. With a `pattern` it returns every matching line and the
+character offset of each, with the heading it sits under; without one it returns the headings
+themselves. Both are offsets to hand straight to `fetch_url`, which turns a 300,000-character
+article from seven reads from the start into one read from the right place.
+
+The two tools share one document and one `format`, which is not a convenience but the
+correctness condition: an offset is a position in a *rendering*, and the same page as Markdown
+and as text are different strings of different lengths. `an_outline_offset_lands_exactly_where_reading_would_start`
+is the test that holds them together — it is the kind of thing that can be silently wrong
+(bytes for characters, the line after the heading instead of the heading) and pass everything
+else.
 
 `src/cache.rs` keeps the extracted document for five minutes, bounded at 8 pages and 4 M
 characters. That is what makes paging worth doing — reading on is neither a second download nor

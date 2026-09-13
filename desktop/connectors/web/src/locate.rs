@@ -186,9 +186,7 @@ mod tests {
         // A page of shell or Rust doc attributes would otherwise outline as its own comments.
         let (headings, _) = outline(PAGE);
         assert!(
-            !headings
-                .iter()
-                .any(|h| h.title.contains("doc attribute")),
+            !headings.iter().any(|h| h.title.contains("doc attribute")),
             "{headings:?}"
         );
         assert!(!outline("```\n# ls -la\n```\n").0.iter().any(|_| true));

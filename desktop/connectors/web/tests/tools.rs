@@ -56,7 +56,7 @@ fn refusal(outcome: &ToolOutcome) -> String {
 }
 
 #[tokio::test]
-async fn the_connector_offers_reading_and_searching() {
+async fn the_connector_offers_reading_locating_and_searching() {
     let names: Vec<String> = web()
         .tools()
         .await
@@ -64,7 +64,7 @@ async fn the_connector_offers_reading_and_searching() {
         .into_iter()
         .map(|d| d.name)
         .collect();
-    assert_eq!(names, ["fetch_url", "search"]);
+    assert_eq!(names, ["fetch_url", "find_in_page", "search"]);
 }
 
 #[tokio::test]

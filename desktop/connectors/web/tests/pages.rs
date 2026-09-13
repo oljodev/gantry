@@ -225,6 +225,55 @@ fn an_offset_past_the_end_says_so_instead_of_failing() {
     }
 }
 
+#[test]
+fn an_outline_offset_lands_exactly_where_reading_would_start() {
+    // The contract the two tools share, and the only one that can be silently wrong: an offset
+    // from `find_in_page` is fed to `fetch_url` as its `offset`, and both count characters of
+    // the *same rendering*. If either side drifted — bytes instead of characters, the line
+    // after the heading instead of the heading — this passes nothing on and the model reads
+    // from the wrong place with no sign anything went amiss.
+    use gantry_connector_web::{find, outline, window};
+
+    let body = article(ARTICLE, Format::Markdown).body;
+    let (headings, more) = outline(&body);
+    assert!(!more);
+    assert!(
+        headings.len() >= 2,
+        "the fixture needs headings to index: {headings:?}"
+    );
+
+    for heading in &headings {
+        let view = window(&body, heading.offset, 400);
+        assert_eq!(view.first, heading.offset);
+        assert!(
+            view.text
+                .starts_with(&format!("{} {}", "#".repeat(heading.level), heading.title)),
+            "reading from {} gave {:?}, not the heading {:?}",
+            heading.offset,
+            view.text.chars().take(40).collect::<String>(),
+            heading.title
+        );
+    }
+
+    // And the same for a pattern: the offset is the line the match is on.
+    let needle = regex::Regex::new("(?i)redirect").unwrap();
+    let (found, _) = find(&body, &needle, 10);
+    assert!(
+        !found.is_empty(),
+        "the fixture says `redirect`, so this must not pass vacuously"
+    );
+    for hit in &found {
+        let view = window(&body, hit.offset, 300);
+        assert!(
+            view.text.starts_with(hit.line.trim()),
+            "match at {} reads as {:?}, not {:?}",
+            hit.offset,
+            view.text.chars().take(40).collect::<String>(),
+            hit.line
+        );
+    }
+}
+
 const STRAY: &str = include_str!("fixtures/stray.html");
 const LISTING: &str = include_str!("fixtures/listing.html");
 
