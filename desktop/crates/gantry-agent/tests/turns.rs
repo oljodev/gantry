@@ -1857,3 +1857,61 @@ async fn a_new_chat_attaches_the_connectors_chosen_for_new_chats() {
     // A namespace that is not installed is skipped rather than failing the chat.
     assert!(m.chats().get(chat.id).unwrap().is_some());
 }
+
+/// An incognito chat carries no memory, and nothing that re-freezes its prompt may hand it any
+/// (15 A21). Changing the mode from its composer does exactly that re-freeze, which is the way
+/// the promise would have been broken quietly: the chat would go on saying it keeps nothing
+/// while carrying the user's standing preferences into the provider.
+#[tokio::test]
+async fn a_mode_change_never_gives_an_incognito_chat_the_memory_core_set() {
+    let h = manager(vec![text("ok")], Duration::ZERO);
+    let store = h.m.chats().store().clone();
+    let memories = gantry_agent::Memories::new(store);
+    memories
+        .create(
+            "Answers should always be in Norwegian",
+            gantry_core::MemoryKind::Instruction,
+            gantry_core::MemoryScopeKind::Global,
+            None,
+            gantry_core::MemorySource::User,
+            None,
+        )
+        .unwrap();
+
+    let ordinary =
+        h.m.create_session(gantry_core::Surface::Chat, Vec::new(), None, false)
+            .unwrap();
+    let private =
+        h.m.create_session(gantry_core::Surface::Chat, Vec::new(), None, true)
+            .unwrap();
+    let carries = |id: ChatId| {
+        h.m.chats()
+            .system_prompt(id)
+            .unwrap()
+            .expect("the chat exists")
+            .0
+            .contains("Answers should always be in Norwegian")
+    };
+    assert!(
+        carries(ordinary.id),
+        "an ordinary chat freezes the core set"
+    );
+    assert!(!carries(private.id));
+
+    // The re-freeze path: a mode change on a chat that has not spoken yet.
+    for id in [ordinary.id, private.id] {
+        h.m.update_chat(
+            id,
+            ChatPatch {
+                mode: Some(Mode::Plan),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    }
+    assert!(carries(ordinary.id));
+    assert!(
+        !carries(private.id),
+        "the re-freeze handed an incognito chat the memory it exists to do without"
+    );
+}

@@ -26,7 +26,7 @@ use crate::{
     skills::Skills,
     system_prompt::{
         CORE_VERSION, PromptContext, SystemPromptBuilder, connector_inventory, mode_note,
-        now_block, with_roots,
+        now_block, with_roots, with_turn_blocks,
     },
     title,
     tools::ToolSet,
@@ -204,8 +204,27 @@ impl TurnManager {
             .clone()
     }
 
-    fn build_prompt(&self, settings: &Settings, mode: gantry_core::Mode) -> String {
-        self.build_prompt_with_memory(settings, mode, true).0
+    /// Re-freezes an untouched chat's prompt after something it was built from changed (10 §4):
+    /// the mode, or the global instructions. Only for a chat with no turns — one that has
+    /// spoken gets a `SystemNote` instead, because rewriting the prompt under a conversation
+    /// would rewrite what the model was answering.
+    ///
+    /// It re-picks the memory core set, so the ids recorded against the chat have to move with
+    /// it: they are what the Memory page reads to say which open chat still carries an entry
+    /// (12 §B4). And it takes `incognito` rather than assuming, because the composer in an
+    /// incognito chat can change the mode, and a rebuild that forgot would quietly hand that
+    /// chat the memory its whole promise is to do without (15 A21).
+    fn refreeze(
+        &self,
+        chat_id: ChatId,
+        mode: gantry_core::Mode,
+        incognito: bool,
+        settings: &Settings,
+    ) -> Result<(), GantryError> {
+        let (prompt, memory_ids) = self.build_prompt_with_memory(settings, mode, !incognito);
+        self.chats.replace_snapshot(chat_id, prompt, CORE_VERSION)?;
+        self.chats.record_snapshot_memories(chat_id, &memory_ids);
+        Ok(())
     }
 
     /// The frozen prompt, and the memories it froze into it (10 §2 layer 3, 12 §B4).
@@ -306,11 +325,7 @@ impl TurnManager {
                 self.chats.append_system_note(chat_id, mode_note(mode))?;
             } else {
                 let settings = self.settings();
-                self.chats.replace_snapshot(
-                    chat_id,
-                    self.build_prompt(&settings, mode),
-                    CORE_VERSION,
-                )?;
+                self.refreeze(chat_id, mode, before.incognito, &settings)?;
             }
         }
         Ok(summary)
@@ -332,11 +347,7 @@ impl TurnManager {
             if self.chats.has_turns(id)? {
                 self.chats.append_system_note(id, note.clone())?;
             } else if let Some(chat) = self.chats.get(id)? {
-                self.chats.replace_snapshot(
-                    id,
-                    self.build_prompt(&settings, chat.mode),
-                    CORE_VERSION,
-                )?;
+                self.refreeze(id, chat.mode, chat.incognito, &settings)?;
             }
         }
         Ok(())
@@ -480,36 +491,32 @@ impl TurnManager {
             log::warn!("could not read the installed connectors: {err}");
             Vec::new()
         });
-        input.system = format!(
-            "{}\n\n{}\n",
-            // Chats created before M10 froze the line "connectors: none attached" into their
-            // snapshot; leaving it in would contradict the block that follows. The folders are
-            // rewritten for the same reason: both change outside the chat.
-            with_roots(&input.system, &input.roots)
-                .replace("\nconnectors: none attached", "")
-                .trim_end(),
-            connector_inventory(
-                &installed,
-                &input.connectors,
-                settings.chat.suggest_connectors
-            )
-        );
-        // What day it is, beside the inventories and for the same reason: it changes outside
-        // the chat, so a snapshot frozen at creation would be wrong by the second sitting.
-        input.system = format!("{}\n{}\n", input.system.trim_end(), now_block());
+        // Chats created before M10 froze the line "connectors: none attached" into their
+        // snapshot; leaving it in would contradict the block that follows. The folders are
+        // rewritten for the same reason: both change outside the chat.
+        let base =
+            with_roots(&input.system, &input.roots).replace("\nconnectors: none attached", "");
+        let mut per_turn = vec![connector_inventory(
+            &installed,
+            &input.connectors,
+            settings.chat.suggest_connectors,
+        )];
         // The skill list rides with the turn for the connector inventory's reason: a skill
         // written after this chat started is still a skill this chat can load, and a list
         // frozen at creation would go on denying it exists (10 §2).
         if let Some(skills) = &skills {
             let pinned = self.chats.pinned_skills(chat_id).unwrap_or_default();
             match skills.inventory(&pinned) {
-                Ok(block) if !block.is_empty() => {
-                    input.system = format!("{}\n{block}\n", input.system.trim_end());
-                }
+                Ok(block) if !block.is_empty() => per_turn.push(block),
                 Ok(_) => {}
                 Err(err) => log::warn!("could not list the skills for the prompt: {err}"),
             }
         }
+        // The date last of the three: it is the only one that changes daily, so everything
+        // above it stays in the cached prefix.
+        per_turn.push(now_block());
+        // Ahead of the user's own instructions, never after them — see `with_turn_blocks`.
+        input.system = with_turn_blocks(&base, &per_turn.join("\n\n"));
 
         let fanout = Arc::new(FanoutSink::new());
         fanout.add(Arc::new(PersistSink::new(

@@ -139,6 +139,39 @@ pub fn with_roots(system: &str, roots: &[String]) -> String {
     format!("{}{line}{}", &system[..from], &system[to..])
 }
 
+/// Puts the per-turn blocks into a frozen snapshot **before the user's own instructions**
+/// (10 §2).
+///
+/// The inventories and the date have to be assembled per turn, and the obvious place to put
+/// them is the end. That is the one place they must not go: the layering in 10 §2 runs from
+/// general to specific, the user's standing instructions are the most specific thing in the
+/// system prompt, and appending three blocks of machinery after them leaves the last thing the
+/// model reads before the conversation as a list of connector ids and today's date. Whatever a
+/// model's recency bias is worth, a prompt that ends on housekeeping is not the one to bet it
+/// on.
+///
+/// The date goes last among the per-turn blocks on purpose: it is the only one that changes
+/// daily, so everything above it stays in the provider's cached prefix.
+///
+/// A snapshot with no instructions — most chats — simply gets them appended, which is what
+/// happened before and is still right when there is nothing they would come between.
+#[must_use]
+pub fn with_turn_blocks(snapshot: &str, blocks: &str) -> String {
+    let snapshot = snapshot.trim_end();
+    let blocks = blocks.trim();
+    if blocks.is_empty() {
+        return format!("{snapshot}\n");
+    }
+    match snapshot.find("<instructions scope=") {
+        Some(at) => format!(
+            "{}\n\n{blocks}\n\n{}\n",
+            snapshot[..at].trim_end(),
+            snapshot[at..].trim_end()
+        ),
+        None => format!("{snapshot}\n\n{blocks}\n"),
+    }
+}
+
 /// What day it is, per turn (10 §2).
 ///
 /// A model has no clock, so without this it either guesses the date or spends a round asking
@@ -326,5 +359,62 @@ mod tests {
         )
         .build();
         assert!(!frozen.contains("<gantry_now>"));
+    }
+
+    /// The user's standing instructions are the last thing in the system prompt, after every
+    /// block the turn assembles. They are the most specific layer (10 §2) and the one a model
+    /// is most often asked why it ignored; ending the prompt on a connector list and a date
+    /// puts machinery where the user's own words should be.
+    #[test]
+    fn the_turn_blocks_go_above_the_user_instructions() {
+        let snapshot = SystemPromptBuilder::new(
+            Mode::AutoEdit,
+            PromptContext {
+                platform: "linux".into(),
+                app_version: "0.1.0".into(),
+                workspace_roots: Vec::new(),
+                project_name: None,
+            },
+        )
+        .global_instructions("Always answer in the language the question was written in.")
+        .build();
+        let assembled = with_turn_blocks(
+            &snapshot,
+            "<gantry_connectors>\nnone\n</gantry_connectors>\n\n<gantry_now>\ntoday: 2026-09-13\n</gantry_now>",
+        );
+
+        let connectors = assembled.find("<gantry_connectors>").unwrap();
+        let now = assembled.find("<gantry_now>").unwrap();
+        let instructions = assembled.find("<instructions scope=").unwrap();
+        assert!(connectors < now, "the date stays last of the turn blocks");
+        assert!(
+            now < instructions,
+            "the user's instructions come after all of it"
+        );
+        assert!(
+            assembled.trim_end().ends_with("</instructions>"),
+            "the prompt ends on the user's own words: {assembled}"
+        );
+        assert!(assembled.contains("Always answer in the language"));
+    }
+
+    /// Most chats have no instructions, and then there is nothing for the blocks to come
+    /// before: appending is right, and is what happened before this rule existed.
+    #[test]
+    fn a_snapshot_without_instructions_just_gets_the_blocks_appended() {
+        let snapshot = SystemPromptBuilder::new(
+            Mode::AutoEdit,
+            PromptContext {
+                platform: "linux".into(),
+                app_version: "0.1.0".into(),
+                workspace_roots: Vec::new(),
+                project_name: None,
+            },
+        )
+        .build();
+        let assembled =
+            with_turn_blocks(&snapshot, "<gantry_now>\ntoday: 2026-09-13\n</gantry_now>");
+        assert!(assembled.trim_end().ends_with("</gantry_now>"));
+        assert!(!assembled.contains("<instructions scope="));
     }
 }

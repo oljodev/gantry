@@ -92,6 +92,22 @@ of the plan. A plan is read more than once, argued with and edited, which is the
 an artifact; in the transcript it scrolls away and has to be re-read from the top to find the
 third deliverable. The `writing-a-plan` skill says the same thing at more length.
 
+### Where the per-turn blocks go (M12 follow-up)
+
+The connector inventory, the skill inventory and `<gantry_now>` are assembled per turn and
+**inserted above `<instructions scope="global">`, not appended after it.** The layering in §2
+runs general to specific; the user's own standing instructions are the most specific thing in
+the system prompt, and appending three blocks of machinery after them left the last thing the
+model read before the conversation as a list of connector ids and today's date. Whatever
+recency is worth to a given model, a prompt that ends on housekeeping is not the one to bet it
+on — and when a user asks why their instruction was ignored, "it was buried between the tool
+list and the calendar" is not an answer anybody should have to give.
+
+The date is last **of the three**, because it is the only one that changes daily: everything
+above it stays in the provider's cached prefix. A snapshot with no instructions — most chats —
+simply gets the blocks appended, which is what happened before and is still right when there is
+nothing for them to come between. `with_turn_blocks` in `system_prompt.rs`, pinned by a test.
+
 ### `<gantry_now>`: what day it is (M12 follow-up)
 
 Assembled per turn beside the connector and skill inventories, for the same reason they are:
