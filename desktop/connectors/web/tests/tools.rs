@@ -68,10 +68,11 @@ async fn the_connector_offers_reading_locating_and_searching() {
 }
 
 #[tokio::test]
-async fn a_query_no_index_covers_says_so_rather_than_returning_nothing() {
-    // Offline, and provably: no index is routed for this, so no request is made. The point
-    // being tested is the one that matters most about a search tool with gaps in it — an empty
-    // list reads to a model as "this does not exist", so the gap has to speak.
+async fn an_empty_query_is_refused_before_anything_is_asked() {
+    // Offline, and provably: with nothing to search for there is no request to make. What is
+    // being checked is that the refusal is a sentence rather than an empty list — `[]` reads to
+    // a model as proof the thing does not exist, and it will answer from memory and cite
+    // nothing (`docs/connectors/web.md` §6.8).
     let outcome = call(
         &web(),
         "search",
@@ -80,14 +81,7 @@ async fn a_query_no_index_covers_says_so_rather_than_returning_nothing() {
     .await
     .unwrap();
     let message = refusal(&outcome);
-    assert!(
-        message.contains("general web search is not built yet"),
-        "{message}"
-    );
-    assert!(
-        message.contains("fetch_url"),
-        "it says what to do: {message}"
-    );
+    assert!(message.contains("nothing to search for"), "{message}");
 }
 
 #[tokio::test]

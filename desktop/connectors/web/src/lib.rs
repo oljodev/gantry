@@ -43,8 +43,9 @@ pub use extract::{Article, Format, Window, article, nests_too_deep, window};
 pub use fetch::{MAX_BYTES, MAX_REDIRECTS, TIMEOUT, USER_AGENT};
 pub use locate::{Found, Heading, MAX_HEADINGS, MAX_MATCHES, find, outline};
 pub use search::{
-    DEFAULT_RESULTS, Hit, MAX_RESULTS, SearchError, Source, lookups, parse_crate, parse_crates,
-    parse_npm, parse_package, parse_stack, parse_wikipedia, registry_query, route, sources_of,
+    Answer, COOLDOWN, DEFAULT_RESULTS, GAP, Hit, MAX_RESULTS, Ration, SearchError, Source, Spent,
+    lookups, parse_crate, parse_crates, parse_duckduckgo, parse_mwmbl, parse_npm, parse_package,
+    parse_stack, parse_wikipedia, registry_query, route, sources_of,
 };
 
 /// The connector manifest, embedded at build time (`docs/plan/03-connector-system.md` §3).
@@ -68,6 +69,9 @@ pub struct Web {
     http: reqwest::Client,
     /// What has been read recently, so a page turn is free. See `cache`.
     pages: Cache,
+    /// How much general web search is left. Rationed rather than unlimited, and shared by every
+    /// call this connector makes. See `search::general`.
+    ration: search::Ration,
 }
 
 impl Web {
@@ -82,6 +86,7 @@ impl Web {
             },
             http: fetch::client(),
             pages: Cache::new(),
+            ration: search::Ration::new(),
         }
     }
 }
@@ -342,8 +347,8 @@ impl Web {
         query: &str,
         limit: usize,
         source: Option<Source>,
-    ) -> Result<Vec<Hit>, SearchError> {
-        search::run(&self.http, query, limit, source).await
+    ) -> Result<search::Answer, SearchError> {
+        search::run(&self.http, &self.ration, query, limit, source).await
     }
 
     async fn search(&self, args: &serde_json::Value) -> Result<ToolOutcome, ConnectorError> {
@@ -363,14 +368,15 @@ impl Web {
             },
         };
 
-        let hits = match self.search_for(&query, limit, only).await {
-            Ok(hits) => hits,
+        let answer = match self.search_for(&query, limit, only).await {
+            Ok(answer) => answer,
             // Every one of these is a sentence saying what to do next, not an empty list: a
             // model handed `[]` concludes the thing does not exist (`search` §6.8).
             Err(err) => return Ok(ToolOutcome::error(err.to_string())),
         };
 
-        Ok(ToolOutcome::json(serde_json::json!({
+        let hits = answer.hits;
+        let mut out = serde_json::json!({
             "query": query,
             // Which index answered, per result and in summary. A model should know it is
             // quoting Stack Overflow rather than an encyclopedia before it does.
@@ -382,7 +388,15 @@ impl Web {
                 "source": hit.source.label(),
             })).collect::<Vec<_>>(),
             "count": hits.len(),
-        })))
+        });
+        if !answer.unavailable.is_empty() {
+            // Never silent: a missing index and an index with nothing to say lead to different
+            // next moves, and only one of them is worth trying again.
+            out.as_object_mut()
+                .expect("a json object")
+                .insert("unavailable".into(), answer.unavailable.into());
+        }
+        Ok(ToolOutcome::json(out))
     }
 }
 
@@ -582,21 +596,22 @@ pub fn definitions() -> Vec<ToolDef> {
 
     defs.push(ToolDef::new(
         "search",
-        "Search the web for pages to read. Covers Wikipedia for facts and people, Stack \
-         Overflow for programming questions and errors, and crates.io and npm for packages — \
-         the query decides which. Every result says which index it came from. Follow a \
-         promising one with fetch_url to read the page itself; snippets are short and often cut \
-         mid-sentence. There is no general web search here, so a question outside those indexes \
-         comes back saying so rather than guessing.",
+        "Search the web for pages to read. Asks whichever indexes suit the query — Wikipedia \
+         for facts and people, Stack Overflow for programming questions and errors, crates.io \
+         and npm for packages, and the open web for everything else — and every result says \
+         which one answered. Follow a promising one with fetch_url to read the page itself; \
+         snippets are short and often cut mid-sentence. General web search is rationed, so a \
+         burst of searches will fall back to a smaller independent index; the result says when \
+         that happened, and searching less and reading more is the way round it.",
         serde_json::json!({
             "type": "object",
             "properties": {
                 "query": { "type": "string",
                            "description": "What to search for. A question or an error message works; so does a package name." },
                 "source": { "type": "string",
-                            "enum": ["auto", "wikipedia", "stackoverflow", "crates.io", "npm"],
+                            "enum": ["auto", "wikipedia", "stackoverflow", "crates.io", "npm", "web", "mwmbl"],
                             "default": "auto",
-                            "description": "Which index to ask. Leave out unless the query alone would route it wrongly." },
+                            "description": "Which index to ask. Leave out unless the query alone would route it wrongly; `web` forces general search, `mwmbl` the independent index that is never rationed." },
                 "max_results": { "type": "integer", "minimum": 1, "maximum": MAX_RESULTS,
                                  "default": DEFAULT_RESULTS }
             },

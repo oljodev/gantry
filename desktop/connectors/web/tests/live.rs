@@ -69,10 +69,14 @@ async fn a_live_search_returns_results_from_every_index() {
             Source::StackOverflow,
         ),
     ] {
-        let hits = web
+        let answer = web
             .search_for(query, 6, None)
             .await
             .unwrap_or_else(|err| panic!("{query}: {err}"));
+        let hits = answer.hits;
+        if !answer.unavailable.is_empty() {
+            println!("  (unavailable: {})", answer.unavailable.join("; "));
+        }
         println!("\n{query} -> {} hits", hits.len());
         for hit in &hits {
             println!("  [{}] {} — {}", hit.source.label(), hit.title, hit.url);
@@ -99,7 +103,8 @@ async fn a_named_package_leads_even_when_the_registry_search_buries_it() {
         let hits = web
             .search_for(query, 6, Some(Source::CratesIo))
             .await
-            .unwrap_or_else(|err| panic!("{query}: {err}"));
+            .unwrap_or_else(|err| panic!("{query}: {err}"))
+            .hits;
         println!("\ncrates.io: {query}");
         for hit in &hits {
             println!("  {} — {}", hit.title, hit.url);
@@ -183,4 +188,57 @@ async fn a_long_page_is_located_first_and_then_read_at_the_right_place() {
         "the article is about an infrared telescope"
     );
     assert_eq!(found["cached"].as_bool(), Some(true));
+}
+
+#[tokio::test]
+#[ignore = "spends a real general-search query; run by hand and sparingly"]
+async fn the_open_web_answers_what_the_curated_indexes_do_not_hold() {
+    // Documentation, release notes, a blog post — the model's complaint about the four-index
+    // version, and what the general tier exists for. Run sparingly: DuckDuckGo blocks after
+    // five or six queries in two minutes, which is the whole reason this tier is rationed.
+    let web = web();
+    let answer = web
+        .search_for("MDN fetch API abort signal", 8, None)
+        .await
+        .expect("something should answer");
+    let hits = answer.hits;
+    if !answer.unavailable.is_empty() {
+        println!("  (unavailable: {})", answer.unavailable.join("; "));
+    }
+    println!("\nMDN fetch API abort signal -> {} hits", hits.len());
+    for hit in &hits {
+        println!("  [{}] {} — {}", hit.source.label(), hit.title, hit.url);
+    }
+    assert!(
+        hits.iter()
+            .any(|hit| hit.source == Source::DuckDuckGo || hit.source == Source::Mwmbl),
+        "no general result at all"
+    );
+
+    // The ration is real: a second general query straight away must not reach the engine, and
+    // must not fail either — the independent index answers instead.
+    let again = web
+        .search_for(
+            "postgresql generated columns documentation",
+            8,
+            Some(Source::DuckDuckGo),
+        )
+        .await
+        .expect("the fallback should answer rather than failing")
+        .hits;
+    println!("\nimmediately again -> {} hits", again.len());
+    for hit in &again {
+        println!("  [{}] {}", hit.source.label(), hit.title);
+    }
+    // The claim is that the *engine* was not asked, which is what the ration is for. It is
+    // stated that way round on purpose: mwmbl is a much thinner index and a plausible answer
+    // for it is nothing at all, so asserting it returned something would be asserting a
+    // property of somebody else's crawl.
+    assert!(
+        !again.iter().any(|hit| hit.source == Source::DuckDuckGo),
+        "the second query inside the gap reached the engine anyway"
+    );
+    if again.is_empty() {
+        println!("  (mwmbl had nothing for it — thin index, no recency, per §6.5)");
+    }
 }

@@ -16,7 +16,8 @@
 //! Trim the bodies if that ever needs to be tighter; the parsers only read the first paragraph.
 
 use gantry_connector_web::{
-    Hit, Source, parse_crate, parse_crates, parse_npm, parse_package, parse_stack, parse_wikipedia,
+    Hit, Source, parse_crate, parse_crates, parse_duckduckgo, parse_mwmbl, parse_npm,
+    parse_package, parse_stack, parse_wikipedia,
 };
 
 fn json(name: &str) -> serde_json::Value {
@@ -38,8 +39,12 @@ fn one(hits: &[Hit], source: Source) -> &Hit {
         hits.iter().all(|hit| !hit.title.is_empty()),
         "a hit with no title is not a result anybody can use"
     );
+    // Followable by `fetch_url`, which is http and https — an independent crawl of the open web
+    // turns up plenty of pages that were never moved to https, and rewriting somebody's URL to
+    // a scheme they did not publish is not this connector's call to make.
     assert!(
-        hits.iter().all(|hit| hit.url.starts_with("https://")),
+        hits.iter()
+            .all(|hit| hit.url.starts_with("https://") || hit.url.starts_with("http://")),
         "every hit has to be followable with fetch_url: {:?}",
         hits.iter().map(|h| &h.url).collect::<Vec<_>>()
     );
@@ -161,6 +166,43 @@ fn a_package_looked_up_by_name_reads_the_bare_manifest() {
 }
 
 #[test]
+fn a_duckduckgo_results_page_becomes_hits() {
+    // The live Lite page, saved verbatim. Parsed as HTML rather than by pattern: this markup
+    // single-quotes some attributes and double-quotes others, and a regular expression that
+    // assumes either is one template change from silently returning nothing.
+    let page = std::fs::read_to_string(format!(
+        "{}/tests/fixtures/duckduckgo.html",
+        env!("CARGO_MANIFEST_DIR")
+    ))
+    .unwrap();
+    let hits = parse_duckduckgo(&page, 10);
+    assert!(hits.len() >= 5, "only {} results parsed", hits.len());
+    let first = one(&hits, Source::DuckDuckGo);
+    assert_eq!(first.title, "Tokio - An asynchronous Rust runtime");
+    assert_eq!(first.url, "https://tokio.rs/");
+    // Snippets come with the query's words wrapped in <b>; none of that reaches the model.
+    assert!(!first.snippet.contains('<'), "{}", first.snippet);
+    assert!(first.snippet.contains("runtime"), "{}", first.snippet);
+    // The limit is honoured, because a results page has far more rows than a model wants.
+    assert_eq!(parse_duckduckgo(&page, 3).len(), 3);
+}
+
+#[test]
+fn an_mwmbl_result_is_reassembled_from_its_highlighted_runs() {
+    // mwmbl returns titles and extracts as runs of text with the matched words flagged, not as
+    // strings, so a parser that reads them as strings gets empty titles and no error.
+    let hits = parse_mwmbl(&json("mwmbl.json"), 10);
+    assert!(!hits.is_empty());
+    let first = one(&hits, Source::Mwmbl);
+    assert_eq!(
+        first.title,
+        "GitHub - notgull/unsend: Thread-unsafe async runtime"
+    );
+    assert!(first.url.starts_with("https://github.com/"));
+    assert_eq!(parse_mwmbl(&json("mwmbl.json"), 2).len(), 2);
+}
+
+#[test]
 fn a_body_in_the_wrong_shape_is_no_results_rather_than_a_panic() {
     // An API that changes, an error document, a proxy's login page. Every parser answers the
     // same way: nothing found, which `run` turns into a sentence.
@@ -179,6 +221,20 @@ fn a_body_in_the_wrong_shape_is_no_results_rather_than_a_panic() {
         assert!(parse_npm(&body).is_empty(), "{body}");
         assert!(parse_crate(&body).is_none(), "{body}");
         assert!(parse_package(&body).is_none(), "{body}");
+        assert!(parse_mwmbl(&body, 10).is_empty(), "{body}");
+    }
+}
+
+#[test]
+fn a_page_that_is_not_a_results_page_yields_nothing_rather_than_nonsense() {
+    // A challenge page, an error page, a proxy's login form: all HTML, none of it results.
+    for html in [
+        "<html><body>Our systems have detected unusual traffic</body></html>",
+        "<html><body><a href=\"/settings\">Settings</a></body></html>",
+        "",
+        "not html at all",
+    ] {
+        assert!(parse_duckduckgo(html, 10).is_empty(), "{html}");
     }
 }
 

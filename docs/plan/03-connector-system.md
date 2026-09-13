@@ -332,11 +332,17 @@ no account, no quota to buy. `docs/connectors/web.md` §1 is the rule; a `search
 bring-your-own-key Brave, Tavily or Exa shipped in M11 and was removed the same day, because the
 shape of the tool was right and the key was not.
 
-`search` is §6.2's tier 0: Wikipedia, Stack Overflow, crates.io and npm, all keyless, chosen by
-keyword routing over the query, asked concurrently, results interleaved and labelled. A query
-none of them covers returns a sentence saying so — never an empty list, which a model reads as
-proof the thing does not exist (§6.8). The tiers below it are not built: the user's own SearXNG
-(§6.3), a rationed DuckDuckGo Lite with a circuit breaker (§6.4), independent indexes (§6.5).
+`search` is §6.2's tier 0 plus §6.4 and part of §6.5: Wikipedia, Stack Overflow, crates.io and
+npm for what they cover, DuckDuckGo Lite for everything else, and mwmbl when DuckDuckGo cannot be
+asked. All keyless. Chosen by keyword routing over the query, asked concurrently, results
+interleaved and labelled with the index that answered. A search that finds nothing returns a
+sentence saying so — never an empty list, which a model reads as proof the thing does not exist
+(§6.8).
+
+General search is rationed in `search::general`, because §6.1 measured the free engines blocking
+after five or six queries in two minutes: one query per 25 s claimed under a lock, a 20-minute
+circuit breaker when a block is seen, and a fall through to mwmbl for anything refused. Not built:
+a per-turn cap (§6.4), the user's own SearXNG (§6.3), Wiby and YaCy (§6.5).
 
 `fetch_url`: 5 MB cap, ≤5 redirects, 20 s timeout, no cookies, private and loopback address ranges blocked. A page longer than `max_chars` is returned one window at a time rather than cut off: the result carries `first_char`, `total_chars`, `more` and `next_offset`, and `offset` is where the next call resumes — the same shape as `filesystem.read_file`'s `offset`/`total_lines`/`more`, in characters rather than lines. The document is held for five minutes so a page turn is neither a second download nor a second chance for the offsets to have moved, which also makes reading the same page twice in a chat cost one fetch. `find_in_page` reads that same document — headings, or a regular expression's matches, each with the offset to resume at — so locating a section and then reading it is one download and the offsets are measured in the string they will be used against. Provider-native web search (Anthropic, OpenAI, Gemini, xAI, OpenRouter plugin) is handled by the provider layer and remains the broader of the two: it searches everything, where this connector searches four indexes well. The provider layer is unaffected by the rule above — that search is part of a model call the user is already paying for, not an account Gantry asks them to open.
 

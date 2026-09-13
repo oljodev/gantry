@@ -20,6 +20,7 @@
 //! the important one: an empty list reads to a model as "nothing exists", and it will answer
 //! from memory and cite nothing.
 
+mod general;
 mod registries;
 mod stack;
 mod wikipedia;
@@ -29,6 +30,7 @@ use std::fmt;
 // Re-exported so the tests can drive each parser against a recorded reply without a socket.
 // The request and the parsing are separate for that reason: what breaks in a backend is the
 // shape of what comes back, and that is testable only if it can be fed in.
+pub use general::{COOLDOWN, GAP, Ration, Spent, parse_duckduckgo, parse_mwmbl};
 pub use registries::{lookups, parse_crate, parse_crates, parse_npm, parse_package};
 pub use stack::parse as parse_stack;
 pub use wikipedia::parse as parse_wikipedia;
@@ -50,6 +52,10 @@ pub enum Source {
     StackOverflow,
     CratesIo,
     Npm,
+    /// General web search, rationed. See `general`.
+    DuckDuckGo,
+    /// The independent index that answers when DuckDuckGo cannot be asked.
+    Mwmbl,
 }
 
 impl Source {
@@ -60,6 +66,8 @@ impl Source {
             Self::StackOverflow => "Stack Overflow",
             Self::CratesIo => "crates.io",
             Self::Npm => "npm",
+            Self::DuckDuckGo => "DuckDuckGo",
+            Self::Mwmbl => "mwmbl",
         }
     }
 
@@ -71,6 +79,8 @@ impl Source {
             "stackoverflow" | "stack overflow" => Some(Self::StackOverflow),
             "crates" | "crates.io" => Some(Self::CratesIo),
             "npm" => Some(Self::Npm),
+            "web" | "duckduckgo" | "general" => Some(Self::DuckDuckGo),
+            "mwmbl" => Some(Self::Mwmbl),
             _ => None,
         }
     }
@@ -95,13 +105,7 @@ pub enum SearchError {
 impl fmt::Display for SearchError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::NoIndex => write!(
-                f,
-                "this connector has no index that covers that question. It can search Wikipedia, \
-                 Stack Overflow, crates.io and npm; general web search is not built yet, so a \
-                 question outside those has to be answered another way — fetch_url on a page you \
-                 already know, or the model's own web search if this chat has it."
-            ),
+            Self::NoIndex => write!(f, "there is nothing to search for. Give a query."),
             Self::NothingFound(asked) => {
                 let names: Vec<&str> = asked.iter().map(|s| s.label()).collect();
                 write!(
@@ -114,6 +118,20 @@ impl fmt::Display for SearchError {
             Self::Unreachable(why) => write!(f, "the search could not be run: {why}"),
         }
     }
+}
+
+/// What a search produced: the hits, and any index that could not be reached.
+///
+/// The second half exists because a backend that fails is dropped rather than failing the
+/// search — three good answers and one timeout is a result, not an error — and a loss nothing
+/// reports is a loss nobody can act on (D9). A model that asked about Rust and got no Stack
+/// Overflow results should be able to tell "nobody has asked that" from "Stack Overflow was
+/// down".
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Answer {
+    pub hits: Vec<Hit>,
+    /// One line per index that was asked and could not answer, naming it and why.
+    pub unavailable: Vec<String>,
 }
 
 /// The most results any one call returns.
@@ -306,16 +324,25 @@ pub fn route(query: &str) -> Vec<Source> {
     // answer to an ambiguous question is one result from each index rather than a guess at
     // which was meant.
     if picked.is_empty() && !programming && q.split_whitespace().count() == 1 {
-        return vec![Source::CratesIo, Source::Npm, Source::Wikipedia];
+        return vec![
+            Source::CratesIo,
+            Source::Npm,
+            Source::Wikipedia,
+            Source::DuckDuckGo,
+        ];
     }
 
     if programming {
         picked.push(Source::StackOverflow);
     }
-    // Wikipedia last in the order and first in breadth: it is the closest thing to a general
-    // engine that needs no account, so it is asked for anything that reads like a question
-    // about the world.
+    // Wikipedia before the general engine: it is free, unrationed and better than a general
+    // result for anything it covers.
     picked.push(Source::Wikipedia);
+    // And the open web last, for everything the four curated indexes do not hold —
+    // documentation, release notes, blog posts, an RFC, anything recent. It is rationed rather
+    // than unlimited, and `general` decides whether this particular query gets the engine or
+    // the independent index behind it.
+    picked.push(Source::DuckDuckGo);
 
     picked
 }
@@ -328,10 +355,11 @@ pub fn route(query: &str) -> Vec<Source> {
 /// call only fails when there is nothing at all to show.
 pub async fn run(
     http: &reqwest::Client,
+    ration: &Ration,
     query: &str,
     limit: usize,
     only: Option<Source>,
-) -> Result<Vec<Hit>, SearchError> {
+) -> Result<Answer, SearchError> {
     let query = query.trim();
     if query.is_empty() {
         return Err(SearchError::NoIndex);
@@ -360,6 +388,8 @@ pub async fn run(
                 Source::StackOverflow => stack::search(http, query, each).await,
                 Source::CratesIo => registries::crates_io(http, &registry_query(query), each).await,
                 Source::Npm => registries::npm(http, &registry_query(query), each).await,
+                Source::DuckDuckGo => general::search(http, ration, query, each).await,
+                Source::Mwmbl => general::mwmbl_only(http, query, each).await,
             };
             (source, hits)
         }
@@ -378,7 +408,10 @@ pub async fn run(
         // Interleaved rather than concatenated: the first result of each index beats the third
         // of any one of them, and a model reading top-down should not have to get past eight
         // crates to reach the Stack Overflow answer.
-        return Ok(interleave(hits, &sources, limit));
+        return Ok(Answer {
+            hits: interleave(hits, &sources, limit),
+            unavailable: failures,
+        });
     }
     if failures.len() == sources.len() {
         return Err(SearchError::Unreachable(failures.join("; ")));
@@ -527,137 +560,72 @@ fn brief(message: &str) -> String {
 mod tests {
     use super::*;
 
-    #[test]
-    fn a_sentence_is_a_question_and_not_a_package_lookup() {
-        // Measured against the live registries: a sentence run through crates.io comes back
-        // with whatever crate shares a word with it — "cannot borrow as mutable more than once
-        // rust" returned `fp-bench` — and every junk hit costs a slot a real answer wanted.
-        assert_eq!(
-            route("how do I share a tokio runtime between rust threads"),
-            [Source::StackOverflow, Source::Wikipedia]
-        );
-        assert_eq!(
-            route("cannot borrow as mutable more than once rust"),
-            [Source::StackOverflow, Source::Wikipedia]
-        );
-        // Short enough to be a name, so the registry is worth asking.
-        assert_eq!(
-            route("tokio runtime"),
-            [Source::StackOverflow, Source::Wikipedia],
-            "no ecosystem named, so no registry"
-        );
-        assert_eq!(
-            route("rust tokio runtime"),
-            [Source::CratesIo, Source::StackOverflow, Source::Wikipedia]
-        );
-    }
-
-    #[test]
-    fn a_registry_is_not_asked_to_match_the_word_that_routed_the_query() {
-        // The first live run of this backend searched crates.io for "serde crate" and ranked
-        // `serde_core` and `serde-big-array` above `serde`. The literal routing word matches no
-        // package and dilutes everything that would.
-        assert_eq!(registry_query("serde crate"), "serde");
-        assert_eq!(registry_query("npm react"), "react");
-        assert_eq!(registry_query("the tokio crate for async"), "tokio async");
-        // Stripping everything would leave the registry nothing to search.
-        assert_eq!(registry_query("npm"), "npm");
-        assert_eq!(registry_query("crate"), "crate");
-    }
-
-    #[test]
-    fn a_bare_package_lookup_does_not_ask_an_encyclopedia() {
-        // "the serde crate" in Wikipedia is either nothing or something unrelated, and an
-        // unrelated encyclopedia entry beside a correct crate is worse than one result.
-        assert_eq!(route("serde crate"), [Source::CratesIo]);
-        assert_eq!(route("npm react"), [Source::Npm]);
-        // Naming the language is not naming a package: this one is a real question and keeps
-        // the question indexes.
-        assert_eq!(
-            route("rust async runtime"),
-            [Source::CratesIo, Source::StackOverflow, Source::Wikipedia]
-        );
-        // Given a sentence rather than a name, the encyclopedia is worth asking again.
-        assert!(
-            route("why did the react team rewrite the reconciler").contains(&Source::Wikipedia)
-        );
-    }
-
-    #[test]
-    fn an_error_message_is_a_programming_question() {
-        let hits = route("cannot borrow `x` as mutable more than once at a time");
-        assert!(hits.contains(&Source::StackOverflow), "{hits:?}");
-    }
-
-    #[test]
-    fn a_question_about_the_world_gets_the_encyclopedia() {
-        assert_eq!(route("who is magnus carlsen"), [Source::Wikipedia]);
-        assert_eq!(route("norwegian chess history"), [Source::Wikipedia]);
-    }
-
-    #[test]
-    fn a_word_is_matched_whole_and_not_inside_another() {
-        // "carlsen" contains no keyword; "apinomics" must not match `api`, or every query
-        // containing a common substring would be routed as a programming question.
-        assert_eq!(route("apinomics of nullity"), [Source::Wikipedia]);
-        assert!(route("rusty nails").contains(&Source::Wikipedia));
-        assert!(
-            !route("rusty nails").contains(&Source::CratesIo),
-            "`rusty` is not `rust`"
-        );
-    }
-
-    #[test]
-    fn a_bare_name_asks_both_registries_and_the_encyclopedia() {
-        // "tokio" and "axum" are among the most likely one-word queries a coding assistant
-        // gets, and nothing in either says which ecosystem it is. Wikipedia alone answers them
-        // with nothing useful. One result from each index is the honest answer to an ambiguous
-        // question; guessing which was meant is not.
-        for name in ["tokio", "axum", "express"] {
-            assert_eq!(
-                route(name),
-                [Source::CratesIo, Source::Npm, Source::Wikipedia],
-                "{name}"
-            );
-        }
-        // A one-word query that is plainly a programming word keeps the question indexes.
-        assert_eq!(
-            route("deadlock"),
-            [Source::StackOverflow, Source::Wikipedia]
-        );
-    }
-
-    /// The router in one table, which is the only honest way to review it.
-    ///
-    /// It is keyword matching and it will always miss something; what this pins down is that it
-    /// misses in the safe direction. Every row was checked by hand, and `source` on the tool is
-    /// the escape hatch for the rows a future reader disagrees with.
+    /// Every route ends at the open web, because the four curated indexes hold no documentation,
+    /// no release notes, no blog posts and nothing recent. Whether that last step actually
+    /// spends a general query is `general`'s decision under its ration, not the router's.
     #[test]
     fn realistic_queries_reach_the_index_that_can_answer_them() {
-        use Source::{CratesIo, Npm, StackOverflow, Wikipedia};
+        use Source::{CratesIo, DuckDuckGo, Npm, StackOverflow, Wikipedia};
         let cases: &[(&str, &[Source])] = &[
-            ("who won the 2024 world chess championship", &[Wikipedia]),
-            ("what is the capital of norway", &[Wikipedia]),
-            ("how does photosynthesis work", &[Wikipedia]),
-            ("history of the norwegian language", &[Wikipedia]),
-            ("rust lifetime elision rules", &[StackOverflow, Wikipedia]),
+            // Questions about the world: the encyclopedia, then the open web.
+            ("who is magnus carlsen", &[Wikipedia, DuckDuckGo]),
+            ("what is the capital of norway", &[Wikipedia, DuckDuckGo]),
+            ("how does photosynthesis work", &[Wikipedia, DuckDuckGo]),
+            (
+                "history of the norwegian language",
+                &[Wikipedia, DuckDuckGo],
+            ),
+            ("apinomics of nullity", &[Wikipedia, DuckDuckGo]),
+            // Programming questions. A sentence is never run through a package registry: one
+            // returns whatever crate shares a word with it, measured.
+            (
+                "rust lifetime elision rules",
+                &[StackOverflow, Wikipedia, DuckDuckGo],
+            ),
             (
                 "TypeError: Cannot read properties of undefined",
-                &[StackOverflow, Wikipedia],
+                &[StackOverflow, Wikipedia, DuckDuckGo],
             ),
             (
                 "segmentation fault in C when freeing twice",
-                &[StackOverflow, Wikipedia],
+                &[StackOverflow, Wikipedia, DuckDuckGo],
+            ),
+            (
+                "cannot borrow as mutable more than once rust",
+                &[StackOverflow, Wikipedia, DuckDuckGo],
+            ),
+            (
+                "how do I share a tokio runtime between rust threads",
+                &[StackOverflow, Wikipedia, DuckDuckGo],
+            ),
+            ("tokio runtime", &[StackOverflow, Wikipedia, DuckDuckGo]),
+            // Short enough to be a name, with an ecosystem named: the registry joins in.
+            (
+                "rust tokio runtime",
+                &[CratesIo, StackOverflow, Wikipedia, DuckDuckGo],
             ),
             (
                 "best crate for parsing toml",
-                &[CratesIo, StackOverflow, Wikipedia],
+                &[CratesIo, StackOverflow, Wikipedia, DuckDuckGo],
             ),
-            ("react useEffect cleanup", &[Npm, StackOverflow, Wikipedia]),
+            (
+                "react useEffect cleanup",
+                &[Npm, StackOverflow, Wikipedia, DuckDuckGo],
+            ),
             (
                 "npm install fails with EACCES",
-                &[Npm, StackOverflow, Wikipedia],
+                &[Npm, StackOverflow, Wikipedia, DuckDuckGo],
             ),
+            // Naming a registry outright, briefly, is a lookup and stops there: an encyclopedia
+            // entry for an unrelated word of the same name is worse than one result.
+            ("serde crate", &[CratesIo]),
+            ("npm react", &[Npm]),
+            // One word and no ecosystem: ask everything that could hold it, and let the model
+            // choose. An encyclopedia alone has nothing useful for "tokio" or "axum".
+            ("tokio", &[CratesIo, Npm, Wikipedia, DuckDuckGo]),
+            ("axum", &[CratesIo, Npm, Wikipedia, DuckDuckGo]),
+            // ...unless the one word is plainly a programming word.
+            ("deadlock", &[StackOverflow, Wikipedia, DuckDuckGo]),
         ];
         for (query, expected) in cases {
             assert_eq!(&route(query)[..], *expected, "{query}");
@@ -665,40 +633,47 @@ mod tests {
     }
 
     #[test]
-    fn nothing_to_search_is_an_error_and_not_an_empty_list() {
+    fn a_word_is_matched_whole_and_not_inside_another() {
+        // "apinomics" must not match `api`, or every query containing a common substring would
+        // be routed as a programming question.
+        assert!(!route("apinomics of nullity").contains(&Source::StackOverflow));
+        assert!(
+            !route("rusty nails").contains(&Source::CratesIo),
+            "`rusty` is not `rust`"
+        );
+    }
+
+    #[test]
+    fn an_empty_query_is_an_error_and_a_miss_names_what_was_asked() {
         // §6.8: the one shape that must never happen is `[]`, which a model reads as proof the
         // thing does not exist.
-        let no_index = SearchError::NoIndex.to_string();
-        assert!(
-            no_index.contains("general web search is not built yet"),
-            "{no_index}"
+        assert_eq!(
+            SearchError::NoIndex.to_string(),
+            "there is nothing to search for. Give a query."
         );
-        assert!(no_index.contains("fetch_url"), "it says what to do instead");
-
         let empty =
             SearchError::NothingFound(vec![Source::Wikipedia, Source::CratesIo]).to_string();
         assert!(empty.contains("Wikipedia or crates.io"), "{empty}");
     }
 
     #[test]
-    fn markup_is_not_part_of_a_snippet() {
-        assert_eq!(
-            strip_tags(r#"Sven <span class="searchmatch">Magnus</span> Øen Carlsen"#),
-            "Sven Magnus Øen Carlsen"
-        );
-        assert_eq!(strip_tags("a &lt;T&gt; and &amp;str"), "a <T> and &str");
-        // A stray angle bracket is text, not a tag, and the words around it survive.
-        assert_eq!(strip_tags("if a < b and b > c"), "if a < b and b > c");
-    }
-
-    #[test]
-    fn a_snippet_is_cut_on_a_word() {
-        let long = "the quick brown fox jumps over the lazy dog and keeps going";
-        let cut = snippet(long, 20);
-        assert!(cut.ends_with('…'));
-        assert!(cut.chars().count() <= 21, "{cut}");
-        assert!(!cut.contains("  "));
-        assert_eq!(snippet("short\n  text", 100), "short text");
+    fn every_index_has_a_name_that_can_be_asked_for_by_name() {
+        for source in [
+            Source::Wikipedia,
+            Source::StackOverflow,
+            Source::CratesIo,
+            Source::Npm,
+            Source::DuckDuckGo,
+            Source::Mwmbl,
+        ] {
+            let label = source.label().to_ascii_lowercase();
+            assert_eq!(
+                Source::parse(&label),
+                Some(source),
+                "{label} is shown to the model but cannot be asked for"
+            );
+        }
+        assert_eq!(Source::parse("google"), None);
     }
 
     #[test]
@@ -745,5 +720,39 @@ mod tests {
                 Source::StackOverflow
             ]
         );
+    }
+
+    #[test]
+    fn markup_is_not_part_of_a_snippet() {
+        assert_eq!(
+            strip_tags(r#"Sven <span class="searchmatch">Magnus</span> Øen Carlsen"#),
+            "Sven Magnus Øen Carlsen"
+        );
+        assert_eq!(strip_tags("a &lt;T&gt; and &amp;str"), "a <T> and &str");
+        // A stray angle bracket is text, not a tag, and the words around it survive.
+        assert_eq!(strip_tags("if a < b and b > c"), "if a < b and b > c");
+    }
+
+    #[test]
+    fn a_snippet_is_cut_on_a_word() {
+        let long = "the quick brown fox jumps over the lazy dog and keeps going";
+        let cut = snippet(long, 20);
+        assert!(cut.ends_with('…'));
+        assert!(cut.chars().count() <= 21, "{cut}");
+        assert!(!cut.contains("  "));
+        assert_eq!(snippet("short\n  text", 100), "short text");
+    }
+
+    #[test]
+    fn a_registry_is_not_asked_to_match_the_word_that_routed_the_query() {
+        // The first live run of this backend searched crates.io for "serde crate" and ranked
+        // `serde_core` and `serde-big-array` above `serde`. The literal routing word matches no
+        // package and dilutes everything that would.
+        assert_eq!(registry_query("serde crate"), "serde");
+        assert_eq!(registry_query("npm react"), "react");
+        assert_eq!(registry_query("the tokio crate for async"), "tokio async");
+        // Stripping everything would leave the registry nothing to search.
+        assert_eq!(registry_query("npm"), "npm");
+        assert_eq!(registry_query("crate"), "crate");
     }
 }

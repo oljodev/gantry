@@ -25,14 +25,16 @@ removed: a key field is precisely the thing this connector may not have, whoever
 
 ## Search without an account
 
-Four indexes, all keyless, each better at its own subject than a general engine would be:
+Six indexes, all keyless, each better at its own subject than a general engine would be:
 
-| Index | For |
-|-------|-----|
-| Wikipedia | Facts, people, places, events — and the backstop for anything with no other signal |
-| Stack Overflow | Programming questions and error messages |
-| crates.io | Rust packages |
-| npm | JavaScript packages |
+| Index | For | Rationed |
+|-------|-----|----------|
+| Wikipedia | Facts, people, places, events | no |
+| Stack Overflow | Programming questions and error messages | 300/day per IP, not enforced |
+| crates.io | Rust packages | no |
+| npm | JavaScript packages | no |
+| DuckDuckGo Lite | Everything else: documentation, release notes, blog posts, anything recent | **yes** — see below |
+| mwmbl | The independent crawl that answers when DuckDuckGo cannot be asked | no |
 
 `route` in `src/search/mod.rs` picks from the words in the query; every chosen index is asked
 concurrently and the hits are interleaved, so a model reading top-down sees each index near the
@@ -67,15 +69,46 @@ route a query wrongly. Expect to add keywords as real use finds the holes — tw
 found this way, `segmentation fault` reaching only an encyclopedia and a bare `tokio` reaching
 nothing useful at all.
 
-**A question no index covers is an error, not an empty list** (`docs/connectors/web.md` §6.8).
-There is no general engine here; `[]` reads to a model as "this does not exist", and it will
-answer from memory and cite nothing. The message names the four indexes and says to use
-`fetch_url` or the model's own search instead.
+**A search that finds nothing is an error, not an empty list** (`docs/connectors/web.md` §6.8).
+`[]` reads to a model as "this does not exist", and it will answer from memory and cite nothing.
+The message names which indexes were asked.
 
-Still to build, in `docs/connectors/web.md` §6 order: the user's own SearXNG (§6.3), a rationed
-DuckDuckGo Lite with a circuit breaker (§6.4), and mwmbl/Wiby as the tier below that (§6.5).
-§6.7 is the honest ceiling — one search and several reads per question works forever and free;
-an agent wanting five searches while reasoning will feel the ration once §6.4 exists.
+An index that fails is dropped rather than failing the whole search — three good answers and one
+timeout is a result — but it is never dropped *silently*: `unavailable` names it and says why,
+because "nobody has asked that" and "Stack Overflow was down" lead to different next moves and
+only one of them is worth retrying.
+
+### The general tier, and why it is rationed
+
+§6.1's measurement is the fact everything here follows from: **general web search is severely
+rationed and nothing makes it otherwise.** DuckDuckGo's Lite endpoint returns good results and
+blocks after roughly five or six queries in two minutes, for about twenty minutes. Everything
+else freely available is worse.
+
+So `src/search/general.rs` enforces the budget rather than letting the user discover it:
+
+- **One general query per `GAP` (25 s).** The measured block is one per ~22 s, and the document's
+  "about twenty seconds" sits exactly on that boundary; this is a few seconds the safe side,
+  because being wrong costs a twenty-minute outage and being careful costs one search.
+- **Claimed under a lock.** This connector is `parallel_safe`, so several searches in one turn
+  are normal; taking and checking the budget is one operation, and five concurrent searches spend
+  one general query between them.
+- **A block opens a circuit breaker for 20 minutes.** Retrying into a block extends it, so the
+  only safe response is to stop asking.
+- **Anything refused falls to mwmbl**, which is never rationed. Which index answered is on every
+  hit, because quietly serving worse results is what erodes trust in a search feature (§6.5).
+- **A no-results page is not a block.** That distinction decides between "try different words"
+  and "stop asking for twenty minutes", so it is not left to whether the page happened to be
+  empty.
+
+§6.1's other finding matters here: the block is triggered by request headers, not TLS
+fingerprint, so a complete ordinary browser header set is served normally and no
+fingerprint-impersonating HTTP client is a dependency.
+
+Not built: a per-turn cap on general queries (§6.4's remaining piece — the time gap is the whole
+ration today), the user's own SearXNG (§6.3), and Wiby/YaCy below mwmbl (§6.5). §6.7 is the
+honest ceiling: one search and several reads per question works forever and free; an agent that
+wants five searches while reasoning through one problem will feel the ration.
 
 ## What it may reach
 
