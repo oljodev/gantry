@@ -306,14 +306,12 @@ async fn a_chat_that_has_spoken_is_told_what_changed_and_a_new_one_is_rebuilt() 
         .read(move |c| repos::messages::list_for_chat(c, spoken.id))
         .unwrap();
     assert!(
-        notes
-            .iter()
-            .any(|m| {
-                m.message.parts.iter().any(|p| matches!(
+        notes.iter().any(|m| {
+            m.message.parts.iter().any(|p| matches!(
             p,
             gantry_core::ContentPart::SystemNote { text } if text.contains("Answer in Norwegian.")
         ))
-            }),
+        }),
         "the chat that has spoken was not told; it has {} turns",
         detail.turns.len()
     );

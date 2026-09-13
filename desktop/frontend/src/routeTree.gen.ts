@@ -20,6 +20,7 @@ import { Route as ChatChatIdRouteImport } from './routes/chat.$chatId'
 import { Route as CodeIndexRouteImport } from './routes/code.index'
 import { Route as CodeSessionIdRouteImport } from './routes/code.$sessionId'
 import { Route as DevGalleryRouteImport } from './routes/dev.gallery'
+import { Route as ProjectsProjectIdRouteImport } from './routes/projects.$projectId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -76,6 +77,11 @@ const DevGalleryRoute = DevGalleryRouteImport.update({
   path: '/dev/gallery',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ProjectsProjectIdRoute = ProjectsProjectIdRouteImport.update({
+  id: '/$projectId',
+  path: '/$projectId',
+  getParentRoute: () => ProjectsRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -83,10 +89,11 @@ export interface FileRoutesByFullPath {
   '/artifacts': typeof ArtifactsRoute
   '/incognito': typeof IncognitoRoute
   '/onboarding': typeof OnboardingRoute
-  '/projects': typeof ProjectsRoute
+  '/projects': typeof ProjectsRouteWithChildren
   '/chat/$chatId': typeof ChatChatIdRoute
   '/code/$sessionId': typeof CodeSessionIdRoute
   '/dev/gallery': typeof DevGalleryRoute
+  '/projects/$projectId': typeof ProjectsProjectIdRoute
   '/chat/': typeof ChatIndexRoute
   '/code/': typeof CodeIndexRoute
 }
@@ -96,10 +103,11 @@ export interface FileRoutesByTo {
   '/artifacts': typeof ArtifactsRoute
   '/incognito': typeof IncognitoRoute
   '/onboarding': typeof OnboardingRoute
-  '/projects': typeof ProjectsRoute
+  '/projects': typeof ProjectsRouteWithChildren
   '/chat/$chatId': typeof ChatChatIdRoute
   '/code/$sessionId': typeof CodeSessionIdRoute
   '/dev/gallery': typeof DevGalleryRoute
+  '/projects/$projectId': typeof ProjectsProjectIdRoute
   '/chat': typeof ChatIndexRoute
   '/code': typeof CodeIndexRoute
 }
@@ -110,10 +118,11 @@ export interface FileRoutesById {
   '/artifacts': typeof ArtifactsRoute
   '/incognito': typeof IncognitoRoute
   '/onboarding': typeof OnboardingRoute
-  '/projects': typeof ProjectsRoute
+  '/projects': typeof ProjectsRouteWithChildren
   '/chat/$chatId': typeof ChatChatIdRoute
   '/code/$sessionId': typeof CodeSessionIdRoute
   '/dev/gallery': typeof DevGalleryRoute
+  '/projects/$projectId': typeof ProjectsProjectIdRoute
   '/chat/': typeof ChatIndexRoute
   '/code/': typeof CodeIndexRoute
 }
@@ -129,6 +138,7 @@ export interface FileRouteTypes {
     | '/chat/$chatId'
     | '/code/$sessionId'
     | '/dev/gallery'
+    | '/projects/$projectId'
     | '/chat/'
     | '/code/'
   fileRoutesByTo: FileRoutesByTo
@@ -142,6 +152,7 @@ export interface FileRouteTypes {
     | '/chat/$chatId'
     | '/code/$sessionId'
     | '/dev/gallery'
+    | '/projects/$projectId'
     | '/chat'
     | '/code'
   id:
@@ -155,6 +166,7 @@ export interface FileRouteTypes {
     | '/chat/$chatId'
     | '/code/$sessionId'
     | '/dev/gallery'
+    | '/projects/$projectId'
     | '/chat/'
     | '/code/'
   fileRoutesById: FileRoutesById
@@ -165,7 +177,7 @@ export interface RootRouteChildren {
   ArtifactsRoute: typeof ArtifactsRoute
   IncognitoRoute: typeof IncognitoRoute
   OnboardingRoute: typeof OnboardingRoute
-  ProjectsRoute: typeof ProjectsRoute
+  ProjectsRoute: typeof ProjectsRouteWithChildren
   ChatChatIdRoute: typeof ChatChatIdRoute
   CodeSessionIdRoute: typeof CodeSessionIdRoute
   DevGalleryRoute: typeof DevGalleryRoute
@@ -252,8 +264,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DevGalleryRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/projects/$projectId': {
+      id: '/projects/$projectId'
+      path: '/$projectId'
+      fullPath: '/projects/$projectId'
+      preLoaderRoute: typeof ProjectsProjectIdRouteImport
+      parentRoute: typeof ProjectsRoute
+    }
   }
 }
+
+interface ProjectsRouteChildren {
+  ProjectsProjectIdRoute: typeof ProjectsProjectIdRoute
+}
+
+const ProjectsRouteChildren: ProjectsRouteChildren = {
+  ProjectsProjectIdRoute: ProjectsProjectIdRoute,
+}
+
+const ProjectsRouteWithChildren = ProjectsRoute._addFileChildren(
+  ProjectsRouteChildren,
+)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
@@ -261,7 +292,7 @@ const rootRouteChildren: RootRouteChildren = {
   ArtifactsRoute: ArtifactsRoute,
   IncognitoRoute: IncognitoRoute,
   OnboardingRoute: OnboardingRoute,
-  ProjectsRoute: ProjectsRoute,
+  ProjectsRoute: ProjectsRouteWithChildren,
   ChatChatIdRoute: ChatChatIdRoute,
   CodeSessionIdRoute: CodeSessionIdRoute,
   DevGalleryRoute: DevGalleryRoute,

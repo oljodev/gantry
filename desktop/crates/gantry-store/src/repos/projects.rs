@@ -243,6 +243,18 @@ pub fn knowledge(conn: &Connection, project_id: ProjectId) -> Result<Vec<(String
     Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
 }
 
+/// One file's text, for a note sent to a chat that is already open.
+pub fn file_text(conn: &Connection, file_id: ProjectFileId) -> Result<Option<String>> {
+    Ok(conn
+        .query_row(
+            "SELECT extracted_text FROM project_files WHERE id = ?1",
+            params![file_id.to_string()],
+            |r| r.get::<_, Option<String>>(0),
+        )
+        .optional()?
+        .flatten())
+}
+
 pub fn add_file(conn: &Connection, f: &ProjectFileDto, text: Option<&str>) -> Result<()> {
     conn.execute(
         "INSERT INTO project_files (id, project_id, name, mime, size, blob_hash, \

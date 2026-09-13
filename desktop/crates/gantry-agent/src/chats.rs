@@ -314,6 +314,21 @@ impl ChatBook {
             .map_err(store_err)
     }
 
+    /// One chat's sidebar row, without its transcript.
+    pub fn summary(&self, id: ChatId) -> Result<Option<ChatSummary>, GantryError> {
+        self.store
+            .read(move |conn| {
+                let Some(chat) = chats::get(conn, id)? else {
+                    return Ok(None);
+                };
+                let running = turns::running_for_chat(conn, id)?.map(|t| t.id);
+                let mut s = summary(&chat, running);
+                s.roots = chats::roots(conn, id)?;
+                Ok(Some(s))
+            })
+            .map_err(store_err)
+    }
+
     pub fn contains(&self, id: ChatId) -> Result<bool, GantryError> {
         self.store
             .read(|conn| Ok(chats::get(conn, id)?.is_some()))

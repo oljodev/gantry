@@ -120,10 +120,13 @@ pub struct NewProject {
     pub workspace_path: Option<String>,
 }
 
-/// Every field optional, and absent means "leave it alone". The defaults are the one place this
-/// is ambiguous — `Some(ProjectDefaults { mode: None, .. })` clears the mode default — which is
-/// why the whole block is replaced at once rather than merged field by field.
+/// Every field optional, and absent means "leave it alone" — `#[serde(default)]` is what makes
+/// that expressible from the frontend, where a missing key and a null one are different things.
+/// The folder needs both levels for exactly that reason: `Some(None)` removes it, `None` leaves
+/// it. The defaults are replaced as one block rather than merged field by field, because
+/// `ProjectDefaults { mode: None }` means "no default mode" and a merge could not say it.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(default)]
 pub struct ProjectPatch {
     pub name: Option<String>,
     pub description: Option<String>,

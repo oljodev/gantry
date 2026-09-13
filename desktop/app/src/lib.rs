@@ -106,6 +106,17 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::skills::install_skill,
             commands::skills::list_chat_skills,
             commands::skills::pin_skill_to_chat,
+            commands::projects::list_projects,
+            commands::projects::get_project,
+            commands::projects::create_project,
+            commands::projects::update_project,
+            commands::projects::delete_project,
+            commands::projects::add_project_file,
+            commands::projects::remove_project_file,
+            commands::projects::pin_skill_to_project,
+            commands::projects::list_project_chats,
+            commands::projects::set_chat_project,
+            commands::projects::continue_artifact_in_new_chat,
             commands::memory::list_memories,
             commands::memory::create_memory,
             commands::memory::update_memory,
@@ -127,6 +138,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             events::DeviceCodeNeeded,
             events::SkillsChanged,
             events::MemoryChanged,
+            events::ProjectsChanged,
         ])
 }
 

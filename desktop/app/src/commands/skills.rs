@@ -296,6 +296,17 @@ pub fn pin_skill_to_chat(
     pinned: bool,
 ) -> Result<(), ErrorDto> {
     state.turns.chats().pin_skill(chat_id, &skill_id, pinned)?;
+    // A pin is a prompt layer (10 §2 layer 7), so it follows the rule every layer follows: a
+    // chat that has not spoken is rebuilt around it, one that has is told.
+    let note = if pinned {
+        format!("The skill \"{skill_id}\" is now pinned to this chat; its whole text applies.")
+    } else {
+        format!(
+            "The skill \"{skill_id}\" is no longer pinned to this chat; it can still be matched \
+             to a message like any other."
+        )
+    };
+    state.turns.chat_context_changed(chat_id, note)?;
     let _ = SkillsChanged.emit(&app);
     Ok(())
 }

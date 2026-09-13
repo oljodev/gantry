@@ -26,6 +26,8 @@ export interface ChatRowActions {
   onArchive?: (archived: boolean) => void;
   onDelete?: () => void;
   onExport?: () => void;
+  /** Opens the project picker (09 M11); the chat keeps everything already decided about it. */
+  onMoveToProject?: () => void;
   /** Present only in developer mode (Settings → Advanced). */
   onViewPrompt?: () => void;
   /** Opens the chat's Permissions panel (04 §8). */
@@ -58,7 +60,9 @@ export function ChatRow({
       <Item onClick={() => setEditing(true)} disabled={!actions.onRename}>
         Rename
       </Item>
-      <Item disabled>Move to project (M11)</Item>
+      <Item onClick={() => actions.onMoveToProject?.()} disabled={!actions.onMoveToProject}>
+        Move to project…
+      </Item>
       <Item onClick={() => actions.onExport?.()} disabled={!actions.onExport}>
         Export…
       </Item>

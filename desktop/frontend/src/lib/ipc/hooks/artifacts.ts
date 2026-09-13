@@ -67,7 +67,12 @@ export function useArtifactMutations() {
   const openWindow = useMutation({
     mutationFn: (artifactId: ArtifactId) => unwrap(commands.openArtifactWindow(artifactId)),
   });
-  return { save, restore, exportFile, openWindow };
+  /** **Continue in new chat** (13 §9): a chat in the same project, told to read it first. */
+  const continueInNewChat = useMutation({
+    mutationFn: (artifactId: ArtifactId) => unwrap(commands.continueArtifactInNewChat(artifactId)),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.chats }),
+  });
+  return { save, restore, exportFile, openWindow, continueInNewChat };
 }
 
 /** Completes the tool result waiting on this version (13 §2); errors are only logged. */

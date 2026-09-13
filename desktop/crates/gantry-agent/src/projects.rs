@@ -171,12 +171,37 @@ impl Projects {
             .map_err(store_err)
     }
 
+    /// One knowledge file's text, for the note an open chat is sent when it is added.
+    pub fn file_text(&self, file_id: ProjectFileId) -> Result<Option<String>, GantryError> {
+        self.store
+            .read(move |c| projects::file_text(c, file_id))
+            .map_err(store_err)
+    }
+
     /// The chats filed in this project, newest activity first.
     pub fn chat_ids(&self, id: ProjectId) -> Result<Vec<gantry_core::ChatId>, GantryError> {
         self.store
             .read(move |c| projects::chat_ids(c, id))
             .map_err(store_err)
     }
+}
+
+/// As much of a knowledge file as a mid-conversation note carries: a quarter of the whole
+/// prompt budget, which is generous for one file and still leaves the transcript readable. A
+/// note is written once and then sits in the chat's history for good, so this is not the place
+/// to paste a book.
+#[must_use]
+pub fn note_excerpt(text: &str) -> String {
+    let max = gantry_core::PROJECT_KNOWLEDGE_MAX_CHARS / 4;
+    if text.chars().count() <= max {
+        return text.trim().to_owned();
+    }
+    let head: String = text.chars().take(max).collect();
+    format!(
+        "{}\n… the first {max} characters; the rest is in the project, and a new chat here \
+         carries all of it.",
+        head.trim_end()
+    )
 }
 
 fn cap(text: &str) -> String {

@@ -11,6 +11,7 @@ import { pickFolder } from '@/lib/folders';
 import { isTauri } from '@/lib/ipc/client';
 import { useChatMutations } from '@/lib/ipc/hooks/chats';
 import { useConnectorMutations, useConnectors } from '@/lib/ipc/hooks/connectors';
+import { useProject } from '@/lib/ipc/hooks/projects';
 import { useUiStore } from '@/lib/stores/uiStore';
 import { useSettings } from '@/lib/ipc/hooks/settings';
 import { useRunStore } from '@/lib/stores/runStore';
@@ -42,8 +43,9 @@ const DEFAULT_MODEL: ModelRef = { provider: 'openrouter', model: 'deepseek/deeps
  * The empty chat (15 A20, §8): the hero line, three prompt cards, the composer, a hint. Sending
  * creates the chat with the composer's choices, starts the turn and opens it.
  */
-export function Welcome() {
+export function Welcome({ projectId }: { projectId?: string } = {}) {
   const navigate = useNavigate();
+  const project = useProject(projectId ?? null);
   const settings = useSettings();
   const { create, update, addRoot } = useChatMutations();
   const installedConnectors = useConnectors();
@@ -87,7 +89,12 @@ export function Welcome() {
     }
     setBusy(true);
     try {
-      const chat = await create.mutateAsync({ model: effectiveModel });
+      // A chat started from a project is created *in* it, which is what gives it the project's
+      // instructions, knowledge, folder and defaults before its first turn (09 M11).
+      const chat = await create.mutateAsync({
+        model: effectiveModel,
+        projectId: projectId ?? null,
+      });
       const changed =
         mode !== null || guard !== null || thinking !== null
           ? {
@@ -123,6 +130,14 @@ export function Welcome() {
           <h1 className="text-center text-hero font-semibold tracking-[-0.01em] text-fg">
             What should we work on?
           </h1>
+          {project.data && (
+            // Which project this chat will land in, said before it is sent rather than after:
+            // its instructions, knowledge and defaults are about to apply.
+            <p className="mt-2 text-center text-meta text-fg-2">
+              In <span className="text-fg">{project.data.name}</span> — its instructions, knowledge
+              and defaults apply.
+            </p>
+          )}
           <div className="mt-8 grid grid-cols-3 gap-3">
             {PROMPTS.map((p) => (
               <button

@@ -7,6 +7,7 @@ import type {
   ExportFormat,
   Feedback,
   ModelRef,
+  ProjectId,
   Surface,
   TurnId,
 } from '@/bindings';
@@ -83,11 +84,14 @@ export function useChatMutations() {
       model,
       surface,
       roots,
+      projectId,
     }: {
       model: ModelRef | null;
       surface?: Surface;
       roots?: string[];
-    }) => unwrap(commands.createChat(model, surface ?? null, roots ?? null)),
+      /** The project to file it in, which is also where its defaults come from (09 M11). */
+      projectId?: ProjectId | null;
+    }) => unwrap(commands.createChat(model, surface ?? null, roots ?? null, projectId ?? null)),
     onSuccess: () => void qc.invalidateQueries({ queryKey: keys.chats }),
   });
   // Pin, rename and archive show at once and roll back if the backend refuses (01 §5).

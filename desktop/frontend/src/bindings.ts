@@ -57,7 +57,7 @@ export const commands = {
 /**  Conversation, documents, research, connectors, artifacts. */
 "chat" | 
 /**  Working inside a folder on this machine. */
-"code" | null, roots: string[] | null) => typedError<ChatSummary, ErrorDto>(__TAURI_INVOKE("create_chat", { model, surface, roots })),
+"code" | null, roots: string[] | null, projectId: string | null) => typedError<ChatSummary, ErrorDto>(__TAURI_INVOKE("create_chat", { model, surface, roots, projectId })),
 	/**
 	 *  Starts an incognito chat (docs/plan/15 A21).
 	 * 
@@ -280,6 +280,40 @@ export const commands = {
 	/**  The skills pinned to one chat (12 §A6). A pinned skill is in that chat's frozen prompt. */
 	listChatSkills: (chatId: ChatId) => typedError<string[], ErrorDto>(__TAURI_INVOKE("list_chat_skills", { chatId })),
 	pinSkillToChat: (chatId: ChatId, skillId: string, pinned: boolean) => typedError<null, ErrorDto>(__TAURI_INVOKE("pin_skill_to_chat", { chatId, skillId, pinned })),
+	listProjects: () => typedError<ProjectSummary[], ErrorDto>(__TAURI_INVOKE("list_projects")),
+	getProject: (projectId: ProjectId) => typedError<ProjectDetail, ErrorDto>(__TAURI_INVOKE("get_project", { projectId })),
+	createProject: (project: NewProject) => typedError<ProjectSummary, ErrorDto>(__TAURI_INVOKE("create_project", { project })),
+	/**
+	 *  Applies a patch and returns the whole project. A change to the instructions reaches every
+	 *  chat in it the way a change to the global ones does (10 §4).
+	 */
+	updateProject: (projectId: ProjectId, patch: ProjectPatch) => typedError<ProjectDetail, ErrorDto>(__TAURI_INVOKE("update_project", { projectId, patch })),
+	/**
+	 *  Deletes the project. Its chats come out of it rather than down with it (migration 0014), and
+	 *  they are told, because their instructions and knowledge have just gone.
+	 */
+	deleteProject: (projectId: ProjectId) => typedError<null, ErrorDto>(__TAURI_INVOKE("delete_project", { projectId })),
+	/**
+	 *  Adds a knowledge file, text extracted (06 §8). The chats in the project are told what
+	 *  arrived, and carry its text — a file added to answer a question in an open chat is no use to
+	 *  that chat if only the next one can read it.
+	 */
+	addProjectFile: (projectId: ProjectId, file: AttachmentInput) => typedError<ProjectFileDto, ErrorDto>(__TAURI_INVOKE("add_project_file", { projectId, file })),
+	removeProjectFile: (projectId: ProjectId, fileId: ProjectFileId) => typedError<null, ErrorDto>(__TAURI_INVOKE("remove_project_file", { projectId, fileId })),
+	/**  Pins a skill to the project, which pins it for every chat in it (12 §A6). */
+	pinSkillToProject: (projectId: ProjectId, skillId: string, pinned: boolean) => typedError<null, ErrorDto>(__TAURI_INVOKE("pin_skill_to_project", { projectId, skillId, pinned })),
+	/**  The chats filed in this project, newest activity first. */
+	listProjectChats: (projectId: ProjectId) => typedError<ChatSummary[], ErrorDto>(__TAURI_INVOKE("list_project_chats", { projectId })),
+	/**
+	 *  **Add to project** and **Move to project** (09 M11), and the same command for taking a chat
+	 *  out of one.
+	 */
+	setChatProject: (chatId: ChatId, projectId: string | null) => typedError<null, ErrorDto>(__TAURI_INVOKE("set_chat_project", { chatId, projectId })),
+	/**
+	 *  **Continue in new chat** on an artifact (13 §9): a chat in the same project, told which
+	 *  artifact it is about and to read it before working.
+	 */
+	continueArtifactInNewChat: (artifactId: ArtifactId) => typedError<ChatSummary, ErrorDto>(__TAURI_INVOKE("continue_artifact_in_new_chat", { artifactId })),
 	listMemories: (query: MemoryQuery) => typedError<MemoryDto[], ErrorDto>(__TAURI_INVOKE("list_memories", { query })),
 	/**
 	 *  Writes one entry the user asked for: the page's New, `/remember`, or **Remember this** on a
@@ -319,6 +353,7 @@ export const events = {
 	deviceCodeNeeded: makeEvent<DeviceCodeNeeded>("device-code-needed"),
 	interactionsChanged: makeEvent<InteractionsChanged>("interactions-changed"),
 	memoryChanged: makeEvent<MemoryChanged>("memory-changed"),
+	projectsChanged: makeEvent<ProjectsChanged>("projects-changed"),
 	providersChanged: makeEvent<ProvidersChanged>("providers-changed"),
 	settingsChanged: makeEvent<SettingsChanged>("settings-changed"),
 	skillsChanged: makeEvent<SkillsChanged>("skills-changed"),
@@ -1692,6 +1727,14 @@ export type NewMemory = {
 	origin_message_id: MessageId | null,
 };
 
+/**  What a new project is created with: a name, and nothing else that cannot be changed after. */
+export type NewProject = {
+	name: string,
+	description?: string,
+	instructions?: string,
+	workspace_path?: string | null,
+};
+
 export type PermissionDecision = { kind: "allow_once" } | 
 /**  Allow, and remember the answer for the rest of this chat at the given scope (04 §8). */
 { kind: "allow_chat"; scope: GrantScope } | { kind: "deny" };
@@ -1752,8 +1795,108 @@ export type Pricing = {
 	video_per_second_usd?: { [key in string]: number | null },
 };
 
+/**  What a new chat in this project starts with. Every field unset means "ask the settings". */
+export type ProjectDefaults = {
+	mode: Mode | null,
+	guard: boolean | null,
+	/**  Connector namespaces to attach, in place of the settings' list. */
+	connectors: string[] | null,
+	/**
+	 *  Standing permissions every chat here is opened with (04 §8), written as
+	 *  `GrantSource::ProjectDefault` so the Permissions page can say where they came from.
+	 */
+	grants: ProjectGrant[] | null,
+};
+
+/**  A project with everything its page shows. */
+export type ProjectDetail = {
+	id: ProjectId,
+	name: string,
+	description: string,
+	/**  Prompt layer 5 (10 §2). */
+	instructions: string,
+	workspace_path: string | null,
+	defaults: ProjectDefaults,
+	pinned: boolean,
+	archived: boolean,
+	files: ProjectFileDto[],
+	/**  Skill ids pinned to the project (12 §A6): in the frozen prompt of every chat here. */
+	skills: string[],
+	created_at: number,
+	updated_at: number,
+};
+
+/**  A knowledge file: the bytes as the user added them, and the text that goes into prompts. */
+export type ProjectFileDto = {
+	id: ProjectFileId,
+	project_id: ProjectId,
+	name: string,
+	mime: string,
+	size: number,
+	blob_hash: string,
+	/**
+	 *  How many characters of text came out of it, which is what it costs a prompt. The text
+	 *  itself is not sent to the frontend: a page listing ten files does not need ten documents.
+	 */
+	text_chars: number,
+	created_at: number,
+};
+
+/**  One knowledge file of a project. */
+export type ProjectFileId = string;
+
+/**
+ *  One standing permission a project hands to its chats. A narrower shape than `ChatGrant` on
+ *  purpose: a project default is a rule the user wrote in a settings panel, not a decision made
+ *  about one call, so it has no id, no timestamp and nothing to revoke.
+ */
+export type ProjectGrant = {
+	/**  The connector namespace, or `gantry` for the runtime tools. */
+	instance_name: string,
+	/**  One tool, or every tool of that namespace when absent. */
+	tool_name: string | null,
+	/**  The highest tier this grant answers for, `None` meaning the tool's own tier. */
+	tier_ceiling: RiskTier | null,
+};
+
 /**  A named group of chats with shared instructions, knowledge and defaults. */
 export type ProjectId = string;
+
+/**
+ *  Every field optional, and absent means "leave it alone" — `#[serde(default)]` is what makes
+ *  that expressible from the frontend, where a missing key and a null one are different things.
+ *  The folder needs both levels for exactly that reason: `Some(None)` removes it, `None` leaves
+ *  it. The defaults are replaced as one block rather than merged field by field, because
+ *  `ProjectDefaults { mode: None }` means "no default mode" and a merge could not say it.
+ */
+export type ProjectPatch = {
+	name?: string | null,
+	description?: string | null,
+	instructions?: string | null,
+	/**  `Some(None)` removes the folder, `None` leaves it. */
+	workspace_path?: string | null,
+	defaults?: ProjectDefaults | null,
+	pinned?: boolean | null,
+	archived?: boolean | null,
+};
+
+/**  One row of the sidebar's Projects list. */
+export type ProjectSummary = {
+	id: ProjectId,
+	name: string,
+	description: string,
+	pinned: boolean,
+	archived: boolean,
+	/**  The folder every chat here starts with, when there is one. */
+	workspace_path: string | null,
+	chat_count: number,
+	file_count: number,
+	created_at: number,
+	updated_at: number,
+};
+
+/**  A project was created, edited, deleted, or had a file or a chat move in or out (09 M11). */
+export type ProjectsChanged = null;
 
 /**  The class of a provider failure (docs/plan/02 §7), shared by the client layer and the UI. */
 export type ProviderErrorKind = 

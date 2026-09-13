@@ -46,6 +46,10 @@ pub struct DeviceCodeNeeded {
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type, tauri_specta::Event)]
 pub struct SkillsChanged;
 
+/// A project was created, edited, deleted, or had a file or a chat move in or out (09 M11).
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type, tauri_specta::Event)]
+pub struct ProjectsChanged;
+
 /// A memory was written, edited, deleted or restored (12 §B).
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type, tauri_specta::Event)]
 pub struct MemoryChanged;

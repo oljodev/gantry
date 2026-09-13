@@ -37,6 +37,11 @@ export function useBackendEvents() {
         void qc.invalidateQueries({ queryKey: ['skill'] });
         void qc.invalidateQueries({ queryKey: ['chat_skills'] });
       }),
+      events.projectsChanged.listen(() => {
+        void qc.invalidateQueries({ queryKey: keys.projects });
+        void qc.invalidateQueries({ queryKey: ['project'] });
+        void qc.invalidateQueries({ queryKey: keys.chats });
+      }),
       events.memoryChanged.listen(() => {
         void qc.invalidateQueries({ queryKey: ['memories'] });
       }),

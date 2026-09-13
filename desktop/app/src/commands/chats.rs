@@ -42,12 +42,14 @@ pub fn create_chat(
     model: Option<ModelRef>,
     surface: Option<Surface>,
     roots: Option<Vec<String>>,
+    project_id: Option<gantry_core::ProjectId>,
 ) -> Result<ChatSummary, ErrorDto> {
     let chat = state.turns.create_session(
         surface.unwrap_or_default(),
         roots.unwrap_or_default(),
         model,
         false,
+        project_id,
     )?;
     let _ = ChatsChanged {
         chat_ids: vec![chat.id],
@@ -322,7 +324,7 @@ pub fn start_incognito(
 ) -> Result<ChatSummary, ErrorDto> {
     let chat = state
         .turns
-        .create_session(Surface::Chat, Vec::new(), model, true)?;
+        .create_session(Surface::Chat, Vec::new(), model, true, None)?;
     // Not in `chat_ids`: there is no list for it to appear in, and the sidebar has no reason to
     // refetch. The event is emitted at all so a second view of the same app stays consistent.
     let _ = ChatsChanged { chat_ids: vec![] }.emit(&app);

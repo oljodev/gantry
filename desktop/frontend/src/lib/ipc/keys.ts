@@ -27,6 +27,11 @@ export const keys = {
   allArtifacts: ['artifacts', 'all'] as const,
   artifact: (artifactId: string, version: number | undefined) =>
     ['artifact', artifactId, version ?? 'current'] as const,
+  /** Projects, one project's page, and the two lists it shows (09 M11). */
+  projects: ['projects'] as const,
+  project: (id: string) => ['project', id] as const,
+  projectChats: (id: string) => ['project', id, 'chats'] as const,
+  projectArtifacts: (id: string) => ['project', id, 'artifacts'] as const,
   /** The skill library and one skill's body (12 §A3). */
   skills: ['skills'] as const,
   skill: (id: string) => ['skill', id] as const,

@@ -5,7 +5,7 @@ use std::{
     time::Instant,
 };
 
-use gantry_agent::{Artifacts, TurnManager};
+use gantry_agent::{Artifacts, Projects, TurnManager};
 use gantry_connectors::ConnectorRegistry;
 use gantry_core::Settings;
 use gantry_providers::ProviderRegistry;
@@ -37,6 +37,8 @@ pub struct AppState {
     pub skills: Arc<gantry_agent::Skills>,
     /// What Gantry remembers (12 §B).
     pub memories: Arc<gantry_agent::Memories>,
+    /// Projects: their instructions, knowledge, defaults and the chats filed in them (09 M11).
+    pub projects: Arc<Projects>,
     /// Roots, file IO and the edit journal: what the Changes pane reads and reverts through.
     pub workspace: Arc<gantry_workspace::Workspace>,
     /// Providers whose last key test failed with an auth error; cleared when the key changes.

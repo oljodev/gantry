@@ -3,6 +3,7 @@ import {
   ArrowSquareOutIcon,
   CaretLeftIcon,
   CaretRightIcon,
+  ChatCircleIcon,
   CheckIcon,
   CodeIcon,
   CopyIcon,
@@ -13,6 +14,7 @@ import {
   WarningCircleIcon,
   WrenchIcon,
 } from '@phosphor-icons/react';
+import { useNavigate } from '@tanstack/react-router';
 import { useEffect, useMemo, useState } from 'react';
 
 import type { ArtifactContent, RenderReport } from '@/bindings';
@@ -68,7 +70,8 @@ export function ArtifactPanel({ artifactId, onFixThis, onOpenUrl, bare }: Artifa
   const current = useArtifact(artifactId);
   const shownVersion = view.version;
   const older = useArtifact(shownVersion === undefined ? null : artifactId, shownVersion);
-  const { save, restore, exportFile, openWindow } = useArtifactMutations();
+  const { save, restore, exportFile, openWindow, continueInNewChat } = useArtifactMutations();
+  const navigate = useNavigate();
   const [copied, setCopied] = useState(false);
 
   const data: ArtifactContent | undefined =
@@ -266,6 +269,27 @@ export function ArtifactPanel({ artifactId, onFixThis, onOpenUrl, bare }: Artifa
                 <DropdownMenuItem onClick={startEdit}>
                   <PencilSimpleIcon />
                   Edit source
+                </DropdownMenuItem>
+              )}
+              {!bare && !live && (
+                // 13 §9: a fresh chat in the same project, told which artifact it is about and
+                // to read it first. The transcript that explains this one stays where it is.
+                <DropdownMenuItem
+                  onClick={() =>
+                    continueInNewChat.mutate(artifactId, {
+                      onSuccess: (chat) =>
+                        void navigate({ to: '/chat/$chatId', params: { chatId: chat.id } }),
+                      onError: (err) =>
+                        toast.add({
+                          title: 'Could not start the chat',
+                          description: describe(err),
+                          type: 'error',
+                        }),
+                    })
+                  }
+                >
+                  <ChatCircleIcon />
+                  Continue in new chat
                 </DropdownMenuItem>
               )}
             </DropdownMenuContent>

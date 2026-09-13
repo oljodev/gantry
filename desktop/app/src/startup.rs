@@ -205,6 +205,7 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn Error>> {
         Ok(n) => log::info!("deleted {n} incognito session(s) left by the previous run"),
         Err(err) => log::warn!("could not delete the incognito sessions left behind: {err}"),
     }
+    let projects = Arc::new(gantry_agent::Projects::new(store.clone(), blobs.clone()));
     let memories = Memories::new(store.clone());
     // Recently deleted is thirty days, and this is the only place that notices they are up.
     match memories.sweep() {
@@ -247,6 +248,7 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn Error>> {
         artifacts,
         skills,
         memories,
+        projects,
         workspace,
         invalid_keys: Mutex::new(Default::default()),
     });

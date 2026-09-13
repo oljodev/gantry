@@ -650,7 +650,10 @@ Done when: "what's in my Google Drive?" in a chat without Drive leads to a sugge
 
 ## M11 — Projects, composer, web (1–2 weeks)
 
-- Projects: create, pin, instructions (layer 5 of 10 §2), workspace folder (default roots and cwd), default mode/guard/connectors/grants/pinned skills, knowledge files with text extraction (text, markdown, code, CSV, JSON, PDF text — `gantry-documents` is already there, from 2026-09-13), the project page listing its chats and its **Artifacts** tab (13 §9); "Add to project" and "move to project"; **Continue in new chat** on an artifact.
+- ~~Projects: create, pin, instructions (layer 5 of 10 §2), workspace folder (default roots and cwd), default mode/guard/connectors/grants/pinned skills, knowledge files with text extraction, the project page listing its chats and its **Artifacts** tab (13 §9); "Add to project" and "move to project"; **Continue in new chat** on an artifact.~~ **Done 2026-09-13.** Migration 0014 and the page of 15 A22. Three things are worth recording beyond the list:
+  - **Two features the plan thought were already built turned out not to be.** Layer 7 — skills pinned to a project or chat — was never assembled into any prompt, and the per-turn selector was *skipping* pinned skills because they were supposedly in the frozen one; pinning did nothing at all. And `MemoryScopeKind::Project` had a column, a type and no writer. Both work now, and both were M12's, not M11's.
+  - **Knowledge is its own prompt block, not part of the instruction layer** (10 §2, layer 3b), with a 60,000-character budget shared between the files by water-filling so one long file cannot push the others out silently.
+  - **Every default is unset by default**, and unset means "ask the settings" rather than "use today's value". Moving a chat into a project changes what applies from here on and nothing already decided about it — not its mode, its connectors, or its permissions.
 - Chat-level instructions (layer 6) in the chat settings panel.
 - The attach menu complete: files, folder (with the install-all-three dialog), project, connectors checklist, web search toggle (provider server tools with opaque-part rendering; `web` connector fallback, installed on demand), thinking selector.
 - `desktop/connectors/web` (`fetch_url`, optional `search` with a BYOK search key).
