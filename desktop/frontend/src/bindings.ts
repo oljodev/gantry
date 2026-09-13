@@ -713,6 +713,11 @@ export type ChatDetail_Deserialize = {
 	/**  Whether the provider's own web search tool is offered to the model (02 §3). */
 	web_search: boolean,
 	active_turn: TurnId | null,
+	/**
+	 *  This chat's own standing instructions (10 §2, layer 6). The editor reads them back from
+	 *  here; the prompt they are frozen into is `system_snapshot`, which the view never sees.
+	 */
+	instructions: string,
 	turns: TurnDto_Deserialize[],
 	/**
 	 *  An incognito session (15 A21). The view reads it to keep the three paths that write a
@@ -740,6 +745,11 @@ export type ChatDetail_Serialize = {
 	/**  Whether the provider's own web search tool is offered to the model (02 §3). */
 	web_search: boolean,
 	active_turn: TurnId | null,
+	/**
+	 *  This chat's own standing instructions (10 §2, layer 6). The editor reads them back from
+	 *  here; the prompt they are frozen into is `system_snapshot`, which the view never sees.
+	 */
+	instructions: string,
 	turns: TurnDto_Serialize[],
 	/**
 	 *  An incognito session (15 A21). The view reads it to keep the three paths that write a

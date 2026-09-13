@@ -142,7 +142,7 @@ pub fn update_chat(
                 .filter(|t| !t.is_empty()),
             pinned: update.pinned,
             archived: update.archived,
-            instructions: update.instructions.map(|i| i.trim().to_owned()),
+            instructions: update.instructions,
         },
     )?;
     let _ = ChatsChanged {

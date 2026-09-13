@@ -120,6 +120,7 @@ mod tests {
             web_search: false,
             effort: ReasoningEffort::Off,
             active_turn: None,
+            instructions: String::new(),
             turns: vec![TurnDto {
                 id: TurnId::new(),
                 status: TurnStatus::Completed,

@@ -34,7 +34,8 @@ pub use artifact::{
 };
 pub use attachment::{AttachmentInput, MAX_DOCUMENT_BYTES, MAX_IMAGE_BYTES, MAX_TEXT_BYTES};
 pub use chat::{
-    ChatDetail, ChatSummary, Feedback, SearchHit, SearchHitKind, Surface, TurnDto, TurnStatus,
+    CHAT_INSTRUCTIONS_MAX_CHARS, ChatDetail, ChatSummary, Feedback, SearchHit, SearchHitKind,
+    Surface, TurnDto, TurnStatus,
 };
 pub use command::{CommandClass, classify};
 pub use connector::{

@@ -2,8 +2,8 @@
 //! of docs/plan/10 §2. Built once per chat and frozen as its `system_snapshot`.
 
 use gantry_core::{
-    AuthState, ConnectorInstanceDto, Mode, PROJECT_INSTRUCTIONS_MAX_CHARS,
-    PROJECT_KNOWLEDGE_MAX_CHARS,
+    AuthState, CHAT_INSTRUCTIONS_MAX_CHARS, ConnectorInstanceDto, Mode,
+    PROJECT_INSTRUCTIONS_MAX_CHARS, PROJECT_KNOWLEDGE_MAX_CHARS,
 };
 
 /// Bumped whenever `assets/prompts/core.md` or a mode fragment changes meaning.
@@ -36,6 +36,7 @@ pub struct SystemPromptBuilder {
     knowledge: String,
     global_instructions: String,
     project_instructions: String,
+    chat_instructions: String,
     skills: String,
 }
 
@@ -49,6 +50,7 @@ impl SystemPromptBuilder {
             knowledge: String::new(),
             global_instructions: String::new(),
             project_instructions: String::new(),
+            chat_instructions: String::new(),
             skills: String::new(),
         }
     }
@@ -93,6 +95,18 @@ impl SystemPromptBuilder {
         self
     }
 
+    /// `chats.instructions` (layer 6), the last and most specific of the three. Truncated to
+    /// the cap.
+    #[must_use]
+    pub fn chat_instructions(mut self, text: &str) -> Self {
+        self.chat_instructions = text
+            .trim()
+            .chars()
+            .take(CHAT_INSTRUCTIONS_MAX_CHARS)
+            .collect();
+        self
+    }
+
     /// Skills pinned to the project or the chat (layer 7), already rendered by
     /// `memory::selector::pinned_block`. A pinned skill is in the frozen prompt and is never
     /// matched per message (12 §A4 rule 4), which only holds if it is really in here.
@@ -130,6 +144,14 @@ impl SystemPromptBuilder {
             blocks.push(format!(
                 "<instructions scope=\"project\">\n{}\n</instructions>",
                 self.project_instructions
+            ));
+        }
+        // Last of the three, because the precedence paragraph in the core says the more specific
+        // layer wins and the order on the page is the order it describes.
+        if !self.chat_instructions.is_empty() {
+            blocks.push(format!(
+                "<instructions scope=\"chat\">\n{}\n</instructions>",
+                self.chat_instructions
             ));
         }
         if !self.skills.is_empty() {
@@ -365,6 +387,27 @@ pub fn mode_note(mode: Mode) -> String {
         mode_label(mode),
         mode_text(mode).trim()
     )
+}
+
+/// The `SystemNote` appended when a chat's own instructions change (10 §4). A chat that has
+/// already spoken keeps the prompt it was answering, so the note carries the whole new layer
+/// rather than a description of the edit: the model has to know what the layer *is* now, and
+/// "the user changed their instructions" tells it nothing it can act on.
+#[must_use]
+pub fn chat_instructions_note(text: &str) -> String {
+    let text: String = text
+        .trim()
+        .chars()
+        .take(CHAT_INSTRUCTIONS_MAX_CHARS)
+        .collect();
+    if text.is_empty() {
+        "The user removed this chat's own instructions; earlier <instructions scope=\"chat\"> no longer apply."
+            .to_owned()
+    } else {
+        format!(
+            "Updated this chat's instructions (replacing any earlier ones):\n<instructions scope=\"chat\">\n{text}\n</instructions>"
+        )
+    }
 }
 
 fn mode_label(mode: Mode) -> &'static str {

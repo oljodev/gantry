@@ -34,7 +34,9 @@ pub use memory::Memories;
 pub use projects::Projects;
 pub use runtime_tools::{RuntimeTools, catalog::ConnectorAccess};
 pub use skills::Skills;
-pub use system_prompt::{CORE_VERSION, PromptContext, SystemPromptBuilder, connector_inventory};
+pub use system_prompt::{
+    CORE_VERSION, PromptContext, SystemPromptBuilder, chat_instructions_note, connector_inventory,
+};
 pub use tools::ToolSet;
 pub use turn_manager::{ChatNotifier, ProviderSource, TurnManager};
 

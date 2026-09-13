@@ -10,6 +10,11 @@ use crate::{
     tool::ToolCallDto,
 };
 
+/// Prompt layer 6 is capped here (10 §2). The same 4,000 characters as the global layer: a
+/// chat's instructions are the most specific layer and the most likely to be written in a hurry,
+/// and the budget they spend is paid on every turn of that one conversation.
+pub const CHAT_INSTRUCTIONS_MAX_CHARS: usize = 4000;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "snake_case")]
 pub enum TurnStatus {
@@ -151,6 +156,9 @@ pub struct ChatDetail {
     /// Whether the provider's own web search tool is offered to the model (02 §3).
     pub web_search: bool,
     pub active_turn: Option<TurnId>,
+    /// This chat's own standing instructions (10 §2, layer 6). The editor reads them back from
+    /// here; the prompt they are frozen into is `system_snapshot`, which the view never sees.
+    pub instructions: String,
     pub turns: Vec<TurnDto>,
     /// An incognito session (15 A21). The view reads it to keep the three paths that write a
     /// memory by hand — `/remember`, **Remember this**, the Memory page's own editor — out of a

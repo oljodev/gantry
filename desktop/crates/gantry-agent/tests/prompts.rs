@@ -41,3 +41,23 @@ fn every_mode_matches_its_fixture() {
         );
     }
 }
+
+/// The caps of 10 §2 are the builder's to enforce, not the editor's: a layer that arrives too
+/// long from anywhere — an older client, a restored row, a paste the textarea never saw — still
+/// costs the same tokens on every turn.
+#[test]
+fn an_instruction_layer_longer_than_its_cap_is_cut_to_it() {
+    let long = "é".repeat(gantry_core::CHAT_INSTRUCTIONS_MAX_CHARS + 500);
+    let prompt = SystemPromptBuilder::new(Mode::Manual, PromptContext::default())
+        .chat_instructions(&long)
+        .build();
+    let block = prompt
+        .split("<instructions scope=\"chat\">\n")
+        .nth(1)
+        .and_then(|rest| rest.split("\n</instructions>").next())
+        .expect("no chat instructions in the prompt");
+    assert_eq!(
+        block.chars().count(),
+        gantry_core::CHAT_INSTRUCTIONS_MAX_CHARS
+    );
+}

@@ -26,8 +26,8 @@ use crate::{
     runner::{self, RunContext},
     skills::Skills,
     system_prompt::{
-        CORE_VERSION, PromptContext, SystemPromptBuilder, connector_inventory, mode_note,
-        now_block, with_roots, with_turn_blocks,
+        CORE_VERSION, PromptContext, SystemPromptBuilder, chat_instructions_note,
+        connector_inventory, mode_note, now_block, with_roots, with_turn_blocks,
     },
     title,
     tools::ToolSet,
@@ -256,8 +256,9 @@ impl TurnManager {
     ///
     /// `project` brings four of the layers with it — the project's name in the context block, its
     /// memories, its knowledge files and its instructions — and `chat`, when the chat already
-    /// exists, brings its own pinned skills to stand beside the project's in layer 7. A chat
-    /// being created has no pins of its own yet, which is the only reason that is an `Option`.
+    /// exists, brings its own instructions (layer 6) and its own pinned skills, to stand beside
+    /// the project's in layer 7. A chat being created has neither yet, which is the only reason
+    /// that is an `Option`.
     fn build_prompt_with_memory(
         &self,
         settings: &Settings,
@@ -269,7 +270,7 @@ impl TurnManager {
         let paused = settings.memory.paused || !memory_on;
         // One read for everything outside the chat that the prompt is built from, so a project
         // edited in another window cannot land half of itself in a snapshot.
-        let (entries, project_row, knowledge, pinned) = self
+        let (entries, project_row, knowledge, pinned, chat_instructions) = self
             .chats
             .store()
             .read(move |c| {
@@ -298,11 +299,21 @@ impl TurnManager {
                     }
                 }
                 let pinned = crate::memory::selector::bodies(c, &pins);
-                Ok((entries, row, knowledge, pinned))
+                let instructions = match chat {
+                    Some(chat) => repos::chats::get(c, chat)?.map(|r| r.instructions),
+                    None => None,
+                };
+                Ok((
+                    entries,
+                    row,
+                    knowledge,
+                    pinned,
+                    instructions.unwrap_or_default(),
+                ))
             })
             .unwrap_or_else(|err| {
                 log::warn!("could not read what the prompt is frozen from: {err}");
-                (Vec::new(), None, Vec::new(), Vec::new())
+                (Vec::new(), None, Vec::new(), Vec::new(), String::new())
             });
         let (memory_block, ids) = crate::memory::selector::core_block(&entries);
         let mut context = self.context.clone();
@@ -313,6 +324,7 @@ impl TurnManager {
             .knowledge(&crate::system_prompt::knowledge_block(&knowledge))
             .global_instructions(&settings.chat.custom_instructions)
             .project_instructions(&instructions)
+            .chat_instructions(&chat_instructions)
             .pinned_skills(&crate::memory::selector::pinned_block(&pinned))
             .build();
         (prompt, ids)
@@ -412,30 +424,48 @@ impl TurnManager {
         Ok(chat)
     }
 
-    /// Applies a patch; a mode change on a chat with turns appends the mode note (04 §3).
+    /// Applies a patch. Two of its fields are in the system prompt and so follow the rule of
+    /// 10 §4: the mode (04 §3) and the chat's own instructions (layer 6). A chat that has not
+    /// spoken is rebuilt around the new value; one that has is told, because rewriting the
+    /// prompt under a conversation rewrites what the model was answering.
+    ///
+    /// Both can change in one patch, and then a chat that has spoken hears about both while a
+    /// chat that has not is rebuilt once — the rebuild carries every layer, so doing it twice
+    /// would only cost a second pick of the memory core set.
     pub fn update_chat(
         &self,
         chat_id: ChatId,
         patch: ChatPatch,
     ) -> Result<ChatSummary, GantryError> {
         let mode = patch.mode;
+        let instructions = patch.instructions.clone();
         let before = self.chats.get(chat_id)?;
         let summary = self.chats.update(chat_id, patch)?;
-        if let (Some(mode), Some(before)) = (mode, before)
-            && before.mode != mode
-        {
-            if self.chats.has_turns(chat_id)? {
+        let Some(before) = before else {
+            return Ok(summary);
+        };
+        let mode = mode.filter(|m| *m != before.mode);
+        let instructions = instructions.filter(|i| i.trim() != before.instructions.trim());
+        if mode.is_none() && instructions.is_none() {
+            return Ok(summary);
+        }
+        if self.chats.has_turns(chat_id)? {
+            if let Some(mode) = mode {
                 self.chats.append_system_note(chat_id, mode_note(mode))?;
-            } else {
-                let settings = self.settings();
-                self.refreeze(
-                    chat_id,
-                    mode,
-                    before.incognito,
-                    before.project_id,
-                    &settings,
-                )?;
             }
+            if let Some(text) = instructions {
+                self.chats
+                    .append_system_note(chat_id, chat_instructions_note(text.trim()))?;
+            }
+        } else {
+            let settings = self.settings();
+            self.refreeze(
+                chat_id,
+                mode.unwrap_or(before.mode),
+                before.incognito,
+                before.project_id,
+                &settings,
+            )?;
         }
         Ok(summary)
     }

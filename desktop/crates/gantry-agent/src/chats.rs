@@ -572,7 +572,10 @@ impl ChatBook {
                     chat.archived_at = if a { Some(now_ms()) } else { None };
                 }
                 if let Some(i) = patch.instructions {
-                    chat.instructions = i;
+                    // Trimmed here rather than at the command, so that the stored text is what
+                    // the prompt layer will hold whoever wrote it — and so that "did this
+                    // change?" is a question about the instructions, not about trailing spaces.
+                    chat.instructions = i.trim().to_owned();
                 }
                 chats::update(conn, &chat)?;
                 let running = turns::running_for_chat(conn, chat_id)?.map(|t| t.id);
@@ -1021,6 +1024,7 @@ fn detail(
             .iter()
             .find(|t| t.status == TurnStatus::Running)
             .map(|t| t.id),
+        instructions: chat.instructions.clone(),
         turns: turn_dtos,
         incognito: chat.incognito,
     }
