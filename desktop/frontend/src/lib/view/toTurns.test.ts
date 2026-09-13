@@ -191,3 +191,40 @@ describe('what a row says beside its title (05 §1)', () => {
     });
   });
 });
+
+describe('the artifact card reports its own turn (13 §10)', () => {
+  const update = (version: number): ToolCallDto =>
+    call({
+      connector: 'gantry',
+      connector_name: 'Gantry',
+      tool: 'update_artifact',
+      model_tool_name: 'gantry__update_artifact',
+      args: { artifact_id: 'a1', content: '…' },
+      result: [{ kind: 'json', json: { artifact_id: 'a1', version } }],
+      display: { kind: 'connector', summary: 'a1' },
+    } as Partial<ToolCallDto>);
+
+  const cardOf = (calls: ToolCallDto[], titles = {}) => {
+    const [turn] = toTurns(chat(calls), undefined, (r) => r.model, titles);
+    return turn!.blocks.find((b) => b.kind === 'artifact');
+  };
+
+  it('shows the version that turn left behind, not the newest one there is', () => {
+    // The chat has since reached v3; this turn made v2, and that is what its card says.
+    const card = cardOf([update(2)], { a1: { title: 'Invite', type: 'react', version: 3 } });
+    expect(card).toMatchObject({ version: 2, title: 'Invite', type: 'react' });
+  });
+
+  it('takes the last version of a turn that changed it twice', () => {
+    const card = cardOf([update(2), { ...update(3), id: 'c2' }]);
+    expect(card).toMatchObject({ version: 3 });
+  });
+
+  it('falls back to the index when the call carried no version', () => {
+    const noVersion = { ...update(0), result: [{ kind: 'json', json: { artifact_id: 'a1' } }] };
+    const card = cardOf([noVersion as ToolCallDto], {
+      a1: { title: 'Invite', type: 'react', version: 3 },
+    });
+    expect(card).toMatchObject({ version: 3 });
+  });
+});

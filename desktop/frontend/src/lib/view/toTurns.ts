@@ -308,7 +308,17 @@ function messagesToBlocks(
 
 /**
  * One card per artifact the turn created or changed, once the call has finished and the
- * artifact exists: the newest version, named by the artifact's current title (13 §10).
+ * artifact exists (13 §10).
+ *
+ * **The version is the one this turn produced**, not the newest one there is. A card sits under
+ * the reply that made it, and in a chat where an artifact was revised three times, three cards
+ * all stamped `v3` say the same untrue thing twice: they report the present, where the feed is
+ * a record of what happened (05 §1). The version comes from the call's own result, and only
+ * falls back to the index when a result carried none.
+ *
+ * The title and type still come from the index, because those are not facts about the turn —
+ * renaming an artifact should rename it everywhere it is referred to, the way the panel's tab
+ * and the library already do.
  */
 function artifactCards(blocks: Block[], titles: ArtifactIndex): Block[] {
   const cards = new Map<string, Extract<Block, { kind: 'artifact' }>>();
@@ -317,12 +327,14 @@ function artifactCards(blocks: Block[], titles: ArtifactIndex): Block[] {
     for (const item of b.items) {
       if (item.kind !== 'artifact' || !item.artifactId || item.status !== 'done') continue;
       const prev = cards.get(item.artifactId);
+      // A turn that both created and edited an artifact shows the last version it left behind.
+      const made = Math.max(item.version, prev?.version ?? 0);
       cards.set(item.artifactId, {
         kind: 'artifact',
         artifactId: item.artifactId,
         title: titles[item.artifactId]?.title ?? item.title,
         type: titles[item.artifactId]?.type ?? item.type,
-        version: titles[item.artifactId]?.version ?? Math.max(item.version, prev?.version ?? 0),
+        version: made || (titles[item.artifactId]?.version ?? 1),
         action: prev?.action ?? item.action ?? 'created',
       });
     }
