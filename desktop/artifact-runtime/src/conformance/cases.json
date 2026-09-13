@@ -1,0 +1,253 @@
+{
+  "$comment": [
+    "The sandbox conformance cases (docs/plan/13 §5): one hostile artifact per rule the sandbox",
+    "claims to enforce. This file is the single source of truth for all three consumers — the",
+    "gallery's 'Artifact renderers · Sandbox conformance' entry (src/conformance/probe.ts), the",
+    "WebKitGTK harness (scripts/sandbox-conformance.py) and the automated test",
+    "(desktop/crates/gantry-agent/tests/artifacts_sandbox.rs). Read as JSON by all three so no",
+    "consumer has to parse another's language.",
+    "",
+    "Each case's `attempt` is the body of an async function. It reports the rule holds by",
+    "returning the string 'blocked' or by throwing; any other return value is the detail of an",
+    "escape. `directive`, when set, additionally requires the document to have reported a",
+    "securitypolicyviolation naming it — without that a failed DNS lookup would read as a CSP",
+    "denial. `observer`, when set, names an engine-side signal the harness watches: the case is",
+    "OPEN if the engine saw it, whatever the page believed.",
+    "",
+    "Remote URLs use the reserved .invalid TLD (RFC 2606), so a hole in the sandbox cannot make",
+    "the test talk to anyone.",
+    "",
+    "`engine_only` marks a case whose verdict the page cannot reach on its own — only the",
+    "embedder sees it. The gallery leaves those out rather than show a denial it cannot back up.",
+    "`hang` marks one expected to freeze the web process; it runs alone."
+  ],
+  "remote": "https://gantry-sandbox.invalid/escape",
+  "cases": [
+    {
+      "id": "tauri_internals",
+      "rule": "opaque origin: no IPC",
+      "doc": "An opaque origin is never same-origin, so Tauri's IPC is never initialised in the frame.",
+      "attempt": "return window.__TAURI_INTERNALS__ ? 'present' : 'blocked';"
+    },
+    {
+      "id": "tauri_global",
+      "rule": "opaque origin: no IPC",
+      "doc": "The other half of the Tauri surface, for the same reason.",
+      "attempt": "return window.__TAURI__ ? 'present' : 'blocked';"
+    },
+    {
+      "id": "ipc_localhost",
+      "rule": "connect-src 'none'",
+      "doc": "connect-src 'none' closes the http://ipc.localhost transport as a second lock on IPC.",
+      "directive": "connect-src",
+      "attempt": "await fetch('http://ipc.localhost/'); return 'fetched';"
+    },
+    {
+      "id": "fetch",
+      "rule": "connect-src 'none'",
+      "doc": "No network at all: fetch to any origin is refused.",
+      "directive": "connect-src",
+      "attempt": "await fetch(REMOTE); return 'fetched';"
+    },
+    {
+      "id": "xhr",
+      "rule": "connect-src 'none'",
+      "doc": "XHR is the same channel by another name.",
+      "directive": "connect-src",
+      "attempt": "return await new Promise(function (res, rej) { var x = new XMLHttpRequest(); x.onload = function () { res('loaded'); }; x.onerror = function () { rej(new Error('request failed')); }; try { x.open('GET', REMOTE); x.send(); } catch (e) { rej(e); } });"
+    },
+    {
+      "id": "websocket",
+      "rule": "connect-src 'none'",
+      "doc": "WebSocket is named in §5 as one of the four connect-src closes.",
+      "directive": "connect-src",
+      "attempt": "return await new Promise(function (res, rej) { var w = new WebSocket('wss://gantry-sandbox.invalid/'); w.onopen = function () { res('opened'); }; w.onerror = function () { rej(new Error('socket error')); }; });"
+    },
+    {
+      "id": "eventsource",
+      "rule": "connect-src 'none'",
+      "doc": "EventSource is the fourth.",
+      "directive": "connect-src",
+      "attempt": "return await new Promise(function (res, rej) { var s = new EventSource(REMOTE); s.onopen = function () { res('opened'); }; s.onerror = function () { s.close(); rej(new Error('stream error')); }; });"
+    },
+    {
+      "id": "send_beacon",
+      "rule": "connect-src 'none'",
+      "doc": "sendBeacon is egress that survives unload; connect-src covers it too. It answers whether the request was queued, not whether it was allowed to leave, so the policy's own violation report and the engine seeing no request are the evidence here.",
+      "directive": "connect-src",
+      "attempt": "navigator.sendBeacon(REMOTE, 'gantry'); return 'blocked';"
+    },
+    {
+      "id": "remote_script",
+      "rule": "script-src 'unsafe-inline' 'unsafe-eval' blob:",
+      "doc": "Inline and blob: scripts run; a script pulled from the network does not.",
+      "directive": "script-src",
+      "attempt": "return await new Promise(function (res, rej) { var s = document.createElement('script'); s.src = REMOTE; s.onload = function () { res('loaded'); }; s.onerror = function () { rej(new Error('load error')); }; document.head.appendChild(s); });"
+    },
+    {
+      "id": "remote_stylesheet",
+      "rule": "style-src 'unsafe-inline'",
+      "doc": "Inline styles only: a stylesheet from the network is a request the sandbox may not make.",
+      "directive": "style-src",
+      "attempt": "return await new Promise(function (res, rej) { var l = document.createElement('link'); l.rel = 'stylesheet'; l.href = REMOTE; l.onload = function () { res('loaded'); }; l.onerror = function () { rej(new Error('load error')); }; document.head.appendChild(l); });"
+    },
+    {
+      "id": "remote_image",
+      "rule": "img-src data: blob:",
+      "doc": "Images come from data: and blob: only — a remote <img> is both a leak and a beacon.",
+      "directive": "img-src",
+      "attempt": "return await new Promise(function (res, rej) { var i = new Image(); i.onload = function () { res('loaded'); }; i.onerror = function () { rej(new Error('load error')); }; i.src = REMOTE; });"
+    },
+    {
+      "id": "remote_font",
+      "rule": "font-src data:",
+      "doc": "Fonts come from data: only.",
+      "directive": "font-src",
+      "attempt": "var s = document.createElement('style'); s.textContent = '@font-face{font-family:GantryProbe;src:url(' + REMOTE + ')}'; document.head.appendChild(s); var got = await document.fonts.load('16px GantryProbe'); return got.length ? 'loaded' : 'blocked';"
+    },
+    {
+      "id": "remote_media",
+      "rule": "media-src data: blob:",
+      "doc": "Audio and video come from data: and blob: only.",
+      "directive": "media-src",
+      "attempt": "return await new Promise(function (res, rej) { var v = document.createElement('video'); v.onloadeddata = function () { res('loaded'); }; v.onerror = function () { rej(new Error('load error')); }; v.src = REMOTE; document.body.appendChild(v); v.load(); });"
+    },
+    {
+      "id": "nested_frame",
+      "rule": "frame-src 'none'",
+      "doc": "An artifact may not open a frame of its own, which would carry its own policy. A frame it creates has an opaque origin of its own, so the page can never read where the frame ended up — refused or not. The policy's violation report is the evidence.",
+      "directive": "frame-src",
+      "attempt": "var f = document.createElement('iframe'); f.src = REMOTE; document.body.appendChild(f); await new Promise(function (r) { setTimeout(r, 300); }); return 'blocked';"
+    },
+    {
+      "id": "object_embed",
+      "rule": "object-src 'none'",
+      "doc": "Plugins and <object> are closed outright.",
+      "directive": "object-src",
+      "attempt": "var o = document.createElement('object'); o.data = REMOTE; document.body.appendChild(o); return 'blocked';"
+    },
+    {
+      "id": "form_submit",
+      "rule": "no allow-forms (and form-action 'none')",
+      "doc": "A form post is egress and a navigation; §5 closes it twice over. The sandbox flag is the outer lock and refuses the submit before the policy is consulted, so no form-action report is expected — the evidence is that the engine was asked for no navigation.",
+      "observer": "navigation",
+      "attempt": "var f = document.createElement('form'); f.method = 'POST'; f.action = REMOTE; var i = document.createElement('input'); i.name = 'x'; i.value = 'gantry'; f.appendChild(i); document.body.appendChild(f); try { f.submit(); } catch (e) { return 'blocked'; } return 'blocked';"
+    },
+    {
+      "id": "base_uri",
+      "rule": "base-uri 'none'",
+      "doc": "Rewriting the document base would re-point every relative URL in the page.",
+      "directive": "base-uri",
+      "attempt": "var b = document.createElement('base'); b.href = 'https://gantry-sandbox.invalid/'; document.head.appendChild(b); return document.baseURI.indexOf('gantry-sandbox.invalid') >= 0 ? 'rebased to ' + document.baseURI : 'blocked';"
+    },
+    {
+      "id": "parent_document",
+      "rule": "opaque origin: no access to the app's DOM",
+      "doc": "Without allow-same-origin the frame cannot read the document that hosts it.",
+      "attempt": "return window.parent.document ? 'readable' : 'blocked';"
+    },
+    {
+      "id": "top_document",
+      "rule": "opaque origin: no access to the app's DOM",
+      "doc": "The same through window.top.",
+      "attempt": "return window.top.document ? 'readable' : 'blocked';"
+    },
+    {
+      "id": "top_navigation",
+      "rule": "no allow-top-navigation",
+      "doc": "An artifact may not send the app window somewhere else.",
+      "observer": "navigation",
+      "attempt": "try { window.top.location = REMOTE; } catch (e) { return 'blocked'; } return 'blocked';"
+    },
+    {
+      "id": "parent_navigation",
+      "rule": "no allow-top-navigation",
+      "doc": "The same through window.parent, which for a panel artifact is the app document.",
+      "observer": "navigation",
+      "attempt": "try { window.parent.location.href = REMOTE; } catch (e) { return 'blocked'; } return 'blocked';"
+    },
+    {
+      "id": "window_open",
+      "rule": "no allow-popups",
+      "doc": "No new browsing context: a popup would escape the panel and its policy.",
+      "attempt": "var w = window.open(REMOTE); if (w) { try { w.close(); } catch (e) {} return 'opened'; } return 'blocked';"
+    },
+    {
+      "id": "modal_dialog",
+      "rule": "no allow-modals",
+      "doc": "alert() in a sandboxed frame is ignored; if it were not, it would freeze the app window.",
+      "observer": "dialog",
+      "attempt": "var t = Date.now(); window.alert('gantry conformance'); return (Date.now() - t) < 250 ? 'blocked' : 'shown after ' + (Date.now() - t) + 'ms';"
+    },
+    {
+      "id": "download",
+      "rule": "no allow-downloads",
+      "doc": "Download is a parent-side action (13 §4); the sandbox never writes to the disk itself.",
+      "observer": "download",
+      "attempt": "var a = document.createElement('a'); a.href = 'data:text/plain;base64,Z2FudHJ5'; a.download = 'gantry-escape.txt'; document.body.appendChild(a); a.click(); return 'blocked';"
+    },
+    {
+      "id": "pointer_lock",
+      "rule": "no allow-pointer-lock",
+      "doc": "An artifact may not capture the pointer.",
+      "attempt": "return await new Promise(function (res) { document.addEventListener('pointerlockerror', function () { res('blocked'); }, { once: true }); var r; try { r = document.body.requestPointerLock(); } catch (e) { res('blocked'); return; } if (r && r.catch) r.catch(function () { res('blocked'); }); setTimeout(function () { res(document.pointerLockElement ? 'locked' : 'blocked'); }, 500); });"
+    },
+    {
+      "id": "local_storage",
+      "rule": "opaque origin: no storage",
+      "doc": "An opaque origin has no storage area at all.",
+      "attempt": "window.localStorage.setItem('gantry', '1'); return 'stored: ' + window.localStorage.getItem('gantry');"
+    },
+    {
+      "id": "session_storage",
+      "rule": "opaque origin: no storage",
+      "doc": "The session area is refused for the same reason.",
+      "attempt": "window.sessionStorage.setItem('gantry', '1'); return 'stored: ' + window.sessionStorage.getItem('gantry');"
+    },
+    {
+      "id": "indexed_db",
+      "rule": "opaque origin: no storage",
+      "doc": "IndexedDB is the large one; §5 names it in the M5 probe list.",
+      "attempt": "return await new Promise(function (res, rej) { var r; try { r = indexedDB.open('gantry'); } catch (e) { rej(e); return; } r.onerror = function () { rej(new Error('open error')); }; r.onsuccess = function () { res('opened'); }; });"
+    },
+    {
+      "id": "cookies",
+      "rule": "opaque origin: no cookies",
+      "doc": "§5 names cookies beside DOM, storage and IPC.",
+      "attempt": "document.cookie = 'gantry=1'; return document.cookie.indexOf('gantry=1') >= 0 ? 'stored' : 'blocked';"
+    },
+    {
+      "id": "cache_storage",
+      "rule": "opaque origin: no storage",
+      "doc": "The Cache API is storage that also caches responses; it is not available either.",
+      "attempt": "if (!window.caches) return 'blocked'; await caches.open('gantry'); return 'opened';"
+    },
+    {
+      "id": "clipboard",
+      "rule": "no clipboard",
+      "doc": "Copy is parent-side (13 §4): the app holds the content, the sandbox needs no clipboard.",
+      "attempt": "if (!navigator.clipboard || !navigator.clipboard.writeText) return 'blocked'; await navigator.clipboard.writeText('gantry'); return 'wrote';"
+    },
+    {
+      "id": "service_worker",
+      "rule": "opaque origin: nothing persists",
+      "doc": "A service worker would outlive the artifact and proxy its requests.",
+      "attempt": "if (!navigator.serviceWorker) return 'blocked'; await navigator.serviceWorker.register('/sw.js'); return 'registered';"
+    },
+    {
+      "id": "self_navigation",
+      "rule": "links are intercepted; nothing navigates",
+      "doc": "§5: links are forwarded to the parent as open_url and nothing navigates. A script that assigns location.href navigates the frame itself, which is egress (the URL reaches the network) and replaces the artifact with a remote page.",
+      "observer": "navigation",
+      "attempt": "try { window.location.href = REMOTE; } catch (e) { return 'blocked'; } return 'blocked';",
+      "engine_only": true
+    },
+    {
+      "id": "html_loop_guard",
+      "rule": "loop protection at compile time",
+      "doc": "§5 hang risk 1: inline scripts in an html artifact get the loop-guard pass when they parse. A loop over the budget must throw 'Artifact loop guard' rather than freeze the window.",
+      "hang": true,
+      "attempt": "var t = Date.now(); while (true) { if (Date.now() - t > 8000) return 'ran for 8s unguarded'; }"
+    }
+  ]
+}
