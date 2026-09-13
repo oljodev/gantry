@@ -17,11 +17,12 @@ import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
-import type { ProjectDetail, ProjectId } from '@/bindings';
+import type { ProjectDetail, ProjectId, RiskTier } from '@/bindings';
 import { typeInfo } from '@/features/artifacts/registry';
 import { describe } from '@/lib/errors';
 import { pickFiles } from '@/lib/attachments';
 import { pickFolder } from '@/lib/folders';
+import { useConnectors } from '@/lib/ipc/hooks/connectors';
 import { useSkills } from '@/lib/ipc/hooks/skills';
 import {
   useProject,
@@ -275,6 +276,7 @@ function InstructionsTab({ project }: { project: ProjectDetail }) {
 function DefaultsTab({ project }: { project: ProjectDetail }) {
   const { update, pinSkill } = useProjectMutations();
   const skills = useSkills();
+  const connectors = useConnectors();
   const defaults = project.defaults;
 
   const setDefaults = (patch: Partial<typeof defaults>) =>
@@ -346,6 +348,89 @@ function DefaultsTab({ project }: { project: ProjectDetail }) {
               Use the setting
             </Button>
           )}
+        </div>
+      </Row>
+
+      <Row
+        label="Connectors"
+        hint="Attached to every new chat here, in place of the ones Settings would attach."
+      >
+        <div className="flex flex-col gap-1.5">
+          {(connectors.data ?? []).length === 0 && (
+            <span className="text-meta text-fg-3">No connectors installed yet.</span>
+          )}
+          {(connectors.data ?? []).map((c) => (
+            <label key={c.id} className="flex items-center gap-2.5 text-ui text-fg">
+              <Switch
+                checked={(defaults.connectors ?? []).includes(c.namespace)}
+                onCheckedChange={(on) => {
+                  const chosen = new Set(defaults.connectors ?? []);
+                  if (on) chosen.add(c.namespace);
+                  else chosen.delete(c.namespace);
+                  // An empty list is a decision — "attach nothing" — and null is the absence of
+                  // one, so the two cannot be collapsed: the first is only reachable by turning
+                  // one on and off again, which is exactly what a user who means it would do.
+                  setDefaults({ connectors: [...chosen] });
+                }}
+              />
+              <span className="min-w-0 flex-1 truncate">{c.name}</span>
+              <span className="shrink-0 text-meta text-fg-3">{c.namespace}</span>
+            </label>
+          ))}
+          {defaults.connectors !== null && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="self-start"
+              onClick={() => setDefaults({ connectors: null })}
+            >
+              Use the setting instead
+            </Button>
+          )}
+        </div>
+      </Row>
+
+      <Row
+        label="Standing permissions"
+        hint="What a chat here may do without asking. A permission prompt still appears for anything above the line, and the guardrails are never answered by one (04 §5)."
+      >
+        <div className="flex flex-col gap-1.5">
+          {(connectors.data ?? []).length === 0 && (
+            <span className="text-meta text-fg-3">No connectors installed yet.</span>
+          )}
+          {(connectors.data ?? []).map((c) => {
+            const grant = (defaults.grants ?? []).find((g) => g.instance_name === c.namespace);
+            const set = (ceiling: RiskTier | null) => {
+              const rest = (defaults.grants ?? []).filter((g) => g.instance_name !== c.namespace);
+              setDefaults({
+                grants:
+                  ceiling === null
+                    ? rest
+                    : [
+                        ...rest,
+                        { instance_name: c.namespace, tool_name: null, tier_ceiling: ceiling },
+                      ],
+              });
+            };
+            return (
+              <div key={c.id} className="flex items-center gap-2.5 text-ui text-fg">
+                <span className="min-w-0 flex-1 truncate">{c.name}</span>
+                <div className="flex shrink-0 gap-1">
+                  <Chip active={!grant} onClick={() => set(null)} label="Ask" />
+                  <Chip
+                    active={grant?.tier_ceiling === 'read'}
+                    onClick={() => set('read')}
+                    label="Reads"
+                  />
+                  <Chip
+                    active={grant?.tier_ceiling === 'write'}
+                    onClick={() => set('write')}
+                    label="Reads and writes"
+                  />
+                </div>
+              </div>
+            );
+          })}
         </div>
       </Row>
 

@@ -12,6 +12,7 @@ import {
   SquareIcon,
   XIcon,
 } from '@phosphor-icons/react';
+import { Link } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
 
 import { ImageLightbox } from '@/components/gantry/ImageLightbox';
@@ -63,6 +64,9 @@ export interface ComposerProps {
   model: ModelRef;
   /** The folders this chat may reach; the file tools work in these and nowhere else. */
   roots: string[];
+  /** The project this chat is filed in, when it is in one (09 M11): its chip says so, because
+   * instructions and knowledge the user cannot see on the screen are the thing to say out loud. */
+  project?: { id: string; name: string };
   /** Opens the native folder picker. The menu item is disabled without it (the gallery). */
   onAddRoot?: () => void;
   onRemoveRoot?: (root: string) => void;
@@ -119,6 +123,7 @@ export function Composer({
   guard,
   model,
   roots,
+  project,
   onAddRoot,
   onRemoveRoot,
   running,
@@ -396,6 +401,7 @@ export function Composer({
             onGuardChange={onGuardChange}
           />
           <ModelPicker value={model} onChange={onModelChange} />
+          {project && <ProjectChip project={project} />}
           {roots.map((root) => (
             <RootChip key={root} root={root} onRemove={onRemoveRoot} />
           ))}
@@ -552,6 +558,30 @@ export function AttachmentTray({
         onClose={() => setShown(null)}
       />
     </div>
+  );
+}
+
+/** The project chip: which project's instructions and knowledge this chat carries, and a way
+ * to go and read them. */
+function ProjectChip({ project }: { project: { id: string; name: string } }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Link
+            to="/projects/$projectId"
+            params={{ projectId: project.id }}
+            className="inline-flex h-(--control-sm) items-center gap-1 rounded-2 border border-line-subtle px-1.5 text-meta text-fg-2 transition-colors duration-(--dur-1) hover:bg-hover hover:text-fg"
+          />
+        }
+      >
+        <FolderSimpleIcon className="size-3.5" />
+        <span className="max-w-32 truncate">{project.name}</span>
+      </TooltipTrigger>
+      <TooltipContent>
+        In the project {project.name}: its instructions and knowledge apply here.
+      </TooltipContent>
+    </Tooltip>
   );
 }
 

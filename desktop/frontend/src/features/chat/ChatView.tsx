@@ -45,6 +45,7 @@ import { useFollowBottom } from '@/lib/followBottom';
 import { pickFolder } from '@/lib/folders';
 import { useArtifacts } from '@/lib/ipc/hooks/artifacts';
 import { useChat, useChatMutations } from '@/lib/ipc/hooks/chats';
+import { useProject } from '@/lib/ipc/hooks/projects';
 import { useSkills } from '@/lib/ipc/hooks/skills';
 import {
   useCatalog,
@@ -81,6 +82,9 @@ export function ChatView({
 }) {
   const code = surface === 'code';
   const chat = useChat(chatId);
+  // The project this chat is filed in, for the composer's chip: instructions and knowledge the
+  // user cannot see on the screen are exactly the thing to say out loud (09 M11).
+  const project = useProject(chat.data?.project_id ?? null);
   const live = useRunStore((s) => s.byChat[chatId]);
   const send = useRunStore((s) => s.send);
   const stop = useRunStore((s) => s.stop);
@@ -619,6 +623,7 @@ export function ChatView({
           guard={detail.guard}
           model={detail.model}
           roots={detail.roots}
+          project={project.data ? { id: project.data.id, name: project.data.name } : undefined}
           onAddRoot={() => {
             void pickFolder().then((path) => {
               if (path) addRoot.mutate({ chatId, path });
