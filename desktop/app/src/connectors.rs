@@ -1241,8 +1241,17 @@ mod tests {
             .into_iter()
             .map(|t| t.name)
             .collect();
-        assert_eq!(listed, ["fetch_url"]);
-        assert_eq!(offered(&service).await, ["fetch_url"]);
+        // Compared against what this build offers rather than against a list written here: the
+        // claim is "the row catches up with the code", and spelling the code's answer out a
+        // second time only means this test fails the next time a tool is added.
+        let built: Vec<String> = crate::native::definitions("web")
+            .expect("web has code in this build")
+            .into_iter()
+            .map(|d| d.name)
+            .collect();
+        assert!(built.contains(&"fetch_url".to_owned()), "{built:?}");
+        assert_eq!(listed, built);
+        assert_eq!(offered(&service).await, built);
     }
 
     /// What the registered `web` connector says it offers right now — the same question the

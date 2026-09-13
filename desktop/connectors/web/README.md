@@ -1,6 +1,6 @@
 # Web
 
-Fetch pages as readable text. No key, no account, nothing to pay for.
+Search the web and read pages as text. No key, no account, nothing to pay for.
 
 First-party, native (Rust) connector. Design: `docs/plan/03-connector-system.md` §5, and
 `docs/connectors/web.md` for where search is going.
@@ -20,11 +20,49 @@ removed: a key field is precisely the thing this connector may not have, whoever
 | Tool | Input → output | Tier |
 |------|----------------|------|
 | `fetch_url` | `{ url, offset?, max_chars?, format?: markdown\|text\|html }` → `{ url, title, content, status, chars, first_char, total_chars, more, next_offset, redirects }` | read (internet) |
+| `search` | `{ query, source?, max_results? }` → `{ results: { title, url, snippet, source }[], searched, count }` | read (internet) |
 
-Searching is not built. When it is, it will be keyless: a query router over purpose-built free
-APIs first (Wikipedia, Stack Exchange, crates.io, OpenAlex, RFC Editor…), the user's own SearXNG
-if they run one, a rationed general engine after that, and independent indexes when that is
-spent. `docs/connectors/web.md` §6 has the measurements behind each tier.
+## Search without an account
+
+Four indexes, all keyless, each better at its own subject than a general engine would be:
+
+| Index | For |
+|-------|-----|
+| Wikipedia | Facts, people, places, events — and the backstop for anything with no other signal |
+| Stack Overflow | Programming questions and error messages |
+| crates.io | Rust packages |
+| npm | JavaScript packages |
+
+`route` in `src/search/mod.rs` picks from the words in the query; every chosen index is asked
+concurrently and the hits are interleaved, so a model reading top-down sees each index near the
+top rather than eight crates before the first answer. Each hit carries the index it came from.
+
+Two rules the live APIs taught, both now tests:
+
+- **A sentence is not a package lookup.** A registry matches names and descriptions, so a
+  question run through one returns whatever crate shares a word with it — `cannot borrow as
+  mutable more than once rust` came back with `fp-bench`. A registry is asked only when the
+  query names one outright or is short enough to be a name.
+- **The word that routed the query must not be searched for.** crates.io searched for `serde
+  crate` ranks `serde_core` and `serde-big-array` above `serde`, because the literal word
+  matches no package and dilutes the word that does. `registry_query` strips it.
+
+The known weakness is the router itself: it is keyword matching, so it will always miss
+something. `realistic_queries_reach_the_index_that_can_answer_them` pins down a table of hand-
+checked cases, and the tool's `source` argument is the escape hatch when the words alone would
+route a query wrongly. Expect to add keywords as real use finds the holes — two were already
+found this way, `segmentation fault` reaching only an encyclopedia and a bare `tokio` reaching
+nothing useful at all.
+
+**A question no index covers is an error, not an empty list** (`docs/connectors/web.md` §6.8).
+There is no general engine here; `[]` reads to a model as "this does not exist", and it will
+answer from memory and cite nothing. The message names the four indexes and says to use
+`fetch_url` or the model's own search instead.
+
+Still to build, in `docs/connectors/web.md` §6 order: the user's own SearXNG (§6.3), a rationed
+DuckDuckGo Lite with a circuit breaker (§6.4), and mwmbl/Wiby as the tier below that (§6.5).
+§6.7 is the honest ceiling — one search and several reads per question works forever and free;
+an agent wanting five searches while reasoning will feel the ration once §6.4 exists.
 
 ## What it may reach
 
@@ -91,5 +129,17 @@ no request is made. The one socket the suite does open is a local resolver looku
 `localhost`, which is why that test accepts either refusal: on a machine whose hosts file lacks
 the name, it is refused as unresolvable rather than as private, and both are correct.
 
-No test here needs a key, because nothing here takes one. When search lands, its tests record
-each backend's response the same way.
+Search fixtures are real. Every one in `tests/fixtures/*.json` was captured from the live API
+on 2026-09-13 and saved verbatim — `wikipedia.json` from `en.wikipedia.org/w/api.php`,
+`stackexchange.json` from `api.stackexchange.com`, `crates.json` from `crates.io/api/v1`,
+`npm.json` from `registry.npmjs.org`. The connector's previous search was built against
+hand-written fixtures and never met a real response; its parsers were fiction that compiled.
+
+The one live test is `#[ignore]`d and needs no key, which is the point:
+
+```
+cargo test -p gantry-connector-web --test search -- --ignored --nocapture
+```
+
+It is worth running when an API might have moved. Both routing bugs above were found by it and
+by nothing else — a recorded response cannot tell you that you sent the wrong query.

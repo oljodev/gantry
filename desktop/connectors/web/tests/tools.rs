@@ -56,7 +56,7 @@ fn refusal(outcome: &ToolOutcome) -> String {
 }
 
 #[tokio::test]
-async fn the_connector_offers_reading_and_nothing_else_yet() {
+async fn the_connector_offers_reading_and_searching() {
     let names: Vec<String> = web()
         .tools()
         .await
@@ -64,18 +64,44 @@ async fn the_connector_offers_reading_and_nothing_else_yet() {
         .into_iter()
         .map(|d| d.name)
         .collect();
-    assert_eq!(names, ["fetch_url"]);
+    assert_eq!(names, ["fetch_url", "search"]);
 }
 
 #[tokio::test]
-async fn a_search_call_from_an_older_build_is_answered_rather_than_panicking() {
-    // A chat from the build that had a bring-your-own-key `search` can replay that tool name.
-    // It gets the same unknown-tool error as any other name this connector does not have —
-    // which is the honest answer, because there is no key to add that would make it work.
-    let err = call(&web(), "search", serde_json::json!({"query": "x"}))
-        .await
-        .expect_err("search is not a tool here");
-    assert!(matches!(err, ConnectorError::UnknownTool(name) if name == "search"));
+async fn a_query_no_index_covers_says_so_rather_than_returning_nothing() {
+    // Offline, and provably: no index is routed for this, so no request is made. The point
+    // being tested is the one that matters most about a search tool with gaps in it — an empty
+    // list reads to a model as "this does not exist", so the gap has to speak.
+    let outcome = call(
+        &web(),
+        "search",
+        serde_json::json!({"query": "  ", "max_results": 5}),
+    )
+    .await
+    .unwrap();
+    let message = refusal(&outcome);
+    assert!(
+        message.contains("general web search is not built yet"),
+        "{message}"
+    );
+    assert!(
+        message.contains("fetch_url"),
+        "it says what to do: {message}"
+    );
+}
+
+#[tokio::test]
+async fn an_index_this_connector_does_not_have_names_the_ones_it_does() {
+    let outcome = call(
+        &web(),
+        "search",
+        serde_json::json!({"query": "anything", "source": "google"}),
+    )
+    .await
+    .unwrap();
+    let message = refusal(&outcome);
+    assert!(message.contains("wikipedia"), "{message}");
+    assert!(message.contains("crates.io"), "{message}");
 }
 
 #[tokio::test]

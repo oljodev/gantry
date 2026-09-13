@@ -1,0 +1,178 @@
+{
+  "objects": [
+    {
+      "downloads": {
+        "monthly": 646981829,
+        "weekly": 128119130
+      },
+      "dependents": "215720",
+      "updated": "2026-09-13T06:30:40.578Z",
+      "searchScore": 2330.6042,
+      "package": {
+        "name": "react",
+        "keywords": [
+          "react"
+        ],
+        "version": "19.3.0",
+        "description": "React is a JavaScript library for building user interfaces.",
+        "sanitized_name": "react",
+        "publisher": {
+          "email": "npm-oidc-no-reply@github.com",
+          "trustedPublisher": {
+            "oidcConfigId": "oidc:19f8086e-9f33-439e-8cce-d73997f53038",
+            "id": "github"
+          },
+          "username": "GitHub Actions"
+        },
+        "maintainers": [
+          {
+            "email": "opensource+npm@fb.com",
+            "username": "fb"
+          },
+          {
+            "email": "react-core@meta.com",
+            "username": "react-bot"
+          }
+        ],
+        "license": "MIT",
+        "date": "2026-09-09T17:21:30.071Z",
+        "links": {
+          "homepage": "https://react.dev/",
+          "repository": "git+https://github.com/react/react.git",
+          "bugs": "https://github.com/react/react/issues",
+          "npm": "https://www.npmjs.com/package/react"
+        }
+      },
+      "score": {
+        "final": 2330.6042,
+        "detail": {
+          "popularity": 1,
+          "quality": 1,
+          "maintenance": 1
+        }
+      },
+      "flags": {
+        "insecure": 0
+      }
+    },
+    {
+      "downloads": {
+        "monthly": 1350697000,
+        "weekly": 258941278
+      },
+      "dependents": "4110",
+      "updated": "2026-09-13T06:30:12.177Z",
+      "searchScore": 262.224,
+      "package": {
+        "name": "react-is",
+        "keywords": [
+          "react"
+        ],
+        "version": "19.3.0",
+        "description": "Brand checking of React Elements.",
+        "sanitized_name": "react-is",
+        "publisher": {
+          "email": "npm-oidc-no-reply@github.com",
+          "trustedPublisher": {
+            "oidcConfigId": "oidc:cbf6e476-d8fc-438d-8573-d441b42a7262",
+            "id": "github"
+          },
+          "username": "GitHub Actions"
+        },
+        "maintainers": [
+          {
+            "email": "opensource+npm@fb.com",
+            "username": "fb"
+          },
+          {
+            "email": "react-core@meta.com",
+            "username": "react-bot"
+          }
+        ],
+        "license": "MIT",
+        "date": "2026-09-09T17:17:33.743Z",
+        "links": {
+          "homepage": "https://react.dev/",
+          "repository": "git+https://github.com/react/react.git",
+          "bugs": "https://github.com/react/react/issues",
+          "npm": "https://www.npmjs.com/package/react-is"
+        }
+      },
+      "score": {
+        "final": 262.224,
+        "detail": {
+          "popularity": 1,
+          "quality": 1,
+          "maintenance": 1
+        }
+      },
+      "flags": {
+        "insecure": 0
+      }
+    },
+    {
+      "downloads": {
+        "monthly": 129981323,
+        "weekly": 22818838
+      },
+      "dependents": "66",
+      "updated": "2026-09-13T06:36:54.447Z",
+      "searchScore": 246.79674,
+      "package": {
+        "name": "react-smooth",
+        "keywords": [
+          "react",
+          "reactjs",
+          "animation",
+          "react-component"
+        ],
+        "version": "4.0.4",
+        "description": "react animation library",
+        "sanitized_name": "react-smooth",
+        "publisher": {
+          "email": "coltinkifer19@gmail.com",
+          "username": "ckifer"
+        },
+        "maintainers": [
+          {
+            "email": "arthurtemptation@gmail.com",
+            "username": "arcthur"
+          },
+          {
+            "email": "327197681@qq.com",
+            "username": "xile611"
+          },
+          {
+            "email": "coltinkifer19@gmail.com",
+            "username": "ckifer"
+          },
+          {
+            "email": "nikolas@rieble.com",
+            "username": "nikolasrieble"
+          }
+        ],
+        "license": "MIT",
+        "date": "2024-12-16T19:07:53.945Z",
+        "links": {
+          "homepage": "https://github.com/recharts/react-smooth#readme",
+          "repository": "git+https://github.com/recharts/react-smooth.git",
+          "bugs": "https://github.com/recharts/react-smooth/issues",
+          "npm": "https://www.npmjs.com/package/react-smooth"
+        }
+      },
+      "score": {
+        "final": 246.79674,
+        "detail": {
+          "popularity": 1,
+          "quality": 1,
+          "maintenance": 1
+        }
+      },
+      "flags": {
+        "insecure": 0
+      }
+    }
+  ],
+  "total": 533303,
+  "time": "2026-09-13T18:29:10.924Z"
+}

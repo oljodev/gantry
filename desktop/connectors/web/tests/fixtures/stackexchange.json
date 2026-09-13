@@ -1,0 +1,92 @@
+{
+  "items": [
+    {
+      "tags": [
+        "asynchronous",
+        "rust"
+      ],
+      "owner": {
+        "account_id": 6150368,
+        "reputation": 525,
+        "user_id": 4794937,
+        "user_type": "registered",
+        "profile_image": "https://lh3.googleusercontent.com/-wHzIrIu0emw/AAAAAAAAAAI/AAAAAAAAA0w/Kwp2KvdDlyw/s256-rj/photo.jpg",
+        "display_name": "wub",
+        "link": "https://stackoverflow.com/users/4794937/wub"
+      },
+      "is_answered": true,
+      "view_count": 1078,
+      "answer_count": 1,
+      "score": 1,
+      "last_activity_date": 1682202140,
+      "creation_date": 1682133038,
+      "last_edit_date": 1682186232,
+      "question_id": 76077831,
+      "content_license": "CC BY-SA 4.0",
+      "link": "https://stackoverflow.com/questions/76077831/how-do-rust-async-runtimes-e-g-tokio-handle-channels",
+      "title": "How do Rust async runtimes (e.g. tokio) handle channels?",
+      "body": "<p>I am a C programmer. I wrote a program which has a thread which does 2 things:</p>\n<ul>\n<li>handlers network interface (receive requests and send responses);</li>\n<li>waits for messages from other threads.</li>\n</ul>\n<p>I used <code>epoll</code> in this thread. It handles network easily. However, in order to wait for messages, I have to use <code>pipe</code> to transfer message, just because the <code>pipe</code>'s fd can be handled by <code>epoll</code>.</p>\n<p>--</p>\n<p>Now, I am learning Rust and its async part. I find that the async runtimes (e.g. tokio):</p>\n<ul>\n<li>use <code>epoll</code> too;</li>\n<li>can handle both network IO and channel;</li>\n<li>However, I guess the channel should not be implemented by <code>pipe</code>.</li>\n</ul>\n<p>So, my question is that, how do these runtimes handle channels (by <code>epoll</code>) as well as network IO? Or how do the channels wake up <code>epoll</code> when receiving messages?</p>\n<p>In another words, where do the runtimes block at when there is no task to do? For example, in C program with <code>epoll</code>, it blocks at <code>epoll_wait</code> when no task.</p>\n<p>I tried to read the code but there are too many encapsulation levels. It's hard to find the answer easy. So I come here.</p>\n"
+    },
+    {
+      "tags": [
+        "rust",
+        "async-await"
+      ],
+      "owner": {
+        "account_id": 17126117,
+        "reputation": 343,
+        "user_id": 12393282,
+        "user_type": "registered",
+        "profile_image": "https://lh3.googleusercontent.com/a-/AAuE7mA3RTwnrnWFC3eoLZmDKDXtbD9Z4h0qdMFNyY4heg=k-s256",
+        "display_name": "Mohammed",
+        "link": "https://stackoverflow.com/users/12393282/mohammed"
+      },
+      "is_answered": true,
+      "view_count": 11346,
+      "accepted_answer_id": 67758135,
+      "answer_count": 1,
+      "score": 30,
+      "last_activity_date": 1697999475,
+      "creation_date": 1621695140,
+      "last_edit_date": 1663346680,
+      "question_id": 67650879,
+      "content_license": "CC BY-SA 4.0",
+      "link": "https://stackoverflow.com/questions/67650879/how-to-use-lazy-static-with-async-await-initializer",
+      "title": "How to use lazy_static with async/await initializer?",
+      "body": "<p>I am using <a href=\"https://crates.io/crates/mongodb\" rel=\"noreferrer\">mongodb</a> with <a href=\"https://crates.io/crates/tokio\" rel=\"noreferrer\">tokio</a> as my async runtime.</p>\n<p>I want to initialize the MongoDB <a href=\"https://docs.rs/mongodb/2.3.0/mongodb/struct.Client.html\" rel=\"noreferrer\"><code>Client</code></a> globally so I used the <a href=\"https://crates.io/crates/lazy_static\" rel=\"noreferrer\">lazy-static</a> crate. The problem is that the client connects asynchronously, and <code>lazy_static!</code> doesn't support the <code>async</code> keyword:</p>\n<pre><code>use mongodb::Client;\n\nasync {\n    let client = Client::with_uri_str(&amp;env_var(&quot;MONGO_URL&quot;)).await.unwrap();\n}\n</code></pre>\n<p>So how can I initialize the <code>client</code>?</p>\n<p>Related:</p>\n<ul>\n<li><a href=\"https://stackoverflow.com/questions/62351945/alternative-to-using-await-with-lazy-static-macro-in-rust\">alternative to using &#39;await&#39; with lazy_static! macro in rust?</a></li>\n<li><a href=\"https://github.com/rust-lang-nursery/lazy-static.rs/issues/167\" rel=\"noreferrer\">Async/await support?</a> on the lazy-static issue tracker</li>\n</ul>\n"
+    },
+    {
+      "tags": [
+        "python",
+        "c",
+        "asynchronous",
+        "rust",
+        "epoll"
+      ],
+      "owner": {
+        "account_id": 1327548,
+        "reputation": 983,
+        "user_id": 1272072,
+        "user_type": "registered",
+        "accept_rate": 67,
+        "profile_image": "https://www.gravatar.com/avatar/df162390316adb1dc3d5f1eb2d14079f?s=256&d=identicon&r=PG",
+        "display_name": "woodtluk",
+        "link": "https://stackoverflow.com/users/1272072/woodtluk"
+      },
+      "is_answered": false,
+      "view_count": 107,
+      "answer_count": 0,
+      "score": 1,
+      "last_activity_date": 1716913607,
+      "creation_date": 1716913607,
+      "question_id": 78545378,
+      "content_license": "CC BY-SA 4.0",
+      "link": "https://stackoverflow.com/questions/78545378/how-to-synchronise-async-runtimes",
+      "title": "How to synchronise async runtimes",
+      "body": "<p>We have a Python application that is implemented with the async runtime. Now we want to integrate a C library (with Cython) that runs its own event loop (e.g. <code>epoll</code>).</p>\n<p>How can we integrate these two different runtime mechanisms. Is there a general pattern to synchronise these two codebases?</p>\n<p>Eventually we might replace the Python code with Rust. So using a language-independent pattern would be nice.</p>\n"
+    }
+  ],
+  "has_more": true,
+  "quota_max": 300,
+  "quota_remaining": 299
+}

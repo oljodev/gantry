@@ -1,7 +1,7 @@
 //! First-party connector: Web (`docs/plan/03-connector-system.md` §5).
 //!
-//! One tool for now: read a page. Unlike the other three first-party connectors this one touches
-//! nothing on disk, so it does not sit on `gantry-workspace` and has no roots to enforce. Its
+//! Two tools: read a page, and search. Unlike the other three first-party connectors this one
+//! touches nothing on disk, so it does not sit on `gantry-workspace` and has no roots to enforce. Its
 //! boundary is the other way round: what it may *reach*. `guard` holds that — http and https
 //! only, and nothing that resolves inside this machine or this network, rechecked on every
 //! redirect.
@@ -10,13 +10,14 @@
 //! holds the document in between so turning the page is neither a second download nor a second
 //! chance for the offsets to have gone stale.
 //!
-//! **Searching is not built, and when it is it will be keyless.** This connector is free and
-//! local by rule: no API key field, no account, no quota to buy, nothing that turns a search
-//! into a bill. `docs/connectors/web.md` §6 is the architecture — a query router over
-//! purpose-built keyless APIs first, the user's own SearXNG if they run one, a rationed general
-//! engine after that, and independent indexes when that is spent. An earlier build of this
-//! connector took a Brave, Tavily or Exa key; it was removed because a key field is the one
-//! thing this connector may not have.
+//! **Search is keyless by rule.** This connector is free and local: no API key field, no
+//! account, no quota to buy, nothing that turns a search into a bill. `search` asks the indexes
+//! that need no account and are better than a general engine at their own subject — Wikipedia,
+//! Stack Overflow, crates.io, npm — and says so when a question falls outside all of them
+//! rather than answering it badly. `docs/connectors/web.md` §6 has the rest of the road: the
+//! user's own SearXNG, a rationed general engine, independent indexes. An earlier build took a
+//! Brave, Tavily or Exa key; it was removed because a key field is the one thing this connector
+//! may not have.
 
 #![forbid(unsafe_code)]
 
@@ -24,6 +25,7 @@ mod cache;
 mod extract;
 mod fetch;
 mod guard;
+mod search;
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -38,6 +40,10 @@ use tokio_util::sync::CancellationToken;
 pub use cache::{Cache, MAX_CHARS as CACHE_MAX_CHARS, MAX_PAGES, Page, TTL as CACHE_TTL};
 pub use extract::{Article, Format, Window, article, nests_too_deep, window};
 pub use fetch::{MAX_BYTES, MAX_REDIRECTS, TIMEOUT, USER_AGENT};
+pub use search::{
+    DEFAULT_RESULTS, Hit, MAX_RESULTS, SearchError, Source, parse_crates, parse_npm, parse_stack,
+    parse_wikipedia, route,
+};
 
 /// The connector manifest, embedded at build time (`docs/plan/03-connector-system.md` §3).
 pub const MANIFEST: &str = include_str!("../manifest.json");
@@ -106,6 +112,13 @@ impl Connector for Web {
                     biased;
                     () = cancel.cancelled() => Ok(ToolOutcome::error("the fetch was cancelled.")),
                     outcome = self.fetch_url(&req.args) => outcome,
+                }
+            }
+            "search" => {
+                tokio::select! {
+                    biased;
+                    () = cancel.cancelled() => Ok(ToolOutcome::error("the search was cancelled.")),
+                    outcome = self.search(&req.args) => outcome,
                 }
             }
             other => Err(ConnectorError::UnknownTool(other.to_owned())),
@@ -191,6 +204,56 @@ impl Web {
         ));
         self.pages.put(&url, format, Arc::clone(&page));
         Ok(render(&page, format, offset, max_chars, None))
+    }
+
+    /// The search behind the tool, without the JSON envelope around it.
+    ///
+    /// Public so the live test can exercise the real backends through the real client. Nothing
+    /// in the app calls it: the tool is how a model reaches this.
+    ///
+    /// # Errors
+    /// When no index covers the query, none had anything, or none could be reached.
+    pub async fn search_for(&self, query: &str, limit: usize) -> Result<Vec<Hit>, SearchError> {
+        search::run(&self.http, query, limit, None).await
+    }
+
+    async fn search(&self, args: &serde_json::Value) -> Result<ToolOutcome, ConnectorError> {
+        let query = required(args, "query")?;
+        let limit = number(args, "max_results").map_or(DEFAULT_RESULTS, |n| n as usize);
+        let only = match args.get("source").and_then(serde_json::Value::as_str) {
+            None | Some("auto") => None,
+            Some(name) => match Source::parse(name) {
+                Some(source) => Some(source),
+                None => {
+                    return Ok(ToolOutcome::error(format!(
+                        "`{name}` is not one of the indexes this connector can search. Use \
+                         wikipedia, stackoverflow, crates.io, npm, or leave it out to let the \
+                         query decide."
+                    )));
+                }
+            },
+        };
+
+        let hits = match search::run(&self.http, &query, limit, only).await {
+            Ok(hits) => hits,
+            // Every one of these is a sentence saying what to do next, not an empty list: a
+            // model handed `[]` concludes the thing does not exist (`search` §6.8).
+            Err(err) => return Ok(ToolOutcome::error(err.to_string())),
+        };
+
+        Ok(ToolOutcome::json(serde_json::json!({
+            "query": query,
+            // Which index answered, per result and in summary. A model should know it is
+            // quoting Stack Overflow rather than an encyclopedia before it does.
+            "searched": search::sources_of(&hits),
+            "results": hits.iter().map(|hit| serde_json::json!({
+                "title": hit.title,
+                "url": hit.url,
+                "snippet": hit.snippet,
+                "source": hit.source.label(),
+            })).collect::<Vec<_>>(),
+            "count": hits.len(),
+        })))
     }
 }
 
@@ -313,8 +376,8 @@ fn number(args: &serde_json::Value, key: &str) -> Option<u64> {
 /// at once is the normal way to use this — and not hidden in Plan mode, which is where reading
 /// around a problem belongs.
 ///
-/// A list rather than one constant because a keyless `search` joins it later; see the module
-/// documentation for why that one is not here yet.
+/// Both are `read`: searching and reading are the same kind of act on somebody else's public
+/// page, and neither writes anything anywhere.
 #[must_use]
 pub fn definitions() -> Vec<ToolDef> {
     let mut defs = vec![ToolDef::new(
@@ -345,6 +408,32 @@ pub fn definitions() -> Vec<ToolDef> {
         RiskTier::Read,
     )];
 
+    defs.push(ToolDef::new(
+        "search",
+        "Search the web for pages to read. Covers Wikipedia for facts and people, Stack \
+         Overflow for programming questions and errors, and crates.io and npm for packages — \
+         the query decides which. Every result says which index it came from. Follow a \
+         promising one with fetch_url to read the page itself; snippets are short and often cut \
+         mid-sentence. There is no general web search here, so a question outside those indexes \
+         comes back saying so rather than guessing.",
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "query": { "type": "string",
+                           "description": "What to search for. A question or an error message works; so does a package name." },
+                "source": { "type": "string",
+                            "enum": ["auto", "wikipedia", "stackoverflow", "crates.io", "npm"],
+                            "default": "auto",
+                            "description": "Which index to ask. Leave out unless the query alone would route it wrongly." },
+                "max_results": { "type": "integer", "minimum": 1, "maximum": MAX_RESULTS,
+                                 "default": DEFAULT_RESULTS }
+            },
+            "required": ["query"],
+            "additionalProperties": false
+        }),
+        RiskTier::Read,
+    ));
+
     for def in &mut defs {
         // Reading pages is the one thing a model should be doing several of at once.
         def.parallel_safe = true;
@@ -371,7 +460,7 @@ mod tests {
         // of truth, which is what will let a keyless `search` appear without a manifest change.
         let manifest: serde_json::Value = serde_json::from_str(MANIFEST).unwrap();
         assert_eq!(manifest["tools_generated"], true);
-        assert_eq!(names(), ["fetch_url"]);
+        assert_eq!(names(), ["fetch_url", "search"]);
     }
 
     #[test]

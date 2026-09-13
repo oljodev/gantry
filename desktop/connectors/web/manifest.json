@@ -2,8 +2,8 @@
   "manifest_version": "1",
   "id": "web",
   "name": "Web",
-  "description": "Fetch pages as readable text. No key, no account, nothing to pay for.",
-  "long_description": "Reads a page the way a reader mode does: navigation, cookie banners, share rails and comment threads are stripped, and what comes back is the article, its title and the address it ended up at after redirects.\n\nA page too long for one reply is not cut off: it comes back a window at a time, and the model reads on from where it stopped without fetching it again.\n\nOnly http and https, and only the public internet. Anything that resolves to this machine or to your own network — a router's admin page, a database on localhost, a cloud metadata service — is refused, and the check runs again on every redirect, so a public address cannot bounce the fetch inward. No cookies are sent or kept, so a page is fetched as a stranger sees it and never as you.\n\nThis connector is free and stays free. It asks for no key, keeps no account, and has no quota you can exhaust or buy your way out of. Searching the web is not built yet; when it is, it will be keyless too.\n\nWhere the chat's model has web search of its own, that is used for finding pages. This is the tool for reading them.",
+  "description": "Search the web and read pages as text. No key, no account, nothing to pay for.",
+  "long_description": "Reads a page the way a reader mode does: navigation, cookie banners, share rails and comment threads are stripped, and what comes back is the article, its title and the address it ended up at after redirects.\n\nA page too long for one reply is not cut off: it comes back a window at a time, and the model reads on from where it stopped without fetching it again.\n\nSearch asks the indexes that need no account and beat a general engine at their own subject — Wikipedia for facts and people, Stack Overflow for programming questions and errors, crates.io and npm for packages. The query decides which, several are asked at once, and every result says which index it came from. There is no general web search behind it, so a question none of them covers is answered with a sentence saying so rather than with a guess.\n\nOnly http and https, and only the public internet. Anything that resolves to this machine or to your own network — a router's admin page, a database on localhost, a cloud metadata service — is refused, and the check runs again on every redirect, so a public address cannot bounce the fetch inward. No cookies are sent or kept, so a page is fetched as a stranger sees it and never as you.\n\nThis connector is free and stays free. It asks for no key, keeps no account, and has no quota you can exhaust or buy your way out of.",
   "version": "0.1.0",
   "icon": "icon.svg",
   "category": "local",
@@ -12,6 +12,7 @@
     "fetch",
     "url",
     "page",
+    "search",
     "browse",
     "read",
     "article"
@@ -39,7 +40,7 @@
   },
   "tools_generated": true,
   "prompt": {
-    "system_addendum": "Prefer fetch_url over guessing at a page's contents from its URL. A page's text is what it says now; quote it rather than recalling it. A long page arrives one window at a time: when a result says more, call fetch_url again with the next_offset it gives you rather than answering from the first part alone. Reading on is free — the page is already in memory and is not fetched twice."
+    "system_addendum": "Prefer fetch_url over guessing at a page's contents from its URL. A page's text is what it says now; quote it rather than recalling it. A long page arrives one window at a time: when a result says more, call fetch_url again with the next_offset it gives you rather than answering from the first part alone. Reading on is free — the page is already in memory and is not fetched twice. When search returns results, follow the promising ones with fetch_url before answering: snippets are truncated and often misleading on their own. Search covers Wikipedia, Stack Overflow, crates.io and npm and nothing else; when it says a question is outside those, that is accurate, and inventing a URL to fetch instead is worse than saying you could not look it up."
   },
   "compatibility": {
     "platforms": [
@@ -55,6 +56,8 @@
       "url",
       "page",
       "website",
+      "search",
+      "look up",
       "read this",
       "link"
     ],

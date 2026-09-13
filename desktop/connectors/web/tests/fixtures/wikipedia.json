@@ -1,0 +1,43 @@
+{
+  "batchcomplete": "",
+  "continue": {
+    "sroffset": 3,
+    "continue": "-||"
+  },
+  "query": {
+    "searchinfo": {
+      "totalhits": 855,
+      "suggestion": "magnus carlsson",
+      "suggestionsnippet": "magnus carlsson"
+    },
+    "search": [
+      {
+        "ns": 0,
+        "title": "Magnus Carlsen",
+        "pageid": 442682,
+        "size": 406492,
+        "wordcount": 28947,
+        "snippet": "Sven <span class=\"searchmatch\">Magnus</span> \u00d8en <span class=\"searchmatch\">Carlsen</span> (born 30 November 1990) is a Norwegian chess grandmaster. <span class=\"searchmatch\">Carlsen</span> is a five-time World Chess Champion, reigning six-time World",
+        "timestamp": "2026-09-13T00:04:20Z"
+      },
+      {
+        "ns": 0,
+        "title": "Carlsen\u2013Niemann controversy",
+        "pageid": 70687269,
+        "size": 74566,
+        "wordcount": 7400,
+        "snippet": "controversy arose involving the chess grandmasters <span class=\"searchmatch\">Magnus</span> <span class=\"searchmatch\">Carlsen</span>, then world champion, and Hans Niemann. <span class=\"searchmatch\">Carlsen</span>, after surprisingly losing in their third-round",
+        "timestamp": "2026-09-03T16:14:36Z"
+      },
+      {
+        "ns": 0,
+        "title": "World Rapid Chess Championship 2024",
+        "pageid": 78727947,
+        "size": 9825,
+        "wordcount": 535,
+        "snippet": "division were: Following round six of the tournament, defending champion <span class=\"searchmatch\">Magnus</span> <span class=\"searchmatch\">Carlsen</span> was warned and fined for wearing jeans, which violated the dress code",
+        "timestamp": "2026-09-03T03:14:02Z"
+      }
+    ]
+  }
+}

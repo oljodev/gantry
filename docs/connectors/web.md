@@ -7,8 +7,10 @@ The ambition is Tavily's or Firecrawl's output quality with none of their econom
 key, no account, no monthly cap, no per-call billing, nothing leaving the machine except the
 requests themselves. However heavily the model uses it, it costs the user nothing.
 
-Status: §7's fetching is built and shipped as `fetch_url` (M11, 2026-09-13); §5's `query`
-parameter, §6's search and `research` are not. Everything marked **measured** was tested against
+Status: §7's fetching is built and shipped as `fetch_url`, and §6.2's tier 0 as `search`
+(M11, 2026-09-13) — Wikipedia, Stack Overflow, crates.io and npm, keyword-routed and keyless.
+Not built: §6.3's SearXNG, §6.4's rationed DuckDuckGo Lite, §6.5's independent indexes, §5's
+`query` parameter, and `research`. Everything marked **measured** was tested against
 the live web on 2026-09-07 from a residential connection, which is the position a Gantry user
 actually occupies. `docs/plan/03-connector-system.md` §5 holds the one-paragraph summary this
 replaces.
