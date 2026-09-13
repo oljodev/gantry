@@ -13,6 +13,7 @@ import { useState } from 'react';
 
 import { ArtifactGlyph } from '@/components/gantry/chat/ArtifactCard';
 import { EmptyState } from '@/components/gantry/EmptyState';
+import { ProjectDetailsDialog } from '@/features/projects/ProjectDetailsDialog';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -44,6 +45,7 @@ export function ProjectPage({ projectId }: { projectId: ProjectId }) {
   const project = useProject(projectId);
   const navigate = useNavigate();
   const { update, remove } = useProjectMutations();
+  const [editing, setEditing] = useState(false);
   const data = project.data;
 
   if (project.isError) {
@@ -68,7 +70,14 @@ export function ProjectPage({ projectId }: { projectId: ProjectId }) {
     <div className="mx-auto w-full max-w-(--measure) px-6 py-8">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="truncate text-page font-semibold text-fg">{data.name}</h1>
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="truncate rounded-2 text-left text-page font-semibold text-fg transition-colors duration-(--dur-1) hover:text-fg-2"
+            title="Rename"
+          >
+            {data.name}
+          </button>
           {data.description && <p className="mt-1 text-body text-fg-2">{data.description}</p>}
         </div>
         <div className="flex shrink-0 items-center gap-1">
@@ -134,6 +143,7 @@ export function ProjectPage({ projectId }: { projectId: ProjectId }) {
           <ArtifactsTab projectId={data.id} />
         </TabsContent>
       </Tabs>
+      {editing && <ProjectDetailsDialog project={data} onClose={() => setEditing(false)} />}
     </div>
   );
 }
