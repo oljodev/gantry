@@ -722,6 +722,47 @@ impl ConnectorService {
         crate::native::NativeConfig { public, secrets }
     }
 
+    /// Brings a native connector's recorded tool list back in line with what this build offers.
+    ///
+    /// For an MCP server the cached list is the last thing the server said, and only a
+    /// connection can change it. A native connector's tools are not like that: they come from
+    /// the code, so the release *is* the source of truth and a cached list from an older build
+    /// is simply wrong. The catalog ships inside the app (03 §11), which makes "installed before
+    /// its code existed" the ordinary upgrade path rather than an edge case — `web` shipped as a
+    /// manifest with no tools first — and such a row otherwise reads "No tools yet" for ever,
+    /// with no hint that **Refresh tools** is what fixes it.
+    ///
+    /// Writes only when the list actually differs, so the common rebuild touches no rows, and
+    /// never calls `rebuild` itself: this runs inside it.
+    async fn refresh_native_tools(
+        &self,
+        instance: &ConnectorInstanceDto,
+        config: &crate::native::NativeConfig,
+    ) {
+        let Some(catalog_id) = instance.catalog_id.as_deref() else {
+            return;
+        };
+        let Some(defs) = crate::native::definitions(catalog_id, config) else {
+            return;
+        };
+        let manifest = self.catalog.get(catalog_id);
+        let tools = tool_infos(&defs, manifest.as_deref());
+        if tools == instance.tools {
+            return;
+        }
+        let id = instance.id;
+        let (t, d) = (tools, with_overrides(&defs, manifest.as_deref()));
+        if let Err(err) = self
+            .store
+            .write(move |c| repos::connectors::record_connection(c, id, &t, &d, None, None))
+            .await
+        {
+            // Not fatal: the connector is about to be registered either way, so the tools work
+            // and only the list on its page is behind.
+            log::warn!("could not refresh {}'s tool list: {err}", instance.name);
+        }
+    }
+
     /// A native connector's tools come from its own code, so "connect" means recording what it
     /// offers. There is no process to start and nothing to authorize.
     async fn record_native(
@@ -972,6 +1013,7 @@ impl ConnectorService {
             }
             if instance.kind == ConnectorKind::Native {
                 let config = self.native_config(instance.id);
+                self.refresh_native_tools(&instance, &config).await;
                 match instance.catalog_id.as_deref().and_then(|catalog_id| {
                     crate::native::build(
                         catalog_id,
@@ -1280,6 +1322,43 @@ mod tests {
             service.secrets.get(&secret.id).unwrap().expose_secret(),
             "a-real-key"
         );
+    }
+
+    /// An instance installed before its code shipped catches up on the next start.
+    ///
+    /// This is the state a `web` row was really in: installed from a release whose manifest
+    /// declared no tools, so its cached list is empty, and the Connectors page says "No tools
+    /// yet" for ever because only a connection rewrites that list and a native connector never
+    /// makes one.
+    #[tokio::test]
+    async fn a_connector_installed_before_its_code_existed_catches_up() {
+        let (_dir, service) = service();
+        let id = service.install("web").await.unwrap();
+        service.connect(id).await.unwrap();
+
+        // Put the row back the way the older build left it: registered, enabled, no tools.
+        service
+            .store
+            .write(move |c| repos::connectors::record_connection(c, id, &[], &[], None, None))
+            .await
+            .unwrap();
+        assert!(
+            service.instance(id).unwrap().tools.is_empty(),
+            "the page would say `No tools yet`"
+        );
+
+        // Starting the app rebuilds the registry, and that is enough — no Refresh tools, no
+        // reinstall. A native connector's tools come from the build, so the build wins.
+        service.rebuild().await.unwrap();
+        let listed: Vec<String> = service
+            .instance(id)
+            .unwrap()
+            .tools
+            .into_iter()
+            .map(|t| t.name)
+            .collect();
+        assert_eq!(listed, ["fetch_url"]);
+        assert_eq!(offered(&service).await, ["fetch_url"]);
     }
 
     /// What the registered `web` connector says it offers right now — the same question the

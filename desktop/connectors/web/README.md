@@ -61,6 +61,11 @@ Gantry has no search account and buys nobody's quota. Two `user_config` fields, 
 With no key the `search` tool is not in the tool list at all rather than failing when it is
 called: a tool the model can see and cannot use costs a round to find out.
 
+An instance installed from an earlier release — when this manifest declared no tools — catches
+up on the next start: `rebuild` reconciles a native connector's recorded tool list with what the
+build offers, so the Connectors page stops saying "No tools yet" without anyone pressing
+**Refresh tools**.
+
 The app side of that is `NativeConfig` in `desktop/app/src/native.rs`: the public answers come
 from the instance row and the sensitive ones from the vault, and `ConnectorService::native_config`
 is what puts the two together. Filling in the form re-records the connector's tools, so the
