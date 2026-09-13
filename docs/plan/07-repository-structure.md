@@ -56,6 +56,7 @@ gantry/
 │   │       │   └── utils.ts  modes.ts  clipboard.ts  relativeTime.ts
 │   │       ├── features/
 │   │       │   ├── chat/{ChatView.tsx, MessageList.tsx, TurnStatusBar.tsx, ChatInstructionsDialog.tsx}   # 10 §2 layer 6
+│   │       │   ├── connectors/{install.ts, InstallDialog.tsx, fileConnectors.ts, FileToolsDialog.tsx}   # 03 §11
 │   │       │   ├── projects/{ProjectPage.tsx, NewProjectDialog.tsx, MoveToProjectDialog.tsx}   # 09 M11, 15 A22
 │   │       │   ├── activity/{ActivityFeed.tsx, detail/{DetailDrawer.tsx, JudgeDetail.tsx}}
 │   │       │   ├── interactions/{AccessRequestCard.tsx, ConnectorSuggestionCard.tsx, ElicitationCard.tsx, AuthRequiredCard.tsx}
