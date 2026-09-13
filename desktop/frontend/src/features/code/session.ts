@@ -6,10 +6,7 @@ import type { ModelRef } from '@/bindings';
 import { commands, isTauri, unwrap } from '@/lib/ipc/client';
 import { pickFolder } from '@/lib/folders';
 import { useChatMutations } from '@/lib/ipc/hooks/chats';
-import { useConnectorMutations, useConnectors } from '@/lib/ipc/hooks/connectors';
-
-/** The connectors a code session cannot work without (docs/plan/16 §8, 03 §11's one exception). */
-export const CODE_CONNECTORS = ['filesystem', 'code-editor', 'shell'] as const;
+import { CODE_CONNECTORS, useTurnOnConnectors } from '@/features/connectors/fileConnectors';
 
 /**
  * Starting a code session: pick a folder, make the session, turn on the file tools.
@@ -23,8 +20,7 @@ export const CODE_CONNECTORS = ['filesystem', 'code-editor', 'shell'] as const;
 export function useNewCodeSession() {
   const navigate = useNavigate();
   const { create, addRoot } = useChatMutations();
-  const installed = useConnectors();
-  const { install, connect, attach } = useConnectorMutations();
+  const turnOn = useTurnOnConnectors();
   const [busy, setBusy] = useState(false);
 
   const start = async (model: ModelRef | null, folder?: string) => {
@@ -40,13 +36,7 @@ export function useNewCodeSession() {
       // The session already has its folder; this keeps the two paths identical for a session
       // made some other way, and is a no-op when the folder is already there.
       await addRoot.mutateAsync({ chatId: chat.id, path });
-      for (const catalogId of CODE_CONNECTORS) {
-        const existing = (installed.data ?? []).find((c) => c.catalog_id === catalogId);
-        const instance = existing ?? (await install.mutateAsync(catalogId));
-        // A connector installed before its tools existed lists none; connecting re-reads them.
-        if (instance.tools.length === 0) await connect.mutateAsync(instance.id);
-        await attach.mutateAsync({ chatId: chat.id, instanceId: instance.id, attached: true });
-      }
+      await turnOn(chat.id, CODE_CONNECTORS);
       await navigate({ to: '/code/$sessionId', params: { sessionId: chat.id } });
     } catch (err) {
       toast.add({

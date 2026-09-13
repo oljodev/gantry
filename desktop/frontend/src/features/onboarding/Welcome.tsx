@@ -2,7 +2,10 @@ import { BugIcon, FileTextIcon, MagnifyingGlassIcon } from '@phosphor-icons/reac
 import { useNavigate } from '@tanstack/react-router';
 import { useMemo, useState } from 'react';
 
+import type { ReasoningEffort } from '@/bindings';
 import { Composer } from '@/components/gantry/composer/Composer';
+import { FileToolsDialog } from '@/features/connectors/FileToolsDialog';
+import { hasFileTools } from '@/features/connectors/fileConnectors';
 import { Kbd } from '@/components/ui/kbd';
 import { toast } from '@/components/ui/toast';
 import type { Mode, ModelRef } from '@/fixtures/types';
@@ -55,7 +58,7 @@ export function Welcome({ projectId }: { projectId?: string } = {}) {
   const [mode, setMode] = useState<Mode | null>(null);
   const [guard, setGuard] = useState<boolean | null>(null);
   const [model, setModel] = useState<ModelRef | null>(null);
-  const [thinking, setThinking] = useState<boolean | null>(null);
+  const [effort, setEffort] = useState<ReasoningEffort | null>(null);
   const [prefill, setPrefill] = useState<{ text: string; nonce: number } | undefined>();
   const [busy, setBusy] = useState(false);
   // There is no chat yet to attach anything to, so the folders and connectors chosen here are
@@ -63,6 +66,8 @@ export function Welcome({ projectId }: { projectId?: string } = {}) {
   // chat behind every time somebody opened the menu and changed their mind.
   const [roots, setRoots] = useState<string[]>([]);
   const [connectors, setConnectors] = useState<string[]>([]);
+  /** The folder just chosen on a machine with no file tools yet (03 §11). */
+  const [folderWithoutTools, setFolderWithoutTools] = useState<string | null>(null);
 
   const connectorChoices = useMemo(
     () =>
@@ -79,8 +84,7 @@ export function Welcome({ projectId }: { projectId?: string } = {}) {
   const effectiveMode = mode ?? chatDefaults?.default_mode ?? 'auto_edit';
   const effectiveGuard = guard ?? chatDefaults?.default_guard ?? true;
   const effectiveModel = model ?? chatDefaults?.default_model ?? DEFAULT_MODEL;
-  const defaultEffort = chatDefaults?.default_effort ?? 'medium';
-  const effectiveThinking = thinking ?? defaultEffort !== 'off';
+  const effectiveEffort = effort ?? chatDefaults?.default_effort ?? 'medium';
 
   const onSend = async (text: string, attachments: PendingAttachment[]) => {
     if (!isTauri()) {
@@ -96,12 +100,8 @@ export function Welcome({ projectId }: { projectId?: string } = {}) {
         projectId: projectId ?? null,
       });
       const changed =
-        mode !== null || guard !== null || thinking !== null
-          ? {
-              mode: mode ?? undefined,
-              guard: guard ?? undefined,
-              effort: thinking === null ? undefined : effectiveThinking ? defaultEffort : 'off',
-            }
+        mode !== null || guard !== null || effort !== null
+          ? { mode: mode ?? undefined, guard: guard ?? undefined, effort: effort ?? undefined }
           : null;
       if (changed) await update.mutateAsync({ chatId: chat.id, update: changed });
       // Everything chosen before the chat existed, applied before its first turn so the model
@@ -161,8 +161,13 @@ export function Welcome({ projectId }: { projectId?: string } = {}) {
         roots={roots}
         onAddRoot={() => {
           void pickFolder().then((path) => {
-            if (path)
-              setRoots((current) => (current.includes(path) ? current : [...current, path]));
+            if (!path) return;
+            setRoots((current) => (current.includes(path) ? current : [...current, path]));
+            // The first folder anyone attaches is usually on a machine where nothing is
+            // installed yet, and a folder nothing can read is the menu item not working.
+            if (!hasFileTools(installedConnectors.data ?? [], connectors)) {
+              setFolderWithoutTools(path);
+            }
           });
         }}
         onRemoveRoot={(path) => setRoots((current) => current.filter((r) => r !== path))}
@@ -173,15 +178,24 @@ export function Welcome({ projectId }: { projectId?: string } = {}) {
           )
         }
         running={busy}
-        thinking={effectiveThinking}
+        effort={effectiveEffort}
         prefill={prefill}
-        onThinkingChange={setThinking}
+        onEffortChange={setEffort}
         onModeChange={setMode}
         onGuardChange={setGuard}
         onModelChange={setModel}
         onBrowseConnectors={() => openCustomize('connectors')}
         onSend={(text, attachments) => void onSend(text, attachments)}
       />
+      {folderWithoutTools !== null && (
+        <FileToolsDialog
+          chatId={null}
+          root={folderWithoutTools}
+          onClose={() => setFolderWithoutTools(null)}
+          // There is no chat yet, so the instances join what the first message attaches.
+          onTurnedOn={(ids) => setConnectors((current) => [...new Set([...current, ...ids])])}
+        />
+      )}
       <div className="flex h-8 items-center justify-center gap-1.5 text-meta text-fg-3">
         Add files, folders and connectors with <Kbd>+</Kbd> · search anything with <Kbd>⌘</Kbd>
         <Kbd>K</Kbd>

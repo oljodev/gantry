@@ -217,6 +217,10 @@ function messagesToBlocks(
     if (last?.kind === 'activity') last.items.push(item);
     else blocks.push({ kind: 'activity', items: [item] });
   };
+  // Anthropic reports a provider search as two blocks — the call, then its results — so the row
+  // is kept by id and filled in when the second one arrives. The row object is the one already
+  // in the block, so mutating it here is what puts the results on screen.
+  const webRows = new Map<string, Extract<ActivityItem, { kind: 'web' }>>();
   const lastMessage = messages[messages.length - 1];
   const lastIsThinking = () => {
     const parts = lastMessage?.parts ?? [];
@@ -278,6 +282,8 @@ function messagesToBlocks(
         });
       } else if (part.kind === 'tool_call') {
         pushItem(callItem(part, calls[part.id], titles, output[part.id]));
+      } else if (part.kind === 'provider_opaque') {
+        applyOpaque(part, webRows, pushItem);
       }
     }
   }
@@ -658,4 +664,65 @@ function textOf(messages: Message[]): string | undefined {
 
 function partsText(parts: ContentPart[]): string {
   return parts.map((p) => (p.kind === 'text' ? p.text : '')).join('');
+}
+
+/**
+ * A provider's own server tools, which arrive as opaque blocks the app persists and replays but
+ * does not interpret (02 §5). Web search is the one it names, because it is the one the user has
+ * to be able to see: nothing else in the transcript says where the pages in the answer came
+ * from, and a search Gantry never ran is a search no permission card ever mentioned.
+ *
+ * Every other block kind — citations, encrypted reasoning, a server tool this version has never
+ * heard of — is left alone rather than guessed at. Opaque means opaque.
+ */
+function applyOpaque(
+  part: Extract<ContentPart, { kind: 'provider_opaque' }>,
+  rows: Map<string, Extract<ActivityItem, { kind: 'web' }>>,
+  pushItem: (item: ActivityItem) => void,
+): void {
+  const json = (part.json ?? {}) as Record<string, unknown>;
+  const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined);
+  const obj = (v: unknown): Record<string, unknown> =>
+    v && typeof v === 'object' ? (v as Record<string, unknown>) : {};
+
+  switch (part.block_kind) {
+    // Anthropic: the call, whose results arrive as their own block below.
+    case 'server_tool_use': {
+      if (str(json.name) !== 'web_search') return;
+      const id = str(json.id) ?? `web-${rows.size}`;
+      const row: Extract<ActivityItem, { kind: 'web' }> = {
+        kind: 'web',
+        id,
+        query: str(obj(json.input).query),
+        results: [],
+        status: 'running',
+      };
+      rows.set(id, row);
+      pushItem(row);
+      return;
+    }
+    case 'web_search_tool_result': {
+      const row = rows.get(str(json.tool_use_id) ?? '');
+      if (!row) return;
+      const content = Array.isArray(json.content) ? json.content : [];
+      row.results = content
+        .map((r) => obj(r))
+        .filter((r) => str(r.url) !== undefined)
+        .map((r) => ({ title: str(r.title) ?? str(r.url) ?? '', url: str(r.url) ?? '' }));
+      row.status = 'done';
+      return;
+    }
+    // OpenAI Responses: one item, which carries its own status and no results.
+    case 'web_search_call': {
+      pushItem({
+        kind: 'web',
+        id: str(json.id) ?? `web-${rows.size}`,
+        query: str(obj(json.action).query),
+        results: [],
+        status: str(json.status) === 'completed' ? 'done' : 'running',
+      });
+      return;
+    }
+    default:
+  }
 }

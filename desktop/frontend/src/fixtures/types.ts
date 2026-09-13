@@ -51,6 +51,18 @@ export interface Hunk {
 export type ActivityItem =
   | { kind: 'read'; id: string; path: string; range?: string; guard?: GuardMark }
   | { kind: 'search'; id: string; query: string; glob: string; matches: number; guard?: GuardMark }
+  /**
+   * A search the *provider* ran for the model, reported back as opaque blocks (02 §5). It is
+   * not a tool call Gantry made, has no permission and cannot be denied — which is exactly why
+   * it has to be on screen: otherwise the answer cites pages that came from nowhere.
+   */
+  | {
+      kind: 'web';
+      id: string;
+      query?: string;
+      results: { title: string; url: string }[];
+      status: 'running' | 'done';
+    }
   | {
       kind: 'edit';
       id: string;
