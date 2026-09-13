@@ -115,13 +115,16 @@ const FURNITURE_WORDS: &[&str] = &[
     "visually-hidden",
 ];
 
-/// Containers that usually *are* the article, tried in order of how strongly they say so. A
-/// match is still scored: a site that wraps its whole page in `<main>` gets no benefit from it.
-const CANDIDATES: &[&str] = &[
-    "article",
-    "main",
-    "[role=main]",
-    "[itemprop=articleBody]",
+/// Containers that *declare* themselves to be the article.
+///
+/// These are not guesses, so they are not scored against the rest of the page: an author who
+/// wrote `<article>` has said where the content is, and the one thing that can outrank that is
+/// another semantic container.
+const SEMANTIC: &[&str] = &["article", "main", "[role=main]", "[itemprop=articleBody]"];
+
+/// Containers that are *probably* the article, in decreasing order of how strongly they say so.
+/// These are guesses, so the best-scoring one wins. `body` is last and is the floor.
+const HEURISTIC: &[&str] = &[
     ".post-content",
     ".entry-content",
     ".article-body",
@@ -199,20 +202,27 @@ fn strip_furniture(doc: &Document) {
 /// whole trick: a navigation column has plenty of characters and almost no paragraphs, so it
 /// loses to three real paragraphs even when it is longer.
 fn best_body(doc: &Document, format: Format) -> String {
-    let mut best: Option<(usize, dom_query::Selection<'_>)> = None;
-    for selector in CANDIDATES {
-        for node in doc.select(selector).nodes() {
-            let selection = dom_query::Selection::from(*node);
-            let score = prose_length(&selection);
-            if score == 0 {
-                continue;
-            }
-            if best.as_ref().is_none_or(|(top, _)| score > *top) {
-                best = Some((score, selection));
-            }
-        }
-    }
-    let Some((_, selection)) = best else {
+    // A semantic container wins outright, and is never scored against `body`. Scoring it there
+    // could not work: `body` contains it, so `body` always scores at least as much, and any
+    // furniture that survived the strip is enough to tip it — which is how a page's promo rail
+    // ends up quoted back as part of the article. Length is not the test either; a short note
+    // in an `<article>` is still the thing somebody asked to read.
+    //
+    // The exception is a page that is a *list* of articles. Several `<article>` elements mean
+    // teaser cards on an index, where no one of them is the page, so that falls back to scoring
+    // and `body` returns the lot.
+    let listing = doc.select("article").nodes().len() > 1;
+    let chosen = match best_of(doc, SEMANTIC) {
+        Some((_, selection)) if !listing => Some(selection),
+        semantic => match (semantic, best_of(doc, HEURISTIC)) {
+            (Some((a, x)), Some((b, y))) => Some(if a >= b { x } else { y }),
+            (Some((_, x)), None) => Some(x),
+            (None, Some((_, y))) => Some(y),
+            (None, None) => None,
+        },
+    };
+
+    let Some(selection) = chosen else {
         // Nothing scored: a page that is one `<div>` of text, or not really a document at all.
         // Its whole text is a better answer than an empty string.
         return match format {
@@ -232,6 +242,25 @@ fn best_body(doc: &Document, format: Format) -> String {
         Format::Text => selection.formatted_text().to_string(),
         Format::Html => selection.html().to_string(),
     }
+}
+
+/// The highest-scoring element any of `selectors` matches, with ties going to the earlier
+/// selector — which is what makes the order of `HEURISTIC` mean something.
+fn best_of<'a>(doc: &'a Document, selectors: &[&str]) -> Option<(usize, dom_query::Selection<'a>)> {
+    let mut best: Option<(usize, dom_query::Selection<'a>)> = None;
+    for selector in selectors {
+        for node in doc.select(selector).nodes() {
+            let selection = dom_query::Selection::from(*node);
+            let score = prose_length(&selection);
+            if score == 0 {
+                continue;
+            }
+            if best.as_ref().is_none_or(|(top, _)| score > *top) {
+                best = Some((score, selection));
+            }
+        }
+    }
+    best
 }
 
 fn prose_length(selection: &dom_query::Selection<'_>) -> usize {

@@ -219,8 +219,15 @@ impl Web {
 /// A body served as `text/plain` that is plainly HTML, which servers do more often than they
 /// should. Cheap enough to be worth trying before handing markup to the model as prose.
 fn looks_like_html(text: &str) -> bool {
-    let head = text.trim_start();
-    let head = &head[..head.len().min(1024)].to_lowercase();
+    // Counted in characters, not bytes. `&head[..1024]` panics when the 1024th byte lands inside
+    // a multi-byte character, which any page with an em dash or a non-Latin script early in it
+    // can arrange — and this runs on whatever the network returned.
+    let head: String = text
+        .trim_start()
+        .chars()
+        .take(1024)
+        .collect::<String>()
+        .to_lowercase();
     head.starts_with("<!doctype html") || head.starts_with("<html") || head.contains("<body")
 }
 
@@ -351,6 +358,21 @@ mod tests {
                 def.name
             );
         }
+    }
+
+    #[test]
+    fn a_multi_byte_character_at_the_sniff_boundary_is_not_a_panic() {
+        // 1023 ASCII bytes then an em dash, so byte 1024 falls inside it. Slicing by bytes here
+        // panicked, and the input is whatever a server sent.
+        let text = format!("{}{}", "a".repeat(1023), "—tail");
+        assert!(
+            !text.is_char_boundary(1024),
+            "the fixture must straddle the boundary"
+        );
+        assert!(!looks_like_html(&text));
+        // The same, for a page that really is HTML past a long run of leading whitespace.
+        let html = format!("{}<html>{}", " ".repeat(2000), "—".repeat(500));
+        assert!(looks_like_html(&html));
     }
 
     #[test]

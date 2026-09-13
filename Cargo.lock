@@ -1701,6 +1701,7 @@ dependencies = [
  "gantry-connector-code-editor",
  "gantry-connector-filesystem",
  "gantry-connector-shell",
+ "gantry-connector-web",
  "gantry-connectors",
  "gantry-core",
  "gantry-providers",

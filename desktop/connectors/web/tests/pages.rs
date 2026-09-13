@@ -157,3 +157,55 @@ fn a_page_cut_to_a_budget_says_that_it_was_cut() {
         assert!(tiny.chars().count() <= budget);
     }
 }
+
+const STRAY: &str = include_str!("fixtures/stray.html");
+const LISTING: &str = include_str!("fixtures/listing.html");
+
+#[test]
+fn an_article_element_is_not_outscored_by_the_page_that_contains_it() {
+    // `body` contains the `<article>`, so `body` can never score lower — and here a promo rail
+    // whose class matches none of the furniture words is enough to tip it. An author who wrote
+    // `<article>` has said where the content is; that is not a guess to be outvoted.
+    let page = article(STRAY, Format::Text);
+    assert!(
+        page.body
+            .contains("This is the piece somebody asked to read")
+    );
+    assert!(
+        !page.body.contains("promotional rail"),
+        "the rail outside the article came back with it:\n{}",
+        page.body
+    );
+    assert!(
+        !page.body.contains("Elsewhere on the site"),
+        "{}",
+        page.body
+    );
+}
+
+#[test]
+fn a_short_article_is_still_the_article() {
+    // The obvious fix for the case above — trust `<article>` only past some length — quietly
+    // breaks every short page, so length is not the test.
+    let page = article(STRAY, Format::Text);
+    assert!(
+        page.body.chars().count() < 200,
+        "the fixture is short: {}",
+        page.body
+    );
+    assert!(!page.body.contains("promotional rail"));
+}
+
+#[test]
+fn an_index_of_teasers_returns_all_of_them() {
+    // Several `<article>` elements are a list, where no single one is the page. Picking the
+    // best-scoring teaser would answer "what is on this page" with a third of it.
+    let page = article(LISTING, Format::Text);
+    for post in ["The first post", "The second post", "The third post"] {
+        assert!(
+            page.body.contains(post),
+            "{post} is missing:\n{}",
+            page.body
+        );
+    }
+}
