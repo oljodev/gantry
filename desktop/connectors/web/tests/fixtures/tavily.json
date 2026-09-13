@@ -1,0 +1,18 @@
+{
+  "query": "bounded fetching",
+  "response_time": 1.42,
+  "results": [
+    {
+      "title": "Bounded fetching",
+      "url": "https://example.com/blog/bounded-fetching",
+      "content": "A fetcher without limits is a denial of service you wrote yourself.",
+      "score": 0.97
+    },
+    {
+      "title": "Streaming responses without tears",
+      "url": "https://example.org/streaming",
+      "content": "Read the stream   and stop counting.",
+      "score": 0.81
+    }
+  ]
+}

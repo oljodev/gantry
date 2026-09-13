@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Bounded fetching — Example Engineering Blog</title>
+  <meta property="og:title" content="Bounded fetching">
+  <script>window.analytics = {track: function(){}};</script>
+  <style>body { font-family: sans-serif }</style>
+</head>
+<body>
+  <div id="cookie-consent-banner">
+    <p>We value your privacy. This site uses cookies to improve your experience.</p>
+    <button>Accept all</button>
+    <button>Reject</button>
+  </div>
+  <header class="site-header">
+    <nav class="primary-nav">
+      <ul>
+        <li><a href="/">Home</a></li>
+        <li><a href="/blog">Blog</a></li>
+        <li><a href="/docs">Documentation</a></li>
+        <li><a href="/pricing">Pricing</a></li>
+        <li><a href="/about">About us</a></li>
+        <li><a href="/careers">Careers, and we are hiring across every team</a></li>
+      </ul>
+    </nav>
+  </header>
+  <div class="page">
+    <aside class="sidebar">
+      <h3>Related posts</h3>
+      <ul>
+        <li><a href="/a">Why timeouts are hard</a></li>
+        <li><a href="/b">A short history of the redirect</a></li>
+        <li><a href="/c">Streaming responses without tears</a></li>
+      </ul>
+      <div class="newsletter-signup">
+        <p>Subscribe to our newsletter for weekly posts about distributed systems.</p>
+      </div>
+    </aside>
+    <main>
+      <article class="post-content">
+        <h1>Bounded fetching</h1>
+        <p>A fetcher without limits is a denial of service you wrote yourself. The first bound
+        that matters is size: a response can be arbitrarily large, and the server decides.</p>
+        <h2>Why Content-Length is not a bound</h2>
+        <p>The header is a claim. A server can send a small one and then a very large body, so a
+        client that trusts it has no bound at all. Read the stream and stop counting.</p>
+        <ul>
+          <li>Cap the bytes read, not the bytes kept.</li>
+          <li>Count redirects, and check each hop.</li>
+          <li>Give the whole operation a deadline.</li>
+        </ul>
+        <p>The last one catches the case the other two miss: a server that sends one byte per
+        second, forever, stays under every size cap there is.</p>
+      </article>
+      <section class="comments" id="disqus_thread">
+        <h3>42 comments</h3>
+        <p>First! Great post, I have been saying this for years and nobody listens to me.</p>
+      </section>
+    </main>
+  </div>
+  <footer class="site-footer">
+    <p>Copyright 2026 Example Engineering. All rights reserved. Privacy policy. Terms of service.</p>
+  </footer>
+  <div class="social-share">
+    <a href="#">Share on social media</a>
+  </div>
+</body>
+</html>

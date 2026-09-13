@@ -225,8 +225,8 @@ fn best_body(doc: &Document, format: Format) -> String {
             .nodes()
             .first()
             .map(|n| {
-                n.md(Some(&["script", "style", "meta", "head", "nav"]))
-                    .to_string()
+                let md = n.md(Some(&["script", "style", "meta", "head", "nav"]));
+                unescape_prose(&md)
             })
             .unwrap_or_default(),
         Format::Text => selection.formatted_text().to_string(),
@@ -240,6 +240,69 @@ fn prose_length(selection: &dom_query::Selection<'_>) -> usize {
         .iter()
         .map(|el| el.text().trim().chars().count())
         .sum()
+}
+
+/// Take back the Markdown escapes that were never needed.
+///
+/// The serializer escapes seventeen characters everywhere, so ordinary prose comes out as
+/// `a denial of service you wrote yourself\.` with a backslash before every full stop, bracket
+/// and quotation mark. That is correct Markdown and it is bad reading: the model pays for each
+/// backslash by the token and has to see past all of them to quote a sentence back.
+///
+/// So the escape is kept only where it does something. Inline, that is the emphasis and link
+/// characters — `` ` ``, `*`, `_`, `[`, `]` — which change how a line renders. At the start of a
+/// line it is also `#`, `+`, `-` and `>`, which would otherwise turn a paragraph into a heading,
+/// a list or a quote. And a full stop after a leading number stays escaped, because `1974. The
+/// year` is an ordered list where `1974\. The year` is a sentence. Everything else loses the
+/// backslash.
+fn unescape_prose(text: &str) -> String {
+    /// Escapes that change an inline rendering wherever they appear.
+    const INLINE: &[char] = &['`', '*', '_', '[', ']'];
+    /// Escapes that only matter as the first thing on a line.
+    const BLOCK: &[char] = &['#', '+', '-', '>'];
+
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
+    // What the line holds so far, which is how "at the start of a line" and "after a number"
+    // are answered without looking backwards through `out`.
+    let mut line_start = true;
+    let mut digits_only = true;
+
+    while let Some(ch) = chars.next() {
+        if ch != '\\' {
+            if ch == '\n' {
+                line_start = true;
+                digits_only = true;
+            } else if !ch.is_whitespace() {
+                digits_only = digits_only && ch.is_ascii_digit();
+                line_start = false;
+            }
+            out.push(ch);
+            continue;
+        }
+        let Some(&next) = chars.peek() else {
+            out.push(ch);
+            continue;
+        };
+        // `\\` is a literal backslash: both characters stay, and the second must not then be
+        // read as the start of another escape.
+        let keep = next == '\\'
+            || INLINE.contains(&next)
+            || (line_start && BLOCK.contains(&next))
+            || (next == '.' && digits_only && !line_start);
+        if !keep {
+            // Drop the backslash; the character itself is pushed by the next turn of the loop.
+            continue;
+        }
+        out.push(ch);
+        if next == '\\' {
+            out.push(next);
+            chars.next();
+            line_start = false;
+            digits_only = false;
+        }
+    }
+    out
 }
 
 fn collapse(text: &str) -> String {
@@ -282,4 +345,66 @@ pub fn clamp(text: &str, max_chars: usize) -> (String, bool) {
         .filter(|at| *at * 4 > cut.len() * 3)
         .map_or(cut.as_str(), |at| &cut[..at]);
     (on_a_line.trim_end().to_owned(), true)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn prose_loses_the_escapes_it_never_needed() {
+        assert_eq!(
+            unescape_prose(r"you wrote it yourself\."),
+            "you wrote it yourself."
+        );
+        assert_eq!(unescape_prose(r"a claim \(mostly\)"), "a claim (mostly)");
+        assert_eq!(unescape_prose(r#"he said \"no\""#), r#"he said "no""#);
+        assert_eq!(unescape_prose(r"C\+\+ and C\#"), "C++ and C#");
+        assert_eq!(unescape_prose(r"really\!"), "really!");
+        assert_eq!(unescape_prose(r"a \| b"), "a | b");
+        assert_eq!(unescape_prose(r"\<not a tag\>"), "<not a tag>");
+    }
+
+    #[test]
+    fn the_escapes_that_do_something_are_kept() {
+        // Inline: dropping these would turn prose into emphasis, code or a link.
+        assert_eq!(unescape_prose(r"a \*literal\* star"), r"a \*literal\* star");
+        assert_eq!(unescape_prose(r"snake\_case\_name"), r"snake\_case\_name");
+        assert_eq!(unescape_prose(r"a \`tick\`"), r"a \`tick\`");
+        assert_eq!(unescape_prose(r"\[not a link\]"), r"\[not a link\]");
+    }
+
+    #[test]
+    fn a_line_that_would_become_a_heading_or_a_list_keeps_its_escape() {
+        assert_eq!(unescape_prose(r"\# not a heading"), r"\# not a heading");
+        assert_eq!(unescape_prose(r"\- not a bullet"), r"\- not a bullet");
+        assert_eq!(unescape_prose(r"\> not a quote"), r"\> not a quote");
+        assert_eq!(unescape_prose(r"  \+ indented"), r"  \+ indented");
+        // The same characters mid-sentence are just characters.
+        assert_eq!(unescape_prose(r"two \- three"), "two - three");
+        assert_eq!(unescape_prose(r"a \# b"), "a # b");
+    }
+
+    #[test]
+    fn a_year_at_the_start_of_a_line_stays_a_year() {
+        // `1974. The year` would be an ordered list; the escape is what keeps it a sentence.
+        assert_eq!(unescape_prose(r"1974\. The year"), r"1974\. The year");
+        // Mid-sentence there is no list to be mistaken for.
+        assert_eq!(unescape_prose(r"born in 1974\. He"), "born in 1974. He");
+        // Nor is there when the line does not start with digits.
+        assert_eq!(unescape_prose(r"Rust 1\.93"), "Rust 1.93");
+    }
+
+    #[test]
+    fn a_literal_backslash_survives() {
+        assert_eq!(unescape_prose(r"C:\\Users\\me"), r"C:\\Users\\me");
+        // A trailing backslash with nothing after it is not an escape at all.
+        assert_eq!(unescape_prose("ends with "), "ends with ");
+    }
+
+    #[test]
+    fn text_that_never_had_an_escape_is_returned_as_it_was() {
+        let plain = "Nothing here needs escaping at all.\n\nTwo paragraphs, in fact.";
+        assert_eq!(unescape_prose(plain), plain);
+    }
 }

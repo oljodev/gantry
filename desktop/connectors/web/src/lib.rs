@@ -26,9 +26,9 @@ use gantry_connectors::{
 use gantry_core::{InstanceId, RiskTier, ToolDef};
 use tokio_util::sync::CancellationToken;
 
-pub use extract::{Article, Format, article};
+pub use extract::{Article, Format, article, clamp};
 pub use fetch::{MAX_BYTES, MAX_REDIRECTS, TIMEOUT, USER_AGENT};
-pub use search::{DEFAULT_RESULTS, Hit, MAX_RESULTS, Provider, Search};
+pub use search::{DEFAULT_RESULTS, Hit, MAX_RESULTS, Provider, Search, SearchError, parse_hits};
 
 /// The connector manifest, embedded at build time (`docs/plan/03-connector-system.md` §3).
 pub const MANIFEST: &str = include_str!("../manifest.json");
