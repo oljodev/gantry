@@ -42,9 +42,8 @@
     "SEARCH_PROVIDER": {
       "type": "string",
       "title": "Search provider",
-      "description": "brave, tavily or exa. Only needed if you want the search tool; leave both fields empty to fetch pages only.",
-      "required": false,
-      "default": "brave"
+      "description": "brave, tavily or exa — whichever issued the key below. There is no default on purpose: a key pasted against the wrong name would be sent to a service it does not belong to. Leave both fields empty to fetch pages only.",
+      "required": false
     },
     "SEARCH_API_KEY": {
       "type": "string",

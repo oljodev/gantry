@@ -230,6 +230,9 @@ async fn a_cancelled_call_stops_rather_than_waiting_out_the_timeout() {
         .await
         .unwrap();
     assert!(refusal(&outcome).contains("cancelled"));
+    // Deterministic, and offline: `select!` is `biased`, so an already-cancelled token wins
+    // before the fetch branch is polled. Without that this test resolved a real hostname in
+    // roughly half its runs, which is the one thing the suite must never do.
 }
 
 #[test]

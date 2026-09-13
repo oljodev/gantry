@@ -124,7 +124,12 @@ impl Search {
     /// "no key configured" reaches `definitions` as a plain `bool`.
     #[must_use]
     pub fn from_config(provider: Option<&str>, key: Option<SecretString>) -> Option<Self> {
-        let key = key.filter(|k| !k.expose_secret().trim().is_empty())?;
+        // Trimmed, not merely tested for emptiness after trimming: a key pasted with a trailing
+        // newline is the ordinary way to paste one, and sending it as typed is a 401 the user
+        // has no way to explain.
+        let key = key
+            .map(|k| SecretString::from(k.expose_secret().trim().to_owned()))
+            .filter(|k| !k.expose_secret().is_empty())?;
         // A key with no provider named is very likely Brave, which is the field's default; but
         // guessing which service to send a secret to is not a guess worth making.
         let provider = Provider::parse(provider?)?;
@@ -176,10 +181,12 @@ impl Search {
             .await
             .map_err(|err| SearchError::Transport(err.to_string()))?;
         let status = response.status().as_u16();
-        let body = response
-            .text()
+        // Read through the same cap a page gets. A search service answering with a gigabyte is
+        // not a case worth trusting differently just because the user chose the vendor.
+        let (bytes, _) = crate::fetch::read_capped(response)
             .await
             .map_err(|err| SearchError::Transport(err.to_string()))?;
+        let body = String::from_utf8_lossy(&bytes).into_owned();
         if !(200..300).contains(&status) {
             return Err(SearchError::Rejected {
                 status,
@@ -262,20 +269,47 @@ fn string(row: &Value, key: &str) -> Option<String> {
         .map(str::to_owned)
 }
 
-/// The highlight markup in a snippet, removed. A full HTML parse for `<strong>` would be a lot
-/// of machinery for a field that is one sentence long.
+/// The highlight markup in a snippet, removed, and the entities that come with it decoded.
+///
+/// A full HTML parse for `<strong>` would be a lot of machinery for a field that is one sentence
+/// long — but treating every `<` as the start of a tag is worse than no stripping at all: a
+/// snippet reading "for x < y" loses everything after the `<`. Only a run that actually looks
+/// like a tag is dropped.
 fn strip_tags(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
-    let mut inside = false;
-    for ch in text.chars() {
-        match ch {
-            '<' => inside = true,
-            '>' => inside = false,
-            _ if !inside => out.push(ch),
-            _ => {}
+    let mut rest = text;
+    while let Some(at) = rest.find('<') {
+        let after = &rest[at + 1..];
+        let name = after.strip_prefix('/').unwrap_or(after);
+        let tag = name.starts_with(|c: char| c.is_ascii_alphabetic())
+            && after.find('>').is_some_and(|end| end <= 32);
+        if !tag {
+            out.push_str(&rest[..=at]);
+            rest = after;
+            continue;
         }
+        out.push_str(&rest[..at]);
+        // `find` succeeded in the check above, so the tag has an end.
+        let end = after.find('>').unwrap_or(after.len() - 1);
+        rest = &after[end + 1..];
     }
-    out
+    out.push_str(rest);
+    decode_entities(&out)
+}
+
+/// The handful of entities that actually turn up in a search snippet.
+fn decode_entities(text: &str) -> String {
+    if !text.contains('&') {
+        return text.to_owned();
+    }
+    text.replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace("&#x27;", "'")
+        .replace("&nbsp;", " ")
+        // Last, so that `&amp;lt;` decodes to `&lt;` and not to `<`.
+        .replace("&amp;", "&")
 }
 
 fn collapse(text: &str) -> String {
@@ -306,6 +340,18 @@ mod tests {
             Search::from_config(Some("brave"), Some(SecretString::from("   ".to_owned())))
                 .is_none()
         );
+    }
+
+    #[test]
+    fn a_key_pasted_with_a_newline_is_the_key_without_it() {
+        // Pasting a key picks up whitespace. Testing the trimmed form for emptiness but sending
+        // the untrimmed one is a 401 the user has no way to explain.
+        let search = Search::from_config(
+            Some("brave"),
+            Some(SecretString::from("  a-real-key\n".to_owned())),
+        )
+        .expect("a key with whitespace around it is still a key");
+        assert_eq!(search.key.expose_secret(), "a-real-key");
     }
 
     #[test]

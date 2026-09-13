@@ -26,7 +26,7 @@ use gantry_connectors::{
 use gantry_core::{InstanceId, RiskTier, ToolDef};
 use tokio_util::sync::CancellationToken;
 
-pub use extract::{Article, Format, article, clamp};
+pub use extract::{Article, Format, article, clamp, nests_too_deep};
 pub use fetch::{MAX_BYTES, MAX_REDIRECTS, TIMEOUT, USER_AGENT};
 pub use search::{DEFAULT_RESULTS, Hit, MAX_RESULTS, Provider, Search, SearchError, parse_hits};
 
@@ -93,15 +93,21 @@ impl Connector for Web {
             "fetch_url" => {
                 // Cancelling a turn should stop a 20-second fetch with it, rather than leaving
                 // the user waiting on a result nobody will read.
+                // `biased` so an already-cancelled token wins deterministically rather than by
+                // a coin flip. Without it a cancelled call still had a chance to open the
+                // connection before noticing, which is both a wasted request and a test that
+                // reaches the network in half of its runs.
                 tokio::select! {
-                    outcome = self.fetch_url(&req.args) => outcome,
+                    biased;
                     () = cancel.cancelled() => Ok(ToolOutcome::error("the fetch was cancelled.")),
+                    outcome = self.fetch_url(&req.args) => outcome,
                 }
             }
             "search" => {
                 tokio::select! {
-                    outcome = self.search(&req.args) => outcome,
+                    biased;
                     () = cancel.cancelled() => Ok(ToolOutcome::error("the search was cancelled.")),
+                    outcome = self.search(&req.args) => outcome,
                 }
             }
             other => Err(ConnectorError::UnknownTool(other.to_owned())),
@@ -148,10 +154,26 @@ impl Web {
         // Lossy, and deliberately: a page whose bytes are not UTF-8 is still mostly readable as
         // UTF-8, and a connector that refuses it outright is less useful than one that returns
         // the text with a few replacement characters in it.
-        let text = String::from_utf8_lossy(&fetched.body);
-        let (title, body) = if fetch::is_html(&mime) || looks_like_html(&text) {
-            let article = extract::article(&text, format);
-            (article.title, article.body)
+        let text = String::from_utf8_lossy(&fetched.body).into_owned();
+        let html = fetch::is_html(&mime) || looks_like_html(&text);
+        if html && extract::nests_too_deep(&text) {
+            return Ok(ToolOutcome::error(format!(
+                "{} nests HTML too deeply to read. Parsing it would cost more time than any page                  is worth; this is a property of the page, not of the address.",
+                fetched.final_url
+            )));
+        }
+
+        // Reading a page is CPU work — parsing up to 5 MB of HTML and walking the tree — and it
+        // does not belong on an async worker: nothing in it awaits, so the `select!` above could
+        // not interrupt it and the runtime thread would be held for the whole of it.
+        let (title, body) = if html {
+            let owned = text;
+            tokio::task::spawn_blocking(move || {
+                let article = extract::article(&owned, format);
+                (article.title, article.body)
+            })
+            .await
+            .map_err(|err| ConnectorError::Failed(format!("reading the page failed: {err}")))?
         } else {
             (None, text.trim().to_owned())
         };
@@ -238,8 +260,18 @@ fn required(args: &serde_json::Value, key: &str) -> Result<String, ConnectorErro
         .ok_or_else(|| ConnectorError::InvalidArgs(format!("`{key}` is required")))
 }
 
+/// A whole number from the arguments, however the model spelled it.
+///
+/// `as_u64` alone answers `None` for `40000.0` and for `"40000"`, and a `None` here is silently
+/// the default — so a model that asked for a smaller page got the full one and no indication
+/// that its argument had been ignored. Both spellings are common enough from real models to be
+/// worth reading.
 fn number(args: &serde_json::Value, key: &str) -> Option<u64> {
-    args.get(key).and_then(serde_json::Value::as_u64)
+    let value = args.get(key)?;
+    value
+        .as_u64()
+        .or_else(|| value.as_f64().filter(|n| *n >= 0.0).map(|n| n as u64))
+        .or_else(|| value.as_str()?.trim().parse().ok())
 }
 
 /// The tools of §5. Both are `read` tier and reach the internet, both are `parallel_safe` —

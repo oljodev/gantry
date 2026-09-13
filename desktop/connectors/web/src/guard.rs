@@ -135,7 +135,7 @@ pub fn is_public(addr: IpAddr) -> bool {
 }
 
 fn is_public_v4(ip: Ipv4Addr) -> bool {
-    let [a, b, ..] = ip.octets();
+    let [a, b, c, _] = ip.octets();
     !(ip.is_private()            // 10/8, 172.16/12, 192.168/16
         || ip.is_loopback()      // 127/8
         || ip.is_link_local()    // 169.254/16, the cloud metadata service among it
@@ -145,7 +145,7 @@ fn is_public_v4(ip: Ipv4Addr) -> bool {
         || ip.is_multicast()
         || a == 0                    // 0/8, "this network"
         || (a == 100 && (64..128).contains(&b))  // 100.64/10 carrier-grade NAT
-        || (a == 192 && b == 0)      // 192.0.0/24 IETF protocol assignments
+        || (a == 192 && b == 0 && c == 0)  // 192.0.0/24 IETF protocol assignments
         || (a == 198 && (18..20).contains(&b))   // 198.18/15 benchmarking
         || a >= 240) // 240/4 reserved, and 255.255.255.255 with it
 }
@@ -162,12 +162,39 @@ fn is_public_v6(ip: Ipv6Addr) -> bool {
         return false;
     }
     let segments = ip.segments();
+    // Three transition formats carry an IPv4 address inside an IPv6 one. Left alone they are a
+    // way back to 127.0.0.1 with none of the checks above ever looking at it: `2002:7f00:1::` is
+    // 6to4 for 127.0.0.1, and `64:ff9b::a00:1` is NAT64 for 10.0.0.1. Whether this host actually
+    // has a relay or a gateway to make the trip is not the question — an address whose meaning
+    // is an address we refuse is one we refuse.
+    if let Some(v4) = embedded_v4(segments)
+        && !is_public_v4(v4)
+    {
+        return false;
+    }
     !(ip.is_loopback()
         || ip.is_unspecified()
         || ip.is_multicast()
         || (segments[0] & 0xfe00) == 0xfc00   // fc00::/7 unique local
         || (segments[0] & 0xffc0) == 0xfe80   // fe80::/10 link local
-        || (segments[0] == 0x2001 && segments[1] == 0x0db8)) // 2001:db8::/32 documentation
+        || (segments[0] == 0x2001 && segments[1] == 0x0db8) // 2001:db8::/32 documentation
+        || segments[0] == 0x2002                            // 2002::/16 6to4
+        || (segments[0] == 0x2001 && segments[1] == 0x0000)) // 2001::/32 Teredo
+}
+
+/// The IPv4 address an IPv6 transition format carries, if it is one of them.
+fn embedded_v4(s: [u16; 8]) -> Option<Ipv4Addr> {
+    let v4 = |hi: u16, lo: u16| Ipv4Addr::from(((u32::from(hi)) << 16) | u32::from(lo));
+    match s {
+        // 6to4: 2002:<v4>::/48.
+        [0x2002, a, b, ..] => Some(v4(a, b)),
+        // Teredo: 2001:0:<server v4>:… — the server is the part worth checking.
+        [0x2001, 0x0000, a, b, ..] => Some(v4(a, b)),
+        // NAT64 well-known prefix 64:ff9b::/96, and the local prefix 64:ff9b:1::/48.
+        [0x0064, 0xff9b, 0, 0, 0, 0, a, b] => Some(v4(a, b)),
+        [0x0064, 0xff9b, 0x0001, _, _, _, a, b] => Some(v4(a, b)),
+        _ => None,
+    }
 }
 
 #[cfg(test)]
@@ -219,6 +246,40 @@ mod tests {
         ] {
             assert!(!is_public(ip(local)), "{local} should not be reachable");
         }
+    }
+
+    #[test]
+    fn an_ipv4_address_hidden_inside_an_ipv6_one_is_still_that_address() {
+        // Three transition formats carry an IPv4 address. None of the plain IPv6 checks looks
+        // inside them, so without this each is a way to name 127.0.0.1 and be allowed.
+        for hidden in [
+            "2002:7f00:0001::",      // 6to4 for 127.0.0.1
+            "2002:0a00:0001::",      // 6to4 for 10.0.0.1
+            "2002:a9fe:a9fe::",      // 6to4 for 169.254.169.254
+            "64:ff9b::7f00:1",       // NAT64 well-known prefix for 127.0.0.1
+            "64:ff9b::a00:1",        // NAT64 for 10.0.0.1
+            "64:ff9b:1::c0a8:1",     // NAT64 local prefix for 192.168.0.1
+            "2001:0:0:0:0:0:7f00:1", // Teredo whose server is 127.0.0.1
+        ] {
+            assert!(!is_public(ip(hidden)), "{hidden} should not be reachable");
+        }
+        // The prefixes are refused whatever they carry: 6to4 and Teredo are not addresses to
+        // fetch from in their own right.
+        for prefix in ["2002:0808:0808::", "2001:0:4136:e378:8000:63bf:3fff:fdd2"] {
+            assert!(!is_public(ip(prefix)), "{prefix} should not be reachable");
+        }
+    }
+
+    #[test]
+    fn the_ietf_protocol_block_is_a_slash_24_and_not_a_slash_16() {
+        // 192.0.0.0/24 is reserved; 192.0.1.0 and up are ordinary public addresses, and
+        // refusing them would be this tool quietly failing on real hosts.
+        assert!(!is_public(ip("192.0.0.1")));
+        assert!(!is_public(ip("192.0.0.255")));
+        assert!(is_public(ip("192.0.1.1")));
+        assert!(is_public(ip("192.0.128.7")));
+        // 192.0.2.0/24 is documentation and stays refused, by the other rule.
+        assert!(!is_public(ip("192.0.2.5")));
     }
 
     #[test]

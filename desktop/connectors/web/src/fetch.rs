@@ -17,8 +17,15 @@ use crate::guard::{self, Refusal};
 pub const MAX_BYTES: usize = 5 * 1024 * 1024;
 /// 03 §5.
 pub const MAX_REDIRECTS: usize = 5;
-/// 03 §5.
+/// 03 §5. Per request — see `DEADLINE` for the bound that matters.
 pub const TIMEOUT: Duration = Duration::from_secs(20);
+
+/// The whole call, redirects included.
+///
+/// `TIMEOUT` is reqwest's, and reqwest applies it per request. With six hops allowed that is a
+/// two-minute tool call that the plan's "20 s timeout" does not describe and nobody waiting on
+/// an answer would expect, so the chain gets a deadline of its own.
+pub const DEADLINE: Duration = Duration::from_secs(30);
 
 /// What Gantry says it is. A real product name and a contact page: a fetcher that disguises
 /// itself as a browser is asking site owners not to be able to block it, and that is not a
@@ -45,6 +52,8 @@ pub struct Fetched {
 pub enum FetchError {
     Refused(Refusal),
     TooManyRedirects(usize),
+    /// The redirect chain outlived `DEADLINE`.
+    DeadlineExceeded,
     /// A redirect with no usable `Location`, which is a broken server rather than a refusal.
     BadRedirect(String),
     Transport(String),
@@ -54,6 +63,11 @@ impl std::fmt::Display for FetchError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Refused(refusal) => refusal.fmt(f),
+            Self::DeadlineExceeded => write!(
+                f,
+                "that URL was still redirecting after {} seconds, so the fetch was stopped.",
+                DEADLINE.as_secs()
+            ),
             Self::TooManyRedirects(n) => write!(
                 f,
                 "that URL redirected more than {n} times, so the fetch was stopped. The page may \
@@ -96,8 +110,12 @@ pub fn client() -> reqwest::Client {
 pub async fn get(http: &reqwest::Client, raw: &str) -> Result<Fetched, FetchError> {
     let mut url = guard::parse(raw)?;
     let mut redirects: Vec<String> = Vec::new();
+    let started = tokio::time::Instant::now();
 
     for _ in 0..=MAX_REDIRECTS {
+        if started.elapsed() >= DEADLINE {
+            return Err(FetchError::DeadlineExceeded);
+        }
         guard::check_address(&url).await?;
         let response = http
             .get(url.clone())
@@ -108,11 +126,16 @@ pub async fn get(http: &reqwest::Client, raw: &str) -> Result<Fetched, FetchErro
 
         let status = response.status();
         if status.is_redirection() {
+            // Read lossily rather than with `to_str`, which refuses any byte over 0x7f: a
+            // `Location` with a non-ASCII path is against the letter of the spec and common in
+            // the wild, and "a redirect to nowhere" is the wrong thing to say about it. `join`
+            // percent-encodes what comes out.
             let location = response
                 .headers()
                 .get(reqwest::header::LOCATION)
-                .and_then(|v| v.to_str().ok())
+                .map(|v| String::from_utf8_lossy(v.as_bytes()).into_owned())
                 .ok_or_else(|| FetchError::BadRedirect(url.to_string()))?;
+            let location = location.trim();
             // Relative redirects are the common case, so the next hop is resolved against the
             // one that issued it rather than parsed on its own.
             let next = url
@@ -152,13 +175,18 @@ pub async fn get(http: &reqwest::Client, raw: &str) -> Result<Fetched, FetchErro
 /// Streamed rather than `bytes()`, because the cap has to bound what is *read* and not only what
 /// is kept: a `Content-Length` of 4 GB is a promise the server makes and not one it has to keep,
 /// and `bytes()` would buffer all of it before anything here got to object.
-async fn read_capped(response: reqwest::Response) -> Result<(Vec<u8>, bool), FetchError> {
+pub(crate) async fn read_capped(
+    response: reqwest::Response,
+) -> Result<(Vec<u8>, bool), FetchError> {
     let mut body: Vec<u8> = Vec::new();
     let mut stream = response.bytes_stream();
     while let Some(chunk) = stream.next().await {
         let chunk = chunk.map_err(|err| FetchError::Transport(transport_message(&err)))?;
         let room = MAX_BYTES - body.len();
-        if chunk.len() >= room {
+        // `>` and not `>=`: a chunk that exactly fills the cap left nothing out, and the next
+        // turn of the loop is what discovers whether the stream had more. Reporting a complete
+        // 5 MB body as truncated would send the model back for a second copy of all of it.
+        if chunk.len() > room {
             body.extend_from_slice(&chunk[..room]);
             return Ok((body, true));
         }

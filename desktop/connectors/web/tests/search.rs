@@ -123,3 +123,25 @@ async fn a_live_search_returns_results() {
     assert!(!hits.is_empty(), "a live search returned nothing");
     assert!(hits.iter().all(|h| h.url.starts_with("http")));
 }
+
+#[test]
+fn a_snippet_keeps_the_text_around_a_stray_angle_bracket() {
+    use gantry_connector_web::{Provider, parse_hits};
+
+    // Treating every `<` as the start of a tag loses the rest of the sentence, and comparisons
+    // are exactly what a search result about code contains.
+    let body = serde_json::json!({
+        "web": { "results": [{
+            "url": "https://example.com/a",
+            "title": "Comparisons",
+            "description": "Use <strong>a &lt; b</strong> when a < b and a &gt; c, not a &amp; b."
+        }]}
+    });
+    let hits = parse_hits(Provider::Brave, &body);
+    assert_eq!(hits.len(), 1);
+    // Tags gone, entities decoded, and nothing after the bare `<` lost.
+    assert_eq!(
+        hits[0].snippet,
+        "Use a < b when a < b and a > c, not a & b."
+    );
+}

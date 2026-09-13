@@ -209,3 +209,90 @@ fn an_index_of_teasers_returns_all_of_them() {
         );
     }
 }
+
+#[test]
+fn a_page_built_to_overflow_the_stack_does_not_take_the_process_with_it() {
+    use gantry_connector_web::nests_too_deep;
+
+    // `<ul><li>x` five thousand times is a 45 KB page, well under the 5 MB fetch cap, and it
+    // used to abort the process with SIGABRT: the Markdown serializer recurses once per nesting
+    // level. An abort is not a panic — no `catch_unwind` and no `select!` can contain it, so the
+    // whole app went down because a page was read.
+    let deep = format!("<html><body>{}</body></html>", "<ul><li>x".repeat(5_000));
+    assert!(deep.len() < 5 * 1024 * 1024, "the fixture is a small page");
+    assert!(
+        nests_too_deep(&deep),
+        "the raw scan is what stops this before parsing"
+    );
+
+    // Past the raw guard there is a second one, so a tree that nests deeply without the raw
+    // scan noticing still comes back as text rather than recursing.
+    let under_the_raw_guard = format!("<html><body>{}</body></html>", "<ul><li>x".repeat(400));
+    assert!(!nests_too_deep(&under_the_raw_guard));
+    for format in [Format::Markdown, Format::Text, Format::Html] {
+        let page = article(&under_the_raw_guard, format);
+        assert!(!page.body.is_empty(), "{format:?} returned nothing");
+    }
+}
+
+#[test]
+fn ordinary_pages_are_not_mistaken_for_deep_ones() {
+    use gantry_connector_web::nests_too_deep;
+
+    for ordinary in [ARTICLE, BARE, NO_TITLE, STRAY, LISTING] {
+        assert!(!nests_too_deep(ordinary), "a real page was refused");
+    }
+    // The parser closes these implicitly, so the page is one level deep and not five thousand.
+    // Counting them would refuse ordinary pages, which is why they are left out of the scan.
+    let unclosed = format!(
+        "<html><body>{}</body></html>",
+        "<p>a paragraph".repeat(5_000)
+    );
+    assert!(!nests_too_deep(&unclosed));
+    let rows = format!("<table><tr>{}</tr></table>", "<td>cell".repeat(2_000));
+    assert!(!nests_too_deep(&rows));
+    // Closing tags bring the count back down, so a long flat document never accumulates.
+    let flat = "<div>a</div>".repeat(10_000);
+    assert!(!nests_too_deep(&flat));
+    // And genuinely deep nesting is still caught.
+    assert!(nests_too_deep(&"<div>".repeat(600)));
+}
+
+const TEASERS: &str = include_str!("fixtures/with-teasers.html");
+
+#[test]
+fn a_story_with_teasers_beside_it_is_still_the_story() {
+    // A newsroom marks its own story and its "more like this" cards up the same way, so simply
+    // counting <article> elements calls this an index and throws the story away. What separates
+    // an index from a story is whether one of them outweighs the rest.
+    let page = article(TEASERS, Format::Text);
+    assert!(
+        page.body
+            .contains("This is the piece somebody asked to read")
+    );
+    assert!(
+        page.body.contains("And a third"),
+        "the whole story: {}",
+        page.body
+    );
+    assert!(
+        !page.body.contains("A teaser line"),
+        "a teaser came with it:\n{}",
+        page.body
+    );
+    assert!(!page.body.contains("Another story"), "{}", page.body);
+}
+
+#[test]
+fn the_fallback_does_not_repeat_the_title_as_content() {
+    // With no candidate the whole body is returned — the body, not the document, or the
+    // <title> arrives again as the first line of the text under a `title` field that also has it.
+    let page = article(BARE, Format::Text);
+    assert_eq!(page.title.as_deref(), Some("Notes"));
+    assert!(page.body.contains("written by hand in 2003"));
+    assert!(
+        !page.body.starts_with("Notes"),
+        "the head came back as content:\n{}",
+        page.body
+    );
+}
