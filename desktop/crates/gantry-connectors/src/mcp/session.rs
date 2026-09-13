@@ -53,6 +53,55 @@ pub enum McpError {
     Call(String),
 }
 
+impl McpError {
+    /// `Connect`, with any URL query stripped out of the message first.
+    fn connect(message: impl AsRef<str>) -> Self {
+        Self::Connect(redact_query(message.as_ref()))
+    }
+
+    /// `Call`, with any URL query stripped out of the message first.
+    fn call(message: impl AsRef<str>) -> Self {
+        Self::Call(redact_query(message.as_ref()))
+    }
+}
+
+/// Everything after a `?` in a URL, replaced by `?…`.
+///
+/// Three catalogue servers are signed in to with the key in the query string — Exa, Tavily and
+/// Tinybird ask for it there and the manifest says so — and a transport error carries the URL it
+/// failed on: reqwest appends `for url (…)` to every one of them and offers no way to ask it not
+/// to. That message is logged, and on a failed tool call it is also handed back to the model as
+/// the result, which sends the key to the provider. Neither is a place a credential may reach,
+/// and the error is worth just as much without the query.
+///
+/// Deliberately blunt: it cuts at the first `?` of anything that starts with a scheme and stops
+/// at whitespace, a closing bracket or a quote, without parsing. A message is not a URL and a
+/// parser that got it wrong would leave the key in.
+#[must_use]
+pub fn redact_query(message: &str) -> String {
+    let mut out = String::with_capacity(message.len());
+    let mut rest = message;
+    while let Some(at) = rest.find("://") {
+        let (before, from_scheme) = rest.split_at(at);
+        out.push_str(before);
+        // The URL ends where the prose starts again.
+        let end = from_scheme
+            .find(|c: char| c.is_whitespace() || matches!(c, ')' | ']' | '"' | '\'' | '>' | ','))
+            .unwrap_or(from_scheme.len());
+        let (url, tail) = from_scheme.split_at(end);
+        match url.find('?') {
+            Some(q) => {
+                out.push_str(&url[..q]);
+                out.push_str("?\u{2026}");
+            }
+            None => out.push_str(url),
+        }
+        rest = tail;
+    }
+    out.push_str(rest);
+    out
+}
+
 /// What to connect to. Secrets are already resolved into `bearer` and `headers` by the caller;
 /// this type is short-lived and never persisted.
 #[derive(Debug, Clone)]
@@ -171,7 +220,7 @@ impl McpSession {
                 .service
                 .list_tools(Some(PaginatedRequestParams::default().with_cursor(cursor)))
                 .await
-                .map_err(|e| McpError::Call(e.to_string()))?;
+                .map_err(|e| McpError::call(e.to_string()))?;
             if ttl.is_none() {
                 ttl = page.ttl_ms.map(Duration::from_millis);
             }
@@ -230,7 +279,7 @@ impl McpSession {
                 .peer()
                 .call_tool_once(params.clone())
                 .await
-                .map_err(|e| McpError::Call(e.to_string()))?;
+                .map_err(|e| McpError::call(e.to_string()))?;
             match response {
                 CallToolResponse::Complete(result) => return Ok(convert(result)),
                 CallToolResponse::InputRequired(more) => {
@@ -247,15 +296,14 @@ impl McpSession {
                 // the right place for it: an answer this client does not understand is one it
                 // must not guess at.
                 _ => {
-                    return Err(McpError::Call(
+                    return Err(McpError::call(
                         "the server answered in a way this version of Gantry does not \
-                         understand; it may want to run the call as a background task"
-                            .to_owned(),
+                         understand; it may want to run the call as a background task",
                     ));
                 }
             }
         }
-        Err(McpError::Call(format!(
+        Err(McpError::call(format!(
             "the server asked for input {MAX_ROUNDS} times without finishing the call"
         )))
     }
@@ -338,7 +386,7 @@ async fn serve(
             // already falls back internally.
             info.serve_with_lifecycle(transport, lifecycles().into_iter().next().expect("auto"))
                 .await
-                .map_err(|e| McpError::Connect(e.to_string()))
+                .map_err(|e| McpError::connect(e.to_string()))
         }
         Endpoint::Http {
             url,
@@ -360,7 +408,7 @@ async fn serve(
             let client = reqwest::Client::builder()
                 .default_headers(header_map(&headers))
                 .build()
-                .map_err(|e| McpError::Connect(e.to_string()))?;
+                .map_err(|e| McpError::connect(e.to_string()))?;
             let mut last = String::new();
             for lifecycle in lifecycles() {
                 let transport =
@@ -411,7 +459,7 @@ async fn explain(
     }
     let response = request.json(&body).send().await;
     let Ok(response) = response else {
-        return McpError::Connect(original.to_owned());
+        return McpError::connect(original);
     };
     let status = response.status();
     if status == reqwest::StatusCode::UNAUTHORIZED {
@@ -422,14 +470,14 @@ async fn explain(
     let detail: String = detail.chars().take(300).collect();
     if status.is_success() && detail.contains("\"error\"") {
         // The transport is fine and the server is refusing on its own terms.
-        return McpError::Connect(format!("the server answered: {detail}"));
+        return McpError::connect(format!("the server answered: {detail}"));
     }
     if status.is_success() {
-        return McpError::Connect(format!(
+        return McpError::connect(format!(
             "{original} (a plain initialize did work: {detail})"
         ));
     }
-    McpError::Connect(format!("the server answered {status}: {detail}"))
+    McpError::connect(format!("the server answered {status}: {detail}"))
 }
 
 /// The token out of an `Authorization` value, when the scheme is Bearer.
@@ -604,7 +652,7 @@ pub type SharedSession = Arc<tokio::sync::Mutex<Option<McpSession>>>;
 
 #[cfg(test)]
 mod tests {
-    use super::bearer_token;
+    use super::{bearer_token, redact_query};
 
     #[test]
     fn a_bearer_value_gives_up_its_token() {
@@ -618,5 +666,46 @@ mod tests {
         assert_eq!(bearer_token("token ghp_abc"), None);
         assert_eq!(bearer_token("Bearer "), None);
         assert_eq!(bearer_token(""), None);
+    }
+
+    /// Exa, Tavily and Tinybird are signed in to with the key in the query string, and reqwest
+    /// puts the URL it failed on into every transport error. The error is logged and, on a failed
+    /// tool call, handed back to the model — so the query has to be gone before either happens.
+    #[test]
+    fn an_error_never_carries_the_query_a_key_was_put_in() {
+        let leaked = "error sending request for url (https://mcp.exa.ai/mcp?exaApiKey=sk-live-42)";
+        let clean = redact_query(leaked);
+        assert!(!clean.contains("sk-live-42"), "{clean}");
+        assert_eq!(
+            clean,
+            "error sending request for url (https://mcp.exa.ai/mcp?\u{2026})"
+        );
+    }
+
+    #[test]
+    fn a_message_with_no_query_is_left_alone() {
+        for message in [
+            "the server answered 502: bad gateway",
+            "error sending request for url (https://mcp.linear.app/mcp)",
+            "is this a question? it is not a url",
+        ] {
+            assert_eq!(redact_query(message), message);
+        }
+    }
+
+    /// Two of them in one sentence, and the prose after each has to survive.
+    #[test]
+    fn every_url_in_a_message_is_cut_not_only_the_first() {
+        let clean = redact_query(
+            "tried https://a.example/mcp?token=one then https://b.example/mcp?token=two, gave up",
+        );
+        assert!(
+            !clean.contains("one") || !clean.contains("token=one"),
+            "{clean}"
+        );
+        assert_eq!(
+            clean,
+            "tried https://a.example/mcp?\u{2026} then https://b.example/mcp?\u{2026}, gave up"
+        );
     }
 }
