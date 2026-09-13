@@ -58,6 +58,8 @@ id_type!(/// One timestamped record of something that happened during a turn.
     EventId);
 id_type!(/// A named group of chats with shared instructions, knowledge and defaults.
     ProjectId);
+id_type!(/// One knowledge file of a project.
+    ProjectFileId);
 id_type!(/// A versioned piece of content shown beside the chat.
     ArtifactId);
 id_type!(/// A standing permission for one chat (04 §8).

@@ -196,6 +196,25 @@ pub fn pinned_for_chat(conn: &Connection, chat_id: ChatId) -> Result<Vec<String>
     Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
 }
 
+/// Pinning to a project, which is pinning for every chat in it (12 §A6). The pin is a row of
+/// `project_skills`, so deleting the project takes it and the skill itself is untouched.
+pub fn pin_to_project(conn: &Connection, project_id: ProjectId, skill_id: &str) -> Result<()> {
+    conn.execute(
+        "INSERT OR IGNORE INTO project_skills (project_id, skill_id, pinned_at) \
+         VALUES (?1, ?2, ?3)",
+        params![project_id.to_string(), skill_id, now_ms()],
+    )?;
+    Ok(())
+}
+
+pub fn unpin_from_project(conn: &Connection, project_id: ProjectId, skill_id: &str) -> Result<()> {
+    conn.execute(
+        "DELETE FROM project_skills WHERE project_id = ?1 AND skill_id = ?2",
+        params![project_id.to_string(), skill_id],
+    )?;
+    Ok(())
+}
+
 pub fn pinned_for_project(conn: &Connection, project_id: ProjectId) -> Result<Vec<String>> {
     let mut stmt = conn.prepare(
         "SELECT skill_id FROM project_skills WHERE project_id = ?1 ORDER BY pinned_at, skill_id",

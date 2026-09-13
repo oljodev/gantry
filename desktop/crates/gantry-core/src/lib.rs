@@ -21,6 +21,7 @@ pub mod interaction;
 pub mod judge;
 pub mod memory;
 pub mod message;
+pub mod project;
 pub mod settings;
 pub mod skill;
 pub mod time;
@@ -49,7 +50,7 @@ pub use guardrail::{
 };
 pub use ids::{
     ArtifactId, CallId, ChatId, EventId, GrantId, InstanceId, InteractionId, MemoryId, MessageId,
-    ProjectId, TurnId,
+    ProjectFileId, ProjectId, TurnId,
 };
 pub use interaction::{
     AccessDecision, AccessRequest, ConnectorSuggestion, ElicitationAction, ElicitationField,
@@ -64,6 +65,10 @@ pub use memory::{
 };
 pub use message::{
     ContentPart, MediaSource, Message, ProviderKind, ResultPart, Role, StopReason, Usage,
+};
+pub use project::{
+    NewProject, PROJECT_INSTRUCTIONS_MAX_CHARS, PROJECT_KNOWLEDGE_MAX_CHARS, ProjectDefaults,
+    ProjectDetail, ProjectFileDto, ProjectGrant, ProjectPatch, ProjectSummary,
 };
 pub use settings::{
     AdvancedSettings, AppearanceSettings, ChatSettings, Density, GuardSettings, MediaOptions,

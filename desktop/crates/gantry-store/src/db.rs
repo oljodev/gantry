@@ -26,6 +26,7 @@ const MIGRATIONS: &[M<'static>] = &[
     M::up(include_str!("../migrations/0011_model_release.sql")),
     M::up(include_str!("../migrations/0012_skills_memory.sql")),
     M::up(include_str!("../migrations/0013_incognito.sql")),
+    M::up(include_str!("../migrations/0014_projects.sql")),
 ];
 const READERS: usize = 3;
 

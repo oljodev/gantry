@@ -14,6 +14,7 @@ pub mod memories;
 pub mod messages;
 pub mod models;
 pub mod projections;
+pub mod projects;
 pub mod providers;
 pub mod recovery;
 pub mod search;
