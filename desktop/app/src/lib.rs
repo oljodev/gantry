@@ -43,6 +43,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::chats::image_preview,
             commands::chats::blob_image,
             commands::chats::blob_media,
+            commands::chats::tool_call_output,
             commands::chats::list_chats,
             commands::code::session_changes,
             commands::code::session_file_diff,

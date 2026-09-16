@@ -387,6 +387,7 @@ function callItem(
     tier: call?.tier,
     args: call?.args ?? part?.args,
     result: call?.result ?? undefined,
+    hasWholeOutput: call?.result_blob_hash != null,
     isError: call?.is_error,
     durationMs: call?.duration_ms ?? undefined,
   };

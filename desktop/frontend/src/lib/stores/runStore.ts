@@ -283,6 +283,7 @@ export function applyBatch(
           display: { kind: 'connector', summary: '' },
           result_preview: null,
           result: null,
+          result_blob_hash: null,
           is_error: false,
           started_at: null,
           ended_at: null,
@@ -414,6 +415,7 @@ export function applyBatch(
             is_error: ev.is_error,
             result_preview: ev.result_preview,
             result: ev.result,
+            result_blob_hash: ev.output_blob ?? c.result_blob_hash,
             ended_at: e.ts,
             duration_ms: ev.duration_ms,
           };

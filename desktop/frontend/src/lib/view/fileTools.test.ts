@@ -21,6 +21,7 @@ function call(status: ToolCallStatus, extra: Partial<ToolCallDto> = {}): ToolCal
     display: { kind: 'command', summary: '$ rm -rf build' },
     result_preview: null,
     result: null,
+    result_blob_hash: null,
     is_error: false,
     started_at: null,
     ended_at: null,

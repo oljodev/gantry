@@ -12,7 +12,7 @@ use crate::{
     repos::{enum_from_str, enum_to_str, id_from_str},
 };
 
-const COLUMNS: &str = "id, chat_id, turn_id, message_id, instance_id, connector_name, tool_name, model_tool_name, args_json, tier, status, decision_source, display_json, result_preview, is_error, created_at, started_at, ended_at, duration_ms, judge_json";
+const COLUMNS: &str = "id, chat_id, turn_id, message_id, instance_id, connector_name, tool_name, model_tool_name, args_json, tier, status, decision_source, display_json, result_preview, is_error, created_at, started_at, ended_at, duration_ms, judge_json, result_blob_hash";
 
 fn from_row(r: &Row<'_>) -> rusqlite::Result<ToolCallDto> {
     let args: String = r.get(8)?;
@@ -43,6 +43,7 @@ fn from_row(r: &Row<'_>) -> rusqlite::Result<ToolCallDto> {
         display: serde_json::from_str::<ToolDisplay>(&display).map_err(|e| conv(12, e))?,
         result_preview: r.get(13)?,
         result: None,
+        result_blob_hash: r.get(20)?,
         is_error: r.get::<_, i64>(14)? != 0,
         started_at: r.get(16)?,
         ended_at: r.get(17)?,
@@ -59,7 +60,7 @@ fn conv(idx: usize, e: serde_json::Error) -> rusqlite::Error {
 pub fn insert(conn: &Connection, c: &ToolCallDto, created_at: i64) -> Result<()> {
     conn.execute(
         &format!(
-            "INSERT INTO tool_calls ({COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)"
+            "INSERT INTO tool_calls ({COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21)"
         ),
         params![
             c.id.as_str(),
@@ -82,6 +83,7 @@ pub fn insert(conn: &Connection, c: &ToolCallDto, created_at: i64) -> Result<()>
             c.ended_at,
             c.duration_ms.map(|d| i64::try_from(d).unwrap_or(i64::MAX)),
             judge_json(c),
+            c.result_blob_hash,
         ],
     )?;
     Ok(())
@@ -92,12 +94,14 @@ fn judge_json(c: &ToolCallDto) -> Option<String> {
     c.judge.as_ref().and_then(|j| serde_json::to_string(j).ok())
 }
 
-/// Rewrites every mutable column of an existing call.
+/// Rewrites every mutable column of an existing call. The output blob is `coalesce`d rather
+/// than assigned: a later event carries no hash, and the one written when the call completed is
+/// the only one there will ever be.
 pub fn update(conn: &Connection, c: &ToolCallDto) -> Result<()> {
     conn.execute(
         "UPDATE tool_calls SET args_json = ?2, tier = ?3, status = ?4, decision_source = ?5, display_json = ?6,
            result_preview = ?7, is_error = ?8, started_at = ?9, ended_at = ?10, duration_ms = ?11,
-           judge_json = ?12
+           judge_json = ?12, result_blob_hash = coalesce(?13, result_blob_hash)
          WHERE id = ?1",
         params![
             c.id.as_str(),
@@ -112,9 +116,19 @@ pub fn update(conn: &Connection, c: &ToolCallDto) -> Result<()> {
             c.ended_at,
             c.duration_ms.map(|d| i64::try_from(d).unwrap_or(i64::MAX)),
             judge_json(c),
+            c.result_blob_hash,
         ],
     )?;
     Ok(())
+}
+
+/// Every kept output of the chat's tool calls, for the sweep when the chat goes (06 §3).
+pub fn output_hashes_for_chat(conn: &Connection, chat_id: ChatId) -> Result<Vec<String>> {
+    let mut stmt = conn.prepare(
+        "SELECT result_blob_hash FROM tool_calls WHERE chat_id = ?1 AND result_blob_hash IS NOT NULL",
+    )?;
+    let rows = stmt.query_map(params![chat_id.to_string()], |r| r.get(0))?;
+    Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
 }
 
 pub fn get(conn: &Connection, id: &CallId) -> Result<Option<ToolCallDto>> {

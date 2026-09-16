@@ -94,6 +94,7 @@ export function fileItem(call: ToolCallDto, liveOutput?: string[]): FileRow | un
         exitCode: exitCode ?? undefined,
         durationMs: num(result?.duration_ms),
         output: streams.length > 0 ? streams.split('\n') : [],
+        hasWholeOutput: call.result_blob_hash != null,
         // A non-zero exit is a result, not a malfunction (shell.md D5), but a command that was
         // killed or never ran did fail, and the row should look different.
         status: call.is_error || exitCode === undefined ? 'failed' : 'done',

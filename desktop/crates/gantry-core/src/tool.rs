@@ -226,8 +226,12 @@ pub struct ToolCallDto {
     /// The first part of the result as text, for the row and the projection.
     pub result_preview: Option<String>,
     /// The full result when it is known: from the transcript for a finished turn, from the
-    /// completion event while the turn runs.
+    /// completion event while the turn runs. Cut to `advanced.max_result_kb`, like the
+    /// transcript's own copy — `result_blob_hash` is the uncut one.
     pub result: Option<Vec<ResultPart>>,
+    /// The whole output as a blob, set when the result above had to be cut (05 §8, 06 §3).
+    /// `tool_call_output` reads it; the sweep keeps it for as long as this row lives.
+    pub result_blob_hash: Option<String>,
     pub is_error: bool,
     #[specta(type = Option<specta_typescript::Number>)]
     pub started_at: Option<i64>,

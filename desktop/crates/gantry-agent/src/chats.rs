@@ -897,6 +897,7 @@ impl ChatBook {
         self.store
             .write_blocking(move |conn| {
                 let mut hashes: Vec<String> = artifacts::hashes_for_chat(conn, chat_id)?;
+                hashes.extend(tool_calls::output_hashes_for_chat(conn, chat_id)?);
                 hashes.extend(
                     messages::list_for_chat(conn, chat_id)?
                         .into_iter()

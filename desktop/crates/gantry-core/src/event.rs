@@ -138,6 +138,11 @@ pub enum AgentEventKind {
         duration_ms: u64,
         result_preview: String,
         result: Vec<ResultPart>,
+        /// The whole output, stored as a blob because the transcript's copy was cut down to
+        /// what the model can be sent (06 §3). `None` when nothing was cut and the result
+        /// beside this is all there was.
+        #[serde(default)]
+        output_blob: Option<String>,
     },
     #[serde(rename = "provider.notice")]
     ProviderNotice { kind: String, detail: String },

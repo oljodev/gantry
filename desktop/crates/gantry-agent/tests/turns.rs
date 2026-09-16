@@ -1515,6 +1515,20 @@ async fn a_huge_tool_result_is_cut_to_the_configured_size() {
         result.len()
     );
     assert!(result.contains("characters omitted"), "and says so");
+
+    // What the cut took out is not lost: the whole output is a blob, which is what the row's
+    // drawer reads and what `tool_call_output` hands back.
+    let call = m
+        .chats()
+        .tool_call(&CallId("c1".into()))
+        .unwrap()
+        .expect("the call has a row");
+    let hash = call
+        .result_blob_hash
+        .expect("the whole output was kept somewhere");
+    let whole = String::from_utf8(m.chats().blobs().get(&hash).unwrap()).unwrap();
+    assert!(whole.len() > 20_000, "all of it: {}", whole.len());
+    assert!(!whole.contains("characters omitted"), "and uncut");
 }
 
 // ── The guard (04 §6) ────────────────────────────────────────────────────────────────────

@@ -21,6 +21,7 @@ function call(extra: Partial<ToolCallDto>): ToolCallDto {
     judge: null,
     display: { kind: 'connector', summary: 'path=/proc/cpuinfo' },
     result_preview: null,
+    result_blob_hash: null,
     result: null,
     is_error: false,
     started_at: null,

@@ -85,6 +85,9 @@ export type ActivityItem =
       status: 'done' | 'running' | 'waiting' | 'cancelled' | 'failed';
       /** What the guard decided about this call (04 §6), when a guard decided it. */
       guard?: GuardMark;
+      /** As on a connector row: the whole output was kept because the transcript's copy
+       * was cut (05 §8). */
+      hasWholeOutput?: boolean;
     }
   | {
       kind: 'connector';
@@ -109,6 +112,9 @@ export type ActivityItem =
       /** Raw input and output for the detail pane; absent on fixture rows. */
       args?: unknown;
       result?: unknown;
+      /** Set when the output was too long for the transcript and the whole of it was kept
+       * (05 §8): the drawer offers it, `tool_call_output` fetches it by this call's id. */
+      hasWholeOutput?: boolean;
       isError?: boolean;
       durationMs?: number;
     }

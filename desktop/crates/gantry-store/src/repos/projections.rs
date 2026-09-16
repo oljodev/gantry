@@ -48,6 +48,7 @@ pub fn apply(conn: &Connection, chat_id: ChatId, e: &AgentEvent) -> Result<()> {
                     },
                     result_preview: None,
                     result: None,
+                    result_blob_hash: None,
                     is_error: false,
                     started_at: None,
                     ended_at: None,
@@ -119,10 +120,14 @@ pub fn apply(conn: &Connection, chat_id: ChatId, e: &AgentEvent) -> Result<()> {
             is_error,
             duration_ms,
             result_preview,
+            output_blob,
             ..
         } => {
             if let Some(mut c) = tool_calls::get(conn, call_id)? {
                 c.status = *status;
+                if output_blob.is_some() {
+                    c.result_blob_hash.clone_from(output_blob);
+                }
                 if let Some(source) = decision_source {
                     c.decision_source = Some(*source);
                 }

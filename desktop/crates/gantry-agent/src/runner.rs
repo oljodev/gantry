@@ -578,6 +578,7 @@ fn apply(
                 display: display_for(entry.as_ref().map(|e| &e.def), &serde_json::Value::Null),
                 result_preview: None,
                 result: None,
+                result_blob_hash: None,
                 is_error: false,
                 started_at: None,
                 ended_at: None,
@@ -755,7 +756,9 @@ fn complete_decided(
     result: Vec<ResultPart>,
 ) -> ContentPart {
     let preview = result_preview(&result, PREVIEW_CHARS);
+    let mut output_blob = None;
     update_call(ctx, id, |c| {
+        output_blob = c.result_blob_hash.clone();
         if let Some(source) = decision_source {
             c.decision_source = Some(source);
         }
@@ -780,6 +783,7 @@ fn complete_decided(
         duration_ms,
         result_preview: preview,
         result: result.clone(),
+        output_blob,
     });
     ContentPart::ToolResult {
         call_id: id.clone(),
@@ -1348,13 +1352,28 @@ async fn execute(
         ),
         Some(Ok(ToolOutcome::Complete {
             content, is_error, ..
-        })) => (
-            ToolCallStatus::Completed,
-            is_error,
-            cap_result(content, ctx.max_result_bytes),
-        ),
+        })) => {
+            let (capped, whole) = cap_result(content, ctx.max_result_bytes);
+            if let Some(text) = whole {
+                keep_whole_output(ctx, &call.id, &text);
+            }
+            (ToolCallStatus::Completed, is_error, capped)
+        }
     };
     complete_call(ctx, &call.id, status, is_error, elapsed, content)
+}
+
+/// Stores the output a cap cut down, so the row's drawer can show what the model was not sent
+/// (05 §8, 06 §3). Called before the call is completed, so the hash rides on the completion
+/// event and reaches the row in the same write as the rest of it.
+///
+/// A failure is logged and nothing else: losing the copy is not a reason to fail a tool call
+/// that has already succeeded.
+fn keep_whole_output(ctx: &RunContext, id: &CallId, text: &str) {
+    match ctx.chats.blobs().put(text.as_bytes()) {
+        Ok(hash) => update_call(ctx, id, |c| c.result_blob_hash = Some(hash)),
+        Err(err) => log::warn!("could not keep the whole output of {id}: {err}"),
+    }
 }
 
 /// Rebuilds the tool set when the chat's connectors changed while the turn was running: an
@@ -1505,12 +1524,15 @@ impl ToolEventSink for TurnToolEvents {
 }
 
 /// Keeps a result under the transcript limit: head and tail with a marker between (05 §8).
+/// Returns the capped parts, and the whole output as text when something was cut.
 ///
-/// This happens at ingestion, so the capped form is what is written down and what every later
-/// request carries. That is deliberate: a cap applied at projection time would make the same
-/// message mean different things on different turns, and 02 §6 forbids history that changes
-/// under the model. The whole output is still in the activity row and its drawer.
-fn cap_result(content: Vec<ResultPart>, max: usize) -> Vec<ResultPart> {
+/// The capping happens at ingestion, so the capped form is what is written down and what every
+/// later request carries. That is deliberate: a cap applied at projection time would make the
+/// same message mean different things on different turns, and 02 §6 forbids history that
+/// changes under the model. What the middle is cut *out of* is kept as a blob, which is where
+/// the row's drawer reads it from — until M13 it was simply lost, and a comment here said
+/// otherwise.
+fn cap_result(content: Vec<ResultPart>, max: usize) -> (Vec<ResultPart>, Option<String>) {
     let size: usize = content
         .iter()
         .map(|p| match p {
@@ -1521,7 +1543,7 @@ fn cap_result(content: Vec<ResultPart>, max: usize) -> Vec<ResultPart> {
         })
         .sum();
     if size <= max {
-        return content;
+        return (content, None);
     }
     let text = result_preview(&content, usize::MAX);
     let half = (max / 2).max(1);
@@ -1534,12 +1556,13 @@ fn cap_result(content: Vec<ResultPart>, max: usize) -> Vec<ResultPart> {
         .into_iter()
         .rev()
         .collect();
-    vec![ResultPart::Text {
+    let capped = vec![ResultPart::Text {
         text: format!(
             "{head}\n\n[… {} characters omitted …]\n\n{tail}",
             text.chars().count().saturating_sub(2 * half)
         ),
-    }]
+    }];
+    (capped, Some(text))
 }
 
 fn notify_pending(ctx: &RunContext) {
@@ -1580,13 +1603,29 @@ mod tests {
     }
 
     #[test]
-    fn oversized_results_keep_head_and_tail() {
+    fn oversized_results_keep_head_and_tail_and_hand_back_the_whole_thing() {
         let big = "x".repeat(RESULT_MAX_BYTES + 100);
-        let capped = cap_result(vec![ResultPart::Text { text: big }], RESULT_MAX_BYTES);
+        let (capped, full) = cap_result(
+            vec![ResultPart::Text { text: big.clone() }],
+            RESULT_MAX_BYTES,
+        );
         let ResultPart::Text { text } = &capped[0] else {
             panic!()
         };
         assert!(text.contains("characters omitted"));
         assert!(text.len() < RESULT_MAX_BYTES + 100);
+        assert_eq!(full.as_deref(), Some(big.as_str()), "nothing is lost");
+
+        let (small, full) = cap_result(
+            vec![ResultPart::Text {
+                text: "short".into(),
+            }],
+            RESULT_MAX_BYTES,
+        );
+        assert_eq!(small.len(), 1);
+        assert!(
+            full.is_none(),
+            "nothing was cut, so there is no blob to keep"
+        );
     }
 }

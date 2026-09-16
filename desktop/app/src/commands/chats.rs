@@ -239,6 +239,36 @@ pub fn export_chat(
     Ok(())
 }
 
+/// The whole output of one tool call, for the row's drawer (05 §8).
+///
+/// What the transcript keeps was cut to fit the model's context, and what the row keeps is two
+/// thousand characters of it; this is the rest. `None` when the call's output was small enough
+/// that nothing was cut, in which case the drawer already has all of it.
+#[tauri::command]
+#[specta::specta]
+pub fn tool_call_output(
+    state: State<'_, AppState>,
+    call_id: gantry_core::CallId,
+) -> Result<Option<String>, ErrorDto> {
+    let hash = state
+        .store
+        .read(move |c| gantry_store::repos::tool_calls::get(c, &call_id))
+        .map_err(GantryError::from)?
+        .and_then(|c| c.result_blob_hash);
+    let Some(hash) = hash else {
+        return Ok(None);
+    };
+    match state.blobs.get(&hash) {
+        Ok(bytes) => Ok(Some(String::from_utf8_lossy(&bytes).into_owned())),
+        // The bytes are gone but the row is not: a blob store that lost a file, or a database
+        // restored beside a different one. Saying so beats an error the drawer cannot act on.
+        Err(err) => {
+            log::warn!("the kept output of a tool call is not readable: {err}");
+            Ok(None)
+        }
+    }
+}
+
 /// A `data:` URL for an image already in the transcript, so a sent message can show the
 /// picture rather than a file name. Only image types, only inside the size cap.
 #[tauri::command]

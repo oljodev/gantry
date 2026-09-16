@@ -189,6 +189,7 @@ fn the_projection_follows_a_call_from_start_to_completion() {
                         result: vec![ResultPart::Text {
                             text: "2026".into(),
                         }],
+                        output_blob: Some("a".repeat(64)),
                     },
                 ),
             )?;
@@ -196,6 +197,11 @@ fn the_projection_follows_a_call_from_start_to_completion() {
             assert_eq!(c.status, ToolCallStatus::Completed);
             assert_eq!(c.decision_source, Some(DecisionSource::UserOnce));
             assert_eq!(c.result_preview.as_deref(), Some("2026"));
+            assert_eq!(
+                c.result_blob_hash,
+                Some("a".repeat(64)),
+                "the whole output's blob reaches the row"
+            );
             assert_eq!(c.duration_ms, Some(3));
             assert!(c.started_at.is_some() && c.ended_at.is_some());
             assert_eq!(tool_calls::list_for_turn(conn, turn_id)?.len(), 1);

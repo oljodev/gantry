@@ -23,6 +23,7 @@ import { Button } from '@/components/ui/button';
 import { connectorName } from '@/fixtures/connectors';
 import type { ActivityItem, GuardMark } from '@/fixtures/types';
 import { openExternal } from '@/lib/clipboard';
+import { commands, isTauri, unwrap } from '@/lib/ipc/client';
 import { cn } from '@/lib/utils';
 
 export interface ActivityRowProps {
@@ -396,7 +397,13 @@ function inlineDetail(item: ActivityItem, onOpen?: (item: ActivityItem) => void)
       return (
         <>
           <Block label="Command" body={item.command} wrap />
-          {item.output.length > 0 && <Block label="Output" body={item.output.join('\n')} />}
+          {item.output.length > 0 && (
+            <Output
+              label="Output"
+              body={item.output.join('\n')}
+              callId={item.hasWholeOutput ? item.id : undefined}
+            />
+          )}
         </>
       );
     case 'connector': {
@@ -406,7 +413,14 @@ function inlineDetail(item: ActivityItem, onOpen?: (item: ActivityItem) => void)
       return (
         <>
           {args && <Block label="Arguments" body={args} />}
-          {result && <Block label="Result" body={result} tone={item.isError ? 'bad' : undefined} />}
+          {result && (
+            <Output
+              label="Result"
+              body={result}
+              tone={item.isError ? 'bad' : undefined}
+              callId={item.hasWholeOutput ? item.id : undefined}
+            />
+          )}
         </>
       );
     }
@@ -434,6 +448,61 @@ function OutputPreview({ output }: { output: string[] }) {
       <pre className="overflow-x-auto px-3 py-2 font-mono text-mono text-fg-2">
         {output.slice(-3).join('\n')}
       </pre>
+    </div>
+  );
+}
+
+/**
+ * A result block that knows it is not the whole result (05 §8). What the transcript kept was cut
+ * to fit the model's context; the whole output is a blob, and this is the only thing that asks
+ * for it — on a click, because a tool that printed a hundred thousand lines should not put them
+ * in the chat the moment a row is opened.
+ */
+function Output({
+  label,
+  body,
+  tone,
+  callId,
+}: {
+  label: string;
+  body: string;
+  tone?: 'bad';
+  /** Set only when there is more than `body` to fetch. */
+  callId?: string;
+}) {
+  const [whole, setWhole] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const show = async () => {
+    setLoading(true);
+    try {
+      const text = await unwrap(commands.toolCallOutput(callId ?? ''));
+      if (text === null) setFailed(true);
+      else setWhole(text);
+    } catch {
+      setFailed(true);
+    } finally {
+      setLoading(false);
+    }
+  };
+  const more = callId !== undefined && whole === null && isTauri();
+  return (
+    <div className="flex flex-col">
+      <Block label={label} body={whole ?? body} tone={tone} />
+      {more && (
+        <button
+          type="button"
+          disabled={loading}
+          onClick={() => void show()}
+          className="self-start pt-0.5 text-meta text-fg-3 transition-colors duration-(--dur-1) hover:text-fg disabled:opacity-60"
+        >
+          {failed
+            ? 'The rest of this output is no longer stored'
+            : loading
+              ? 'Loading…'
+              : 'Show the whole output'}
+        </button>
+      )}
     </div>
   );
 }
