@@ -11,6 +11,7 @@ use std::time::Duration;
 use futures_util::StreamExt;
 use url::Url;
 
+use crate::classify::{self, Verdict};
 use crate::guard::{self, Refusal};
 
 /// 03 §5. A page larger than this is not a page anybody wanted read aloud.
@@ -40,6 +41,9 @@ pub struct Fetched {
     /// After redirects — what the content is actually the content *of*.
     pub final_url: Url,
     pub status: u16,
+    /// What the status line and the headers say this response *is* (§7.5): a page, or a
+    /// challenge, a refusal or a wait wearing a page's content type.
+    pub verdict: Verdict,
     pub content_type: Option<String>,
     pub body: Vec<u8>,
     /// The 5 MB cap was hit and the rest of the response was not read.
@@ -106,8 +110,23 @@ pub fn client() -> reqwest::Client {
         .expect("an HTTP client with no unusual configuration")
 }
 
-/// Fetch one URL, following redirects by hand and checking each one.
+/// Fetch one URL, and honour a `Retry-After` once (§7.3: always honoured).
+///
+/// One retry, not two: the hint is capped at [`classify::MAX_RETRY_AFTER`] before it gets here,
+/// and a person is sitting in front of the tool call. A challenge is never retried at all — that
+/// is decided in [`classify`], which hands back no retry for one.
 pub async fn get(http: &reqwest::Client, raw: &str) -> Result<Fetched, FetchError> {
+    let first = get_once(http, raw).await?;
+    let Some(after) = first.verdict.retry_after() else {
+        return Ok(first);
+    };
+    log::debug!("{raw} asked for {}s; waiting", after.as_secs());
+    tokio::time::sleep(after).await;
+    get_once(http, raw).await
+}
+
+/// Fetch one URL, following redirects by hand and checking each one.
+async fn get_once(http: &reqwest::Client, raw: &str) -> Result<Fetched, FetchError> {
     let mut url = guard::parse(raw)?;
     let mut redirects: Vec<String> = Vec::new();
     let started = tokio::time::Instant::now();
@@ -154,6 +173,14 @@ pub async fn get(http: &reqwest::Client, raw: &str) -> Result<Fetched, FetchErro
             .get(reqwest::header::CONTENT_TYPE)
             .and_then(|v| v.to_str().ok())
             .map(str::to_owned);
+        // Decided before the body is read, from the status line and the headers alone (§7.5).
+        // A challenge is a 200 as often as it is a 403, so this cannot wait for the reader.
+        let verdict = classify::from_response(status.as_u16(), |name| {
+            response
+                .headers()
+                .get(name)
+                .map(|v| String::from_utf8_lossy(v.as_bytes()).into_owned())
+        });
         let (body, truncated) = read_capped(response).await?;
         if !redirects.is_empty() {
             redirects.push(url.to_string());
@@ -161,6 +188,7 @@ pub async fn get(http: &reqwest::Client, raw: &str) -> Result<Fetched, FetchErro
         return Ok(Fetched {
             final_url: url,
             status: status.as_u16(),
+            verdict,
             content_type,
             body,
             truncated,

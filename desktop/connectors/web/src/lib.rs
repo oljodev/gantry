@@ -22,6 +22,7 @@
 #![forbid(unsafe_code)]
 
 mod cache;
+mod classify;
 mod extract;
 mod fetch;
 mod guard;
@@ -39,6 +40,9 @@ use gantry_core::{InstanceId, RiskTier, ToolDef};
 use tokio_util::sync::CancellationToken;
 
 pub use cache::{Cache, MAX_CHARS as CACHE_MAX_CHARS, MAX_PAGES, Page, TTL as CACHE_TTL};
+pub use classify::{
+    EMPTY_ENOUGH, MAX_RETRY_AFTER, Verdict, from_response, needs_a_browser, retry_after,
+};
 pub use extract::{Article, Format, Window, article, nests_too_deep, window};
 pub use fetch::{MAX_BYTES, MAX_REDIRECTS, TIMEOUT, USER_AGENT};
 pub use locate::{Found, Heading, MAX_HEADINGS, MAX_MATCHES, find, outline};
@@ -284,6 +288,13 @@ impl Web {
             Err(err) => return Ok(Got::Refused(ToolOutcome::error(err.to_string()))),
         };
 
+        // A page that fought back is not a page (§7.5). This is checked before the reader is
+        // let anywhere near the body: a challenge served as a cheerful 200 is the one outcome
+        // that makes a model confidently summarise the wrong thing.
+        if let Some(refusal) = fights_back(&fetched) {
+            return Ok(Got::Refused(ToolOutcome::error(refusal)));
+        }
+
         let mime = fetch::mime(fetched.content_type.as_deref());
         if !fetch::is_readable(&mime) {
             return Ok(Got::Refused(ToolOutcome::error(format!(
@@ -310,17 +321,34 @@ impl Web {
         // Reading a page is CPU work — parsing up to 5 MB of HTML and walking the tree — and it
         // does not belong on an async worker: nothing in it awaits, so the `select!` in `call`
         // could not interrupt it and the runtime thread would be held for the whole of it.
-        let (title, body) = if html {
+        let (raw_html, (title, body)) = if html {
             let owned = text;
-            tokio::task::spawn_blocking(move || {
-                let article = extract::article(&owned, format);
-                (article.title, article.body)
-            })
-            .await
-            .map_err(|err| ConnectorError::Failed(format!("reading the page failed: {err}")))?
+            let read = {
+                let owned = owned.clone();
+                tokio::task::spawn_blocking(move || {
+                    let article = extract::article(&owned, format);
+                    (article.title, article.body)
+                })
+                .await
+                .map_err(|err| ConnectorError::Failed(format!("reading the page failed: {err}")))?
+            };
+            (owned, read)
         } else {
-            (None, text.trim().to_owned())
+            (String::new(), (None, text.trim().to_owned()))
         };
+
+        // Step 4 of the ladder, and the only step that reads the body: a success that extracted
+        // to nothing, corroborated by a page that says it needs a browser. Saying so is the
+        // difference between a model stopping and a model asserting the subject does not exist.
+        if html && classify::needs_a_browser(&body, &raw_html) {
+            return Ok(Got::Refused(ToolOutcome::error(format!(
+                "{} returned a page with no readable text in it: what it holds is built by \
+                 JavaScript in the browser. Gantry reads what the server sends and does not run \
+                 a page, so there is nothing here to read. Look for this site's documentation, \
+                 its API, or a copy of the text somewhere that serves it as text.",
+                fetched.final_url
+            ))));
+        }
 
         let page = Arc::new(Page::new(
             fetched.final_url.to_string(),
@@ -493,6 +521,37 @@ fn render(
         };
     }
     ToolOutcome::json(out)
+}
+
+/// What to tell the model about a response that is not the page it asked for (§7.5), or `None`
+/// when the response is a page.
+///
+/// A refusal status still has a body worth reading — a 404 often says where the page moved —
+/// and that path is unchanged: those come back further down as an error carrying the text. This
+/// is for the responses whose *body is not the content at all*, where handing over the text
+/// would be handing over a lie.
+fn fights_back(fetched: &fetch::Fetched) -> Option<String> {
+    match &fetched.verdict {
+        classify::Verdict::Page | classify::Verdict::Refused { .. } => None,
+        classify::Verdict::Challenge { named_by } => Some(format!(
+            "{} answered with a bot challenge rather than the page (it said so in `{named_by}`). \
+             A challenge is permanent for anything that does not run JavaScript, so it was not \
+             retried — asking again only hardens that host against this machine. The page's \
+             text is not in this response at all. Try another source for it.",
+            fetched.final_url
+        )),
+        classify::Verdict::Wait { status, after } => Some(format!(
+            "{} is rate-limiting this connector ({status}) and asked to be left alone for {} \
+             seconds. It was waited out and asked once more, and answered the same way.",
+            fetched.final_url,
+            after.as_secs()
+        )),
+        classify::Verdict::Busy { status } => Some(format!(
+            "{} answered {status}: it is rate-limiting this connector or temporarily \
+             unavailable, and gave no usable hint about when to come back. Nothing was read.",
+            fetched.final_url
+        )),
+    }
 }
 
 /// A body served as `text/plain` that is plainly HTML, which servers do more often than they

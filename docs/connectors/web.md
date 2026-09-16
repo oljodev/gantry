@@ -457,6 +457,16 @@ in the body wrongly flagged four sites that had returned entirely usable content
 strings appear in ordinary pages served through the same edge network. The header first, the
 corroborated body signal only for step 4.
 
+*Built 2026-09-16 (`src/classify.rs`), and it was not there before: anything in the 200s went
+through the reader and out to the model as prose, which is the failure the paragraph above
+describes, in the product.* Steps 1–3 are decided from the status line and the headers before a
+byte of the body is read; step 4 runs after extraction, on a success that extracted to almost
+nothing. `Retry-After` is honoured once, in seconds or as a date, and a hint longer than twenty
+seconds is treated as a refusal rather than waited out — a person is in front of the tool call.
+A challenge is never retried. `tests/fixtures/challenge.html` is the interstitial itself: the
+test reads it as an article first, to show what the reader does with it, and then requires the
+header to be what catches it.
+
 ## 8. Borrowing a browser
 
 **The slice this covers is much smaller than folklore claims, and the document should say so

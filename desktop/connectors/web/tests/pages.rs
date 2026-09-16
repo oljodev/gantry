@@ -5,11 +5,12 @@
 //! a fixture reproduces that exactly and for ever, where a live fetch reproduces whatever the
 //! site looks like today. `cargo test` never opens a socket.
 
-use gantry_connector_web::{Format, article};
+use gantry_connector_web::{Format, Verdict, article, from_response};
 
 const ARTICLE: &str = include_str!("fixtures/article.html");
 const BARE: &str = include_str!("fixtures/bare.html");
 const NO_TITLE: &str = include_str!("fixtures/no-title.html");
+const CHALLENGE: &str = include_str!("fixtures/challenge.html");
 
 #[test]
 fn the_article_survives_and_the_furniture_does_not() {
@@ -410,5 +411,48 @@ fn the_fallback_does_not_repeat_the_title_as_content() {
         !page.body.starts_with("Notes"),
         "the head came back as content:\n{}",
         page.body
+    );
+}
+
+/// A bot challenge is not a page, and the header is what says so (§7.5 step 1).
+///
+/// This is the outcome the ladder exists for. The interstitial arrives as a cheerful HTTP 200
+/// full of well-formed prose, so every check that looks at the status or at the text agrees it
+/// is an article — and a model hands back "this site is verifying your browser" as the answer
+/// to whatever was asked. Until 2026-09-16 that is exactly what happened.
+#[test]
+fn a_challenge_page_is_caught_by_its_header_and_not_by_its_words() {
+    // What the reader makes of it, which is why nothing downstream can be trusted to notice:
+    // it is a heading and two paragraphs, and it reads like a page.
+    let read = article(CHALLENGE, Format::Markdown);
+    assert!(
+        read.body.contains("Verifying you are human"),
+        "{}",
+        read.body
+    );
+    assert!(read.body.len() > 80, "long enough to look like content");
+
+    // The header decides, and it decides before the body is read at all.
+    let verdict = from_response(200, |name| {
+        (name == "cf-mitigated").then(|| "challenge".to_owned())
+    });
+    assert_eq!(
+        verdict,
+        Verdict::Challenge {
+            named_by: "cf-mitigated".into()
+        }
+    );
+    assert!(
+        verdict.retry_after().is_none(),
+        "a challenge is permanent without JavaScript; retrying only hardens the host"
+    );
+
+    // And body sniffing is not the answer: the same words appear on pages that are fine.
+    let ordinary = article(ARTICLE, Format::Markdown);
+    assert!(!ordinary.body.is_empty());
+    assert_eq!(
+        from_response(200, |_| None::<String>),
+        Verdict::Page,
+        "no header, no challenge, whatever the page happens to say"
     );
 }

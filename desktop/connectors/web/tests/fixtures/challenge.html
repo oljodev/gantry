@@ -1,0 +1,36 @@
+<!doctype html>
+<!--
+  A bot-challenge interstitial, of the shape an edge network serves in place of the page.
+  Two things about it matter, and both are why §7.5 puts the header first:
+
+    * it is served with HTTP 200, so nothing about the status line says anything is wrong;
+    * it reads as prose. The extractor finds a heading and two paragraphs and hands them over,
+      and a model summarises "this site needs to check your browser" as though it were the
+      article it asked for.
+
+  Shortened, and the vendor's own names left out: what is being reproduced is the shape.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Just a moment…</title>
+    <meta http-equiv="X-UA-Compatible" content="IE=Edge" />
+    <meta name="robots" content="noindex,nofollow" />
+  </head>
+  <body>
+    <main>
+      <h1>example.com</h1>
+      <h2>Verifying you are human. This may take a few seconds.</h2>
+      <p>
+        example.com needs to review the security of your connection before proceeding.
+      </p>
+      <div id="challenge-stage"></div>
+      <p>
+        Performance &amp; security by the edge network. Ray ID: 8f2c1a9b4d7e0000.
+      </p>
+      <noscript>
+        <p>Please enable JavaScript and cookies to continue.</p>
+      </noscript>
+    </main>
+  </body>
+</html>
