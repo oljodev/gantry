@@ -159,7 +159,7 @@ fn grouped(n: usize) -> String {
     let plain = n.to_string();
     let mut out = String::new();
     for (i, c) in plain.chars().enumerate() {
-        if i > 0 && (plain.len() - i) % 3 == 0 {
+        if i > 0 && (plain.len() - i).is_multiple_of(3) {
             out.push('_');
         }
         out.push(c);
