@@ -42,21 +42,24 @@ pub const COOLDOWN: Duration = Duration::from_secs(20 * 60);
 /// Snippets from a results page are a sentence or two already.
 const SNIPPET_CHARS: usize = 300;
 
-/// What a browser sends. §6.1's other finding: the block is triggered by request headers and
-/// not by TLS fingerprint, so a plain client sending a complete, ordinary header set is served
-/// normally — which is why no fingerprint-impersonating HTTP client is a dependency here.
-const BROWSER: &[(&str, &str)] = &[
-    (
-        "User-Agent",
-        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) \
-         Chrome/131.0.0.0 Safari/537.36",
-    ),
+/// A complete, ordinary header set — and an honest name on it (D15).
+///
+/// §6.1's finding was that the block is triggered by request *headers* rather than by TLS
+/// fingerprint, so a plain client sending a full header set is served normally, which is why no
+/// fingerprint-impersonating HTTP client is a dependency here. That finding was read too far:
+/// what it justifies is sending `Accept` and `Accept-Language` at all, not claiming to be
+/// Chrome 131 on X11 while sending neither. §7.3 measured the two and they were
+/// byte-identical on every blocking site — so the lie bought nothing and cost the posture the
+/// whole connector is built on.
+///
+/// No `Referer` either. The one that used to be here named the page this request is a form post
+/// *to*, as though it had been loaded first. It had not.
+const HEADERS: &[(&str, &str)] = &[
     (
         "Accept",
-        "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     ),
     ("Accept-Language", "en-US,en;q=0.9"),
-    ("Referer", "https://lite.duckduckgo.com/"),
 ];
 
 /// Why a general query could not be spent right now.
@@ -170,7 +173,7 @@ async fn duckduckgo(
     let mut request = http
         .post("https://lite.duckduckgo.com/lite/")
         .form(&[("q", query)]);
-    for (name, value) in BROWSER {
+    for (name, value) in HEADERS {
         request = request.header(*name, *value);
     }
     let response = request

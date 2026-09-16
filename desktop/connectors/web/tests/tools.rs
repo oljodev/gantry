@@ -255,3 +255,56 @@ fn the_declared_schemas_agree_with_what_the_code_accepts() {
         }
     }
 }
+
+/// D15, held to the source: **Gantry identifies itself honestly and never impersonates a
+/// browser.** It was not held — the general search engine was asked with a Chrome 131 user-agent
+/// and a `Referer` naming a page that had never been loaded. §7.3 had already measured that the
+/// honest header and the lie produce byte-identical outcomes on every blocking site, so the
+/// impersonation bought nothing and cost the one posture this connector is built on.
+///
+/// A source scan rather than a live request, because what needs guarding is the next header
+/// table somebody adds, and the network is not where that would be caught.
+#[test]
+fn nothing_this_connector_sends_claims_to_be_a_browser() {
+    let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let mut files = Vec::new();
+    collect(&src, &mut files);
+    assert!(files.len() > 5, "the source was not found: {src:?}");
+    for path in files {
+        let text = std::fs::read_to_string(&path).unwrap();
+        for lie in ["Mozilla/", "AppleWebKit/", "Chrome/", "Safari/"] {
+            assert!(
+                !text.contains(lie),
+                "{} sends `{lie}`, which is a browser this is not (D15)",
+                path.display()
+            );
+        }
+    }
+}
+
+/// And what it does send names the product and where to read about it, so a site owner who
+/// wants to refuse Gantry can.
+#[test]
+fn the_user_agent_says_who_it_is_and_where_to_ask() {
+    assert!(
+        gantry_connector_web::USER_AGENT.starts_with("GantryBot/"),
+        "{}",
+        gantry_connector_web::USER_AGENT
+    );
+    assert!(
+        gantry_connector_web::USER_AGENT.contains("https://"),
+        "{}",
+        gantry_connector_web::USER_AGENT
+    );
+}
+
+fn collect(dir: &std::path::Path, into: &mut Vec<std::path::PathBuf>) {
+    for entry in std::fs::read_dir(dir).unwrap().flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            collect(&path, into);
+        } else if path.extension().is_some_and(|e| e == "rs") {
+            into.push(path);
+        }
+    }
+}

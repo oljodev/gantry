@@ -382,6 +382,16 @@ first on every request, before anything else in this section.
 Gantry sends one honest user-agent naming the product, a URL explaining what it is, and the fact
 that fetches are user-initiated. **It never impersonates a browser** (D15).
 
+*As built, corrected 2026-09-16.* It did impersonate one, in the one place nobody re-read: the
+general engine was asked with a Chrome 131 user-agent and a `Referer` naming the page the
+request is a form post *to*, as though it had been loaded first. The justification in the code
+was §6.1's finding that the block is triggered by request headers rather than by TLS
+fingerprint — which justifies sending `Accept` and `Accept-Language` at all, not claiming to be
+a browser while sending neither. The measurement two paragraphs below had already settled the
+question. `nothing_this_connector_sends_claims_to_be_a_browser` scans the crate's source for
+browser tokens, because the header table this would come back in is the next one somebody
+adds.
+
 This is not only posture. Measured across seven blocking sites, a Chrome user-agent and an honest
 one produced **byte-identical outcomes on every one**. A search-engine crawler's user-agent was
 *worse*, drawing a refusal where the honest one was served. What decides the outcome is transport
