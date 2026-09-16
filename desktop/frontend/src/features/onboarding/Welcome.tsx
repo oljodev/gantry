@@ -64,7 +64,13 @@ export function Welcome({ projectId }: { projectId?: string } = {}) {
   // There is no chat yet to attach anything to, so the folders and connectors chosen here are
   // held until the first message creates one. Making the chat early instead would leave an empty
   // chat behind every time somebody opened the menu and changed their mind.
-  const [roots, setRoots] = useState<string[]>([]);
+  // A folder chosen during onboarding waits here until the first message makes a chat to attach
+  // it to; taking it clears it, so it is applied once and never resurrects.
+  const [roots, setRoots] = useState<string[]>(() => {
+    const pending = useUiStore.getState().pendingRoots;
+    if (pending.length > 0) useUiStore.getState().setPendingRoots([]);
+    return pending;
+  });
   const [connectors, setConnectors] = useState<string[]>([]);
   /** The folder just chosen on a machine with no file tools yet (03 §11). */
   const [folderWithoutTools, setFolderWithoutTools] = useState<string | null>(null);

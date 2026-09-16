@@ -40,6 +40,22 @@ interface UiState {
    */
   incognitoChatId: string | null;
   setIncognitoChat: (chatId: string | null) => void;
+  /**
+   * Whether the first-launch steps have been walked through or skipped (15 A20). Here rather
+   * than in settings because it is not a preference: it records that a screen has been seen, on
+   * this machine, the way `unguarded` records an answer given once. The gate that reads it also
+   * requires the chat list to be empty, so clearing this storage cannot make an established
+   * install sit through onboarding again.
+   */
+  onboarded: boolean;
+  finishOnboarding: () => void;
+  /**
+   * A folder chosen during onboarding, before any chat exists to attach it to. The welcome
+   * screen picks it up and clears it, which is where the roots chosen from the `+` menu already
+   * wait for the first message.
+   */
+  pendingRoots: string[];
+  setPendingRoots: (roots: string[]) => void;
   /** The open section of each dialog, or null when it is closed (15 A18). */
   settings: Section | null;
   customize: CustomizeSection | null;
@@ -58,6 +74,8 @@ type Persisted = Pick<
   UiState,
   | 'theme'
   | 'density'
+  | 'onboarded'
+  | 'pendingRoots'
   | 'sidebarWidth'
   | 'sidebarCollapsed'
   | 'paneWidth'
@@ -107,6 +125,10 @@ export const useUiStore = create<UiState>()(
         })),
       incognitoChatId: null,
       setIncognitoChat: (incognitoChatId) => set({ incognitoChatId }),
+      onboarded: false,
+      finishOnboarding: () => set({ onboarded: true }),
+      pendingRoots: [],
+      setPendingRoots: (pendingRoots) => set({ pendingRoots }),
       settings: null,
       customize: null,
       // Only one of the two is ever open: they are the same kind of surface.
@@ -143,6 +165,8 @@ export const useUiStore = create<UiState>()(
         lastRoute: s.lastRoute,
         recentModels: s.recentModels,
         unguarded: s.unguarded,
+        onboarded: s.onboarded,
+        pendingRoots: s.pendingRoots,
       }),
     },
   ),
