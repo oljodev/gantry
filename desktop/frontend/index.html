@@ -5,6 +5,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Gantry</title>
     <link rel="icon" href="data:," />
+    <!--
+      The one policy the app document carries (docs/plan/13 §5). An artifact's frame may hold
+      the srcdoc it was given and may go nowhere else: a sandboxed document can navigate itself
+      — no flag withholds that and no policy inside it forbids it — but `frame-src` on the
+      document that embeds it does, and a blocked navigation never becomes a request, so the
+      URL itself is not egress either. `srcdoc` is not a fetch and is unaffected; the artifact
+      loads and keeps running.
+
+      Only this directive is declared. A CSP restricts nothing it does not name, so the app's
+      own scripts, styles, fonts and IPC are untouched, in the dev server as in the bundle.
+    -->
+    <meta http-equiv="Content-Security-Policy" content="frame-src 'none'" />
     <script>
       // First paint in the right theme, density and OS before React mounts (docs/plan/11 §3).
       // The mirror is the persisted UI store; the backend value wins if they ever disagree.

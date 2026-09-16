@@ -9,6 +9,11 @@ anything else is an escape. One case per document, because three of the verdicts
 engine's rather than the page's: a modal dialog, a started download and a navigation request are
 things only the embedder sees.
 
+The parent document carries the app document's own policy, `frame-src 'none'` — the one thing
+that stops a sandboxed frame navigating itself somewhere else, since that needs no sandbox flag
+and no directive inside the frame refuses it. `--config` can empty it, which is how the test
+proves the case can still tell a hole from a wall.
+
 The remote URLs are under the reserved `.invalid` TLD, so no hole in the sandbox can make this
 talk to anyone. That is also why a page-side denial is not enough on its own for a case that
 names a CSP directive: a request that dies in the resolver looks the same from inside the page.
@@ -22,8 +27,8 @@ runs on the host, not in the editor's sandbox:
 
 Options:
     --config PATH   a JSON object overriding `csp`, `sandbox_flags`, `referrer_policy`,
-                    `only` (a list of case ids) and `include_hangs`. The Rust conformance test
-                    writes one so the engine runs the very strings the app ships.
+                    `parent_csp`, `only` (a list of case ids) and `include_hangs`. The Rust
+                    conformance test writes one so the engine runs the strings the app ships.
     --only ID       run one case (repeatable).
     --include-hangs also run the cases marked `hang`, which are expected to freeze the web
                     process; each gets its own hard deadline.
@@ -52,6 +57,8 @@ DEFAULT_CSP = (
 )
 DEFAULT_FLAGS = 'allow-scripts'
 DEFAULT_REFERRER = 'no-referrer'
+# The app document's own policy, which is what stops a frame navigating itself away.
+DEFAULT_PARENT_CSP = "frame-src 'none'"
 
 # How long one case may take before the embedder gives up on it, in milliseconds. The driver's
 # own per-case budget is 3 s and it adds a settle delay, so this is comfortably above both.
@@ -93,9 +100,10 @@ def case_document(case: dict, remote: str, csp: str, harness_js: str) -> str:
     )
 
 
-def parent_document(doc: str, flags: str, referrer: str) -> str:
-    """The app's side: one sandboxed frame, and the same three checks `acceptMessage` makes —
-    the message must come from that frame, from an opaque origin, and be plain JSON."""
+def parent_document(doc: str, flags: str, referrer: str, parent_csp: str) -> str:
+    """The app's side: one sandboxed frame, the policy the app document carries, and the same
+    three checks `acceptMessage` makes — the message must come from that frame, from an opaque
+    origin, and be plain JSON."""
     script = f"""
 window.__result = null;
 window.__notes = [];
@@ -113,8 +121,12 @@ window.addEventListener('message', function (e) {{
 document.body.appendChild(frame);
 frame.srcdoc = {json.dumps(doc)};
 """
+    meta = (
+        f'<meta http-equiv="Content-Security-Policy" content="{parent_csp}">' if parent_csp else ''
+    )
     return (
-        '<!doctype html><html><body style="margin:0;background:#1f1f23">'
+        f'<!doctype html><html><head>{meta}</head>'
+        '<body style="margin:0;background:#1f1f23">'
         f'<script>{escape_script(script)}</script></body></html>'
     )
 
@@ -131,6 +143,7 @@ def load_config(argv: list[str]) -> dict:
     config.setdefault('csp', DEFAULT_CSP)
     config.setdefault('sandbox_flags', DEFAULT_FLAGS)
     config.setdefault('referrer_policy', DEFAULT_REFERRER)
+    config.setdefault('parent_csp', DEFAULT_PARENT_CSP)
     config.setdefault('include_hangs', False)
     config.setdefault('only', None)
     return config
@@ -246,8 +259,12 @@ def main() -> int:
         elapsed = 0
         case = cases[index]
         doc = case_document(case, remote, config['csp'], harness_js)
-        view.load_html(parent_document(doc, config['sandbox_flags'], config['referrer_policy']),
-                       'file:///gantry-conformance/')
+        view.load_html(
+            parent_document(
+                doc, config['sandbox_flags'], config['referrer_policy'], config['parent_csp']
+            ),
+            'file:///gantry-conformance/',
+        )
 
     def finish_case(page: dict | None):
         nonlocal index
@@ -300,6 +317,7 @@ def main() -> int:
         'csp': config['csp'],
         'sandbox_flags': config['sandbox_flags'],
         'referrer_policy': config['referrer_policy'],
+        'parent_csp': config['parent_csp'],
         'cases': results,
     }
     line = 'GANTRY_CONFORMANCE ' + json.dumps(report)

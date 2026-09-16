@@ -84,6 +84,20 @@ pub const FORBIDDEN_SANDBOX_FLAGS: &[(&str, &str)] = &[
 /// The iframe's `referrerpolicy`.
 pub const REFERRER_POLICY: &str = "no-referrer";
 
+/// The policy the **app document** carries, which is a different document from the artifact's
+/// (13 §5).
+///
+/// A sandboxed document may always navigate itself: no sandbox flag withholds it, and no
+/// directive inside the document refuses it, so `location.href = "https://…"` used to replace
+/// the artifact with a remote page and put whatever it held into a URL that reached a server —
+/// the one thing `connect-src 'none'` is there to stop. `frame-src` is checked against the
+/// document that embeds the frame, whoever started the navigation, so the app saying `'none'`
+/// closes it. A blocked navigation never becomes a request; `srcdoc` is not a fetch, so the
+/// artifact loads as before and keeps running.
+///
+/// It is the only directive the app declares: a policy restricts nothing it does not name.
+pub const EMBEDDER_CSP: &str = "frame-src 'none'";
+
 /// Messages the parent sends into an artifact (13 §5).
 pub const PARENT_TO_ARTIFACT: &[&str] = &["mount", "update", "theme"];
 

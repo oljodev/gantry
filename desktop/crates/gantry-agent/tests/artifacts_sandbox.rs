@@ -24,10 +24,9 @@
 //! check that every shipped declaration still says what it says. They need no engine and run
 //! everywhere.
 //!
-//! Three of §5's claims do not hold. Each has a test, each test is `#[ignore]`d, and each says
-//! what it proves: `nothing_navigates_the_artifact_frame_itself` (an artifact can navigate its
-//! own frame to a remote URL), `an_html_artifacts_inline_script_is_loop_guarded` (only `react`
-//! is compiled, so an `html` artifact's scripts are never instrumented) and
+//! Two of §5's claims do not hold yet. Each has a test, each test is `#[ignore]`d, and each
+//! says what it proves: `an_html_artifacts_inline_script_is_loop_guarded` (only `react` is
+//! compiled, so an `html` artifact's scripts are never instrumented) and
 //! `the_toolbar_can_stop_a_running_artifact` (hang risk 2's Stop was never built). Remove the
 //! `#[ignore]` when the rule is made true; the test is already written.
 
@@ -81,6 +80,10 @@ fn runtime_index() -> String {
     read("artifact-runtime/index.html")
 }
 
+fn app_index() -> String {
+    read("frontend/index.html")
+}
+
 fn runtime_bridge() -> String {
     read("artifact-runtime/src/bridge.ts")
 }
@@ -94,6 +97,17 @@ fn shipped_csp() -> String {
 fn runtime_csp() -> String {
     between(
         &runtime_index(),
+        "http-equiv=\"Content-Security-Policy\"",
+        "content=\"",
+        "\"",
+    )
+}
+
+/// The policy the app document itself carries, which is the one that governs where an
+/// artifact's frame may go.
+fn shipped_embedder_csp() -> String {
+    between(
+        &app_index(),
         "http-equiv=\"Content-Security-Policy\"",
         "content=\"",
         "\"",
@@ -198,6 +212,7 @@ fn shipped_config() -> Value {
         "csp": shipped_csp(),
         "sandbox_flags": shipped_sandbox_flags(),
         "referrer_policy": shipped_referrer_policy(),
+        "parent_csp": shipped_embedder_csp(),
     })
 }
 
@@ -468,21 +483,30 @@ fn engine_an_artifact_cannot_register_a_service_worker() {
 
 // ------------------------------------------------------------------------ the two that fail
 
-/// **Not enforced.** 13 §5 says links are intercepted and forwarded to the parent as
-/// `open_url`, and that "nothing navigates". Interception covers clicks on `<a href>`; a
-/// script that assigns `location.href` navigates the artifact's own frame, and neither the
-/// sandbox attribute (self-navigation needs no flag) nor the CSP (which has no directive for
-/// it) stops it. WebKitGTK confirms the request leaves the frame.
+/// 13 §5 says links are intercepted and forwarded to the parent as `open_url`, and that
+/// nothing navigates. Interception covers clicks on `<a href>`; a script that assigns
+/// `location.href` navigates the artifact's own frame, which needs no sandbox flag and which
+/// no directive inside the document refuses — so until 2026-09-16 the request left, taking
+/// with it whatever the artifact chose to write into the URL.
 ///
-/// What it costs: the artifact is replaced by a remote page, and the URL itself is egress —
-/// anything the artifact holds can be written into a query string that reaches a server, which
-/// is the one thing `connect-src 'none'` exists to prevent. Closing it means the runtime
-/// watching for navigation away from the document and the parent remounting from stored
-/// content, or a `sandbox` without the implicit self-navigation, which no flag expresses.
+/// What stops it is a policy on the *other* document: `frame-src` is checked against the one
+/// that embeds the frame, whoever started the navigation, and the app document now says
+/// `'none'` ([`sandbox::EMBEDDER_CSP`]). The blocked navigation never becomes a request, and
+/// `srcdoc` is not a fetch, so the artifact loads and keeps running.
 #[test]
-#[ignore = "not enforced: an artifact can navigate its own frame to a remote URL (13 §5 'nothing navigates')"]
 fn nothing_navigates_the_artifact_frame_itself() {
     denied("self_navigation");
+}
+
+/// And the declaration that does it, held to 13 §5 where the other three already are.
+#[test]
+fn declares_that_an_artifact_frame_may_go_nowhere() {
+    assert_eq!(
+        shipped_embedder_csp(),
+        sandbox::EMBEDDER_CSP,
+        "the app document's own policy has drifted from 13 §5; without `frame-src` an artifact \
+         can navigate its frame to any URL it likes, which is egress"
+    );
 }
 
 /// **Not enforced.** 13 §5, hang risk 1: "Inline scripts in `html` artifacts get the same pass
@@ -549,14 +573,17 @@ fn the_conformance_run_notices_a_weakened_sandbox() {
         "sandbox_flags": "allow-scripts allow-same-origin allow-popups allow-modals \
                           allow-downloads allow-forms allow-top-navigation allow-pointer-lock",
         "referrer_policy": "no-referrer",
+        // The app document's policy is part of what is being weakened: without it a frame
+        // navigates itself wherever it likes.
+        "parent_csp": "",
         "only": [
             "fetch", "nested_frame", "parent_document", "top_document", "top_navigation",
             "modal_dialog", "download", "local_storage", "session_storage", "indexed_db",
-            "cookies", "cache_storage",
+            "cookies", "cache_storage", "self_navigation",
         ],
     });
     let cases = run_harness(&weakened, &[]).expect("the harness runs");
-    assert_eq!(cases.len(), 12, "every selected case ran");
+    assert_eq!(cases.len(), 13, "every selected case ran");
     let blind: Vec<&str> = cases
         .iter()
         .filter(|(_, v)| v.verdict == "blocked")
