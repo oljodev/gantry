@@ -23,9 +23,9 @@ import {
   CommandShortcut,
 } from '@/components/ui/command';
 import { Kbd } from '@/components/ui/kbd';
-import { projects } from '@/fixtures/chat';
 import { useChats, useSearch } from '@/lib/ipc/hooks/chats';
-import { connectors } from '@/fixtures/connectors';
+import { useCatalog } from '@/lib/ipc/hooks/connectors';
+import { useProjects } from '@/lib/ipc/hooks/projects';
 import { SECTIONS } from '@/features/settings/sections';
 import { useUiStore } from '@/lib/stores/uiStore';
 
@@ -40,13 +40,18 @@ export function CommandPalette() {
   const navigate = useNavigate();
   const chats = useChats().data ?? [];
   const hits = useSearch(open ? query : '').data ?? [];
+  const projects = useProjects().data ?? [];
+  const catalog = useCatalog().data ?? [];
   const toggleSidebar = useUiStore((s) => s.toggleSidebar);
   const setTheme = useUiStore((s) => s.setTheme);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const mod = document.documentElement.dataset.os === 'macos' ? e.metaKey : e.ctrlKey;
-      if (mod && (e.key === 'k' || e.key === 'K')) {
+      // ⌘⇧K is the surface switch (16 §4) and ⌥ is nobody's. Without this the palette opened
+      // on top of the surface it had just switched to, which is two answers to one keystroke.
+      if (!mod || e.shiftKey || e.altKey) return;
+      if (e.key === 'k' || e.key === 'K') {
         e.preventDefault();
         setOpen((o) => !o);
       }
@@ -131,8 +136,13 @@ export function CommandPalette() {
       : hits.filter((h) => h.kind === 'chat');
   const messageHits = hits.filter((h) => h.kind === 'message');
   const sections = SECTIONS.filter(([, label]) => matches(label));
-  const projectHits = projects.filter((p) => matches(p.name));
-  const connectorHits = connectors.filter((c) => matches(c.name)).slice(0, 8);
+  const projectHits = projects.filter((p) => !p.archived && matches(p.name)).slice(0, 6);
+  // The catalog is sixty-odd entries: without a query the first eight of them would be
+  // alphabetical noise, so connectors appear once there is something to match them against.
+  const connectorHits =
+    q.length === 0
+      ? []
+      : catalog.filter((c) => matches(c.name) || c.keywords.some((k) => matches(k))).slice(0, 8);
   const empty =
     actions.length +
       chatHits.length +
@@ -205,9 +215,18 @@ export function CommandPalette() {
           {projectHits.length > 0 && (
             <CommandGroup heading="Projects">
               {projectHits.map((p) => (
-                <CommandItem key={p.id} value={`project ${p.id}`} onSelect={run(() => undefined)}>
+                <CommandItem
+                  key={p.id}
+                  value={`project ${p.id}`}
+                  onSelect={run(() =>
+                    navigate({ to: '/projects/$projectId', params: { projectId: p.id } }),
+                  )}
+                >
                   <FolderSimpleIcon />
-                  {p.name}
+                  <span className="truncate">{p.name}</span>
+                  <span className="ml-auto shrink-0 text-meta text-fg-3">
+                    {p.chat_count === 1 ? '1 chat' : `${p.chat_count} chats`}
+                  </span>
                 </CommandItem>
               ))}
             </CommandGroup>
@@ -232,10 +251,10 @@ export function CommandPalette() {
                 <CommandItem
                   key={c.id}
                   value={`connector ${c.id}`}
-                  onSelect={run(() => useUiStore.getState().openCustomize('connectors'))}
+                  onSelect={run(() => useUiStore.getState().openCustomize('connectors', c.name))}
                 >
                   <PlugIcon />
-                  {c.installed ? `Open ${c.name}` : `Install ${c.name}`}
+                  {c.installed.length > 0 ? `Open ${c.name}` : `Install ${c.name}`}
                 </CommandItem>
               ))}
             </CommandGroup>

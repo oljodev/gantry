@@ -59,9 +59,15 @@ interface UiState {
   /** The open section of each dialog, or null when it is closed (15 A18). */
   settings: Section | null;
   customize: CustomizeSection | null;
+  /**
+   * What to look for once the Customize dialog is open, when something opened it *at* a thing
+   * — the palette landing on one connector, say. The section seeds its own search from this
+   * and it stays set until the next open, so opening the dialog by hand finds it null.
+   */
+  customizeFind: string | null;
   openSettings: (section?: Section) => void;
   closeSettings: () => void;
-  openCustomize: (section?: CustomizeSection) => void;
+  openCustomize: (section?: CustomizeSection, find?: string) => void;
   closeCustomize: () => void;
   setTheme: (theme: ThemePref) => void;
   setDensity: (density: Density) => void;
@@ -131,10 +137,12 @@ export const useUiStore = create<UiState>()(
       setPendingRoots: (pendingRoots) => set({ pendingRoots }),
       settings: null,
       customize: null,
+      customizeFind: null,
       // Only one of the two is ever open: they are the same kind of surface.
       openSettings: (section = 'general') => set({ settings: section, customize: null }),
       closeSettings: () => set({ settings: null }),
-      openCustomize: (section = 'connectors') => set({ customize: section, settings: null }),
+      openCustomize: (section = 'connectors', find = undefined) =>
+        set({ customize: section, settings: null, customizeFind: find ?? null }),
       closeCustomize: () => set({ customize: null }),
       unguarded: [],
       rememberUnguarded: (chatId) =>

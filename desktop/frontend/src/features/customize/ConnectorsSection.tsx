@@ -30,6 +30,7 @@ import {
   useConnectors,
 } from '@/lib/ipc/hooks/connectors';
 import { describe } from '@/lib/errors';
+import { useUiStore } from '@/lib/stores/uiStore';
 import { cn } from '@/lib/utils';
 
 type Tab = 'discover' | 'yours';
@@ -49,6 +50,23 @@ export function ConnectorsSection() {
   const connectors = useConnectors();
   const { connect, setEnabled, remove } = useConnectorMutations();
   const { runInstall: install, busyId: busy } = useInstallFlow();
+
+  // Something opened this section *at* a connector — the palette, so far. Seed the search with
+  // it and stand on the tab where that connector can actually be acted on, whether the dialog
+  // was already open or is opening now. Adjusted during render, which is how the composer's
+  // prefill nonce does the same thing.
+  const find = useUiStore((s) => s.customizeFind);
+  const [applied, setApplied] = useState<string | null>(find);
+  if (find !== applied) {
+    setApplied(find);
+    if (find !== null) {
+      setQuery(find);
+      const owned = (connectors.data ?? []).some((i) =>
+        i.name.toLowerCase().includes(find.toLowerCase()),
+      );
+      setTab(owned ? 'yours' : 'discover');
+    }
+  }
 
   /** The one-click install, with the dialog as the fallback when a server needs more (03 §11). */
   const runInstall = async (entry: CatalogEntryDto) => {
