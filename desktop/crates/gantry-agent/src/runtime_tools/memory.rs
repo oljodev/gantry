@@ -264,7 +264,8 @@ impl MemoryTools {
                     // every later prompt beside the one that corrected it, which is the way a
                     // store fills up with entries that disagree.
                     if let Some(old) = &target
-                        && let Err(err) = self.memories.archive(old.id)
+                        && let Err(err) =
+                            self.memories.archive_from(old.id, Some(req.scope.chat_id))
                     {
                         log::warn!("could not archive the memory this one replaces: {err}");
                     }
@@ -337,7 +338,11 @@ impl MemoryTools {
             return refusal;
         }
         let auto = settings.memory.auto_saves(entry.scope_kind);
-        if auto && let Err(err) = self.memories.archive(entry.id) {
+        if auto
+            && let Err(err) = self
+                .memories
+                .archive_from(entry.id, Some(req.scope.chat_id))
+        {
             return ToolOutcome::error(format!("could not forget it: {err}"));
         }
         let proposal = MemoryProposal {

@@ -516,6 +516,72 @@ impl TurnManager {
         Ok(())
     }
 
+    /// A memory changed, and the chats it reaches are brought up to date (12 §B6, 10 §4).
+    ///
+    /// The rule is every other layer's, with one addition that comes from memory being chosen
+    /// in two tiers rather than one (§B4). A chat that has not spoken is rebuilt around the new
+    /// core set. A chat that has spoken is *told* — but only if this entry could actually have
+    /// reached it: the ones frozen into its prompt, which is what `snapshot_memory_ids_json`
+    /// records, plus anything that would now be in a core set it has not got. A long-tail
+    /// `fact` is re-queried every message, so an edit to one needs no announcement at all, and
+    /// making one would put a system note into every open conversation twice a turn under
+    /// auto-save.
+    ///
+    /// Two chats are never told. An incognito one reads no memory and writes none (15 A21), so
+    /// a note about memory would be the one thing its whole promise is to do without. And
+    /// `except` is the chat that caused the change: the model that just called
+    /// `propose_memory` has the card and the tool result, and telling it again is the app
+    /// talking to itself.
+    pub fn memory_changed(
+        &self,
+        entry: &gantry_core::MemoryDto,
+        edit: crate::memory::MemoryEdit,
+        except: Option<ChatId>,
+    ) -> Result<(), GantryError> {
+        // Nothing to re-freeze and nobody to tell: a new long-tail entry is in no frozen
+        // prompt and will be found by the next message that is about it.
+        if matches!(edit, crate::memory::MemoryEdit::Added) && !in_core_set(entry) {
+            return Ok(());
+        }
+        let settings = self.settings();
+        for id in self.chats.open_chat_ids()? {
+            if Some(id) == except {
+                continue;
+            }
+            let Some(chat) = self.chats.get(id)? else {
+                continue;
+            };
+            if chat.incognito || !reaches(entry, chat.project_id) {
+                continue;
+            }
+            if !self.chats.has_turns(id)? {
+                self.refreeze(id, chat.mode, chat.incognito, chat.project_id, &settings)?;
+                self.notify(id);
+                continue;
+            }
+            let mut held = self.chats.snapshot_memories(id);
+            let carries = held.contains(&entry.id);
+            if !carries && !in_core_set(entry) {
+                continue;
+            }
+            if let Some(note) = crate::system_prompt::memory_note(&entry.text, &edit, carries) {
+                self.chats.append_system_note(id, note)?;
+                // A chat that has been *told* an entry holds it as surely as one that was
+                // frozen around it, so the record of what it holds has to say so — otherwise
+                // it would be told to remember something and never told to forget it. The
+                // Memory page reads the same list to say which chats still carry an entry.
+                match edit {
+                    crate::memory::MemoryEdit::Forgotten => held.retain(|m| *m != entry.id),
+                    _ if !carries => held.push(entry.id),
+                    _ => {}
+                }
+                self.chats.record_snapshot_memories(id, &held);
+                self.notify(id);
+            }
+        }
+        Ok(())
+    }
+
     /// The same rule for one chat: a pin was added or removed, or the chat moved projects.
     pub fn chat_context_changed(&self, chat_id: ChatId, note: String) -> Result<(), GantryError> {
         let settings = self.settings();
@@ -976,5 +1042,28 @@ impl TurnManager {
             .values()
             .find(|t| t.chat_id == chat_id)
             .map(|t| t.id)
+    }
+}
+
+/// Whether an entry is chosen once into a chat's frozen prompt rather than looked up per
+/// message (12 §B4): every enabled `instruction` and `preference`, and anything the user has
+/// marked **Always**.
+fn in_core_set(entry: &gantry_core::MemoryDto) -> bool {
+    entry.enabled
+        && (entry.always_include
+            || matches!(
+                entry.kind,
+                gantry_core::MemoryKind::Instruction | gantry_core::MemoryKind::Preference
+            ))
+}
+
+/// Whether an entry is in scope for a chat: a global one is in every chat's, a project one
+/// only in that project's (12 §B4).
+fn reaches(entry: &gantry_core::MemoryDto, project: Option<ProjectId>) -> bool {
+    match entry.scope_kind {
+        gantry_core::MemoryScopeKind::Global => true,
+        gantry_core::MemoryScopeKind::Project => {
+            entry.scope_id.is_some() && entry.scope_id == project
+        }
     }
 }

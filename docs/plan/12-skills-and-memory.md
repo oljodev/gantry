@@ -316,6 +316,24 @@ forgotten the user's own playbooks is not more private, only worse.
   to, and the filter 12 §B5 promised is there. The auto-save switch had the matching half: two
   settings, `auto_save_global` and `auto_save_project`, and one switch, so project memories were
   saved without asking on a page that said asking was on.
+- ~~**§B6, the part where an open chat is told.**~~ **Built 2026-09-16.** The rule was written
+  down in M12 and implemented nowhere: `update` and `archive` wrote a row and stopped, so a
+  memory deleted on the Memory page went on being in every open conversation's frozen prompt
+  with nothing to say it had gone. Every write now goes through one hook, installed once in
+  `startup.rs`, so the page's four commands and the model's own tools all follow the same rule.
+  Three things the code decided that §B6 had left open:
+  - **Only the frozen tier is announced.** Memory is chosen in two tiers (§B4) and a `fact` is
+    re-queried every message, so an edit to one takes effect on the next turn by itself. Sending
+    a note for it would put a system message into every open chat twice a turn under auto-save,
+    for something the model was going to be told anyway. So: instructions, preferences and
+    **Always** entries are announced; the long tail is not.
+  - **Being told counts as holding it.** `snapshot_memory_ids_json` was written once at chat
+    creation; a chat told "remember this from here on" is now recorded as holding it, and a
+    chat told to forget something stops. Otherwise a chat could be given a sentence and never
+    released from it, which is the failure the announcement exists to prevent.
+  - **Two chats are never told**: an incognito one, which reads and writes no memory at all
+    (15 A21), and the chat that caused the change, which has the proposal card and the tool
+    result already.
 - **The shared community catalog**, still deferred for the reasons in §A5 flow 3.
 - **`references/` in the editor.** A skill can carry them, they are imported, exported, indexed
   and readable with `gantry__read_skill_file`; the editor does not yet let you write one.

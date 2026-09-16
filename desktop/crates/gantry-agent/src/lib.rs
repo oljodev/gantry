@@ -30,12 +30,13 @@ pub use chats::{ChatBook, ChatPatch, NewAttachment, NewChat};
 pub use events::{Batcher, EventSink, FanoutSink};
 pub use export::ExportFormat;
 pub use interactions::Interactions;
-pub use memory::Memories;
+pub use memory::{Memories, MemoryEdit};
 pub use projects::Projects;
 pub use runtime_tools::{RuntimeTools, catalog::ConnectorAccess};
 pub use skills::Skills;
 pub use system_prompt::{
     CORE_VERSION, PromptContext, SystemPromptBuilder, chat_instructions_note, connector_inventory,
+    memory_note,
 };
 pub use tools::ToolSet;
 pub use turn_manager::{ChatNotifier, ProviderSource, TurnManager};

@@ -232,6 +232,19 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn Error>> {
     }
     let projects = Arc::new(gantry_agent::Projects::new(store.clone(), blobs.clone()));
     let memories = Memories::new(store.clone());
+    // A memory the user changed reaches the chats it was frozen into (12 §B6): every write
+    // goes through `Memories`, so the rule is installed here once rather than at each of the
+    // five callers — the page's four commands and the model's own tools. Weak, because the
+    // turn manager reaches back here through the tool set and a cycle would outlive the app.
+    memories.set_on_change({
+        let turns = Arc::downgrade(&turns);
+        Arc::new(move |entry: &gantry_core::MemoryDto, edit, except| {
+            let Some(turns) = turns.upgrade() else { return };
+            if let Err(err) = turns.memory_changed(entry, edit, except) {
+                log::warn!("could not tell the open chats about a memory change: {err}");
+            }
+        })
+    });
     // Recently deleted is thirty days, and this is the only place that notices they are up.
     match memories.sweep() {
         Ok(0) => {}

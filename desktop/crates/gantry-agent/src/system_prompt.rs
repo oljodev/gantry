@@ -6,6 +6,8 @@ use gantry_core::{
     PROJECT_INSTRUCTIONS_MAX_CHARS, PROJECT_KNOWLEDGE_MAX_CHARS,
 };
 
+use crate::memory::MemoryEdit;
+
 /// Bumped whenever `assets/prompts/core.md` or a mode fragment changes meaning.
 pub const CORE_VERSION: u32 = 8;
 
@@ -377,6 +379,38 @@ fn describe<'a>(instances: impl Iterator<Item = &'a ConnectorInstanceDto>) -> Op
         })
         .collect();
     (!parts.is_empty()).then(|| parts.join(", "))
+}
+
+/// The `SystemNote` a chat is given when a memory it can see changes (12 §B6, 10 §4).
+///
+/// `carries` is whether this entry is in *this* chat's frozen prompt. It decides which of two
+/// sentences gets sent, because they are different facts: a chat holding the old text has to be
+/// told to stop using it, and a chat that never had it only needs the new one. A chat that
+/// neither carries the entry nor would have been given it — a deleted fact it never saw — is
+/// told nothing at all, which is what `None` means.
+///
+/// The long tail is deliberately absent from all of this: a `fact` or `note` is chosen per
+/// message from a live query (§B4), so an edit to one takes effect on the next turn by itself,
+/// and announcing it to every open chat would be noise for a change the model will see anyway.
+#[must_use]
+pub fn memory_note(text: &str, edit: &MemoryEdit, carries: bool) -> Option<String> {
+    let text = text.trim();
+    match edit {
+        MemoryEdit::Changed { was } if carries => Some(format!(
+            "Memory updated. This is no longer true and should not be used again: \"{}\". \
+             It now reads: \"{text}\".",
+            was.trim()
+        )),
+        MemoryEdit::Forgotten if carries => Some(format!(
+            "Memory updated. Forget this and do not rely on it again: \"{text}\"."
+        )),
+        MemoryEdit::Forgotten | MemoryEdit::Refiled => None,
+        // Added, Restored, and an edit to something this chat never held: one sentence, the
+        // one that is true now.
+        _ => Some(format!(
+            "Memory updated. Remember this from here on: \"{text}\"."
+        )),
+    }
 }
 
 /// The `SystemNote` appended when a chat's permission mode changes (04 §3, 10 §4).

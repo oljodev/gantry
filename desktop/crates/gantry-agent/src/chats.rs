@@ -679,6 +679,14 @@ impl ChatBook {
         }
     }
 
+    /// Which memories a chat's frozen prompt was built from (12 §B4). Empty for a chat that
+    /// predates the record or that froze none.
+    pub fn snapshot_memories(&self, chat_id: ChatId) -> Vec<gantry_core::MemoryId> {
+        self.store
+            .read(move |c| chats::snapshot_memories(c, chat_id))
+            .unwrap_or_default()
+    }
+
     /// The skills pinned to a chat (12 §A3). They live in the frozen prompt, so the matcher
     /// skips them and the inventory lists them first.
     pub fn pinned_skills(&self, chat_id: ChatId) -> Result<Vec<String>, GantryError> {
