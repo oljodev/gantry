@@ -254,10 +254,12 @@ export function ArtifactPanel({ artifactId, onFixThis, onOpenUrl, bare }: Artifa
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const mod = document.documentElement.dataset.os === 'macos' ? e.metaKey : e.ctrlKey;
-      if (!mod || e.altKey || e.shiftKey || isTyping(e.target)) return;
+      if (!mod || e.altKey || isTyping(e.target)) return;
+      // Shift is not rejected: on a US layout `+` *is* Shift and `=`, which is why every
+      // browser takes both spellings for zooming in. Same for `_` and `-`.
       if (e.key === '=' || e.key === '+') zoomBy(1);
       else if (e.key === '-' || e.key === '_') zoomBy(-1);
-      else if (e.key === '0') setZoom(DEFAULT_ZOOM);
+      else if (e.key === '0' && !e.shiftKey) setZoom(DEFAULT_ZOOM);
       else return;
       e.preventDefault();
     };
@@ -342,6 +344,7 @@ export function ArtifactPanel({ artifactId, onFixThis, onOpenUrl, bare }: Artifa
               <button
                 type="button"
                 onClick={() => setZoom(DEFAULT_ZOOM)}
+                aria-label={`Zoom ${zoomLabel(zoom)}, reset to 100%`}
                 title={`Reset zoom (${shortcutLabel('mod+0')})`}
                 className="min-w-10 whitespace-nowrap rounded-2 px-1 py-0.5 hover:text-fg"
               >
