@@ -104,6 +104,8 @@ export function ChatView({
   const chatConnectors = useChatConnectors(chatId);
   const { attach: attachConnector } = useConnectorMutations();
   const openCustomize = useUiStore((s) => s.openCustomize);
+  // A turn that failed for want of a key offers the page where keys live (15 A20).
+  const openSettings = useUiStore((s) => s.openSettings);
   const connectorChoices = useMemo(
     () =>
       (installedConnectors.data ?? []).map((c) => ({
@@ -324,11 +326,16 @@ export function ChatView({
   const running = live?.status === 'running' || detail.active_turn !== null;
   const turns = toTurns(detail, live, (ref) => modelLabel(providers, ref), artifacts);
   // Capability-driven controls (02 §2): the catalog says what the model can do; an unlisted
-  // model keeps thinking available and hides web search.
+  // model keeps thinking available.
+  //
+  // Web search is `undefined` rather than `false` when the catalog has never been read, which
+  // on a machine with no key is always. Saying "not on this model" about every model — the
+  // DeepSeek default included, which does have it — is a claim the app is in no position to
+  // make, and the one it makes to everyone who has not added a key yet.
   const caps = modelCapabilities(providers, detail.model);
   const capabilities = {
     thinking: caps ? caps.reasoning.kind !== 'none' : true,
-    webSearch: caps?.server_web_search ?? false,
+    webSearch: caps ? caps.server_web_search : undefined,
   };
   const patch = (u: Parameters<typeof update.mutate>[0]['update']) =>
     update.mutate({ chatId, update: u });
@@ -558,6 +565,7 @@ export function ChatView({
                 key={turn.id}
                 turn={turn}
                 detailed={surface === 'code'}
+                onAddKey={() => openSettings('providers')}
                 isLast={i === turns.length - 1}
                 onOpenItem={openItem}
                 onAllowAnyway={(callId) => {

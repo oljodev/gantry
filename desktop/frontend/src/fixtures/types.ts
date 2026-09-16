@@ -210,7 +210,12 @@ export interface ElicitationAsk {
 export type Block =
   | { kind: 'text'; markdown: string }
   | { kind: 'thinking'; text: string; running: boolean; durationMs?: number }
-  | { kind: 'error'; message: string; retryable: boolean }
+  /**
+   * A failed turn. `code` is the provider's error kind where the view still has it — a live
+   * failure carries one, a turn read back from the store does not, so the offer to fix it is
+   * made where it is useful and absent where it cannot be trusted.
+   */
+  | { kind: 'error'; message: string; retryable: boolean; code?: string }
   | { kind: 'activity'; items: ActivityItem[] }
   /** A picture an image model drew, in the answer where it produced it. Inline bytes carry a
       `src`; a picture kept in the blob store carries the hash to read it back with. */

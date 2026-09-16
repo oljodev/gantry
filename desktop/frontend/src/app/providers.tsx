@@ -2,6 +2,7 @@ import { useNavigate, useRouterState } from '@tanstack/react-router';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import { type ReactNode, useEffect, useState } from 'react';
 
+import { shouldOnboard } from '@/lib/firstRun';
 import { useBackendEvents } from '@/lib/ipc/events';
 import { isTauri } from '@/lib/ipc/client';
 import { useChats } from '@/lib/ipc/hooks/chats';
@@ -72,8 +73,11 @@ function FirstRun() {
   const navigate = useNavigate();
   const onboarded = useUiStore((s) => s.onboarded);
   const here = useRouterState({ select: (s) => s.location.pathname });
-  const ready = settings.isSuccess && chats.isSuccess;
-  const fresh = ready && !onboarded && (chats.data?.length ?? 0) === 0;
+  const fresh = shouldOnboard({
+    ready: settings.isSuccess && chats.isSuccess,
+    onboarded,
+    chatCount: chats.data?.length ?? 0,
+  });
   useEffect(() => {
     if (!isTauri() || !fresh || here.startsWith('/onboarding')) return;
     void navigate({ to: '/onboarding' });

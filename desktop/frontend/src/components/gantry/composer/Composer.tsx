@@ -98,7 +98,11 @@ export interface ComposerProps {
   /** The provider's own web search (02 §3); shown only when the model has one. */
   webSearch?: boolean;
   onWebSearchChange?: (on: boolean) => void;
-  /** What the current model can do; both default to on when the catalog does not know. */
+  /**
+   * What the current model can do. `thinking` defaults to on when the catalog does not know;
+   * `webSearch` is `undefined` until the catalog has been read at all, which is a different
+   * thing from a model that does not have it and says so differently.
+   */
   capabilities?: { thinking?: boolean; webSearch?: boolean };
   /** Text to place in the field; a new `nonce` re-applies the same text. */
   prefill?: { text: string; nonce: number };
@@ -175,6 +179,7 @@ export function Composer({
   const [attachments, setAttachments] = useState<PendingAttachment[]>(initialAttachments ?? []);
   const [effortLocal, setEffortLocal] = useState<ReasoningEffort>('medium');
   const canThink = capabilities?.thinking ?? true;
+  const searchKnown = capabilities?.webSearch !== undefined;
   const canSearch = capabilities?.webSearch ?? false;
   const effort = canThink ? (effortProp ?? effortLocal) : 'off';
   const thinking = effort !== 'off';
@@ -415,7 +420,9 @@ export function Composer({
                 <GlobeIcon />
                 Web search
                 {!canSearch && (
-                  <span className="ml-auto text-meta text-fg-3">Not on this model</span>
+                  <span className="ml-auto text-meta text-fg-3">
+                    {searchKnown ? 'Not on this model' : 'Add a provider key'}
+                  </span>
                 )}
               </DropdownMenuCheckboxItem>
               {canThink ? (

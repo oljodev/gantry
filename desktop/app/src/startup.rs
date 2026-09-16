@@ -128,6 +128,31 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn Error>> {
 
     let settings = Arc::new(RwLock::new(load_settings(&store)?));
 
+    // The window's own background, before the webview has painted anything (15 A20).
+    //
+    // `backgroundColor` in the config is one colour for every machine, and it was the dark one:
+    // the first frame of the first launch on a light desktop was a dark rectangle that flipped
+    // white a moment later. The setting decides it where the user has chosen, and the OS does
+    // where they have left it on System — which is the same rule the webview follows a few
+    // milliseconds later, so the two now agree.
+    if let Some(window) = app.get_webview_window("main") {
+        let dark = match settings
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .appearance
+            .theme
+        {
+            gantry_core::Theme::Dark => true,
+            gantry_core::Theme::Light => false,
+            gantry_core::Theme::System => window.theme().is_ok_and(|t| t == tauri::Theme::Dark),
+        };
+        let _ = window.set_background_color(Some(if dark {
+            tauri::window::Color(0x11, 0x11, 0x13, 0xff)
+        } else {
+            tauri::window::Color(0xf4, 0xf4, 0xf5, 0xff)
+        }));
+    }
+
     // The five accounts of 02 §1, one row each; custom endpoints are added from Settings.
     store.write_blocking(|conn| {
         repos::providers::ensure(

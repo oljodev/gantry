@@ -122,7 +122,12 @@ function liveTurn(t: TurnDto, live: LiveTurn, modelLabel: Label, titles: Artifac
   pushContext(blocks, contextItem(t));
   pushNotices(blocks, live.notices);
   if (live.error)
-    blocks.push({ kind: 'error', message: live.error.message, retryable: live.error.retryable });
+    blocks.push({
+      kind: 'error',
+      message: live.error.message,
+      retryable: live.error.retryable,
+      code: live.error.code,
+    });
   const done = live.status !== 'running';
   return {
     id: t.id,

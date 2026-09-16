@@ -57,7 +57,8 @@ export interface LiveTurn {
   pending: Interaction[];
   usage?: Usage;
   stopReason?: StopReason;
-  error?: { message: string; retryable: boolean };
+  /** `code` is the provider error's kind (02 §7): `auth` is the one the view can offer a fix for. */
+  error?: { message: string; retryable: boolean; code: string };
   notices: string[];
   /** Raw argument text of artifact calls while it streams (13 §2); other calls are not kept. */
   argsText: Record<string, string>;
@@ -436,7 +437,7 @@ export function applyBatch(
         next.pending = [];
         break;
       case 'error':
-        next.error = { message: ev.message, retryable: ev.retryable };
+        next.error = { message: ev.message, retryable: ev.retryable, code: ev.code };
         break;
     }
   }

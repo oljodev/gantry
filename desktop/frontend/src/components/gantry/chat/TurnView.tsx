@@ -21,6 +21,7 @@ import {
 import { TurnActions, type TurnActionsProps } from '@/components/gantry/chat/TurnActions';
 import { UserMessage } from '@/components/gantry/chat/UserMessage';
 import { Markdown } from '@/components/gantry/markdown/Markdown';
+import { Button } from '@/components/ui/button';
 import { commands, isTauri } from '@/lib/ipc/client';
 import type { ActivityItem, Block, Permission, Turn } from '@/fixtures/types';
 
@@ -57,6 +58,7 @@ export function TurnView({
   onOffer,
   onSkill,
   onMemory,
+  onAddKey,
   installing,
   isLast,
   onCopy,
@@ -85,6 +87,12 @@ export function TurnView({
   onSkill?: (interactionId: string, answer: SkillAnswer) => void;
   /** Keeps, forgets or discards what the model proposed remembering (12 §B3). */
   onMemory?: (interactionId: string, answer: MemoryAnswer) => void;
+  /**
+   * Opens Settings → Providers from a turn that failed for want of a key. The commonest first
+   * failure in a new install, and the one the message alone does not resolve: "No API key for
+   * OpenRouter" is true and leaves the reader to find where keys live.
+   */
+  onAddKey?: () => void;
   /** The suggestion whose install is running. */
   installing?: string;
   isLast?: boolean;
@@ -161,7 +169,12 @@ export function TurnView({
                   className="my-2 flex items-start gap-2 rounded-3 border border-bad/30 bg-bad-subtle px-3 py-2 text-ui text-bad"
                 >
                   <WarningCircleIcon className="mt-0.5 size-4 shrink-0" />
-                  <span className="selectable">{block.message}</span>
+                  <span className="selectable flex-1">{block.message}</span>
+                  {block.code === 'auth' && onAddKey && (
+                    <Button variant="secondary" size="sm" className="-my-0.5" onClick={onAddKey}>
+                      Add a key
+                    </Button>
+                  )}
                 </div>
               );
             case 'permission':
