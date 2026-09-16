@@ -25,7 +25,7 @@ Pragmas at open: `journal_mode=WAL`, `synchronous=NORMAL`, `foreign_keys=ON`, `b
 - Ids are ULIDs stored as 26-char TEXT (sortable by creation time, no autoincrement, sync-friendly later).
 - Timestamps are INTEGER milliseconds since the Unix epoch, UTC.
 - Structured columns are TEXT JSON with `CHECK (json_valid(col))`; anything the UI filters on is a real column.
-- Deletion is soft (`archived_at`, `deleted_at`) except for blobs (refcounted) and credentials (hard delete on request).
+- Deletion is soft (`archived_at`, `deleted_at`) except for blobs (swept when nothing references them, §3) and credentials (hard delete on request).
 - `seq` columns give a total order inside a chat or turn independent of timestamps.
 
 ## 3. Tables
@@ -105,7 +105,7 @@ The transcript is `messages` ordered by `seq`. It is append-only; edits to histo
 
 ### Blobs and search
 
-- **blobs** — `hash PK, size, mime NULL, refcount, created_at`; files live under `blobs/`. Refcounts are maintained by the repositories that reference blobs; a weekly sweep deletes unreferenced files.
+- **blobs** — `hash PK, size, mime NULL, created_at`; files live under `blobs/`. The row is a catalogue of what a blob is, written where a reference is written and pruned by the sweep; it is not a reference count. *(0015, 2026-09-16: the `refcount` column is gone.* It was a second copy of a fact the schema already held — a blob is referenced when a row references it — and four paths had forgotten to keep the copy in step, each leaving bytes on disk for good: project knowledge files were never counted, a document's extracted text was never counted, the edit journal counted up and never down, and nothing counted a media part. `blobs::reachable` now reads the referencing columns instead — `attachments`, `artifact_versions`, `file_edits`, `project_files`, `tool_calls`, and the `MediaSource::Blob` hashes inside `messages.parts_json` — so a reference exists exactly when a row says it does. The one mistake that shape cannot survive is a new blob-holding table nobody adds to the list, whose files would then look unreferenced, so a test asks SQLite for every column named `%blob_hash%` and fails when one is missing.)*
 - **messages_fts** (FTS5 over `messages.text`) and **chats_fts** (titles), maintained by triggers. Both hold their own copy of the text instead of pointing at the content tables by rowid: `VACUUM` (offered in Settings) may renumber the rowids of tables whose primary key is not an integer, which would silently corrupt an external-content index. The `search` command unions both and returns snippets. **artifacts_fts** (title, summary, current content) and **memories_fts** (text, tags) serve the artifact search and the memory selector (12 §B4).
 - The schema version is SQLite's `user_version` pragma, managed by `rusqlite_migration` (no `schema_migrations` table)
 
@@ -143,7 +143,8 @@ Rules: decryption happens only inside `gantry-secrets`, on demand, with plaintex
 ## 6. Size, retention and maintenance
 
 - Events are kept indefinitely; they are the audit log and cost roughly 1–5 KB per tool call.
-- Blobs are deduplicated by hash; unreferenced blobs are swept weekly and on demand.
+- Blobs are deduplicated by hash; unreferenced blobs are swept weekly and on demand (`gantry-store/src/sweep.rs`, built 2026-09-16). The sweep walks the whole `blobs/` directory as well as the catalogue, so it also collects bytes that were never referenced at all — an attachment ingested for a message that was never sent — and the `.part` files a crash left mid-write. Weekly is `sweep::if_due`, queued detached at startup with the last sweep's time in `settings`; on demand is **Clean up** in Settings → Data & privacy, beside the file count and what it comes to. Deleting a chat, a project or a knowledge file collects that thing's blobs at once rather than waiting for the week, by asking the same question of the hashes it was holding.
+- **The grace period.** Bytes are written before the row that references them, so a blob is only collected once its file has sat untouched for a minute (`sweep::GRACE`), and `BlobStore::put` moves that time to now every time the bytes are handed out. The gaps it covers are milliseconds everywhere except an attachment, where a PDF is read and its text extracted in between. The one gap that was not small is closed differently: **Retry** used to delete the turn, hand the message back and let the caller start a new one, leaving the attachment unreferenced in between; the turn being retried now goes in the same write that inserts its replacement.
 - Logs rotate through `tauri-plugin-log` (`FileOpenStrategy::Rotate` per session, size-capped).
 - `VACUUM` and an integrity check are available from Settings → Advanced, never automatic at startup.
 - Before any migration the file is copied to `gantry.db.bak-<schema version>`; the app refuses to open a database written by a newer schema and says so.

@@ -89,6 +89,7 @@ gantry/
 │   │   │   └── src/
 │   │   │       ├── lib.rs  db.rs         # writer actor + read pool, detached writes, pragmas, backup before migration, newer-schema refusal, VACUUM INTO backups
 │   │   │       ├── blob_store.rs         # content-addressed files under blobs/ab/<sha256>
+│   │   │       ├── sweep.rs              # the blob sweep: what nothing references any more (06 §3, §8)
 │   │   │       └── repos/{chats.rs, turns.rs, messages.rs, events.rs, blobs.rs, search.rs, credentials.rs, providers.rs, models.rs, settings.rs,
 │   │   │                  tool_calls.rs, interactions.rs, projections.rs (events → tool_calls and interactions), recovery.rs (the startup sweep), mod.rs;
 │   │   │                  connectors.rs, later file_edits.rs, command_runs.rs, projects.rs, skills.rs, memories.rs}
