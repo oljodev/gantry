@@ -89,6 +89,15 @@ impl Fixture {
     }
 
     async fn call(&self, tool: &str, args: serde_json::Value) -> (String, bool) {
+        self.call_with(tool, args, CancellationToken::new()).await
+    }
+
+    async fn call_with(
+        &self,
+        tool: &str,
+        args: serde_json::Value,
+        cancel: CancellationToken,
+    ) -> (String, bool) {
         let outcome = self
             .fs
             .call(
@@ -104,7 +113,7 @@ impl Fixture {
                     },
                 },
                 Arc::new(NoopToolEvents),
-                CancellationToken::new(),
+                cancel,
             )
             .await
             .expect("a refusal is a result, not an error");
@@ -541,4 +550,38 @@ async fn gantrys_own_data_is_never_written_even_from_inside_a_root() {
         .resolve(&store_path.display().to_string())
         .expect_err("Gantry's own data is refused");
     assert!(err.to_string().contains("never writable"), "{err}");
+}
+
+/// Stop means the calls behind the one in flight do not happen (03 §4). A file operation here is
+/// a single step, so the token is read once, before anything touches the disk, and never again:
+/// a write abandoned halfway would leave a file nobody wrote.
+#[tokio::test]
+async fn a_cancelled_call_writes_nothing_and_says_so() {
+    let f = fixture();
+    let cancelled = CancellationToken::new();
+    cancelled.cancel();
+
+    let (text, is_error) = f
+        .call_with(
+            "write_file",
+            serde_json::json!({ "path": f.path("src/new.rs"), "content": "fn main() {}" }),
+            cancelled.clone(),
+        )
+        .await;
+    assert!(is_error, "a call that did not run is not a success");
+    assert!(text.contains("Cancelled"), "{text}");
+    assert!(
+        !f.work.path().join("src/new.rs").exists(),
+        "nothing reached the disk"
+    );
+
+    // And a read is refused the same way rather than quietly answering.
+    let (text, is_error) = f
+        .call_with(
+            "read_file",
+            serde_json::json!({ "path": f.path("README.md") }),
+            cancelled,
+        )
+        .await;
+    assert!(is_error && text.contains("Cancelled"), "{text}");
 }

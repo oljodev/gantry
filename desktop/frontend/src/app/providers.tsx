@@ -8,7 +8,7 @@ import { isTauri } from '@/lib/ipc/client';
 import { useChats } from '@/lib/ipc/hooks/chats';
 import { useSettings } from '@/lib/ipc/hooks/settings';
 import { toast } from '@/components/ui/toast';
-import { bindGuardBlocks, bindRunStore } from '@/lib/stores/runStore';
+import { bindGuardBlocks, bindRunStore, useRunStore } from '@/lib/stores/runStore';
 import { useUiStore } from '@/lib/stores/uiStore';
 
 export function Providers({ children }: { children: ReactNode }) {
@@ -36,6 +36,13 @@ function BackendSync() {
   useBackendEvents();
   const qc = useQueryClient();
   useEffect(() => bindRunStore(qc), [qc]);
+  // A turn outlives the window it was started from: the backend keeps running it and its
+  // channel dies with the reload (09 M13). Every one still going is picked up here, not only
+  // the chat that happens to be open.
+  const rejoin = useRunStore((s) => s.rejoin);
+  useEffect(() => {
+    void rejoin();
+  }, [rejoin]);
   // The guard's only notification (04 §6): it blocked something, and here is why. Pressing
   // **Allow anyway** happens on the row in the chat, where the call itself is.
   useEffect(

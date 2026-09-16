@@ -228,7 +228,25 @@ pub trait Connector: Send + Sync {
     async fn stop(&self) -> Result<(), ConnectorError>;
     fn health(&self) -> Health;   // Stopped | Starting | Ready | Degraded(String) | AuthRequired | Failed(String)
 }
+```
 
+**What `cancel` promises** (05 §7, tested per connector 2026-09-16). The turn runner races the
+token against the call and the race is **biased** towards the token, so a turn the user has
+stopped never starts a call that has not started yet — that much holds whatever the connector
+does. Past that, a connector is free to choose, and the two answers are both correct:
+
+- **Interrupt.** `shell` kills the process tree (shell.md D4), `web` abandons the fetch, an MCP
+  server is left un-called. These are the calls that can run for minutes, and stopping them is
+  what **Stop** is for.
+- **Finish.** `filesystem` and `code-editor` read the token once, before anything touches the
+  disk, and not again: every call they make is one file operation, and abandoning a write
+  halfway leaves a file nobody wrote and a journal that disagrees with the disk. A second is a
+  cheaper price than that.
+
+Either way the call is recorded as `cancelled` with a result saying so, because a transcript is
+never sent with a call that has no result (02 §3).
+
+```rust
 pub struct ToolCallRequest {
     pub call_id: CallId,
     pub tool: String,                        // un-namespaced

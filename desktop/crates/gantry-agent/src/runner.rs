@@ -1330,8 +1330,12 @@ async fn execute(
         turn_id: ctx.input.turn_id,
         cancel: cancel.clone(),
     });
+    // Biased: a turn that is already cancelled must not start the call, and an unbiased
+    // `select!` chooses a ready branch at random. This is the guarantee every connector rests
+    // on — the ones that cannot interrupt their own work still stop at the next await.
     let outcome = tokio::select! {
-        _ = ctx.active.cancel.cancelled() => None,
+        biased;
+        () = ctx.active.cancel.cancelled() => None,
         r = entry.connector.call(req, sink, cancel) => Some(r),
     };
     let elapsed = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);

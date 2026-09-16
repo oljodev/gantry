@@ -2024,6 +2024,51 @@ async fn a_late_subscriber_sees_what_a_running_command_has_printed() {
     assert!(state.is_none() || state.unwrap().is_empty());
 }
 
+/// **Stop** while a tool is running (05 §7): the turn ends, the call is recorded as cancelled
+/// rather than left running for ever, and the connector is not waited out. This is the guarantee
+/// every connector rests on — a connector that cannot interrupt its own work still stops at the
+/// next await, and one that never awaits at all has at least not been started.
+#[tokio::test]
+async fn stopping_a_turn_cancels_the_tool_call_it_was_waiting_on() {
+    let m = manager_with(
+        vec![
+            tool_round("call_1", "fake__stream", serde_json::json!({})),
+            vec![text("never sent"), end()],
+        ],
+        Duration::ZERO,
+        Settings::default(),
+    );
+    // Never released: the call is still in the connector when the user presses Stop.
+    *m.fake.hold.lock().unwrap() = Some(Arc::new(tokio::sync::Notify::new()));
+
+    let chat = m.chat();
+    let sink = Arc::new(Collect::default());
+    let turn = m
+        .start(
+            chat.id,
+            "build it".into(),
+            Vec::new(),
+            Vec::new(),
+            sink.clone(),
+        )
+        .unwrap();
+    wait_for(|| sink.names().contains(&"tool_call.output")).await;
+
+    assert!(m.cancel(turn), "the turn was there to stop");
+    wait_for(|| sink.completed() == Some(TurnStatus::Cancelled)).await;
+
+    let completed = sink.kinds().into_iter().find_map(|k| match k {
+        AgentEventKind::ToolCallCompleted { status, result, .. } => Some((status, result)),
+        _ => None,
+    });
+    let (status, result) = completed.expect("the call it was waiting on is closed, not left open");
+    assert_eq!(status, ToolCallStatus::Cancelled);
+    assert!(
+        gantry_core::result_preview(&result, usize::MAX).contains("Cancelled"),
+        "and the transcript says why: {result:?}"
+    );
+}
+
 /// Plan mode's read prompt offers **Allow all reads for this chat** (04 §4), and a folder
 /// narrower than that when the call names a file. The roadmap carried this as unbuilt work; it
 /// was reachable from the tier rule all along, and this is what says so.

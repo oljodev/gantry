@@ -86,6 +86,15 @@ impl Fixture {
     }
 
     async fn call(&self, tool: &str, args: serde_json::Value) -> (String, bool) {
+        self.call_with(tool, args, CancellationToken::new()).await
+    }
+
+    async fn call_with(
+        &self,
+        tool: &str,
+        args: serde_json::Value,
+        cancel: CancellationToken,
+    ) -> (String, bool) {
         let outcome = self
             .editor
             .call(
@@ -101,7 +110,7 @@ impl Fixture {
                     },
                 },
                 Arc::new(NoopToolEvents),
-                CancellationToken::new(),
+                cancel,
             )
             .await
             .expect("a refusal is a result, not an error");
@@ -359,4 +368,24 @@ async fn line_endings_survive_an_edit() {
         std::fs::read(f.work.path().join("crlf.txt")).unwrap(),
         b"one\r\nthree\r\n"
     );
+}
+
+/// Stop stops the calls that have not started (03 §4). An edit is one file operation, so the
+/// token is read before the file is opened and not again: a replace abandoned between reading
+/// and writing would leave the journal saying one thing and the disk another.
+#[tokio::test]
+async fn a_cancelled_edit_leaves_the_file_alone() {
+    let f = fixture();
+    let cancelled = CancellationToken::new();
+    cancelled.cancel();
+    let (text, is_error) = f
+        .call_with(
+            "replace",
+            serde_json::json!({ "path": f.path("main.rs"), "old": "let x = 1;", "new": "let x = 2;" }),
+            cancelled,
+        )
+        .await;
+    assert!(is_error, "{text}");
+    assert!(text.contains("Cancelled"), "{text}");
+    assert_eq!(f.on_disk("main.rs"), FILE, "nothing was written");
 }

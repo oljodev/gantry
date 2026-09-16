@@ -88,7 +88,14 @@ interface RunState {
     skills?: string[],
   ) => Promise<TurnId>;
   stop: (chatId: ChatId) => Promise<void>;
-  /** Reattaches to a running turn after a reload or a chat switch. */
+  /**
+   * Reattaches to every turn the backend is still running (09 M13). The window can go away and
+   * come back — a reload in development, a crash of the webview alone — while the turns carry
+   * on in the backend with nothing at the other end of their channel. Without this only the
+   * chat on screen is rejoined, and a turn that finishes in another one lands nowhere.
+   */
+  rejoin: () => Promise<void>;
+  /** Reattaches to one running turn after a reload or a chat switch. */
   attach: (chatId: ChatId, turnId: TurnId) => Promise<void>;
   /** Drops the chat's last turn and runs its message again. */
   retry: (chatId: ChatId, turnId: TurnId) => Promise<TurnId>;
@@ -528,6 +535,16 @@ export const useRunStore = create<RunState>()((set, get) => ({
     } finally {
       if (queryClient) void queryClient.invalidateQueries({ queryKey: keys.pendingInteractions });
     }
+  },
+  rejoin: async () => {
+    let active;
+    try {
+      active = await unwrap(commands.listActiveTurns());
+    } catch {
+      // Not in the app, or the backend is not up yet; there is nothing to rejoin either way.
+      return;
+    }
+    await Promise.all(active.map((t) => get().attach(t.chat_id, t.turn_id)));
   },
   attach: async (chatId, turnId) => {
     const live = get().byChat[chatId];

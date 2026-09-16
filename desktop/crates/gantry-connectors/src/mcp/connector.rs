@@ -246,8 +246,12 @@ impl Connector for McpConnector {
                 Err(err) => Err(ConnectorError::Failed(err.to_string())),
             }
         };
+        // Biased, so a turn the user has already stopped never reaches the server: an
+        // unbiased `select!` picks a ready branch at random, which makes "does Stop stop it"
+        // a coin toss rather than an answer.
         let (content, structured, is_error) = tokio::select! {
-            _ = cancel.cancelled() => return Ok(ToolOutcome::error("Cancelled by the user.")),
+            biased;
+            () = cancel.cancelled() => return Ok(ToolOutcome::cancelled()),
             result = call => result?,
         };
         Ok(ToolOutcome::Complete {
@@ -311,6 +315,47 @@ mod tests {
             ttl: None,
         });
         assert!(c.fresh().is_some(), "and nothing said means the default");
+    }
+
+    /// A turn the user has stopped never reaches the server (03 §4). The endpoint here resolves
+    /// to nothing, so a call that tried to connect would spend a DNS timeout before failing;
+    /// this one answers at once, which is the whole point of reading the token first.
+    #[tokio::test]
+    async fn a_cancelled_call_never_opens_the_connection() {
+        let c = connector(None);
+        let cancelled = CancellationToken::new();
+        cancelled.cancel();
+        let started = Instant::now();
+        let outcome = c
+            .call(
+                ToolCallRequest {
+                    call_id: gantry_core::CallId::new(),
+                    tool: "anything".to_owned(),
+                    args: serde_json::json!({}),
+                    scope: crate::ChatScope {
+                        chat_id: gantry_core::ChatId::new(),
+                        turn_id: gantry_core::TurnId::new(),
+                        mode: gantry_core::Mode::Auto,
+                        attach_decided: true,
+                    },
+                },
+                Arc::new(crate::NoopToolEvents),
+                cancelled,
+            )
+            .await
+            .expect("a stopped call is a result, not an error");
+        let ToolOutcome::Complete {
+            content, is_error, ..
+        } = outcome;
+        assert!(is_error);
+        assert_eq!(
+            gantry_core::result_preview(&content, usize::MAX),
+            crate::CANCELLED
+        );
+        assert!(
+            started.elapsed() < Duration::from_secs(1),
+            "it did not try the network first"
+        );
     }
 
     /// `tools/list_changed` is the one moment a cache is known to be wrong rather than old, so

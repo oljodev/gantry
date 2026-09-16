@@ -70,8 +70,15 @@ impl Connector for Filesystem {
         &self,
         req: ToolCallRequest,
         _sink: Arc<dyn ToolEventSink>,
-        _cancel: CancellationToken,
+        cancel: CancellationToken,
     ) -> Result<ToolOutcome, ConnectorError> {
+        // One check, at the top, and none inside: every call here is a single file operation,
+        // and abandoning one halfway would leave a half-written file behind — worse than the
+        // second it takes to finish. What Stop guarantees is that the calls still queued behind
+        // this one do not happen (03 §4).
+        if cancel.is_cancelled() {
+            return Ok(ToolOutcome::cancelled());
+        }
         let chat = req.scope.chat_id;
         let roots = match self.workspace.roots(chat) {
             Ok(roots) => roots,

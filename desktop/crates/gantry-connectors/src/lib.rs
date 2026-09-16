@@ -72,7 +72,18 @@ pub enum ToolOutcome {
     },
 }
 
+/// What a connector answers when the user stopped the turn before or during the call (05 §7).
+/// One sentence, shared, because the model reads it and three different wordings for one event
+/// is three things to understand rather than one.
+pub const CANCELLED: &str = "Cancelled by the user.";
+
 impl ToolOutcome {
+    /// The call did not finish because the user stopped the turn.
+    #[must_use]
+    pub fn cancelled() -> Self {
+        Self::error(CANCELLED)
+    }
+
     #[must_use]
     pub fn json(value: serde_json::Value) -> Self {
         Self::Complete {
