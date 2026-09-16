@@ -29,6 +29,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::settings::open_data_dir,
             commands::settings::backup_database,
             commands::settings::maintain_database,
+            commands::settings::sweep_blobs,
             commands::providers::list_providers,
             commands::providers::set_provider_key,
             commands::providers::clear_provider_key,

@@ -23,7 +23,7 @@ export function Data() {
   const info = useDataInfo();
   const chats = useChats();
   const { exportChat } = useChatMutations();
-  const { openDataDir, backup, maintain } = useDataMutations();
+  const { openDataDir, backup, maintain, sweepBlobs } = useDataMutations();
   const [chatId, setChatId] = useState<string>('');
   const [format, setFormat] = useState<ExportFormat>('markdown');
 
@@ -123,6 +123,41 @@ export function Data() {
               {maintain.isPending ? 'Checking…' : 'Check and compact'}
             </Button>
           </div>
+        </SettingsRow>
+        <SettingsRow
+          label="Attachments and artifacts"
+          hint={
+            d
+              ? `${d.blob_count} file${d.blob_count === 1 ? '' : 's'} · ${bytes(d.blob_bytes)} on disk`
+              : '…'
+          }
+        >
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={sweepBlobs.isPending}
+            onClick={() =>
+              sweepBlobs.mutate(undefined, {
+                onSuccess: (r) =>
+                  toast.add({
+                    title: r.files === 0 ? 'Nothing to clean up' : 'Cleaned up',
+                    description:
+                      r.files === 0
+                        ? 'Every file here belongs to something.'
+                        : `Removed ${r.files} file${r.files === 1 ? '' : 's'}, ${bytes(r.bytes)}.`,
+                    type: 'success',
+                  }),
+                onError: (err) =>
+                  toast.add({
+                    title: 'Clean-up failed',
+                    description: describe(err),
+                    type: 'error',
+                  }),
+              })
+            }
+          >
+            {sweepBlobs.isPending ? 'Cleaning up…' : 'Clean up'}
+          </Button>
         </SettingsRow>
       </SettingsGroup>
 

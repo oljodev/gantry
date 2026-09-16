@@ -245,6 +245,24 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn Error>> {
             }
         })
     });
+    // The weekly blob sweep (06 §3, §8). Detached rather than awaited: it walks the whole blob
+    // directory and reads every message's parts, which on a large history is not something to
+    // hold the window open for, and nothing that follows depends on it.
+    {
+        let blobs = blobs.clone();
+        store.write_detached(move |conn| {
+            match gantry_store::sweep::if_due(conn, &blobs)? {
+                None => {}
+                Some(report) if report.is_empty() => log::info!("swept blobs: nothing to remove"),
+                Some(report) => log::info!(
+                    "swept blobs: removed {} file(s), {} bytes",
+                    report.files,
+                    report.bytes
+                ),
+            }
+            Ok(())
+        });
+    }
     // Recently deleted is thirty days, and this is the only place that notices they are up.
     match memories.sweep() {
         Ok(0) => {}

@@ -95,6 +95,16 @@ impl World {
             .unwrap()
     }
 
+    /// Moves a blob's file back an hour, past the grace period the sweep gives fresh bytes.
+    fn age(&self, hash: &str) {
+        let file = std::fs::OpenOptions::new()
+            .write(true)
+            .open(self.blobs.path_for(hash))
+            .unwrap();
+        file.set_modified(std::time::SystemTime::now() - Duration::from_secs(3600))
+            .unwrap();
+    }
+
     fn reachable(&self) -> HashSet<String> {
         self.store.read(blobs::reachable).unwrap()
     }
@@ -214,5 +224,41 @@ fn no_blob_column_is_missing_from_the_sweep() {
     assert_eq!(
         found, swept,
         "a blob-holding column the sweep does not read would have its files deleted"
+    );
+}
+
+#[test]
+fn a_sweep_is_weekly_rather_than_every_time_the_app_opens() {
+    let w = world();
+    let orphan = w.blobs.put(b"nobody wants this").unwrap();
+    w.age(&orphan);
+    let blobs = w.blobs.clone();
+    let first = w
+        .store
+        .write_blocking(move |c| sweep::if_due(c, &blobs))
+        .unwrap();
+    assert_eq!(first.map(|r| r.files), Some(1), "never swept: sweep");
+    assert!(w.blobs.get(&orphan).is_err());
+
+    let blobs = w.blobs.clone();
+    let second = w
+        .store
+        .write_blocking(move |c| sweep::if_due(c, &blobs))
+        .unwrap();
+    assert!(second.is_none(), "swept a moment ago: not again");
+
+    // A week later it is due again, whatever there is to find.
+    let week_ago = gantry_core::now_ms() - sweep::EVERY.as_millis() as i64 - 1;
+    w.store
+        .write_blocking(move |c| {
+            gantry_store::repos::settings::set(c, sweep::SWEPT_AT_KEY, &week_ago.to_string())
+        })
+        .unwrap();
+    let blobs = w.blobs.clone();
+    assert!(
+        w.store
+            .write_blocking(move |c| sweep::if_due(c, &blobs))
+            .unwrap()
+            .is_some()
     );
 }

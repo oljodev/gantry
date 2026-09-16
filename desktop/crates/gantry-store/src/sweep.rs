@@ -23,7 +23,11 @@ use std::{fs, path::Path, time::Duration};
 
 use rusqlite::Connection;
 
-use crate::{BlobStore, db::Result, repos::blobs};
+use crate::{
+    BlobStore,
+    db::Result,
+    repos::{blobs, settings},
+};
 
 /// How long a blob's bytes are left alone after they were last written or handed out.
 ///
@@ -57,6 +61,30 @@ impl SweepReport {
     pub fn is_empty(&self) -> bool {
         self.files == 0 && self.rows == 0
     }
+}
+
+/// Sweeps when the last sweep was longer ago than [`EVERY`], and answers `None` when one was not
+/// due. A machine opened every morning sweeps on Mondays, not every morning.
+pub fn if_due(conn: &Connection, store: &BlobStore) -> Result<Option<SweepReport>> {
+    let last: Option<i64> = settings::get(conn, SWEPT_AT_KEY)?.and_then(|v| v.parse().ok());
+    let due = match last {
+        None => true,
+        Some(at) => {
+            let since = gantry_core::now_ms().saturating_sub(at);
+            u128::try_from(since).unwrap_or(0) >= EVERY.as_millis()
+        }
+    };
+    if !due {
+        return Ok(None);
+    }
+    run(conn, store).map(Some)
+}
+
+/// Sweeps now, whenever it was last done: Settings → Data & privacy (06 §8).
+pub fn run(conn: &Connection, store: &BlobStore) -> Result<SweepReport> {
+    let report = sweep(conn, store, GRACE)?;
+    settings::set(conn, SWEPT_AT_KEY, &gantry_core::now_ms().to_string())?;
+    Ok(report)
 }
 
 /// Deletes every blob the database no longer references. Walks the whole `blobs/` directory, so

@@ -157,6 +157,11 @@ pub struct DataInfo {
     #[specta(type = specta_typescript::Number)]
     pub database_bytes: u64,
     pub chat_count: u32,
+    /// Files under `blobs/`: attachments, artifact versions, the edit journal's before and
+    /// after, project knowledge (06 §1).
+    pub blob_count: u32,
+    #[specta(type = specta_typescript::Number)]
+    pub blob_bytes: u64,
 }
 
 #[tauri::command]
@@ -173,11 +178,64 @@ pub fn get_data_info(state: State<'_, AppState>) -> Result<DataInfo, ErrorDto> {
         .store
         .read(|c| Ok(c.query_row("SELECT count(*) FROM chats", [], |r| r.get::<_, u32>(0))?))
         .map_err(GantryError::from)?;
+    let (blob_count, blob_bytes) = blob_usage(state.blobs.root());
     Ok(DataInfo {
         data_dir: state.data_dir.to_string_lossy().into_owned(),
         database_path: db.to_string_lossy().into_owned(),
         database_bytes: bytes,
         chat_count,
+        blob_count,
+        blob_bytes,
+    })
+}
+
+/// How many files are under `blobs/` and what they come to. Counted from the directory rather
+/// than from the `blobs` table, because the directory is the thing taking up the disk.
+fn blob_usage(root: &std::path::Path) -> (u32, u64) {
+    let (mut count, mut bytes) = (0u32, 0u64);
+    let Ok(prefixes) = std::fs::read_dir(root) else {
+        return (0, 0);
+    };
+    for prefix in prefixes.flatten() {
+        let Ok(files) = std::fs::read_dir(prefix.path()) else {
+            continue;
+        };
+        for file in files.flatten() {
+            if let Ok(m) = file.metadata()
+                && m.is_file()
+            {
+                count += 1;
+                bytes += m.len();
+            }
+        }
+    }
+    (count, bytes)
+}
+
+/// What a sweep removed, for the toast that reports it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+pub struct BlobSweep {
+    pub files: u32,
+    #[specta(type = specta_typescript::Number)]
+    pub bytes: u64,
+}
+
+/// Deletes the blobs nothing references any more (06 §3, §8). Runs weekly by itself; this is the
+/// "and on demand" half, for someone who has just deleted a great deal and wants the disk back.
+#[tauri::command]
+#[specta::specta]
+pub async fn sweep_blobs(state: State<'_, AppState>) -> Result<BlobSweep, ErrorDto> {
+    let store = state.store.clone();
+    let blobs = state.blobs.clone();
+    let report = tauri::async_runtime::spawn_blocking(move || {
+        store.write_blocking(move |conn| gantry_store::sweep::run(conn, &blobs))
+    })
+    .await
+    .map_err(|e| GantryError::internal(e.to_string()))?
+    .map_err(GantryError::from)?;
+    Ok(BlobSweep {
+        files: u32::try_from(report.files).unwrap_or(u32::MAX),
+        bytes: report.bytes,
     })
 }
 

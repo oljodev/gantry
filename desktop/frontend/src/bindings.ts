@@ -27,6 +27,11 @@ export const commands = {
 	backupDatabase: (path: string) => typedError<null, ErrorDto>(__TAURI_INVOKE("backup_database", { path })),
 	/**  `PRAGMA integrity_check` then `VACUUM`; never automatic (06 §6). */
 	maintainDatabase: () => typedError<null, ErrorDto>(__TAURI_INVOKE("maintain_database")),
+	/**
+	 *  Deletes the blobs nothing references any more (06 §3, §8). Runs weekly by itself; this is the
+	 *  "and on demand" half, for someone who has just deleted a great deal and wants the disk back.
+	 */
+	sweepBlobs: () => typedError<BlobSweep, ErrorDto>(__TAURI_INVOKE("sweep_blobs")),
 	listProviders: () => typedError<ProviderRow[], ErrorDto>(__TAURI_INVOKE("list_providers")),
 	/**  Stores the key encrypted and forgets the plaintext. Write-only: nothing returns it. */
 	setProviderKey: (providerId: ProviderId, key: string) => typedError<KeyStatus, ErrorDto>(__TAURI_INVOKE("set_provider_key", { providerId, key })),
@@ -641,6 +646,12 @@ export type AuthState =
 /**  How a connector proves who it is (03 §7). */
 export type AuthType = "none" | "api_key" | "headers" | "oauth2";
 
+/**  What a sweep removed, for the toast that reports it. */
+export type BlobSweep = {
+	files: number,
+	bytes: number,
+};
+
 export type CacheSupport = "none" | "automatic" | "explicit";
 
 /**
@@ -1066,6 +1077,12 @@ export type DataInfo = {
 	/**  Size of the database file and its WAL, in bytes. */
 	database_bytes: number,
 	chat_count: number,
+	/**
+	 *  Files under `blobs/`: attachments, artifact versions, the edit journal's before and
+	 *  after, project knowledge (06 §1).
+	 */
+	blob_count: number,
+	blob_bytes: number,
 };
 
 /**  Who or what allowed or refused a call (04 §11). */

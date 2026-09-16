@@ -81,5 +81,9 @@ export function useDataMutations() {
     mutationFn: () => unwrap(commands.maintainDatabase()),
     onSuccess: () => void qc.invalidateQueries({ queryKey: keys.dataInfo }),
   });
-  return { openDataDir, backup, maintain };
+  const sweepBlobs = useMutation({
+    mutationFn: () => unwrap(commands.sweepBlobs()),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.dataInfo }),
+  });
+  return { openDataDir, backup, maintain, sweepBlobs };
 }
