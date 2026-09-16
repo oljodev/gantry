@@ -4,6 +4,11 @@ one artifact of each executable type through the real bridge protocol (docs/plan
 prints every message that comes back. With `--png <path>` it also saves a screenshot of the
 mounted frames, which is the only way to see that a diagram or a component actually drew.
 
+Each case is also zoomed to 2x (13 §4) and the height it reports afterwards is required to be
+twice the one before. That is the half of page zoom no unit test can check: `scrollHeight` does
+not move when a document is zoomed, so the document has to multiply by the factor it was given,
+and whether it did is a question only an engine answers.
+
 Needs python3-gi and the WebKit2 4.1 typelib (the Tauri build dependencies), and the runtime
 built (`pnpm runtime:build`). On this machine it runs on the host, not in the sandbox:
 
@@ -56,6 +61,7 @@ const runtime = %(runtime)s;
 const cases = %(cases)s;
 function mount(c, i) {
   const nonce = 'n' + i;
+  let natural = null, zoomed = null;
   const frame = document.createElement('iframe');
   frame.setAttribute('sandbox', 'allow-scripts');
   frame.style.cssText = 'width:100%%;height:220px;border:0;display:block;background:transparent';
@@ -70,6 +76,16 @@ function mount(c, i) {
     }
     if (m.kind === 'resize' && m.height) {
       frame.style.height = Math.min(400, Math.max(80, m.height)) + 'px';
+      // 13 §4: a zoom has to change the height the document reports, or the frame keeps its
+      // old size around scaled-up content. Natural first, then the same document at 2x.
+      if (natural === null) {
+        natural = m.height;
+        frame.contentWindow.postMessage({kind: 'zoom', nonce, factor: 2}, '*');
+      } else if (zoomed === null) {
+        zoomed = m.height;
+        window.__log.push({case: c.type, kind: 'zoom', natural: natural, zoomed: zoomed,
+          ok: Math.abs(zoomed - natural * 2) <= 2});
+      }
     }
   });
   const label = document.createElement('div');
@@ -140,6 +156,8 @@ def main() -> int:
             for entry in entries[seen:]:
                 print('bridge:', json.dumps(entry))
                 if entry.get('kind') == 'error':
+                    failures += 1
+                if entry.get('kind') == 'zoom' and not entry.get('ok'):
                     failures += 1
                 if entry.get('done'):
                     finish()

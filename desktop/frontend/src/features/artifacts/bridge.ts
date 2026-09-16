@@ -75,12 +75,17 @@ export function loadRuntime(): Promise<string> {
  * of `<head>` so error capture and link interception are in place before the page's own
  * scripts run, and so the page's own rules override the ground the prelude sets. Kept
  * dependency-free and small.
+ *
+ * `zoom` is the one message that does not come from the runtime's own bridge, because an
+ * `html` artifact never loads the runtime — the document is the artifact's own. It is the
+ * same rule on both sides: `zoom` on the root element, and the height the parent is told
+ * multiplied by the factor, because `scrollHeight` does not move when the page is zoomed.
  */
 const HTML_PRELUDE = `<meta http-equiv="Content-Security-Policy" content="${CSP}">
 <script>${LOOP_GUARD_RUNTIME}</script>
 <script>
 (function () {
-  var nonce = null, budget = 50, windowStart = Date.now();
+  var nonce = null, budget = 50, windowStart = Date.now(), zoom = 1;
   function post(m) { if (nonce === null) return; m.nonce = nonce; window.parent.postMessage(m, '*'); }
   function describe(v) { if (typeof v === 'string') return v; if (v instanceof Error) return v.stack || v.message; try { return JSON.stringify(v); } catch (e) { return String(v); } }
   function line(level, text) {
@@ -98,10 +103,11 @@ const HTML_PRELUDE = `<meta http-equiv="Content-Security-Policy" content="${CSP}
     var a = e.target && e.target.closest ? e.target.closest('a[href]') : null; if (!a) return;
     e.preventDefault(); var href = a.getAttribute('href') || ''; if (/^https?:/i.test(href)) post({ kind: 'open_url', url: href });
   }, true);
-  function report() { post({ kind: 'resize', height: Math.ceil(Math.max(document.documentElement.scrollHeight, document.body ? document.body.scrollHeight : 0)) }); }
+  function report() { post({ kind: 'resize', height: Math.ceil(Math.max(document.documentElement.scrollHeight, document.body ? document.body.scrollHeight : 0) * zoom) }); }
   window.addEventListener('message', function (e) {
     if (e.source !== window.parent) return; var m = e.data; if (!m || typeof m !== 'object') return;
     if (m.kind === 'mount') { nonce = m.nonce; post({ kind: 'ready' }); report(); if (window.ResizeObserver) new ResizeObserver(report).observe(document.documentElement); }
+    if (m.kind === 'zoom' && nonce !== null && m.nonce === nonce) { zoom = m.factor; document.documentElement.style.zoom = m.factor === 1 ? '' : String(m.factor); report(); }
   });
   window.addEventListener('load', function () { window.parent.postMessage({ kind: 'loaded' }, '*'); });
 })();

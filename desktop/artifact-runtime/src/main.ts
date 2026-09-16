@@ -12,6 +12,7 @@ import {
   installResizeReporting,
   onParentMessage,
   reportError,
+  setZoom,
   type ParentMessage,
 } from './bridge';
 import { mountMermaid } from './mermaid/mount';
@@ -58,12 +59,18 @@ function handle(m: ParentMessage) {
       if (current) current.theme = m.mode;
       applyTheme(m.mode);
       break;
+    case 'zoom':
+      // A zoom leaves the unzoomed layout alone, so the ResizeObserver has nothing to notice
+      // and the frame would keep its old height around scaled-up content. Report by hand.
+      setZoom(m.factor);
+      reportHeight();
+      break;
   }
 }
 
 installErrorCapture();
 installLinkInterception();
-installResizeReporting(root);
+const reportHeight = installResizeReporting(root);
 onParentMessage(handle);
 // Tell the parent the runtime is up; it answers with `mount`.
 window.parent.postMessage({ kind: 'loaded' }, '*');

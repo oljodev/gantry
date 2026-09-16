@@ -99,7 +99,12 @@ pub const REFERRER_POLICY: &str = "no-referrer";
 pub const EMBEDDER_CSP: &str = "frame-src 'none'";
 
 /// Messages the parent sends into an artifact (13 §5).
-pub const PARENT_TO_ARTIFACT: &[&str] = &["mount", "update", "theme"];
+///
+/// `zoom` is page zoom for one artifact box (13 §4): the factor is applied to the artifact's
+/// own root element, so its text reflows in the same physical width instead of the frame being
+/// scaled like a picture — and the height the document reports back is multiplied by it, since
+/// a zoom moves nothing a `ResizeObserver` or a `scrollHeight` can see.
+pub const PARENT_TO_ARTIFACT: &[&str] = &["mount", "update", "theme", "zoom"];
 
 /// Messages an artifact sends out, plus the `loaded` handshake that precedes the nonce.
 pub const ARTIFACT_TO_PARENT: &[&str] = &[

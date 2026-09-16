@@ -111,11 +111,16 @@ Executable artifacts run in an `<iframe sandbox="allow-scripts" srcdoc="…" ref
 
 The only channel is `postMessage`. The parent validates `event.source === iframe.contentWindow`, `event.origin === "null"` (opaque), and a per-mount nonce; payloads are plain JSON.
 
+A parent → artifact message carries the same nonce and the document checks it, so a page that
+managed to reach the frame could not set its zoom either. Nothing crosses the other way for it:
+zoom is decided in the panel and pushed in, and the artifact is never asked.
+
 | Direction | Message | Purpose | Broker |
 |-----------|---------|---------|--------|
 | parent → artifact | `mount { nonce, type, content, theme, language }` | deliver content after the runtime signals it is loaded | — |
 | parent → artifact | `update { content }` | re-render a new version without reloading the document | — |
 | parent → artifact | `theme { mode }` | keep light/dark in step (11 §3) | — |
+| parent → artifact | `zoom { factor }` | page zoom for this artifact box (§4) — applied to the artifact's own root element, so its text reflows in the same physical width rather than the frame being scaled like a picture | clamped to the panel's own ladder before it is sent |
 | artifact → parent | `ready` | render succeeded; completes the tool result | — |
 | artifact → parent | `error { phase: compile \| runtime, message, stack?, componentStack?, line?, column? }` | shown in Problems; feeds the tool result / Fix this | rate-limited |
 | artifact → parent | `console { level, text }` | Problems tab | 16 KB per message, 50 per second, then dropped with a notice |

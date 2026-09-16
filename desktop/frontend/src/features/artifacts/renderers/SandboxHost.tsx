@@ -30,6 +30,7 @@ export function SandboxHost({
   onConsole,
   onOpenUrl,
   className,
+  zoom = 1,
 }: {
   type: 'html' | 'mermaid' | 'react';
   content: string;
@@ -38,6 +39,8 @@ export function SandboxHost({
   onConsole?: (line: ConsoleLine) => void;
   onOpenUrl?: (url: string) => void;
   className?: string;
+  /** Page zoom inside the document (13 §4): the frame is not scaled, the document is. */
+  zoom?: number;
 }) {
   const frame = useRef<HTMLIFrameElement>(null);
   const [runtime, setRuntime] = useState<string | null>(null);
@@ -57,9 +60,29 @@ export function SandboxHost({
         ? 'dark'
         : 'light'
       : theme;
-  const latest = useRef({ onReport, onConsole, onOpenUrl, content, type, language, mode, nonce });
+  const latest = useRef({
+    onReport,
+    onConsole,
+    onOpenUrl,
+    content,
+    type,
+    language,
+    mode,
+    nonce,
+    zoom,
+  });
   useEffect(() => {
-    latest.current = { onReport, onConsole, onOpenUrl, content, type, language, mode, nonce };
+    latest.current = {
+      onReport,
+      onConsole,
+      onOpenUrl,
+      content,
+      type,
+      language,
+      mode,
+      nonce,
+      zoom,
+    };
   });
 
   // A new document per content: the content itself for html, the runtime for react and mermaid.
@@ -82,7 +105,7 @@ export function SandboxHost({
 
   useEffect(() => {
     const onMessage = (e: MessageEvent) => {
-      const { onReport, onConsole, onOpenUrl, content, type, language, mode, nonce } =
+      const { onReport, onConsole, onOpenUrl, content, type, language, mode, nonce, zoom } =
         latest.current;
       const m = acceptMessage(e, frame.current, nonce);
       if (!m) return;
@@ -92,6 +115,11 @@ export function SandboxHost({
             { kind: 'mount', nonce, type, content, theme: mode, language: language ?? undefined },
             '*',
           );
+          // A remount starts the document at zoom 1; the panel's zoom is the user's, so it is
+          // reapplied here rather than being quietly lost on the next version.
+          if (zoom !== 1) {
+            frame.current?.contentWindow?.postMessage({ kind: 'zoom', nonce, factor: zoom }, '*');
+          }
           break;
         case 'ready':
           if (!reported.current) {
@@ -143,6 +171,11 @@ export function SandboxHost({
   useEffect(() => {
     frame.current?.contentWindow?.postMessage({ kind: 'theme', nonce, mode }, '*');
   }, [mode, nonce]);
+
+  // And so does the zoom. A document that has not answered `loaded` yet gets it at mount.
+  useEffect(() => {
+    frame.current?.contentWindow?.postMessage({ kind: 'zoom', nonce, factor: zoom }, '*');
+  }, [zoom, nonce]);
 
   if (srcdoc === null) {
     return <div className={className} />;

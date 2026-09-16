@@ -1,7 +1,7 @@
 /**
  * The artifact side of the postMessage protocol (docs/plan/13 §5). The parent sends `mount`,
- * `update` and `theme`; the document answers with `ready`, `error`, `console`, `resize` and
- * `open_url`. Every message carries the nonce the parent gave at mount; nothing else exists.
+ * `update`, `theme` and `zoom`; the document answers with `ready`, `error`, `console`, `resize`
+ * and `open_url`. Every message carries the nonce the parent gave at mount; nothing else exists.
  */
 
 export type Phase = 'compile' | 'runtime';
@@ -27,7 +27,13 @@ export interface ThemeMessage {
   mode: 'light' | 'dark';
 }
 
-export type ParentMessage = MountMessage | UpdateMessage | ThemeMessage;
+export interface ZoomMessage {
+  kind: 'zoom';
+  nonce: string;
+  factor: number;
+}
+
+export type ParentMessage = MountMessage | UpdateMessage | ThemeMessage | ZoomMessage;
 
 export interface ErrorReport {
   phase: Phase;
@@ -77,6 +83,21 @@ export function reportConsole(level: string, text: string) {
 
 export function reportResize(height: number) {
   post({ kind: 'resize', height });
+}
+
+let zoom = 1;
+
+/**
+ * Page zoom for this one artifact (13 §4).
+ *
+ * `zoom` on the root element is real page zoom rather than a picture scaled up: the viewport
+ * stays the same physical width, so text reflows into it and a responsive component stays
+ * responsive. That is the difference from a `transform: scale()` on the frame, and the reason
+ * the factor is sent in rather than applied outside.
+ */
+export function setZoom(factor: number) {
+  zoom = factor;
+  document.documentElement.style.zoom = factor === 1 ? '' : String(factor);
 }
 
 export function openUrl(url: string) {
@@ -136,14 +157,23 @@ export function installLinkInterception() {
   );
 }
 
-/** Auto-height: the parent clamps what it gets. */
+/**
+ * Auto-height: the parent clamps what it gets.
+ *
+ * The height has to be the one the parent will see on screen, and at a zoom other than 1
+ * `scrollHeight` is not it: measured in WebKitGTK, a 144 px document still reports 144 after
+ * `zoom: 2` while its bounding rect reports 288. Multiplying by the factor this document was
+ * given is exact, asks the engine nothing, and keeps the overflow semantics `scrollHeight`
+ * already had.
+ */
 export function installResizeReporting(root: HTMLElement) {
   const report = () =>
-    reportResize(Math.ceil(Math.max(root.scrollHeight, document.body.scrollHeight)));
+    reportResize(Math.ceil(Math.max(root.scrollHeight, document.body.scrollHeight) * zoom));
   const observer = new ResizeObserver(report);
   observer.observe(root);
   observer.observe(document.body);
   report();
+  return report;
 }
 
 export function onParentMessage(handler: (m: ParentMessage) => void) {
