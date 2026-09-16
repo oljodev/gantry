@@ -5,6 +5,7 @@
 
 pub mod edits;
 pub mod registry;
+pub mod sandbox;
 
 use std::{
     collections::HashMap,
