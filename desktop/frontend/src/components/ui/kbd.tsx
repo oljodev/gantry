@@ -2,7 +2,11 @@ import type * as React from 'react';
 
 import { cn } from '@/lib/utils';
 
-/** Keyboard hint: `micro` mono on a hairline (15 §8). Renders `⌘` on macOS, `Ctrl` elsewhere for `mod`. */
+/**
+ * Keyboard hint: `micro` mono on a hairline (15 §8). It draws the label it is given —
+ * `shortcutLabel` in `lib/shortcuts.ts` is what turns `mod+K` into the one this platform
+ * uses, which this comment used to claim happened here.
+ */
 function Kbd({ className, ...props }: React.ComponentProps<'kbd'>) {
   return (
     <kbd

@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import type { Mode } from '@/fixtures/types';
 import { MODE_HINT, MODE_LABEL } from '@/lib/modes';
+import { shortcutLabel } from '@/lib/shortcuts';
 import { cn } from '@/lib/utils';
 
 /**
@@ -66,7 +67,9 @@ export function ModeChip({
                   <span>{MODE_LABEL[m]}</span>
                   <span className="text-meta text-fg-3">{MODE_HINT[m]}</span>
                 </span>
-                {m === mode && <DropdownMenuShortcut>⇧⇥</DropdownMenuShortcut>}
+                {m === mode && (
+                  <DropdownMenuShortcut>{shortcutLabel('shift+Tab')}</DropdownMenuShortcut>
+                )}
               </DropdownMenuRadioItem>
             ))}
           </DropdownMenuRadioGroup>

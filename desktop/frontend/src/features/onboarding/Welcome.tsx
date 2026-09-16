@@ -9,6 +9,7 @@ import { hasFileTools, useTurnOnConnectors } from '@/features/connectors/fileCon
 import { WEB_CONNECTOR, webInstance } from '@/features/connectors/webSearch';
 import { Kbd } from '@/components/ui/kbd';
 import { toast } from '@/components/ui/toast';
+import { shortcutLabel } from '@/lib/shortcuts';
 import type { Mode, ModelRef } from '@/fixtures/types';
 import type { PendingAttachment } from '@/lib/attachments';
 import { pickFolder } from '@/lib/folders';
@@ -228,8 +229,8 @@ export function Welcome({ projectId }: { projectId?: string } = {}) {
         />
       )}
       <div className="flex h-8 items-center justify-center gap-1.5 text-meta text-fg-3">
-        Add files, folders and connectors with <Kbd>+</Kbd> · search anything with <Kbd>⌘</Kbd>
-        <Kbd>K</Kbd>
+        Add files, folders and connectors with <Kbd>+</Kbd> · search anything with{' '}
+        <Kbd>{shortcutLabel('mod+K')}</Kbd>
       </div>
     </div>
   );

@@ -4,6 +4,7 @@ import { useNavigate } from '@tanstack/react-router';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { type Surface, useUiStore } from '@/lib/stores/uiStore';
 import { cn } from '@/lib/utils';
+import { shortcutLabel } from '@/lib/shortcuts';
 
 /**
  * The two-icon segmented control beside the logo (docs/plan/16 §4): Chat and Code, one window,
@@ -84,7 +85,7 @@ function Choice({
         {icon}
       </TooltipTrigger>
       <TooltipContent>
-        {label} <span className="text-fg-3">⌘⇧K</span>
+        {label} <span className="text-fg-3">{shortcutLabel('mod+shift+K')}</span>
       </TooltipContent>
     </Tooltip>
   );

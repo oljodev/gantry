@@ -24,6 +24,7 @@ import {
 } from '@/components/ui/command';
 import { Kbd } from '@/components/ui/kbd';
 import { useChats, useSearch } from '@/lib/ipc/hooks/chats';
+import { shortcutLabel } from '@/lib/shortcuts';
 import { useCatalog } from '@/lib/ipc/hooks/connectors';
 import { useProjects } from '@/lib/ipc/hooks/projects';
 import { SECTIONS } from '@/features/settings/sections';
@@ -86,28 +87,28 @@ export function CommandPalette() {
       key: 'new chat',
       label: 'New chat',
       icon: <PlusIcon />,
-      kbd: '⌘N',
+      kbd: shortcutLabel('mod+N'),
       run: () => void navigate({ to: '/chat' }),
     },
     {
       key: 'switch surface code',
       label: 'Switch to Code',
       icon: <CodeIcon />,
-      kbd: '⌘⇧K',
+      kbd: shortcutLabel('mod+shift+K'),
       run: () => switchSurface('code'),
     },
     {
       key: 'switch surface chat',
       label: 'Switch to Chat',
       icon: <ChatCircleIcon />,
-      kbd: '⌘⇧K',
+      kbd: shortcutLabel('mod+shift+K'),
       run: () => switchSurface('chat'),
     },
     {
       key: 'toggle sidebar',
       label: 'Toggle sidebar',
       icon: <SidebarSimpleIcon />,
-      kbd: '⌘B',
+      kbd: shortcutLabel('mod+B'),
       run: toggleSidebar,
     },
     {

@@ -6,7 +6,8 @@ import { toast } from '@/components/ui/toast';
 import { describe } from '@/lib/errors';
 import { isTauri } from '@/lib/ipc/client';
 import { openIncognito } from '@/lib/ipc/incognito';
-import { cn, isMac } from '@/lib/utils';
+import { shortcutLabel } from '@/lib/shortcuts';
+import { cn } from '@/lib/utils';
 
 /**
  * **Use incognito** in the title strip (docs/plan/15 A21).
@@ -48,7 +49,7 @@ export function IncognitoButton() {
         <GhostIcon size={17} />
       </TooltipTrigger>
       <TooltipContent>
-        Use incognito <span className="text-fg-3">{isMac() ? '⌘⇧N' : 'Ctrl ⇧ N'}</span>
+        Use incognito <span className="text-fg-3">{shortcutLabel('mod+shift+N')}</span>
       </TooltipContent>
     </Tooltip>
   );

@@ -24,6 +24,7 @@ import type { ChatSummary } from '@/fixtures/types';
 import { useChatMutations, useChats } from '@/lib/ipc/hooks/chats';
 import { usePendingCounts } from '@/lib/ipc/hooks/interactions';
 import { useSettings } from '@/lib/ipc/hooks/settings';
+import { shortcutLabel } from '@/lib/shortcuts';
 import { useRunStore } from '@/lib/stores/runStore';
 import { SIDEBAR_MAX, SIDEBAR_MIN, useUiStore } from '@/lib/stores/uiStore';
 import { cn, isMac } from '@/lib/utils';
@@ -168,7 +169,7 @@ export function Sidebar() {
         <button
           type="button"
           aria-label="Hide sidebar"
-          title="Hide sidebar (⌘B)"
+          title={`Hide sidebar (${shortcutLabel('mod+B')})`}
           onClick={toggleSidebar}
           data-tauri-drag-region="false"
           className="flex size-(--control-md) items-center justify-center rounded-2 text-fg-3 transition-colors duration-(--dur-1) hover:bg-hover hover:text-fg"
@@ -182,16 +183,21 @@ export function Sidebar() {
           <SidebarItem
             icon={<PlusIcon size={16} />}
             label="New session"
-            shortcut="⌘N"
+            shortcut={shortcutLabel('mod+N')}
             onClick={() => void startCodeSession(null)}
           />
         ) : (
-          <SidebarItem to="/chat" icon={<PlusIcon size={16} />} label="New chat" shortcut="⌘N" />
+          <SidebarItem
+            to="/chat"
+            icon={<PlusIcon size={16} />}
+            label="New chat"
+            shortcut={shortcutLabel('mod+N')}
+          />
         )}
         <SidebarItem
           icon={<MagnifyingGlassIcon size={16} />}
           label="Search"
-          shortcut="⌘K"
+          shortcut={shortcutLabel('mod+K')}
           onClick={() => window.dispatchEvent(new CustomEvent('gantry:palette'))}
         />
         {!code && (
@@ -229,7 +235,7 @@ export function Sidebar() {
           <SidebarItem
             icon={<GearIcon size={16} />}
             label="Settings"
-            shortcut="⌘,"
+            shortcut={shortcutLabel('mod+,')}
             onClick={() => openSettings()}
           />
         </div>
