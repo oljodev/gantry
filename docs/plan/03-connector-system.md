@@ -48,7 +48,7 @@ Field reference (`manifest_version: "1"`). The `user_config` block is deliberate
 | `long_description` | markdown | Detail page |
 | `version` | semver | Connector version, independent of the app |
 | `icon` | path | Relative to the folder |
-| `category` | enum | `local`, `developer`, `productivity`, `data`, `communication`, `web`, `gantry` |
+| `category` | enum | `local`, `developer`, `productivity`, `media`, `data`, `communication`, `web`, `gantry`. `media` was added 2026-09-16, when a fifth voice-and-picture connector made "whichever fits least badly" the wrong answer for six of them (17 §3) |
 | `keywords` | string[] | Search |
 | `publisher` | `{ name, url }` | |
 | `first_party` | bool | Rendered as a badge; also gates `singleton` defaults |

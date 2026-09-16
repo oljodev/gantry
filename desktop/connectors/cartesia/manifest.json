@@ -6,8 +6,16 @@
   "long_description": "Cartesia's own hosted server. It turns text into speech with the voices on your account, transcribes audio, clones and localises voices, and keeps pronunciation dictionaries.\n\nYou sign in through Cartesia in your browser — there is no key to paste — and the audio comes back as a link Cartesia keeps for 24 hours rather than as a file on this machine. Everything generated is billed to the account you sign in to.",
   "version": "0.1.0",
   "icon": "icon.svg",
-  "category": "productivity",
-  "keywords": ["cartesia", "text to speech", "tts", "voice", "transcription", "speech to text", "audio"],
+  "category": "media",
+  "keywords": [
+    "cartesia",
+    "text to speech",
+    "tts",
+    "voice",
+    "transcription",
+    "speech to text",
+    "audio"
+  ],
   "publisher": {
     "name": "Cartesia",
     "url": "https://cartesia.ai"
@@ -49,7 +57,14 @@
   },
   "catalog": {
     "featured": false,
-    "sort_weight": 77,
-    "suggest_for": ["cartesia", "text to speech", "read this aloud", "say this out loud", "clone a voice", "transcribe"]
+    "sort_weight": 76,
+    "suggest_for": [
+      "cartesia",
+      "text to speech",
+      "read this aloud",
+      "say this out loud",
+      "clone a voice",
+      "transcribe"
+    ]
   }
 }

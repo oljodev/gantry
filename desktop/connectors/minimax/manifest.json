@@ -6,7 +6,7 @@
   "long_description": "MiniMax's own server, run as a local process on Python. It generates speech, images, video and music through their API and writes the result to this machine.\n\nEvery generation is billed to your MiniMax account.",
   "version": "0.1.0",
   "icon": "icon.svg",
-  "category": "productivity",
+  "category": "media",
   "keywords": ["minimax", "text to speech", "video", "image generation", "music", "hailuo"],
   "publisher": {
     "name": "MiniMax",
@@ -56,7 +56,7 @@
   },
   "catalog": {
     "featured": false,
-    "sort_weight": 79,
+    "sort_weight": 75,
     "suggest_for": [
       "minimax",
       "generate a video",

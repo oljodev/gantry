@@ -6,7 +6,7 @@
   "long_description": "Replicate's hosted server. It searches models, starts a prediction and reads the result, which is how a chat generates an image or transcribes a file without Gantry shipping a model.\n\nA prediction costs money on your Replicate account, so starting one is confirmed every time.",
   "version": "0.1.0",
   "icon": "icon.svg",
-  "category": "developer",
+  "category": "media",
   "keywords": ["replicate", "models", "predictions", "image generation", "inference"],
   "publisher": {
     "name": "Replicate",
@@ -36,7 +36,7 @@
   },
   "catalog": {
     "featured": false,
-    "sort_weight": 97,
+    "sort_weight": 74,
     "suggest_for": ["replicate", "run a model", "generate an image", "transcribe", "prediction"]
   }
 }

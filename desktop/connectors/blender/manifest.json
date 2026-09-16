@@ -6,7 +6,7 @@
   "long_description": "A community server — not Blender's — that drives Blender from a conversation: read the scene and the objects in it, create and move geometry, apply materials, pull assets from Poly Haven, Sketchfab and Poly Pizza, and take a viewport screenshot to look at what came out.\n\nIt needs two halves. This half is a Python process Gantry starts; the other is an add-on inside Blender that opens a socket on port 9876 for it to talk to. Install the add-on once with `uvx blender-mcp install-addon`, then enable **Interface: MCP for Blender** under Edit → Preferences → Add-ons and start the server from the sidebar. Nothing works until Blender is running with that switched on.\n\nTwo defaults Gantry sets for you. The server's telemetry — which uploads your prompts, the code the model writes, viewport screenshots and scene data to its author — is **off**. And its script validator is **on**, so Python written by the model is checked before it crosses the socket; asset names and descriptions from the internet reach the model here, and that is a short path from a page somebody else wrote to code running in your Blender.",
   "version": "0.1.0",
   "icon": "icon.svg",
-  "category": "productivity",
+  "category": "media",
   "keywords": ["blender", "3d", "modeling", "render", "scene", "geometry"],
   "publisher": {
     "name": "Siddharth Ahuja",
@@ -66,7 +66,7 @@
   },
   "catalog": {
     "featured": false,
-    "sort_weight": 78,
+    "sort_weight": 72,
     "suggest_for": ["blender", "3d model", "render this", "make a scene", "modeling"]
   }
 }

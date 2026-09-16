@@ -50,7 +50,16 @@
       "description": "Path relative to the connector folder."
     },
     "category": {
-      "enum": ["local", "developer", "productivity", "data", "communication", "web", "gantry"]
+      "enum": [
+        "local",
+        "developer",
+        "productivity",
+        "media",
+        "data",
+        "communication",
+        "web",
+        "gantry"
+      ]
     },
     "keywords": {
       "type": "array",

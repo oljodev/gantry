@@ -1,5 +1,5 @@
 export type ConnectorCategory =
-  'local' | 'developer' | 'productivity' | 'data' | 'communication' | 'web';
+  'local' | 'developer' | 'productivity' | 'media' | 'data' | 'communication' | 'web';
 
 export interface ConnectorEntry {
   id: string;
@@ -15,6 +15,7 @@ export const CATEGORIES: { id: ConnectorCategory; label: string }[] = [
   { id: 'local', label: 'Local' },
   { id: 'developer', label: 'Developer' },
   { id: 'productivity', label: 'Productivity' },
+  { id: 'media', label: 'Media' },
   { id: 'data', label: 'Data' },
   { id: 'communication', label: 'Communication' },
   { id: 'web', label: 'Web' },

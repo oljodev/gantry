@@ -5,13 +5,14 @@
  * Marks: the build looks each third-party entry up in Simple Icons by `icon` (default: the slug without hyphens);
  * `icon: false` forces two-letter initials. First-party connectors use Gantry's own glyphs.
  */
-export const CATEGORY_IDS = ['local', 'developer', 'productivity', 'data', 'communication', 'web'] as const;
+export const CATEGORY_IDS = ['local', 'developer', 'productivity', 'media', 'data', 'communication', 'web'] as const;
 export type CategoryId = (typeof CATEGORY_IDS)[number];
 
 export const CATEGORIES: Record<CategoryId, { label: string; blurb: string }> = {
   local: { label: 'Local', blurb: 'Files, editor, shell and fetch on this machine. Built into Gantry.' },
   developer: { label: 'Developer', blurb: 'Repositories, issues, deploys, errors and the documentation you code against.' },
   productivity: { label: 'Productivity', blurb: 'Documents, designs, tasks, forms and what the meeting decided.' },
+  media: { label: 'Media', blurb: 'Speech, images, video and the libraries they live in.' },
   data: { label: 'Data', blurb: 'Databases, tables, analytics and payments.' },
   communication: { label: 'Communication', blurb: 'Where your team talks, and where you answer customers.' },
   web: { label: 'Web', blurb: 'Search and read the open web.' },
@@ -155,11 +156,11 @@ export const connectors: Connector[] = [
     does: 'Traces, runs and datasets',
     summary: 'Read what your LLM application actually did: the trace, the run, the dataset and the evaluation beside it.',
     capabilities: ['search runs', 'read a trace', 'list datasets', 'read an evaluation'] },
-  { slug: 'replicate', name: 'Replicate', status: 'available', category: 'developer', auth: 'oauth', runtime: 'mcp-remote', website: 'https://replicate.com',
+  { slug: 'replicate', name: 'Replicate', status: 'available', category: 'media', auth: 'oauth', runtime: 'mcp-remote', website: 'https://replicate.com',
     does: 'Run models, read predictions',
     summary: 'Search Replicate’s models, run one and read what came back — image, audio or text — without Gantry shipping a model of its own. Each run is billed to your account, so it asks first.',
     capabilities: ['search models', 'create a prediction', 'read a prediction', 'list your runs'] },
-  { slug: 'cloudinary', name: 'Cloudinary', status: 'available', category: 'developer', auth: 'oauth', runtime: 'mcp-remote', website: 'https://cloudinary.com',
+  { slug: 'cloudinary', name: 'Cloudinary', status: 'available', category: 'media', auth: 'oauth', runtime: 'mcp-remote', website: 'https://cloudinary.com',
     does: 'Media assets and transformations',
     summary: 'Find the asset, read what it is and how it is transformed, and keep the library tidy — without leaving the chat.',
     capabilities: ['search assets', 'read asset metadata', 'list folders', 'tag an asset'] },
@@ -227,19 +228,19 @@ export const connectors: Connector[] = [
     does: 'Run your Make scenarios',
     summary: 'The automations you already built in Make become things the agent can run: list scenarios, run one, read what it returned. Needs an API key scoped to read and run.',
     capabilities: ['list scenarios', 'run a scenario', 'read the run result'] },
-  { slug: 'elevenlabs', name: 'ElevenLabs', status: 'available', category: 'productivity', auth: 'api-key', runtime: 'mcp-stdio', website: 'https://elevenlabs.io',
+  { slug: 'elevenlabs', name: 'ElevenLabs', status: 'available', category: 'media', auth: 'api-key', runtime: 'mcp-stdio', website: 'https://elevenlabs.io',
     does: 'Speech, voices and transcription',
     summary: 'Turn text into speech with your own voices, or a recording into text, from the chat. Runs locally on uv; generations are billed to your ElevenLabs account, so they ask first.',
     capabilities: ['speak this text', 'list voices', 'transcribe an audio file'] },
-  { slug: 'minimax', name: 'MiniMax', status: 'available', category: 'productivity', icon: false, auth: 'api-key', runtime: 'mcp-stdio', website: 'https://www.minimax.io',
+  { slug: 'minimax', name: 'MiniMax', status: 'available', category: 'media', icon: false, auth: 'api-key', runtime: 'mcp-stdio', website: 'https://www.minimax.io',
     does: 'Speech, image, video and music',
     summary: 'Generate media from the chat — speech, images, video, music — through MiniMax, with the file written to your machine. Needs a key and the matching regional host.',
     capabilities: ['generate speech', 'generate an image', 'generate a video', 'generate music'] },
-  { slug: 'blender', name: 'Blender', status: 'available', category: 'productivity', auth: 'none', runtime: 'mcp-stdio', website: 'https://github.com/ahujasid/blender-mcp',
+  { slug: 'blender', name: 'Blender', status: 'available', category: 'media', auth: 'none', runtime: 'mcp-stdio', website: 'https://github.com/ahujasid/blender-mcp',
     does: 'Model, texture and render a scene',
     summary: 'Drive a Blender you have open: read the scene, build and move geometry, apply materials, pull assets from Poly Haven or Sketchfab, and look at the viewport. A community server, not Blender’s, with its telemetry off and its script validator on. Needs its add-on inside Blender first.',
     capabilities: ['get_scene_info', 'execute_blender_code', 'search_polyhaven_assets', 'get_viewport_screenshot'] },
-  { slug: 'cartesia', name: 'Cartesia', status: 'available', category: 'productivity', icon: false, auth: 'oauth', runtime: 'mcp-remote', website: 'https://cartesia.ai',
+  { slug: 'cartesia', name: 'Cartesia', status: 'available', category: 'media', icon: false, auth: 'oauth', runtime: 'mcp-remote', website: 'https://cartesia.ai',
     does: 'Speech from text, and your own voices',
     summary: 'Read something aloud in a voice from your Cartesia account, clone or localise a voice, and keep a pronunciation dictionary. Sign in through the browser — there is no key to paste — and the audio comes back as a link rather than a file. Cloning a voice asks first, every time.',
     capabilities: ['text_to_speech', 'list_voices', 'clone_voice', 'localize_voice'] },

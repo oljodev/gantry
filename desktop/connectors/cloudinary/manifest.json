@@ -6,7 +6,7 @@
   "long_description": "Cloudinary's asset-management server. It searches assets, reads their metadata and transformations, and organises folders and tags.\n\nYou sign in through Cloudinary in your browser; the scopes cover asset management, upload and media generation.",
   "version": "0.1.0",
   "icon": "icon.svg",
-  "category": "developer",
+  "category": "media",
   "keywords": ["cloudinary", "images", "video", "assets", "transformations", "cdn"],
   "publisher": {
     "name": "Cloudinary",
@@ -37,7 +37,7 @@
   },
   "catalog": {
     "featured": false,
-    "sort_weight": 96,
+    "sort_weight": 73,
     "suggest_for": ["cloudinary", "images", "assets", "media library", "transformation"]
   }
 }

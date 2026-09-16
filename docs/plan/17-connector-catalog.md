@@ -259,9 +259,13 @@ probed. B8, B10 and B11b are what is left, and each is blocked on a mechanism ra
 typing: a client id you supply for Google, a host you supply for the self-hosted servers, and —
 for Slack, HubSpot and Microsoft Fabric — the confidential-client question below.
 
-**One thing the catalogue outgrew.** `category` has seven values and ElevenLabs, MiniMax,
-Replicate and Cloudinary are all filed under whichever fits least badly. A `media` category is the
-obvious next change to 03 §3's enum, the website's `CATEGORY_IDS` and this sentence.
+**The thing the catalogue outgrew, and then did not** (2026-09-16). `category` had seven values
+and ElevenLabs, MiniMax, Replicate and Cloudinary were all filed under whichever fit least badly.
+Cartesia was the fifth and made it plain, so `media` is now a category in 03 §3's enum, in the
+manifest schema, in the website's `CATEGORY_IDS` and in the app's own list — and six connectors
+moved into it: those four, Cartesia, and Blender, which renders pictures and was sitting in
+Productivity next to Linear. The band is `sort_weight` 72–77, between Productivity and Data. What
+changed is where they are filed; nothing about what any of them does.
 
 **The shape that is missing.** Slack and HubSpot are both shipped by their vendors, both answer
 correctly, and neither can be signed into: they offer no dynamic registration, no client-id
