@@ -5,7 +5,8 @@ import { useMemo, useState } from 'react';
 import type { ReasoningEffort } from '@/bindings';
 import { Composer } from '@/components/gantry/composer/Composer';
 import { FileToolsDialog } from '@/features/connectors/FileToolsDialog';
-import { hasFileTools } from '@/features/connectors/fileConnectors';
+import { hasFileTools, useTurnOnConnectors } from '@/features/connectors/fileConnectors';
+import { WEB_CONNECTOR, webInstance } from '@/features/connectors/webSearch';
 import { Kbd } from '@/components/ui/kbd';
 import { toast } from '@/components/ui/toast';
 import type { Mode, ModelRef } from '@/fixtures/types';
@@ -74,6 +75,14 @@ export function Welcome({ projectId }: { projectId?: string } = {}) {
   const [connectors, setConnectors] = useState<string[]>([]);
   /** The folder just chosen on a machine with no file tools yet (03 §11). */
   const [folderWithoutTools, setFolderWithoutTools] = useState<string | null>(null);
+  const turnOnConnectors = useTurnOnConnectors();
+  /**
+   * Web search before there is a chat. Nothing here can carry the provider's own flag — that
+   * belongs to a chat row that does not exist yet — but the `web` connector is a thing to
+   * install and hold, which is what everything else chosen on this screen already is.
+   */
+  const web = webInstance(installedConnectors.data ?? undefined);
+  const webSearchOn = web !== null && connectors.includes(web.id);
 
   const connectorChoices = useMemo(
     () =>
@@ -183,6 +192,22 @@ export function Welcome({ projectId }: { projectId?: string } = {}) {
             attached ? [...current, instanceId] : current.filter((id) => id !== instanceId),
           )
         }
+        webSearch={webSearchOn}
+        onWebSearchChange={(on) => {
+          if (on) {
+            void turnOnConnectors(null, [WEB_CONNECTOR])
+              .then((ids) => setConnectors((current) => [...new Set([...current, ...ids])]))
+              .catch((err: unknown) =>
+                toast.add({
+                  title: 'Could not turn on web search',
+                  description: describe(err),
+                  type: 'error',
+                }),
+              );
+          } else if (web) {
+            setConnectors((current) => current.filter((id) => id !== web.id));
+          }
+        }}
         running={busy}
         effort={effectiveEffort}
         prefill={prefill}

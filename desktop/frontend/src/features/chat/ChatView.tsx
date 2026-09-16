@@ -46,7 +46,8 @@ import { pickFolder } from '@/lib/folders';
 import { useArtifacts } from '@/lib/ipc/hooks/artifacts';
 import { useChat, useChatMutations } from '@/lib/ipc/hooks/chats';
 import { FileToolsDialog } from '@/features/connectors/FileToolsDialog';
-import { hasFileTools } from '@/features/connectors/fileConnectors';
+import { hasFileTools, useTurnOnConnectors } from '@/features/connectors/fileConnectors';
+import { WEB_CONNECTOR, webInstance } from '@/features/connectors/webSearch';
 import { MoveToProjectDialog } from '@/features/projects/MoveToProjectDialog';
 import { useProject } from '@/lib/ipc/hooks/projects';
 import { useSkills } from '@/lib/ipc/hooks/skills';
@@ -103,6 +104,7 @@ export function ChatView({
   const installedConnectors = useConnectors();
   const chatConnectors = useChatConnectors(chatId);
   const { attach: attachConnector } = useConnectorMutations();
+  const turnOnConnectors = useTurnOnConnectors();
   const openCustomize = useUiStore((s) => s.openCustomize);
   // A turn that failed for want of a key offers the page where keys live (15 A20).
   const openSettings = useUiStore((s) => s.openSettings);
@@ -339,6 +341,32 @@ export function ChatView({
   };
   const patch = (u: Parameters<typeof update.mutate>[0]['update']) =>
     update.mutate({ chatId, update: u });
+  /**
+   * One switch, two mechanisms (02 §3, 03 §11). The provider's own search wins where the model
+   * has it: one round trip, nothing to install. Where it does not, the `web` connector answers
+   * the same question — so the switch attaches it rather than greying itself out, which is
+   * what it did for every model on a machine with no provider key.
+   */
+  const web = webInstance(installedConnectors.data ?? undefined);
+  const searchesItself = caps?.server_web_search === true;
+  const webSearchOn = searchesItself
+    ? detail.web_search
+    : web !== null && (chatConnectors.data ?? []).includes(web.id);
+  const setWebSearch = (on: boolean) => {
+    if (searchesItself) {
+      patch({ web_search: on });
+    } else if (on) {
+      void turnOnConnectors(chatId, [WEB_CONNECTOR]).catch((err: unknown) =>
+        toast.add({
+          title: 'Could not turn on web search',
+          description: describe(err),
+          type: 'error',
+        }),
+      );
+    } else if (web) {
+      attachConnector.mutate({ chatId, instanceId: web.id, attached: false });
+    }
+  };
   // What `/` offers in the composer (12 §A6). Switched-off skills are not offered, because a
   // name that does nothing when you type it is worse than one that is not there.
   const skillChoices = (skills.data ?? [])
@@ -658,8 +686,8 @@ export function ChatView({
           running={running}
           effort={detail.effort}
           onEffortChange={(effort) => patch({ effort })}
-          webSearch={detail.web_search}
-          onWebSearchChange={(on) => patch({ web_search: on })}
+          webSearch={webSearchOn}
+          onWebSearchChange={setWebSearch}
           capabilities={capabilities}
           connectors={connectorChoices}
           onConnectorChange={(instanceId, attached) =>

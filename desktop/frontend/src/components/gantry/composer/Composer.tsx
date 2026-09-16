@@ -96,7 +96,11 @@ export interface ComposerProps {
   /** Controlled reasoning effort; uncontrolled when absent (the gallery). */
   effort?: ReasoningEffort;
   onEffortChange?: (effort: ReasoningEffort) => void;
-  /** The provider's own web search (02 §3); shown only when the model has one. */
+  /**
+   * Whether this chat searches the web — by the provider's own search (02 §3) where the model
+   * has one, and by the `web` connector where it does not. Which of the two is the caller's
+   * decision; the composer only says which one the switch will use.
+   */
   webSearch?: boolean;
   onWebSearchChange?: (on: boolean) => void;
   /**
@@ -180,7 +184,8 @@ export function Composer({
   const [attachments, setAttachments] = useState<PendingAttachment[]>(initialAttachments ?? []);
   const [effortLocal, setEffortLocal] = useState<ReasoningEffort>('medium');
   const canThink = capabilities?.thinking ?? true;
-  const searchKnown = capabilities?.webSearch !== undefined;
+  // Whether the *model* searches. Where it does not, the switch still works — the caller
+  // routes it to the Web connector — so this only decides what the row says it will use.
   const canSearch = capabilities?.webSearch ?? false;
   const effort = canThink ? (effortProp ?? effortLocal) : 'off';
   const thinking = effort !== 'off';
@@ -423,16 +428,17 @@ export function Composer({
               </DropdownMenuGroup>
               <DropdownMenuSeparator />
               <DropdownMenuCheckboxItem
-                checked={canSearch && webSearch}
-                disabled={!canSearch}
+                checked={webSearch}
+                disabled={!onWebSearchChange}
                 onCheckedChange={(on) => onWebSearchChange?.(on)}
               >
                 <GlobeIcon />
                 Web search
-                {!canSearch && (
-                  <span className="ml-auto text-meta text-fg-3">
-                    {searchKnown ? 'Not on this model' : 'Add a provider key'}
-                  </span>
+                {!canSearch && onWebSearchChange && (
+                  // Not "Not on this model", which was true of the model and false of the app:
+                  // the Web connector answers this for any model, and says so rather than
+                  // turning itself on silently.
+                  <span className="ml-auto text-meta text-fg-3">Web connector</span>
                 )}
               </DropdownMenuCheckboxItem>
               {canThink ? (
@@ -476,7 +482,7 @@ export function Composer({
             <RootChip key={root} root={root} onRemove={onRemoveRoot} />
           ))}
           <div className="ml-auto flex items-center gap-1">
-            {canSearch && webSearch && (
+            {webSearch && (
               <Tooltip>
                 <TooltipTrigger
                   render={
@@ -492,7 +498,9 @@ export function Composer({
                 >
                   <GlobeIcon weight="fill" />
                 </TooltipTrigger>
-                <TooltipContent>Web search on</TooltipContent>
+                <TooltipContent>
+                  {canSearch ? 'Web search on' : 'Web search on, through the Web connector'}
+                </TooltipContent>
               </Tooltip>
             )}
             <Tooltip>
