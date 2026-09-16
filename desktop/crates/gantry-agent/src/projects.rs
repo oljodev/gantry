@@ -31,6 +31,15 @@ fn store_err(e: gantry_store::StoreError) -> GantryError {
     GantryError::Store(e.to_string())
 }
 
+/// Collects the bytes of knowledge files that have just stopped being referenced. A failure is
+/// logged rather than raised: the file is gone either way, and the weekly sweep asks again.
+fn collect(conn: &gantry_store::Connection, blobs: &BlobStore, hashes: &[String]) {
+    if let Err(err) = gantry_store::sweep::collect(conn, blobs, hashes, gantry_store::sweep::GRACE)
+    {
+        log::warn!("could not collect the knowledge files' blobs: {err}");
+    }
+}
+
 impl Projects {
     #[must_use]
     pub fn new(store: Arc<Store>, blobs: Arc<BlobStore>) -> Self {
@@ -115,10 +124,20 @@ impl Projects {
     }
 
     /// Deletes the project and releases its chats (migration 0014). Archiving is what hides a
-    /// project you want to keep; this is for one you do not.
+    /// project you want to keep; this is for one you do not. Its knowledge files cascade away
+    /// with it, so their bytes are collected here.
     pub fn delete(&self, id: ProjectId) -> Result<(), GantryError> {
+        let blobs = self.blobs.clone();
         self.store
-            .write_blocking(move |c| projects::delete(c, id))
+            .write_blocking(move |c| {
+                let hashes: Vec<String> = projects::files(c, id)?
+                    .into_iter()
+                    .map(|f| f.blob_hash)
+                    .collect();
+                projects::delete(c, id)?;
+                collect(c, &blobs, &hashes);
+                Ok(())
+            })
             .map_err(store_err)
     }
 
@@ -141,14 +160,34 @@ impl Projects {
         };
         let written = file.clone();
         self.store
-            .write_blocking(move |c| projects::add_file(c, &file, Some(&knowledge.text)))
+            .write_blocking(move |c| {
+                gantry_store::repos::blobs::record(
+                    c,
+                    &file.blob_hash,
+                    file.size,
+                    Some(&file.mime),
+                )?;
+                projects::add_file(c, &file, Some(&knowledge.text))
+            })
             .map_err(store_err)?;
         Ok(written)
     }
 
+    /// Removes one knowledge file, and its bytes with it when no chat and no other project is
+    /// still holding the same ones (06 §3).
     pub fn remove_file(&self, id: ProjectId, file_id: ProjectFileId) -> Result<(), GantryError> {
+        let blobs = self.blobs.clone();
         self.store
-            .write_blocking(move |c| projects::remove_file(c, id, file_id))
+            .write_blocking(move |c| {
+                let hashes: Vec<String> = projects::files(c, id)?
+                    .into_iter()
+                    .filter(|f| f.id == file_id)
+                    .map(|f| f.blob_hash)
+                    .collect();
+                projects::remove_file(c, id, file_id)?;
+                collect(c, &blobs, &hashes);
+                Ok(())
+            })
             .map_err(store_err)
     }
 

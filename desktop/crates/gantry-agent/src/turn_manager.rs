@@ -674,7 +674,7 @@ impl TurnManager {
             user.parts.push(i.part);
             records.push(i.record);
         }
-        self.start_message(chat_id, user, records, invoked, sink)
+        self.start_message(chat_id, user, records, invoked, None, sink)
     }
 
     /// Re-runs the chat's last turn: the old turn is dropped and its user message sent again.
@@ -684,10 +684,11 @@ impl TurnManager {
         turn_id: TurnId,
         sink: Arc<dyn EventSink>,
     ) -> Result<TurnId, GantryError> {
-        let (user, attachments) = self.chats.take_last_turn(chat_id, turn_id)?;
+        let (user, attachments) = self.chats.last_turn_to_retry(chat_id, turn_id)?;
         // A retry re-sends the same message; the skills it named are named again by
-        // matching it, and a `/name` the user typed is still in its text.
-        self.start_message(chat_id, user, attachments, Vec::new(), sink)
+        // matching it, and a `/name` the user typed is still in its text. The turn being
+        // retried goes in the same write that starts its replacement.
+        self.start_message(chat_id, user, attachments, Vec::new(), Some(turn_id), sink)
     }
 
     /// **Allow anyway** (04 §6): the user overrules a block the guard made.
@@ -738,7 +739,7 @@ impl TurnManager {
             origin: None,
             created_at: now_ms(),
         };
-        self.start_message(chat_id, note, Vec::new(), Vec::new(), sink)
+        self.start_message(chat_id, note, Vec::new(), Vec::new(), None, sink)
     }
 
     /// The Guard page's "this block was wrong" toggle (04 §6). It is stored with the decision
@@ -758,6 +759,7 @@ impl TurnManager {
         user: Message,
         attachments: Vec<NewAttachment>,
         invoked: Vec<String>,
+        replacing: Option<TurnId>,
         sink: Arc<dyn EventSink>,
     ) -> Result<TurnId, GantryError> {
         let settings = self.settings();
@@ -777,6 +779,7 @@ impl TurnManager {
             TurnContextOptions {
                 invoked,
                 memory_on: !settings.memory.paused,
+                replacing,
             },
         )?;
         let turn_id = input.turn_id;

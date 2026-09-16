@@ -77,7 +77,7 @@ impl Journal {
             .write(move |conn| {
                 let tx = conn.transaction()?;
                 for (hash, size) in &sizes {
-                    blobs::add_ref(&tx, hash, *size, Some("text/plain"))?;
+                    blobs::record(&tx, hash, *size, Some("text/plain"))?;
                 }
                 file_edits::insert(&tx, &record)?;
                 tx.commit()?;

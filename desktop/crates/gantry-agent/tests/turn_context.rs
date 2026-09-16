@@ -68,6 +68,7 @@ impl World {
                 TurnContextOptions {
                     invoked: Vec::new(),
                     memory_on: true,
+                    replacing: None,
                 },
             )
             .unwrap();
@@ -135,6 +136,7 @@ fn a_slash_invocation_beats_both_the_score_and_the_six_turn_rule() {
             TurnContextOptions {
                 invoked: vec!["commit-messages".to_owned()],
                 memory_on: true,
+                replacing: None,
             },
         )
         .unwrap();
@@ -220,6 +222,7 @@ fn pausing_memory_stops_the_lookup_and_leaves_skills_alone() {
             TurnContextOptions {
                 invoked: Vec::new(),
                 memory_on: false,
+                replacing: None,
             },
         )
         .unwrap();

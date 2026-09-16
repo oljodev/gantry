@@ -193,7 +193,7 @@ impl Artifacts {
                 let chat = chats::get(conn, chat_id)?.ok_or_else(|| {
                     gantry_store::StoreError::Other(format!("chat {chat_id} not found"))
                 })?;
-                blobs::add_ref(
+                blobs::record(
                     conn,
                     &version.content_blob_hash,
                     i64::try_from(version.size).unwrap_or(i64::MAX),
@@ -285,7 +285,7 @@ impl Artifacts {
         let number = self
             .store
             .write_blocking(move |conn| {
-                blobs::add_ref(
+                blobs::record(
                     conn,
                     &version.content_blob_hash,
                     i64::try_from(version.size).unwrap_or(i64::MAX),

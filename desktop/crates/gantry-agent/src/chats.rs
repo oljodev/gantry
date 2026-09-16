@@ -28,6 +28,12 @@ pub struct TurnContextOptions {
     pub invoked: Vec<String>,
     /// Settings → Memory, inverted: paused means nothing is selected and nothing is injected.
     pub memory_on: bool,
+    /// The turn this one replaces: **Retry**, which re-runs the last turn from the same user
+    /// message. It is deleted in the same write that inserts the new one, so the message's
+    /// attachments are never momentarily unreferenced — a blob sweep landing in that gap would
+    /// delete files the new turn is about to claim — and so a retry that cannot start has not
+    /// already eaten the turn it was going to replace.
+    pub replacing: Option<TurnId>,
 }
 
 /// What a runner needs to build a request: the frozen prompt and the transcript so far,
@@ -355,6 +361,10 @@ impl ChatBook {
                 let mut chat = chats::get(conn, chat_id)?.ok_or_else(|| {
                     gantry_store::StoreError::Other(format!("chat {chat_id} not found"))
                 })?;
+                if let Some(replaced) = context.replacing {
+                    check_retryable(conn, chat_id, replaced)?;
+                    turns::delete(conn, replaced)?;
+                }
                 if turns::running_for_chat(conn, chat_id)?.is_some() {
                     return Err(gantry_store::StoreError::Other(
                         "this chat already has a turn running".into(),
@@ -443,7 +453,7 @@ impl ChatBook {
                     },
                 )?;
                 for a in &attachments {
-                    blobs::add_ref(conn, &a.blob_hash, a.size, Some(&a.mime))?;
+                    blobs::record(conn, &a.blob_hash, a.size, Some(&a.mime))?;
                     messages::insert_attachment(
                         conn,
                         &AttachmentRecord {
@@ -824,29 +834,18 @@ impl ChatBook {
             .map_err(not_found_or_store)
     }
 
-    /// Removes the chat's last turn so it can be re-run, returning its user message and
-    /// attachments. Only the last turn can be retried, and not while it runs.
-    pub fn take_last_turn(
+    /// The chat's last turn, for **Retry**: its user message and the attachments that came with
+    /// it. Nothing is deleted here — the turn goes in the same write that starts its replacement
+    /// (`TurnContextOptions::replacing`), so a retry that fails to start leaves the chat as it
+    /// was.
+    pub fn last_turn_to_retry(
         &self,
         chat_id: ChatId,
         turn_id: TurnId,
     ) -> Result<(Message, Vec<NewAttachment>), GantryError> {
         self.store
-            .write_blocking(move |conn| {
-                let last = turns::last_for_chat(conn, chat_id)?;
-                match &last {
-                    Some(t) if t.id == turn_id && t.status != TurnStatus::Running => {}
-                    Some(t) if t.id == turn_id => {
-                        return Err(gantry_store::StoreError::Other(
-                            "invalid: the turn is still running".into(),
-                        ));
-                    }
-                    _ => {
-                        return Err(gantry_store::StoreError::Other(
-                            "invalid: only the last turn can be retried".into(),
-                        ));
-                    }
-                }
+            .read(move |conn| {
+                check_retryable(conn, chat_id, turn_id)?;
                 let user = messages::list_for_chat(conn, chat_id)?
                     .into_iter()
                     .find(|m| m.turn_id == Some(turn_id) && m.message.role == Role::User)
@@ -864,10 +863,6 @@ impl ChatBook {
                         extracted_text: a.extracted_text,
                     })
                     .collect();
-                for a in &attachments {
-                    blobs::release(conn, &a.blob_hash)?;
-                }
-                turns::delete(conn, turn_id)?;
                 Ok((user, attachments))
             })
             .map_err(|e| match e {
@@ -891,7 +886,12 @@ impl ChatBook {
             .map_err(store_err)
     }
 
-    /// Deletes the chat with everything under it and sweeps blobs nobody references any more.
+    /// Deletes the chat with everything under it, and collects the blobs that leaves behind.
+    ///
+    /// The collection is here as well as in the weekly sweep so that deleting a chat full of
+    /// PDFs gives the disk space back now rather than at the end of the week. It asks the same
+    /// question the sweep asks — does any row still reference this hash — of the hashes the
+    /// chat was holding, once its own rows are gone.
     pub fn delete(&self, chat_id: ChatId) -> Result<bool, GantryError> {
         let blobs = self.blobs.clone();
         self.store
@@ -900,24 +900,72 @@ impl ChatBook {
                 hashes.extend(
                     messages::list_for_chat(conn, chat_id)?
                         .into_iter()
-                        .filter(|m| m.message.role == Role::User)
                         .flat_map(|m| {
-                            messages::list_attachments(conn, m.message.id).unwrap_or_default()
+                            media_hashes(&m.message).into_iter().chain(
+                                messages::list_attachments(conn, m.message.id)
+                                    .unwrap_or_default()
+                                    .into_iter()
+                                    .map(|a| a.blob_hash),
+                            )
                         })
-                        .map(|a| a.blob_hash),
+                        .collect::<Vec<_>>(),
                 );
                 let existed = chats::delete(conn, chat_id)?;
-                for h in hashes {
-                    if blobs::release(conn, &h)? {
-                        blobs::delete(conn, &h)?;
-                        if let Err(err) = blobs.remove(&h) {
-                            log::warn!("could not remove blob {h}: {err}");
-                        }
-                    }
+                let report = gantry_store::sweep::collect(
+                    conn,
+                    &blobs,
+                    &hashes,
+                    gantry_store::sweep::GRACE,
+                )?;
+                if !report.is_empty() {
+                    log::info!(
+                        "deleted chat {chat_id}: {} blob(s), {} bytes",
+                        report.files,
+                        report.bytes
+                    );
                 }
                 Ok(existed)
             })
             .map_err(store_err)
+    }
+}
+
+/// The blobs a message's media parts point at: an image the user attached, the text extracted
+/// from their PDF, anything the model rendered. The `attachments` row keeps the file the user
+/// chose; the part keeps what the prompt carries, and the two are not always the same blob.
+fn media_hashes(message: &Message) -> Vec<String> {
+    message
+        .parts
+        .iter()
+        .filter_map(|p| match p {
+            ContentPart::Image { source, .. }
+            | ContentPart::Document { source, .. }
+            | ContentPart::Audio { source, .. }
+            | ContentPart::Video { source, .. } => match source {
+                MediaSource::Blob { hash } => Some(hash.clone()),
+                MediaSource::Base64 { .. } => None,
+            },
+            _ => None,
+        })
+        .collect()
+}
+
+/// Whether `turn_id` is a turn **Retry** may re-run: the chat's last, and not still going.
+/// Asked once before the message is read and again inside the write that replaces it, because
+/// between those two the user may have sent something else.
+fn check_retryable(
+    conn: &gantry_store::Connection,
+    chat_id: ChatId,
+    turn_id: TurnId,
+) -> Result<(), gantry_store::StoreError> {
+    match turns::last_for_chat(conn, chat_id)? {
+        Some(t) if t.id == turn_id && t.status != TurnStatus::Running => Ok(()),
+        Some(t) if t.id == turn_id => Err(gantry_store::StoreError::Other(
+            "invalid: the turn is still running".into(),
+        )),
+        _ => Err(gantry_store::StoreError::Other(
+            "invalid: only the last turn can be retried".into(),
+        )),
     }
 }
 
@@ -1313,7 +1361,10 @@ mod tests {
                 TurnContextOptions::default(),
             )
             .unwrap();
-        assert!(book.take_last_turn(id, first.turn_id).is_err(), "running");
+        assert!(
+            book.last_turn_to_retry(id, first.turn_id).is_err(),
+            "running"
+        );
         book.finish_turn(
             id,
             first.turn_id,
@@ -1331,11 +1382,26 @@ mod tests {
             book.get(id).unwrap().unwrap().turns[0].feedback,
             Some(Feedback::Bad)
         );
-        let (user, attachments) = book.take_last_turn(id, first.turn_id).unwrap();
+        let (user, attachments) = book.last_turn_to_retry(id, first.turn_id).unwrap();
         assert_eq!(user.text(), "one");
         assert!(attachments.is_empty());
-        assert!(book.get(id).unwrap().unwrap().turns.is_empty());
-        assert!(book.take_last_turn(id, first.turn_id).is_err(), "gone");
+        // Reading it leaves the turn where it was; the turn that replaces it takes it away in
+        // the same write, so a retry that never starts costs the chat nothing.
+        assert_eq!(book.get(id).unwrap().unwrap().turns.len(), 1);
+        book.begin_turn(
+            id,
+            user,
+            attachments,
+            TurnContextOptions {
+                replacing: Some(first.turn_id),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let turns = book.get(id).unwrap().unwrap().turns;
+        assert_eq!(turns.len(), 1, "the retry replaced it rather than adding");
+        assert_ne!(turns[0].id, first.turn_id);
+        assert!(book.last_turn_to_retry(id, first.turn_id).is_err(), "gone");
     }
 
     #[test]
@@ -1406,7 +1472,7 @@ mod tests {
                 tool_call_count: 0,
             },
         );
-        let (_, attachments) = book.take_last_turn(id, input.turn_id).unwrap();
+        let (_, attachments) = book.last_turn_to_retry(id, input.turn_id).unwrap();
         assert_eq!(attachments.len(), 1);
         assert_eq!(attachments[0].name, "main.rs");
     }

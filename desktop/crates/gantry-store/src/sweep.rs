@@ -25,9 +25,13 @@ use rusqlite::Connection;
 
 use crate::{BlobStore, db::Result, repos::blobs};
 
-/// How long a blob's bytes are left alone after they were last written or handed out. See the
-/// module's note on the grace period for why this exists and why it can be short.
-pub const GRACE: Duration = Duration::from_secs(5 * 60);
+/// How long a blob's bytes are left alone after they were last written or handed out.
+///
+/// The gap it covers is a `put` and the write that references what was put: milliseconds
+/// everywhere except an attachment, where a large PDF is read and its text extracted in between,
+/// and that is seconds. A minute is generous against the worst of those and short enough that
+/// deleting a chat gives its disk space back rather than promising to.
+pub const GRACE: Duration = Duration::from_secs(60);
 
 /// A sweep runs at startup when the last one was longer ago than this, and whenever the user asks
 /// in Settings → Data & privacy (06 §8).
