@@ -304,6 +304,18 @@ forgotten the user's own playbooks is not more private, only worse.
   submenu exists now: enabled skills, pinned ones first, twelve at a time with the library a
   click away. Chat-scoped pinning was the half of §A6 nobody could reach; the project half has
   worked since M11.
+- ~~**A project memory you can see, set or move.**~~ **Built 2026-09-16.** §B4 has had project
+  scope since M11 and §B5 has always listed scope among the page's filters, but the page was
+  global-only in three places at once: `create_memory` took a `scope_kind` and passed `None` for
+  the project, so asking for a project scope wrote an entry belonging to no project and
+  therefore readable by no chat; the New form asked for no scope and hardcoded `global`; and a
+  row showed none, so a project memory the model had written looked exactly like a global one.
+  The proposal card had the same hole on its Save path — it carried `scope_id` and dropped it —
+  which is the one that mattered most, because it is the path the model uses. `NewMemory` now
+  carries `scope_id`, the form and every row choose a scope, rows say which project they belong
+  to, and the filter 12 §B5 promised is there. The auto-save switch had the matching half: two
+  settings, `auto_save_global` and `auto_save_project`, and one switch, so project memories were
+  saved without asking on a page that said asking was on.
 - **The shared community catalog**, still deferred for the reasons in §A5 flow 3.
 - **`references/` in the editor.** A skill can carry them, they are imported, exported, indexed
   and readable with `gantry__read_skill_file`; the editor does not yet let you write one.

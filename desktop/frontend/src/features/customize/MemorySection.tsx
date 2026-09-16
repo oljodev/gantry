@@ -15,9 +15,10 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
-import type { MemoryDto, MemoryKind, MemoryQuery } from '@/bindings';
+import type { MemoryDto, MemoryKind, MemoryQuery, MemoryScopeKind } from '@/bindings';
 import { commands, isTauri, unwrap } from '@/lib/ipc/client';
 import { EMPTY_QUERY, useMemories, useMemoryMutations } from '@/lib/ipc/hooks/memory';
+import { useProjects } from '@/lib/ipc/hooks/projects';
 import { useSettings, useUpdateSettings } from '@/lib/ipc/hooks/settings';
 import { describe } from '@/lib/errors';
 import { cn } from '@/lib/utils';
@@ -28,6 +29,25 @@ const KINDS: [MemoryKind, string][] = [
   ['fact', 'Fact'],
   ['note', 'Note'],
 ];
+
+/**
+ * A scope as one value, because "global or a project, and which project" is one decision
+ * (12 §B4). `global` or a project id; the two fields it writes are the store's shape, not a
+ * thing to ask a person about twice.
+ */
+type Scope = string;
+
+const GLOBAL: Scope = 'global';
+
+function scopeOf(memory: { scope_kind: MemoryScopeKind; scope_id: string | null }): Scope {
+  return memory.scope_kind === 'project' && memory.scope_id ? memory.scope_id : GLOBAL;
+}
+
+function scopeFields(scope: Scope): { scope_kind: MemoryScopeKind; scope_id: string | null } {
+  return scope === GLOBAL
+    ? { scope_kind: 'global', scope_id: null }
+    : { scope_kind: 'project', scope_id: scope };
+}
 
 const KIND_HINT: Record<MemoryKind, string> = {
   instruction: 'How to behave. In every chat.',
@@ -53,6 +73,15 @@ export function MemorySection() {
   const settings = useSettings();
   const updateSettings = useUpdateSettings();
   const memory = settings.data?.memory;
+  // A memory can belong to a project (12 §B4), which is a thing this page could neither show
+  // nor set: every row looked global, and every row written here was.
+  const projects = (useProjects().data ?? []).filter((p) => !p.archived);
+  const scopes: { value: Scope; label: string }[] = [
+    { value: GLOBAL, label: 'Everywhere' },
+    ...projects.map((p) => ({ value: p.id, label: p.name })),
+  ];
+  const projectName = (id: string | null) =>
+    projects.find((p) => p.id === id)?.name ?? 'a project that is gone';
 
   const setMemory = (patch: Partial<NonNullable<typeof memory>>) => {
     if (!memory) return;
@@ -153,6 +182,19 @@ export function MemorySection() {
               aria-label="Remember and forget without asking"
             />
           </Row>
+          {/* 12 §B3 says auto-save is per scope and the store has always had two fields; only
+              one of them had a switch, so a project memory was saved without asking on a page
+              that said asking was off. */}
+          <Row
+            label="…and in projects"
+            hint="Project memories only ever reach chats in that project."
+          >
+            <Switch
+              checked={memory.auto_save_project}
+              onCheckedChange={(auto_save_project) => setMemory({ auto_save_project })}
+              aria-label="Remember and forget without asking in projects"
+            />
+          </Row>
         </div>
       )}
 
@@ -164,14 +206,15 @@ export function MemorySection() {
 
       {adding && (
         <NewMemoryForm
+          scopes={scopes}
           onCancel={() => setAdding(false)}
           saving={create.isPending}
-          onSave={(text, kind) =>
+          onSave={(text, kind, scope) =>
             create.mutate(
               {
                 text,
                 kind,
-                scope_kind: 'global',
+                ...scopeFields(scope),
                 source: 'user',
                 origin_chat_id: null,
                 origin_message_id: null,
@@ -199,6 +242,18 @@ export function MemorySection() {
           items={[
             { value: 'all', label: 'Every kind' },
             ...KINDS.map(([value, label]) => ({ value, label })),
+          ]}
+        />
+        <Select
+          value={query.scope_kind ?? 'all'}
+          onValueChange={(v) =>
+            setQuery({ ...query, scope_kind: v === 'all' ? null : (v as MemoryScopeKind) })
+          }
+          aria-label="Filter by scope"
+          items={[
+            { value: 'all', label: 'Every scope' },
+            { value: 'global', label: 'Everywhere' },
+            { value: 'project', label: 'In a project' },
           ]}
         />
       </div>
@@ -229,7 +284,11 @@ export function MemorySection() {
             <MemoryRow
               key={m.id}
               memory={m}
-              onEdit={(text) => update.mutate({ id: m.id, patch: { ...blank(), text } })}
+              scopes={scopes}
+              scopeLabel={m.scope_kind === 'project' ? projectName(m.scope_id) : null}
+              onEdit={(text, scope) =>
+                update.mutate({ id: m.id, patch: { ...blank(), text, ...scopeFields(scope) } })
+              }
               onToggle={(enabled) => update.mutate({ id: m.id, patch: { ...blank(), enabled } })}
               onAlways={(always_include) =>
                 update.mutate({ id: m.id, patch: { ...blank(), always_include } })
@@ -302,16 +361,19 @@ function Row({
 }
 
 function NewMemoryForm({
+  scopes,
   onSave,
   onCancel,
   saving,
 }: {
-  onSave: (text: string, kind: MemoryKind) => void;
+  scopes: { value: Scope; label: string }[];
+  onSave: (text: string, kind: MemoryKind, scope: Scope) => void;
   onCancel: () => void;
   saving: boolean;
 }) {
   const [text, setText] = useState('');
   const [kind, setKind] = useState<MemoryKind>('fact');
+  const [scope, setScope] = useState<Scope>(GLOBAL);
   return (
     <div className="mb-4 flex flex-col gap-3 rounded-3 border border-accent-subtle bg-surface p-3">
       <Textarea
@@ -330,11 +392,19 @@ function NewMemoryForm({
           aria-label="Kind"
           items={KINDS.map(([value, label]) => ({ value, label }))}
         />
+        {scopes.length > 1 && (
+          <Select
+            value={scope}
+            onValueChange={(v) => setScope(v ?? GLOBAL)}
+            aria-label="Where this applies"
+            items={scopes}
+          />
+        )}
         <span className="min-w-0 flex-1 text-meta text-fg-3">{KIND_HINT[kind]}</span>
         <Button variant="ghost" onClick={onCancel}>
           Cancel
         </Button>
-        <Button onClick={() => onSave(text, kind)} disabled={text.trim() === '' || saving}>
+        <Button onClick={() => onSave(text, kind, scope)} disabled={text.trim() === '' || saving}>
           Remember
         </Button>
       </div>
@@ -344,19 +414,25 @@ function NewMemoryForm({
 
 function MemoryRow({
   memory,
+  scopes,
+  scopeLabel,
   onEdit,
   onToggle,
   onAlways,
   onDelete,
 }: {
   memory: MemoryDto;
-  onEdit: (text: string) => void;
+  scopes: { value: Scope; label: string }[];
+  /** The project's name when this entry belongs to one, so the row can say so. */
+  scopeLabel: string | null;
+  onEdit: (text: string, scope: Scope) => void;
   onToggle: (enabled: boolean) => void;
   onAlways: (always: boolean) => void;
   onDelete: () => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(memory.text);
+  const [scope, setScope] = useState<Scope>(scopeOf(memory));
 
   return (
     <div
@@ -376,11 +452,19 @@ function MemoryRow({
               onChange={(e) => setDraft(e.target.value)}
               aria-label="Memory text"
             />
-            <div className="flex gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              {scopes.length > 1 && (
+                <Select
+                  value={scope}
+                  onValueChange={(v) => setScope(v ?? GLOBAL)}
+                  aria-label="Where this applies"
+                  items={scopes}
+                />
+              )}
               <Button
                 size="sm"
                 onClick={() => {
-                  onEdit(draft.trim());
+                  onEdit(draft.trim(), scope);
                   setEditing(false);
                 }}
                 disabled={draft.trim() === ''}
@@ -392,6 +476,7 @@ function MemoryRow({
                 size="sm"
                 onClick={() => {
                   setDraft(memory.text);
+                  setScope(scopeOf(memory));
                   setEditing(false);
                 }}
               >
@@ -410,6 +495,7 @@ function MemoryRow({
         )}
         <div className="mt-1 flex flex-wrap items-center gap-2 text-micro text-fg-3">
           <Badge variant="neutral">{memory.kind}</Badge>
+          {scopeLabel !== null && <Badge variant="neutral">{scopeLabel}</Badge>}
           <span>
             {memory.source === 'user' ? 'You wrote this' : 'Gantry proposed it, you kept it'}
           </span>

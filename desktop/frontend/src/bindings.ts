@@ -1731,6 +1731,11 @@ export type NewMemory = {
 	text: string,
 	kind: MemoryKind,
 	scope_kind: MemoryScopeKind,
+	/**
+	 *  Which project, when the scope is one (12 §B4). A project scope without it would be a
+	 *  memory no chat can ever read, which is the shape the page used to be able to ask for.
+	 */
+	scope_id: ProjectId | null,
 	source: MemorySource,
 	/**  Provenance (12 §B1): which chat taught us this, and which message in it. */
 	origin_chat_id: ChatId | null,

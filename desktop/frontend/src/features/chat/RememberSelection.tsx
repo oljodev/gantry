@@ -59,6 +59,7 @@ export function RememberSelection({ chatId, scroller }: { chatId: ChatId; scroll
             text: at.text,
             kind: 'fact',
             scope_kind: 'global',
+            scope_id: null,
             source: 'user',
             origin_chat_id: chatId,
             origin_message_id: null,

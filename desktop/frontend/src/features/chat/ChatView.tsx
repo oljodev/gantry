@@ -505,6 +505,9 @@ export function ChatView({
           text: answer.text.trim(),
           kind: proposal.kind,
           scope_kind: proposal.scope_kind,
+          // The card carries which project it meant. Saving without it wrote a project-scoped
+          // entry belonging to no project, which no chat can ever read (12 §B4).
+          scope_id: proposal.scope_id,
           source: 'assistant',
           origin_chat_id: chatId,
           origin_message_id: null,
@@ -732,6 +735,7 @@ export function ChatView({
                   text: remember,
                   kind: 'fact',
                   scope_kind: 'global',
+                  scope_id: null,
                   source: 'user',
                   origin_chat_id: chatId,
                   origin_message_id: null,

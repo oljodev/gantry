@@ -52,6 +52,9 @@ pub struct NewMemory {
     pub text: String,
     pub kind: MemoryKind,
     pub scope_kind: MemoryScopeKind,
+    /// Which project, when the scope is one (12 §B4). A project scope without it would be a
+    /// memory no chat can ever read, which is the shape the page used to be able to ask for.
+    pub scope_id: Option<gantry_core::ProjectId>,
     pub source: MemorySource,
     /// Provenance (12 §B1): which chat taught us this, and which message in it.
     pub origin_chat_id: Option<ChatId>,
@@ -71,7 +74,7 @@ pub fn create_memory(
         &memory.text,
         memory.kind,
         memory.scope_kind,
-        None,
+        memory.scope_id,
         memory.source,
         memory.origin_chat_id.map(|c| (c, memory.origin_message_id)),
     )?;
