@@ -2,6 +2,7 @@ import { create } from 'zustand';
 
 import type { RenderReport } from '@/bindings';
 import type { ConsoleLine } from '@/features/artifacts/bridge';
+import { DEFAULT_ZOOM } from '@/features/artifacts/zoom';
 
 /** The parts of an artifact call's arguments seen so far (13 §2). */
 export interface StreamingArtifact {
@@ -35,6 +36,12 @@ export interface ArtifactView {
    * moves to a different version.
    */
   stopped: boolean;
+  /**
+   * Page zoom for this box (13 §4), on the ladder in `zoom.ts`. Per artifact rather than per
+   * panel: two artifacts open side by side are two different things to look at, and a diagram
+   * somebody zoomed to 200 % should not decide how the next one opens.
+   */
+  zoom: number;
   /** Reports sent for `${version}`, so each version is reported once. */
   reported: Record<string, RenderReport>;
 }
@@ -67,6 +74,7 @@ export const emptyView = (): ArtifactView => ({
   draft: '',
   problems: [],
   stopped: false,
+  zoom: DEFAULT_ZOOM,
   reported: {},
 });
 

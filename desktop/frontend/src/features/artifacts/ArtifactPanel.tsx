@@ -10,6 +10,8 @@ import {
   DotsThreeIcon,
   DownloadSimpleIcon,
   EyeIcon,
+  MagnifyingGlassMinusIcon,
+  MagnifyingGlassPlusIcon,
   PencilSimpleIcon,
   PlayIcon,
   StopIcon,
@@ -17,7 +19,7 @@ import {
   WrenchIcon,
 } from '@phosphor-icons/react';
 import { useNavigate } from '@tanstack/react-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import type { ArtifactContent, RenderReport } from '@/bindings';
 import { ArtifactGlyph } from '@/components/gantry/chat/ArtifactCard';
@@ -26,6 +28,8 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Segmented } from '@/components/ui/radio-group';
@@ -42,8 +46,16 @@ import {
   streamingFor,
   useArtifactStore,
 } from '@/features/artifacts/store';
+import {
+  canZoomIn,
+  canZoomOut,
+  DEFAULT_ZOOM,
+  stepZoom,
+  zoomLabel,
+} from '@/features/artifacts/zoom';
 import { copyText } from '@/lib/clipboard';
 import { reportRender, useArtifact, useArtifactMutations } from '@/lib/ipc/hooks/artifacts';
+import { shortcutLabel } from '@/lib/shortcuts';
 import { cn } from '@/lib/utils';
 
 export interface ArtifactPanelProps {
@@ -58,9 +70,10 @@ export interface ArtifactPanelProps {
 
 /**
  * The artifact panel (docs/plan/13 §4): one toolbar row (Rendered | Source as glyphs, the
- * version stepper when there is more than one, Restore and Fix this when they apply, Copy, and
- * a menu with Download, Open in window and Edit source), the renderer for the type, and the
- * Problems strip. Reports each version's render once so the tool result can complete.
+ * version stepper when there is more than one, the zoom readout once it is not 100 %, Restore
+ * and Fix this when they apply, Copy, and a menu with zoom, Download, Open in window and Edit
+ * source), the renderer for the type, and the Problems strip. Reports each version's render
+ * once so the tool result can complete.
  */
 export function ArtifactPanel({ artifactId, onFixThis, onOpenUrl, bare }: ArtifactPanelProps) {
   const view = useArtifactStore((s) => s.views[artifactId]) ?? emptyView();
@@ -217,6 +230,58 @@ export function ArtifactPanel({ artifactId, onFixThis, onOpenUrl, bare }: Artifa
   };
   const run = () => patchView(artifactId, { stopped: false });
 
+  /**
+   * Page zoom for this box (13 §4). `framed` is the one state where the content is a live
+   * sandbox document rather than something the app drew: there the factor is sent in and the
+   * artifact zooms itself, because CSS zoom does not cross into another browsing context.
+   */
+  const zoom = view.zoom ?? DEFAULT_ZOOM;
+  const framed = sandboxed && mode === 'rendered' && !editing && !live && !view.stopped;
+  const setZoom = useCallback(
+    (next: number) => patchView(artifactId, { zoom: next }),
+    [artifactId, patchView],
+  );
+  const zoomBy = useCallback(
+    (delta: number) =>
+      setZoom(stepZoom(useArtifactStore.getState().views[artifactId]?.zoom ?? DEFAULT_ZOOM, delta)),
+    [artifactId, setZoom],
+  );
+
+  // Only one panel is ever mounted in a window — the right pane renders the active tab and
+  // nothing else, and the artifact window renders one — so the keys can be taken at the window
+  // rather than depending on where the focus happens to be. Not while a field has it, though;
+  // `mod+-` in the composer is a hyphen.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const mod = document.documentElement.dataset.os === 'macos' ? e.metaKey : e.ctrlKey;
+      if (!mod || e.altKey || e.shiftKey || isTyping(e.target)) return;
+      if (e.key === '=' || e.key === '+') zoomBy(1);
+      else if (e.key === '-' || e.key === '_') zoomBy(-1);
+      else if (e.key === '0') setZoom(DEFAULT_ZOOM);
+      else return;
+      e.preventDefault();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [zoomBy, setZoom]);
+
+  // The wheel has to be a listener of its own: React's is passive, and a passive handler
+  // cannot stop the webview zooming the whole window instead — the thing this is here to
+  // avoid. Over a sandboxed artifact the wheel belongs to that document and never reaches
+  // here, which is correct: an artifact may want the wheel, and its input is its own.
+  const scroller = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const node = scroller.current;
+    if (!node) return;
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      if (e.deltaY !== 0) zoomBy(e.deltaY < 0 ? 1 : -1);
+    };
+    node.addEventListener('wheel', onWheel, { passive: false });
+    return () => node.removeEventListener('wheel', onWheel);
+  }, [zoomBy]);
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex h-(--row) shrink-0 items-center gap-2 border-b border-line-subtle px-2">
@@ -261,6 +326,38 @@ export function ArtifactPanel({ artifactId, onFixThis, onOpenUrl, bare }: Artifa
           </div>
         )}
         <div className="ml-auto flex items-center gap-1">
+          {zoom !== DEFAULT_ZOOM && (
+            // Nothing at 100 %: a control for a setting nobody changed is a control in the way.
+            // Once it has been changed it is state, and state the panel is holding gets shown.
+            <div className="flex items-center gap-0.5 text-meta text-fg-2 tnum">
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Zoom out"
+                disabled={!canZoomOut(zoom)}
+                onClick={() => zoomBy(-1)}
+              >
+                <MagnifyingGlassMinusIcon />
+              </Button>
+              <button
+                type="button"
+                onClick={() => setZoom(DEFAULT_ZOOM)}
+                title={`Reset zoom (${shortcutLabel('mod+0')})`}
+                className="min-w-10 whitespace-nowrap rounded-2 px-1 py-0.5 hover:text-fg"
+              >
+                {zoomLabel(zoom)}
+              </button>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Zoom in"
+                disabled={!canZoomIn(zoom)}
+                onClick={() => zoomBy(1)}
+              >
+                <MagnifyingGlassPlusIcon />
+              </Button>
+            </div>
+          )}
           {!isLatest && (
             <Button
               variant="secondary"
@@ -300,6 +397,24 @@ export function ArtifactPanel({ artifactId, onFixThis, onOpenUrl, bare }: Artifa
               <DotsThreeIcon weight="bold" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => zoomBy(1)} disabled={!canZoomIn(zoom)}>
+                <MagnifyingGlassPlusIcon />
+                Zoom in
+                <DropdownMenuShortcut>{shortcutLabel('mod++')}</DropdownMenuShortcut>
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => zoomBy(-1)} disabled={!canZoomOut(zoom)}>
+                <MagnifyingGlassMinusIcon />
+                Zoom out
+                <DropdownMenuShortcut>{shortcutLabel('mod+-')}</DropdownMenuShortcut>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => setZoom(DEFAULT_ZOOM)}
+                disabled={zoom === DEFAULT_ZOOM}
+              >
+                Actual size
+                <DropdownMenuShortcut>{shortcutLabel('mod+0')}</DropdownMenuShortcut>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
               <DropdownMenuItem onClick={download}>
                 <DownloadSimpleIcon />
                 Download…
@@ -341,42 +456,52 @@ export function ArtifactPanel({ artifactId, onFixThis, onOpenUrl, bare }: Artifa
           </DropdownMenu>
         </div>
       </div>
-      <div className="relative min-h-0 flex-1 overflow-auto">
+      <div ref={scroller} className="relative min-h-0 flex-1 overflow-auto">
         {live && (
           <div className="sticky top-0 z-10 flex h-6 items-center gap-2 border-b border-line-subtle bg-raised/90 px-3 text-meta text-fg-3 backdrop-blur">
             <span className="size-1.5 animate-pulse rounded-full bg-accent" />
             Writing…
           </div>
         )}
-        {editing ? (
-          <Editor
-            value={view.draft}
-            onChange={(draft) => patchView(artifactId, { draft })}
-            onCancel={cancelEdit}
-            onSave={commitEdit}
-            saving={save.isPending}
-          />
-        ) : mode === 'source' || (live && !info?.streamsRender) ? (
-          <CodeRenderer
-            content={content}
-            language={highlightLanguage(type, language)}
-            streaming={!!live}
-          />
-        ) : (
-          <Rendered
-            key={`${artifactId}:${version}:${live ? 'live' : 'stored'}`}
-            type={type}
-            content={content}
-            language={language}
-            title={title}
-            streaming={live}
-            stopped={view.stopped}
-            onRun={run}
-            onReport={onSandboxReport}
-            onConsole={onConsole}
-            onOpenUrl={onOpenUrl}
-          />
-        )}
+        {/*
+         * The zoomed box, for everything the app draws itself. `h-full` keeps meaning the
+         * visible pane at any factor: a percentage height resolves against the containing
+         * block in the *zoomed* space, so `height: 100%` under `zoom: 2` paints 300 px of a
+         * 300 px pane, not 600 — measured in WebKitGTK, and what the standardised `zoom`
+         * specifies. That is what lets the renderers keep their `min-h-full` unchanged.
+         */}
+        <div className="h-full" style={framed || zoom === DEFAULT_ZOOM ? undefined : { zoom }}>
+          {editing ? (
+            <Editor
+              value={view.draft}
+              onChange={(draft) => patchView(artifactId, { draft })}
+              onCancel={cancelEdit}
+              onSave={commitEdit}
+              saving={save.isPending}
+            />
+          ) : mode === 'source' || (live && !info?.streamsRender) ? (
+            <CodeRenderer
+              content={content}
+              language={highlightLanguage(type, language)}
+              streaming={!!live}
+            />
+          ) : (
+            <Rendered
+              key={`${artifactId}:${version}:${live ? 'live' : 'stored'}`}
+              type={type}
+              content={content}
+              language={language}
+              title={title}
+              streaming={live}
+              stopped={view.stopped}
+              onRun={run}
+              onReport={onSandboxReport}
+              onConsole={onConsole}
+              onOpenUrl={onOpenUrl}
+              zoom={zoom}
+            />
+          )}
+        </div>
       </div>
       {view.problems.length > 0 && !editing && (
         <Problems problems={view.problems} onClear={() => clearProblems(artifactId)} />
@@ -396,6 +521,7 @@ function Rendered({
   onReport,
   onConsole,
   onOpenUrl,
+  zoom,
 }: {
   type: string;
   content: string;
@@ -407,6 +533,8 @@ function Rendered({
   onReport: (r: SandboxReport) => void;
   onConsole: (line: ConsoleLine) => void;
   onOpenUrl?: (url: string) => void;
+  /** Only the sandboxed types read this: the rest are inside a zoomed box already. */
+  zoom: number;
 }) {
   switch (type) {
     case 'markdown':
@@ -439,6 +567,7 @@ function Rendered({
           onReport={onReport}
           onConsole={onConsole}
           onOpenUrl={onOpenUrl}
+          zoom={zoom}
           className="min-h-full"
         />
       );
@@ -540,6 +669,18 @@ function Problems({
         ))}
       </ul>
     </div>
+  );
+}
+
+/** A field has the keys while it has the focus; `mod+-` there is a hyphen, not a zoom. */
+function isTyping(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null;
+  if (!el || typeof el.tagName !== 'string') return false;
+  return (
+    el.tagName === 'INPUT' ||
+    el.tagName === 'TEXTAREA' ||
+    el.tagName === 'SELECT' ||
+    el.isContentEditable
   );
 }
 

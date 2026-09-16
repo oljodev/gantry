@@ -79,8 +79,10 @@ For executable types the tool result is not returned until the sandbox reports `
 ```
 features/artifacts/
   ArtifactPanel.tsx  the pane tab's content: one toolbar row (Rendered | Source glyphs · version stepper "v3 of 5" when
-                     there is more than one · Stop/Run for the sandboxed types · Restore · Fix this · Copy · a menu with
-                     Download, Open in window and Edit source), the renderer, the Problems strip
+                     there is more than one · the zoom readout when it is not 100 % · Stop/Run for the sandboxed types ·
+                     Restore · Fix this · Copy · a menu with zoom, Download, Open in window and Edit source), the
+                     renderer, the Problems strip
+  zoom.ts            the zoom ladder and its steps (below)
   renderers/         MarkdownRenderer · CodeRenderer · SvgRenderer · SandboxHost (html, mermaid, react)
   registry.ts        type → renderer, mirrors the Rust registry
   bridge.ts          the parent side of the postMessage protocol (§5) and the html prelude
@@ -91,6 +93,11 @@ desktop/artifact-runtime/    separate Vite package that builds the sandbox docum
 As built in M5: the tabs are the right pane's own tabs (15 A17), one per open artifact with the type's glyph, closable; the toolbar and Problems strip live inside the tab's content. The pane is a floating level 1 card (15 §6) and opens at half the window.
 
 - The panel opens automatically the first time a turn creates an artifact (setting) and stays where the user left it afterwards. `Ctrl/Cmd+Shift+A` toggles it.
+- **Zoom is per artifact box, not per window** (built 2026-09-16). `Ctrl/Cmd` with `+`, `-` and `0`, `Ctrl/Cmd`+wheel over the panel, the two buttons that appear in the toolbar once it is not 100 %, and three items in the `⋯` menu. A ladder of twelve steps from 50 % to 300 %, because a readout has to be a number a person recognises and a wheel that lands on 113 % is noise; the factor lives in the artifact's view state, so two artifacts open side by side are two different things to look at.
+
+  What it is *not* is the frame scaled like a picture. For everything the app draws it is CSS `zoom` on one box around the content, and for the three sandboxed types the factor is sent into the document (§5) and applied to its own root element, because zoom does not cross into another browsing context. Both are real page zoom: the viewport keeps its physical width, so text reflows into it and a responsive component stays responsive instead of growing a horizontal scrollbar. Two engine facts this rests on, measured in WebKitGTK rather than remembered: a percentage height resolves against the containing block in the *zoomed* space, so `h-full` still means the visible pane at any factor; and `scrollHeight` does not move when a document is zoomed, which is why the sandbox multiplies the height it reports by the factor it was given.
+
+  The wheel is the one asymmetry, and it is deliberate: over a sandboxed artifact the wheel belongs to that document and never reaches the panel. An artifact may want the wheel, and Gantry does not read the input events of a document it does not own — the keys and the buttons are the control there.
 - Copy and Download are parent-side: the app holds the content, so the sandbox needs neither clipboard nor download rights. Download goes through `tauri-plugin-dialog` and the Rust side writes the file (`export_artifact`).
 - **Open in window** opens a second `WebviewWindow` (label `artifact-<id>`, titled after the artifact, frameless like the main window) on the app's own `index.html#/artifact-window?id=` route (the router uses hash history), which renders the same panel full-window with the title in its toolbar; the sandbox document inside it is the same. This exists for long-running or heavy artifacts (§5, hang risk) and for people who want the artifact on another screen.
 - Renderers are pure: `(content, theme, props) → view`; the streaming state is a prop. Adding a type never touches the panel.
