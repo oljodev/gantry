@@ -323,7 +323,7 @@ No spring physics, no layout animation on lists, no animated empty states, no pa
 
 ## 12. Accessibility
 
-Contrast per §3. Full keyboard operation: every action reachable from the palette or a documented shortcut (`Cmd/Ctrl+N` new chat, `Cmd/Ctrl+K` palette, `Cmd/Ctrl+B` sidebar, `Cmd/Ctrl+,` settings, `Cmd/Ctrl+.` toggle the pane, `Shift+Tab` mode, `Esc` closes the topmost thing). Minimum target 24 px. Focus ring on everything. Live regions: streaming text is `aria-live="off"` with a polite announcement when a turn completes or needs a decision. Icon buttons labelled. Dialogs trap focus and restore it. Colour is never the only carrier of meaning: tiers and statuses have labels, diffs have `+`/`−` prefixes.
+Contrast per §3. Full keyboard operation: every action reachable from the palette or a documented shortcut (`Cmd/Ctrl+N` new chat, `Cmd/Ctrl+Shift+N` a private one, `Cmd/Ctrl+K` palette, `Cmd/Ctrl+Shift+K` the other surface, `Cmd/Ctrl+B` sidebar, `Cmd/Ctrl+,` settings, `Cmd/Ctrl+Shift+A` toggle the right pane, `Shift+Tab` mode — in the composer, which costs it its backwards focus step, the trade Claude Code makes too — `Esc` closes the topmost thing). Minimum target 24 px. Focus ring on everything. Live regions: streaming text is `aria-live="off"` with a polite announcement when a turn completes or needs a decision. Icon buttons labelled. Dialogs trap focus and restore it. Colour is never the only carrier of meaning: tiers and statuses have labels, diffs have `+`/`−` prefixes.
 
 ## 13. App icon
 

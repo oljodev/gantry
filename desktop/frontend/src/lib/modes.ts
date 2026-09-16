@@ -15,3 +15,13 @@ export const MODE_HINT: Record<Mode, string> = {
 };
 
 export const MODES = Object.keys(MODE_LABEL) as Mode[];
+
+/**
+ * The next mode `Shift+Tab` moves to (docs/plan/15 §12, 01 §6), in the order the menu lists
+ * them: Manual → Auto-edit → Plan → Auto → Manual. One key, one direction, the way Claude Code
+ * does it; the menu is there for going straight to one.
+ */
+export function nextMode(mode: Mode): Mode {
+  const at = MODES.indexOf(mode);
+  return MODES[(at + 1) % MODES.length] ?? MODES[0]!;
+}

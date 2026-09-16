@@ -49,6 +49,7 @@ import {
 import { readClipboardImage } from '@/lib/clipboard';
 import { completeSlash, invokedSkills, slashQuery } from '@/lib/composer/slash';
 import { folderName } from '@/lib/folders';
+import { nextMode } from '@/lib/modes';
 import { cn } from '@/lib/utils';
 
 /**
@@ -349,6 +350,15 @@ export function Composer({
             if (menuOpen && (e.key === 'Tab' || e.key === 'Enter')) {
               e.preventDefault();
               choose(matches[slashIndex % matches.length]!.name);
+              return;
+            }
+            // 15 §12: Shift+Tab cycles the permission mode, which the mode menu has always
+            // advertised with a ⇧⇥ beside the current one and nothing has ever implemented.
+            // It costs the composer its backwards focus step, which is the trade Claude Code
+            // makes too; Tab still moves forward, out to the toolbar.
+            if (e.key === 'Tab' && e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
+              e.preventDefault();
+              onModeChange(nextMode(mode));
               return;
             }
             if (e.key === 'Enter' && !e.shiftKey) {
