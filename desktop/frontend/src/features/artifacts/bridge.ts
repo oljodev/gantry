@@ -4,6 +4,11 @@
  * back. Nothing else crosses the boundary.
  */
 
+import {
+  guardHtmlScripts,
+  LOOP_GUARD_RUNTIME,
+} from '@gantry/artifact-runtime/src/html/loop-guard.js';
+
 import type { RenderError } from '@/bindings';
 
 export const SANDBOX_FLAGS = 'allow-scripts';
@@ -72,6 +77,7 @@ export function loadRuntime(): Promise<string> {
  * dependency-free and small.
  */
 const HTML_PRELUDE = `<meta http-equiv="Content-Security-Policy" content="${CSP}">
+<script>${LOOP_GUARD_RUNTIME}</script>
 <script>
 (function () {
   var nonce = null, budget = 50, windowStart = Date.now();
@@ -114,9 +120,18 @@ function pageStyle(): string {
   return bg && fg ? `<style>html{color-scheme:light;background:${bg};color:${fg}}</style>` : '';
 }
 
-/** The document for an `html` artifact: the prelude first, then the content as written. */
-export function htmlDocument(content: string): string {
+/**
+ * The document for an `html` artifact: the prelude first, then the content — with the loops in
+ * its own inline scripts guarded (13 §5, hang risk 1).
+ *
+ * The guard has to happen here, on the string, because there is no later moment: an inline
+ * script runs as the engine parses it, and nothing inside the sandbox can get between the two.
+ * `guardHtmlScripts` leaves alone anything it cannot rewrite with certainty, and keeps a
+ * rewrite only when the engine parses both versions, so a page that worked still works.
+ */
+export function htmlDocument(source: string): string {
   const prelude = pageStyle() + HTML_PRELUDE;
+  const content = guardHtmlScripts(source);
   const headOpen = /<head[^>]*>/i.exec(content);
   if (headOpen) {
     const at = headOpen.index + headOpen[0].length;

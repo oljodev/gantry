@@ -24,11 +24,9 @@
 //! check that every shipped declaration still says what it says. They need no engine and run
 //! everywhere.
 //!
-//! Two of §5's claims do not hold yet. Each has a test, each test is `#[ignore]`d, and each
-//! says what it proves: `an_html_artifacts_inline_script_is_loop_guarded` (only `react` is
-//! compiled, so an `html` artifact's scripts are never instrumented) and
-//! `the_toolbar_can_stop_a_running_artifact` (hang risk 2's Stop was never built). Remove the
-//! `#[ignore]` when the rule is made true; the test is already written.
+//! One of §5's claims does not hold yet: `the_toolbar_can_stop_a_running_artifact` (hang risk
+//! 2's Stop was never built). Its test is written and `#[ignore]`d; remove the `#[ignore]`
+//! when the rule is made true.
 
 use std::{
     collections::{BTreeSet, HashMap},
@@ -509,18 +507,18 @@ fn declares_that_an_artifact_frame_may_go_nowhere() {
     );
 }
 
-/// **Not enforced.** 13 §5, hang risk 1: "Inline scripts in `html` artifacts get the same pass
-/// when they parse; scripts that do not parse run unmodified." The React path does run the
-/// loop guard — `compile.ts` registers the plugin and every loop body gets the check — but
-/// `htmlDocument()` in `features/artifacts/bridge.ts` only prepends the prelude to an `html`
-/// artifact's own document. Its `<script>` bodies are never compiled, so no guard is injected.
+/// 13 §5, hang risk 1: "Inline scripts in `html` artifacts get the same pass when they parse;
+/// scripts that do not parse run unmodified." A `react` artifact is compiled, so Babel can put
+/// the check inside every loop body; an `html` artifact is the document itself, and its
+/// scripts run as the engine parses them, so the rewrite has to happen in the parent while the
+/// document is still a string. `artifact-runtime/src/html/loop-guard.js` is that rewrite, and
+/// the harness runs that very file — the one `bridge.ts` imports — over the case document.
 ///
 /// This case is run on its own, with `--include-hangs`: on WebKit an artifact's frame shares
 /// the web content process with the app document, so a runaway loop in one is the frozen
-/// window §5 describes. The harness measures it from outside and the artifact reports having
-/// run unguarded for eight seconds.
+/// window §5 describes. Unguarded, the artifact reports having run for the eight seconds the
+/// case allows it; guarded, the loop throws first and the case is blocked.
 #[test]
-#[ignore = "not enforced: inline scripts in an html artifact are never loop-guarded (13 §5 hang risk 1)"]
 fn an_html_artifacts_inline_script_is_loop_guarded() {
     match engine() {
         Engine::Ran(_) => {}
@@ -941,6 +939,36 @@ fn declares_a_loop_guard_compiled_into_every_react_artifact() {
         compile.contains("Babel.registerPlugin('gantry-loop-guard'")
             && compile.contains("plugins: ['gantry-imports', 'gantry-loop-guard']"),
         "the loop guard is no longer in the compile pipeline"
+    );
+}
+
+/// The other half of hang risk 1, which no hostile artifact can reach on its own: the rewrite
+/// an `html` artifact's scripts go through, and the runtime the injected calls land in.
+#[test]
+fn declares_a_loop_guard_rewritten_into_every_html_artifact() {
+    let guard = read("artifact-runtime/src/html/loop-guard.js");
+    assert!(
+        guard.contains(&format!(
+            "LOOP_BUDGET_MS = {}",
+            sandbox::LOOP_BUDGET.as_millis()
+        )),
+        "the html loop budget is no longer {:?}",
+        sandbox::LOOP_BUDGET
+    );
+    assert!(
+        guard.contains(sandbox::LOOP_GUARD_MESSAGE),
+        "a stopped loop no longer says `{}`, which is what the panel and the model recognise",
+        sandbox::LOOP_GUARD_MESSAGE
+    );
+    let bridge = frontend_bridge();
+    assert!(
+        bridge.contains("guardHtmlScripts(source)"),
+        "an html artifact's own scripts are no longer rewritten on their way into the frame"
+    );
+    assert!(
+        bridge.contains("<script>${LOOP_GUARD_RUNTIME}</script>"),
+        "the prelude no longer carries the guard's runtime, so every injected check would \
+         throw a TypeError instead"
     );
 }
 

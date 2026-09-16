@@ -47,6 +47,12 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 CASES = HERE.parent / 'src' / 'conformance' / 'cases.json'
 HARNESS = HERE.parent / 'src' / 'conformance' / 'harness.js'
+LOOP_GUARD = HERE.parent / 'src' / 'html' / 'loop-guard.js'
+
+# Where the guard's runtime goes in a case document, before any of the page's own scripts. The
+# app puts it in the html prelude; here the parent page substitutes it, having just run the
+# app's own rewrite over the document.
+LOOP_GUARD_MARKER = '<!--GANTRY_LOOP_GUARD-->'
 
 # The app's own values (docs/plan/13 §5), used when no --config overrides them. The test passes
 # the strings it reads out of the shipped source instead, so the engine runs what ships.
@@ -95,16 +101,23 @@ def case_document(case: dict, remote: str, csp: str, harness_js: str) -> str:
     return (
         '<!doctype html><html><head><meta charset="utf-8">'
         f'<meta http-equiv="Content-Security-Policy" content="{csp}">'
+        f'{LOOP_GUARD_MARKER}'
         '<title>Sandbox conformance</title></head><body>'
         f'<script>{escape_script(script)}</script></body></html>'
     )
 
 
-def parent_document(doc: str, flags: str, referrer: str, parent_csp: str) -> str:
+def parent_document(doc: str, flags: str, referrer: str, parent_csp: str, guard_js: str) -> str:
     """The app's side: one sandboxed frame, the policy the app document carries, and the same
     three checks `acceptMessage` makes — the message must come from that frame, from an opaque
-    origin, and be plain JSON."""
+    origin, and be plain JSON.
+
+    It also runs the app's own loop-guard rewrite over the document on its way into the frame,
+    from the very file `bridge.ts` imports, so what the engine sees is the app's transform
+    rather than a copy of it. That is why this is a module script.
+    """
     script = f"""
+{guard_js}
 window.__result = null;
 window.__notes = [];
 var frame = document.createElement('iframe');
@@ -119,7 +132,10 @@ window.addEventListener('message', function (e) {{
   if (m.kind === 'verdict') window.__result = m;
 }});
 document.body.appendChild(frame);
-frame.srcdoc = {json.dumps(doc)};
+var document_text = guardHtmlScripts({json.dumps(doc)});
+frame.srcdoc = document_text.replace({json.dumps(LOOP_GUARD_MARKER)}, function () {{
+  return '<scr' + 'ipt>' + LOOP_GUARD_RUNTIME + '</scr' + 'ipt>';
+}});
 """
     meta = (
         f'<meta http-equiv="Content-Security-Policy" content="{parent_csp}">' if parent_csp else ''
@@ -127,7 +143,7 @@ frame.srcdoc = {json.dumps(doc)};
     return (
         f'<!doctype html><html><head>{meta}</head>'
         '<body style="margin:0;background:#1f1f23">'
-        f'<script>{escape_script(script)}</script></body></html>'
+        f'<script type="module">{escape_script(script)}</script></body></html>'
     )
 
 
@@ -173,6 +189,7 @@ def main() -> int:
 
     spec = json.loads(CASES.read_text(encoding='utf-8'))
     harness_js = HARNESS.read_text(encoding='utf-8')
+    guard_js = LOOP_GUARD.read_text(encoding='utf-8')
     remote = spec['remote']
     cases = [c for c in spec['cases'] if config['include_hangs'] or not c.get('hang')]
     if config['only']:
@@ -261,7 +278,11 @@ def main() -> int:
         doc = case_document(case, remote, config['csp'], harness_js)
         view.load_html(
             parent_document(
-                doc, config['sandbox_flags'], config['referrer_policy'], config['parent_csp']
+                doc,
+                config['sandbox_flags'],
+                config['referrer_policy'],
+                config['parent_csp'],
+                guard_js,
             ),
             'file:///gantry-conformance/',
         )

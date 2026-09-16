@@ -185,8 +185,9 @@ gantry/
 │           ├── bridge.ts                 # postMessage client: ready, error, console, resize, open_url
 │           ├── react/{compile.ts, loop-guard.ts, imports.ts, modules.ts, mount.tsx}   # the error boundary lives in mount.tsx
 │           ├── mermaid/mount.ts          # html artifacts are documents of their own: the parent injects the prelude (13 §5)
+│           ├── html/loop-guard.js        # plain JS, read and run by the app and by the conformance harness: the loop guard for html artifacts (13 §5)
 │           ├── tokens.css                # the app's theme tokens, mirrored
-│           └── conformance/probe.ts      # the sandbox conformance artifact (13 §5)
+│           └── conformance/{cases.json, harness.js, probe.ts}   # one hostile artifact per rule of 13 §5; scripts/sandbox-conformance.py runs them in WebKitGTK
 │
 ├── web/                                  # the public sites, one Cloudflare Pages project each (14 §1)
 │   ├── site/                             # oljo.dev: Astro 7, standalone package with its own lockfile, Node 22; Pages root directory `web/site`
