@@ -870,6 +870,32 @@ fn declares_a_console_budget_on_both_sides_of_the_bridge() {
     );
 }
 
+/// An `html` artifact never loads the runtime — its document is the artifact's own — so the two
+/// implementations of the `zoom` message are separate code, and this is what keeps them the same
+/// rule. Both have to do two things: set the factor on the document's own root element, and
+/// multiply the height they report by it, because a zoom moves nothing `scrollHeight` can see.
+/// Whether the multiplication is right is checked in an engine, by `webkit-check.py`.
+#[test]
+fn zooms_the_document_on_both_sides_of_the_bridge() {
+    for (what, source) in [
+        ("runtime", runtime_bridge()),
+        ("html prelude", frontend_bridge()),
+    ] {
+        assert!(
+            source.contains("documentElement.style.zoom"),
+            "the {what} no longer applies a zoom to the artifact's own root element"
+        );
+        assert!(
+            source.contains("* zoom"),
+            "the {what} no longer multiplies the height it reports by the zoom"
+        );
+    }
+    assert!(
+        sandbox_host().contains("kind: 'zoom'"),
+        "the panel no longer sends the zoom into the frame"
+    );
+}
+
 #[test]
 fn declares_that_only_an_https_url_is_offered_to_the_user() {
     assert!(
