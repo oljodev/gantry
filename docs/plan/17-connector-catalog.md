@@ -85,6 +85,7 @@ expects (03 §7).
 | Browserbase (Stagehand) | `https://mcp.browserbase.com/mcp` | 200 | key in header |
 | Cal.com | `https://mcp.cal.com/mcp` | 401 + PRM | OAuth |
 | Canva | `https://mcp.canva.com/mcp` | 401 + PRM | OAuth |
+| Cartesia | `https://mcp.cartesia.ai/mcp` | 401 + PRM | OAuth (DCR, and the registration comes back with a secret) — **shipped** |
 | Cardboard | `https://cardboard.inc/mcp/` (URL from their docs; not guessable) | — | OAuth |
 | Cloudflare — Workers/bindings, docs, observability, radar, browser, and more | `https://<product>.mcp.cloudflare.com/mcp` | 401 + PRM (docs: open) | OAuth (DCR) |
 | Cloudinary | `https://asset-management.mcp.cloudinary.com/mcp` | 401 + PRM | OAuth |
@@ -155,6 +156,7 @@ until they ship streamable HTTP.
 | Blender | `blender-mcp` (PyPI) — community, not Blender's | Python |
 | Browserbase | `@browserbasehq/mcp-server-browserbase` | Node |
 | BrowserStack | `@browserstack/mcp-server` | Node |
+| Cartesia | `cartesia-mcp` (PyPI) — the same server as the hosted one above, run locally | Python |
 | Docker | `docker mcp gateway` (Docker Desktop) and `docker/hub-mcp` | Docker |
 | ElevenLabs | `elevenlabs-mcp` (PyPI) | Python |
 | Grafana (self-hosted) | `grafana/mcp-grafana` (Go binary) | binary |
@@ -234,9 +236,25 @@ B7's, `uvx` against a PyPI package, so the work was all judgement rather than me
 the first entry whose *own defaults* had to be overridden to be shippable, which §6 now records
 as a rule.
 
+**Cartesia, on request** (2026-09-16). Also not from a batch. Its shape is B2's — `401` with a
+protected-resource document, one scope, dynamic registration — with the twist Supabase already
+made Gantry survive: the registration hands back a *secret*, because the token endpoint takes
+`client_secret_post` and nothing else. That is not the Slack problem below; a secret this
+installation was given for itself is one the vault can hold, and only a secret shipped inside
+Gantry is the thing §7 cannot do.
+
+Two things about it are worth recording. Cartesia publish **the same server both ways** — hosted
+at `mcp.cartesia.ai` and as `cartesia-mcp` on PyPI — and the catalogue takes the hosted one,
+because it needs no runtime and no key. The cost of that choice is real and is in the README:
+three of its sixteen tools take an absolute path and `open()` it *on the machine running the
+server*, which for the hosted endpoint is Cartesia's, so `speech_to_text`, `voice_change` and
+`clone_voice` cannot reach an audio file on the user's disk. And its annotations needed one
+disagreement: the server marks `speech_to_text` `readOnlyHint: true`, which would run it
+unprompted in Auto-edit, while what it does is upload a file to a third party and bill for it.
+
 B0–B2 landed with M9. B3–B7, B9 and B11a landed together on 2026-09-12, in one afternoon, which
-is the thing this document was written to make possible: sixty-four connectors, of which four are
-Gantry's own and sixty are manifests describing somebody else's server, every one of them
+is the thing this document was written to make possible: sixty-five connectors, of which four are
+Gantry's own and sixty-one are manifests describing somebody else's server, every one of them
 probed. B8, B10 and B11b are what is left, and each is blocked on a mechanism rather than on
 typing: a client id you supply for Google, a host you supply for the self-hosted servers, and —
 for Slack, HubSpot and Microsoft Fabric — the confidential-client question below.

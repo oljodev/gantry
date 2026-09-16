@@ -2,7 +2,7 @@
 //
 // 38 marks from Simple Icons (CC0; the trademarks stay their owners', and a mark here says
 // which service a connector reaches, not that anybody endorses Gantry — docs/plan/17 §8), and
-// 22 of Gantry's own glyphs for the services Simple Icons does not carry.
+// 23 of Gantry's own glyphs for the services Simple Icons does not carry.
 
 /** A brand mark is one filled path in the vendor's colour, once per theme; a glyph is this
  *  repository's own stroked drawing, which takes the colour of the text around it. */
@@ -55,6 +55,10 @@ export const MARKS: Record<string, ConnectorMarkArt> = {
   canva: {
     kind: 'glyph',
     body: '<path d="M15.8 9.2a4.8 4.8 0 1 0 0 5.6"/><circle cx="12" cy="12" r="9"/>',
+  },
+  cartesia: {
+    kind: 'glyph',
+    body: '<path d="M5 10v4"/><path d="M9.5 7a7.5 7.5 0 0 1 0 10"/><path d="M14 4.5a11.5 11.5 0 0 1 0 15"/><path d="M18.5 2.5a15 15 0 0 1 0 19"/>',
   },
   'cloudflare-bindings': {
     kind: 'brand',

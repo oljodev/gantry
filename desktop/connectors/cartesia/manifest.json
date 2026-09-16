@@ -1,0 +1,55 @@
+{
+  "manifest_version": "1",
+  "id": "cartesia",
+  "name": "Cartesia",
+  "description": "Speech from text, transcripts from audio, and the voices on your account.",
+  "long_description": "Cartesia's own hosted server. It turns text into speech with the voices on your account, transcribes audio, clones and localises voices, and keeps pronunciation dictionaries.\n\nYou sign in through Cartesia in your browser — there is no key to paste — and the audio comes back as a link Cartesia keeps for 24 hours rather than as a file on this machine. Everything generated is billed to the account you sign in to.",
+  "version": "0.1.0",
+  "icon": "icon.svg",
+  "category": "productivity",
+  "keywords": ["cartesia", "text to speech", "tts", "voice", "transcription", "speech to text", "audio"],
+  "publisher": {
+    "name": "Cartesia",
+    "url": "https://cartesia.ai"
+  },
+  "first_party": false,
+  "homepage": "https://docs.cartesia.ai/tools/ai/mcp",
+  "runtime": {
+    "kind": "mcp-remote",
+    "url": "https://mcp.cartesia.ai/mcp"
+  },
+  "auth": {
+    "type": "oauth2",
+    "registration": ["dcr"],
+    "scopes": ["mcp"],
+    "instructions": "Sign in to Cartesia in your browser. The server registers Gantry on the spot and makes an API key for your organisation; every generation is billed to it."
+  },
+  "risk": {
+    "network": "internet",
+    "local_system": "none",
+    "default_tool_tier": "write_external",
+    "notes": "Generates speech on your Cartesia account, billed per generation. Cloning a voice asks first, and so does anything that overwrites or deletes a saved voice or pronunciation dictionary."
+  },
+  "tools_generated": true,
+  "tool_overrides": {
+    "speech_to_text": { "risk": "write_external" },
+    "clone_voice": { "always_confirm": true },
+    "update_voice": { "always_confirm": true },
+    "update_pronunciation_dict": { "always_confirm": true },
+    "delete_voice": { "always_confirm": true },
+    "delete_voice_accent": { "always_confirm": true },
+    "delete_pronunciation_dict": { "always_confirm": true }
+  },
+  "prompt": {
+    "system_addendum": "`speech_to_text`, `voice_change` and `clone_voice` read a path on the machine running the server, which for this hosted endpoint is Cartesia's and not the user's — do not offer them for an audio file on this computer. `text_to_speech` answers with a `download_url` that expires after 24 hours: put that link in the reply rather than describing it, and call `list_voices` before guessing a `voice_id`."
+  },
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "gantry": ">=0.1.0"
+  },
+  "catalog": {
+    "featured": false,
+    "sort_weight": 77,
+    "suggest_for": ["cartesia", "text to speech", "read this aloud", "say this out loud", "clone a voice", "transcribe"]
+  }
+}
