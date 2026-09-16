@@ -6,10 +6,12 @@
 mod blob_store;
 mod db;
 pub mod repos;
+pub mod sweep;
 
 pub use blob_store::BlobStore;
 pub use db::{Store, StoreError};
 pub use rusqlite::Connection;
+pub use sweep::SweepReport;
 
 /// The plan document that specifies this crate.
 pub const PLAN_DOCUMENT: &str = "docs/plan/06-data-model.md";

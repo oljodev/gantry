@@ -43,17 +43,24 @@ impl BlobStore {
 
     /// Writes the file when it does not exist yet and returns its hash. The caller records the
     /// reference in the `blobs` table.
+    ///
+    /// A file that is already there is left alone but its modified time is moved to now, which
+    /// is what makes the sweep's grace period work (`crate::sweep`): the time on a blob means
+    /// "when these bytes were last handed out", and a blob handed out a moment ago is a blob
+    /// whose reference is about to be written.
     pub fn put(&self, bytes: &[u8]) -> Result<String> {
         let hash = Self::hash_of(bytes);
         let path = self.path_for(&hash);
-        if !path.exists() {
-            if let Some(dir) = path.parent() {
-                fs::create_dir_all(dir)?;
-            }
-            let tmp = path.with_extension("part");
-            fs::write(&tmp, bytes)?;
-            fs::rename(&tmp, &path)?;
+        if path.exists() {
+            touch(&path);
+            return Ok(hash);
         }
+        if let Some(dir) = path.parent() {
+            fs::create_dir_all(dir)?;
+        }
+        let tmp = path.with_extension("part");
+        fs::write(&tmp, bytes)?;
+        fs::rename(&tmp, &path)?;
         Ok(hash)
     }
 
@@ -71,6 +78,17 @@ impl BlobStore {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
             Err(e) => Err(e.into()),
         }
+    }
+}
+
+/// Moves a file's modified time to now, without rewriting it. Not being able to is not worth
+/// failing a put over: the cost is that the sweep may collect the blob a few minutes early, and
+/// the caller is about to write the reference that stops it.
+fn touch(path: &Path) {
+    if let Ok(file) = fs::OpenOptions::new().write(true).open(path)
+        && let Err(err) = file.set_modified(std::time::SystemTime::now())
+    {
+        log::debug!("could not touch {}: {err}", path.display());
     }
 }
 
