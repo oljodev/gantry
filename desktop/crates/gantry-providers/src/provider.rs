@@ -38,7 +38,22 @@ pub struct ChatRequest {
     /// What the user chose for a model that makes something other than text: the voice, the
     /// shape, the length. Empty for a text model, and empty means "do not ask".
     pub media: gantry_core::MediaOptions,
+    /// What Anthropic should do when a thinking block's bound prefix no longer matches
+    /// (02 §1, §6): [`PREFIX_DROP_BLOCK`] in the app, [`PREFIX_ERROR`] in the live conformance
+    /// run, where the point is to be told rather than forgiven. Ignored by every other
+    /// provider, and only sent at all once the tool array has actually been rebuilt.
+    pub prefix_mismatch: &'static str,
 }
+
+/// Drop the thinking blocks whose prefix no longer matches and carry on. What the app sends: a
+/// chat that has gained a connector is still a chat, and losing its reasoning is a smaller
+/// price than losing the conversation.
+pub const PREFIX_DROP_BLOCK: &str = "drop_block";
+
+/// Refuse the request instead. What the live conformance run sends (02 §8), so the server is
+/// the one that says whether Gantry's prefix drifted — an assertion no amount of local testing
+/// can make, because only Anthropic knows what it bound the block to.
+pub const PREFIX_ERROR: &str = "error";
 
 impl ChatRequest {
     /// A text-only request with default settings.
@@ -61,6 +76,7 @@ impl ChatRequest {
             retries: crate::retry::ATTEMPTS,
             provider_options: serde_json::Value::Null,
             media: gantry_core::MediaOptions::default(),
+            prefix_mismatch: PREFIX_DROP_BLOCK,
         }
     }
 }

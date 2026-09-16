@@ -362,12 +362,42 @@ before a user message, so a tool call never ends up inside the summary while its
 the transcript. Anthropic keeps none, per the rule above, which makes "simple compaction" the
 same code with `keep = 0`. A span shorter than four messages is not worth a model call.
 
-Two things are deliberately not built. **Anthropic's server-side context editing and server-side
-compaction** are beta request shapes that cannot be verified without an Anthropic key, and
-writing unverifiable JSON against a beta API is worse than not writing it: Anthropic gets simple
-compaction, which is the documented last resort and is provider-neutral code. **The full tool
-output as a blob** is still missing, so a capped result is capped everywhere rather than capped
-for the model and whole in the drawer; the activity row keeps what streamed.
+**Anthropic's server-side context editing and server-side compaction** are deliberately not
+built, and stay that way after M13's sweep. They are beta request shapes that cannot be verified
+without an Anthropic key, and writing unverifiable JSON against a beta API is worse than not
+writing it — a shape nobody has sent is a shape nobody knows is wrong, and it would fail in the
+one place there is no test for. Anthropic gets simple compaction, which is the documented last
+resort and is provider-neutral code. What would unblock it: a key, one live capture of the
+request and its response, and a fixture cut from that capture. Until then the only honest
+version of this row is the one that says it is not here.
+
+~~**The full tool output as a blob** is still missing~~ **built 2026-09-16**: the whole output
+goes to a blob whenever the cap cut something, the hash rides on `tool_call.completed` into
+`tool_calls.result_blob_hash`, and the row's drawer offers it (05 §8).
+
+### The prefix, and what happens when it moves (2026-09-16)
+
+§1 says Claude binds a thinking block to the exact prefix that produced it. Three things follow,
+and all three are now built.
+
+- **The check.** `gantry-providers/tests/anthropic_append_only.rs` takes one chat three turns
+  deep — an instruction change, then a connector attached mid-conversation — and compares the
+  `system` and `tools` bytes of each request. The frozen prompt may never move; the tool array
+  may, and only for a reason the request then declares.
+- **`drop_block`.** A chat whose tool array *was* rebuilt sends
+  `thinking.block_binding.prefix_mismatch_behavior: "drop_block"` (rule 4 above), and only then:
+  a request that asked for forgiveness every time would hide a prefix that drifted for a reason
+  nobody intended. A change that only turns on tools declared with `defer_loading` is not a
+  rebuild — nothing declares one yet, and the check is written against the rule rather than
+  against that fact.
+- **`input_transformations`.** When the server does drop blocks it says so in `message_start`,
+  and the user gets one live `provider.notice` saying the model lost some of its own earlier
+  reasoning and why. Not persisted: it is about this request, not about the conversation.
+
+The live half is `prefix_mismatch_behavior: "error"` (`PREFIX_ERROR`), which asks to be refused
+rather than forgiven, so the only party that knows what it bound a block to is the one that
+answers. Bytes compared locally are the stronger everyday check; this is the one that cannot be
+faked.
 
 ## 7. Errors, retries, timeouts
 
@@ -386,3 +416,9 @@ Retry: up to 3 attempts with jittered backoff on `RateLimited`, `Overloaded`, `N
 - Recorded SSE fixtures per provider (`tests/fixtures/<provider>/*.sse`) replayed through the real parsers; every row of the normalization table has a fixture.
 - A `MockProvider` scripted with `StreamEvent`s for `gantry-agent` tests (tool loops, cancellation, permission paths).
 - An opt-in live smoke test (`--features live`) that runs a 12-scenario conformance list against real keys: text, parallel tools, tool error, refusal, max tokens, cancel mid-stream, image input, thinking replay across a tool round, cache hit on turn two, server web search, tool-set change, model switch mid-chat.
+- **"Cache hit on turn two" verifies rather than reports** (2026-09-16). It used to print
+  `cache_read` and pass whatever the number was, which made the one scenario that can catch a
+  drifting prefix incapable of failing. The same prefix sent twice with no cache read means the
+  prefix moved in between, and that is now a failure. The same number reaches the user: the turn
+  footer says "… · 17,900 cached" when the provider served any, and says nothing when it served
+  none, which is the answer as much as a number is.

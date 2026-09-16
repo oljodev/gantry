@@ -83,6 +83,9 @@ export function TurnActions({ turn, pinned, onCopy, onRate, onRetry }: TurnActio
             <span>{(f.durationMs / 1000).toFixed(1)} s</span>
             <span>
               {f.tokensIn.toLocaleString()} in · {f.tokensOut.toLocaleString()} out
+              {/* What the provider served from its prompt cache: the answer to "is the
+                  frozen prefix still the frozen prefix" (02 §3), where a person can see it. */}
+              {f.cached !== undefined && ` · ${f.cached.toLocaleString()} cached`}
             </span>
           </>
         )}

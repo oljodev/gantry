@@ -26,6 +26,9 @@ struct Event {
 struct MessageStart {
     id: Option<String>,
     usage: Option<WireUsage>,
+    /// What the server did to the request because its prefix no longer matched (02 §6): the
+    /// thinking blocks it dropped. Only present when it had to do something.
+    input_transformations: Option<Value>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -88,6 +91,7 @@ impl EventParser {
                 let m = ev.message.unwrap_or(MessageStart {
                     id: None,
                     usage: None,
+                    input_transformations: None,
                 });
                 if let Some(u) = m.usage {
                     self.usage.input = u.input_tokens.unwrap_or(0);
@@ -98,6 +102,14 @@ impl EventParser {
                 out.push(StreamEvent::MessageStart {
                     provider_message_id: m.id,
                 });
+                // Not an error and not something to keep: the user is told once, live, that
+                // the model lost some of its own earlier reasoning and why (05 §2).
+                if let Some(detail) = transformations(m.input_transformations.as_ref()) {
+                    out.push(StreamEvent::Notice {
+                        kind: "input_transformations".into(),
+                        detail,
+                    });
+                }
             }
             "content_block_start" => {
                 let index = ev.index.unwrap_or(0);
@@ -293,6 +305,25 @@ impl EventParser {
     pub fn ended(&self) -> bool {
         self.ended
     }
+}
+
+/// One sentence about what the server did to the request, or nothing when it did nothing.
+///
+/// The shape is the server's, and a shape nobody here has seen is still worth reporting: the
+/// count is what matters to a person — some of the assistant's earlier reasoning is no longer
+/// in the conversation — and the rest goes to the log.
+fn transformations(value: Option<&Value>) -> Option<String> {
+    let value = value?;
+    let count = match value {
+        Value::Array(items) if !items.is_empty() => items.len(),
+        Value::Object(map) if !map.is_empty() => 1,
+        _ => return None,
+    };
+    log::info!("anthropic transformed the request: {value}");
+    Some(format!(
+        "The tools in this chat changed, so the model dropped {count} earlier thinking {} it can no longer bind to the conversation.",
+        if count == 1 { "block" } else { "blocks" }
+    ))
 }
 
 fn opaque(kind: &str, block: Value) -> ContentPart {

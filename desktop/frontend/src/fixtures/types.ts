@@ -261,7 +261,15 @@ export interface Turn {
    *  and the view renders a note instead of words the user did not say. */
   user: { text: string; attachments?: SentAttachment[]; system?: boolean };
   blocks: Block[];
-  footer?: { model: string; durationMs: number; tokensIn: number; tokensOut: number };
+  footer?: {
+    model: string;
+    durationMs: number;
+    tokensIn: number;
+    tokensOut: number;
+    /** Prefix tokens the provider served from its prompt cache (02 §3). Absent when it served
+     * none, which is the answer as much as a number is: it means the prefix moved. */
+    cached?: number;
+  };
   status: 'done' | 'running' | 'waiting' | 'failed' | 'cancelled' | 'interrupted';
   /** When the turn ended, for "2 min ago"; absent while running. */
   endedAt?: number;

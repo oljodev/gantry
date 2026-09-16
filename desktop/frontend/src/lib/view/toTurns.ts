@@ -96,6 +96,7 @@ function finishedTurn(t: TurnDto, modelLabel: Label, titles: ArtifactIndex): Tur
           durationMs,
           tokensIn: t.usage.input,
           tokensOut: t.usage.output,
+          cached: t.usage.cache_read || undefined,
         }
       : undefined,
     status: statusOf(t.status),
@@ -140,6 +141,7 @@ function liveTurn(t: TurnDto, live: LiveTurn, modelLabel: Label, titles: Artifac
             durationMs: (live.endedAt ?? Date.now()) - live.startedAt,
             tokensIn: live.usage.input,
             tokensOut: live.usage.output,
+            cached: live.usage.cache_read || undefined,
           }
         : undefined,
     status:

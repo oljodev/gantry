@@ -111,6 +111,17 @@ pub fn build_body(req: &ChatRequest, info: Option<&ModelInfo>) -> Value {
             );
         }
     }
+    // A chat whose tool array was rebuilt mid-conversation no longer matches the prefix its
+    // earlier thinking blocks were bound to (02 §6 rule 4). Saying so is the difference between
+    // the model dropping those blocks and the request being refused outright.
+    if tools_were_rebuilt(req)
+        && let Some(thinking) = obj.get_mut("thinking").and_then(Value::as_object_mut)
+    {
+        thinking.insert(
+            "block_binding".into(),
+            json!({ "prefix_mismatch_behavior": req.prefix_mismatch }),
+        );
+    }
 
     let mut tools: Vec<Value> = Vec::new();
     if !req.tools.is_empty() {
@@ -165,6 +176,33 @@ pub fn build_body(req: &ChatRequest, info: Option<&ModelInfo>) -> Value {
         }
     }
     body
+}
+
+/// Whether the tool array this request sends is not the one the chat started with (02 §6).
+///
+/// A tool declared with `defer_loading` up front can be turned on later with a `tool_addition`
+/// block, which leaves the array — and so the prefix — alone. Anything else rewrites it: a
+/// connector attached from the `+` menu, one installed from a suggestion card, one the user
+/// detached. Nothing declares a deferred tool yet, so today every change is a rewrite; the
+/// check is written against the rule rather than against that fact, because the day something
+/// does declare one is the day this would otherwise start lying.
+fn tools_were_rebuilt(req: &ChatRequest) -> bool {
+    req.messages
+        .iter()
+        .flat_map(|m| m.parts.iter())
+        .any(|part| match part {
+            ContentPart::ToolSetChange { added, removed } => {
+                !removed.is_empty()
+                    || added.iter().any(|namespace| {
+                        let prefix = format!("{namespace}__");
+                        !req.tools
+                            .iter()
+                            .filter(|t| t.name.starts_with(&prefix))
+                            .all(|t| t.deferred)
+                    })
+            }
+            _ => false,
+        })
 }
 
 /// The transcript as wire messages: consecutive same-role messages merge, tool results ride

@@ -26,8 +26,9 @@ pub use http::http_client;
 pub use openai_chat::{CompatProfile, OpenAiChatProvider, media::MAX_MEDIA_BYTES};
 pub use openai_responses::OpenAiResponsesProvider;
 pub use provider::{
-    CacheSupport, ChatRequest, ChatStream, KeyInfo, ModelCapabilities, ModelInfo, Pricing,
-    Provider, ReasoningSupport, RequestMetadata, ServerTool, StreamEvent, ToolChoice, ToolSpec,
+    CacheSupport, ChatRequest, ChatStream, KeyInfo, ModelCapabilities, ModelInfo,
+    PREFIX_DROP_BLOCK, PREFIX_ERROR, Pricing, Provider, ReasoningSupport, RequestMetadata,
+    ServerTool, StreamEvent, ToolChoice, ToolSpec,
 };
 pub use registry::ProviderRegistry;
 pub use tools::{ToolNameMap, ToolSchemaSanitizer, model_tool_name, sanitize_call_id};

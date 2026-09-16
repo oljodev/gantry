@@ -371,16 +371,23 @@ async fn conformance(provider: Arc<dyn Provider>, model: &str) {
     req.reasoning = ReasoningEffort::Off;
     let _ = run(&provider, req.clone(), false).await;
     match run(&provider, req, false).await {
-        Ok(c) => line(
-            "cache hit on turn two",
-            true,
-            format!(
-                "cache_read {} · cache_write {}",
-                c.usage.map_or(0, |u| u.cache_read),
-                c.usage.map_or(0, |u| u.cache_write)
-            ),
-        ),
-        Err(e) => line("cache hit on turn two", false, e),
+        // A verification, not a report: the same prefix sent twice and no cache read means the
+        // prefix moved between the two, which is the failure this scenario exists to catch
+        // (02 §3, 09 M13). A provider with no prompt cache at all reports nothing and says so.
+        Ok(c) => {
+            let read = c.usage.map_or(0, |u| u.cache_read);
+            let wrote = c.usage.map_or(0, |u| u.cache_write);
+            line(
+                "cache hit on turn two",
+                read > 0,
+                format!("cache_read {read} · cache_write {wrote}"),
+            );
+            failures += usize::from(read == 0);
+        }
+        Err(e) => {
+            line("cache hit on turn two", false, e);
+            failures += 1;
+        }
     }
 
     // 9. web search (opt-in: it costs)

@@ -108,6 +108,7 @@ gantry/
 │   │   │       ├── fixtures/{openrouter,anthropic,openai_responses,gemini}/*.sse   # recorded (openrouter) and hand-shaped streams, one README each
 │   │   │       ├── openrouter.rs  replay.rs  # every fixture through the real decoder and parser
 │   │   │       ├── projection.rs             # one transcript onto all four wire formats, a check per normalization row
+│   │   │       ├── anthropic_append_only.rs  # one chat three turns deep: the prefix may not move, and says so when it must (02 §6)
 │   │   │       └── live.rs                   # opt-in (`--ignored`) conformance run per provider on an env key
 │   │   ├── gantry-connectors/
 │   │   │   ├── build.rs                  # validates and embeds ../../connectors/*/manifest.json
