@@ -153,7 +153,7 @@ gantry/
 │   │   │       └── tests/files.rs        # the ten tools of §5 live in lib.rs; the work is in gantry-workspace
 │   │   ├── code-editor/                  # first-party · native: src/lib.rs, tests/edits.rs (the four tools; the work is in gantry-workspace)
 │   │   ├── shell/                        # first-party · native: src/{lib.rs, run.rs, kill.rs, shells.rs}, fixtures/commands.txt (classifier corpus)
-│   │   ├── web/                          # first-party · native: src/{lib.rs, fetch.rs, classify.rs (§7.5: what a response actually is), extract.rs, guard.rs, locate.rs, cache.rs, search/}
+│   │   ├── web/                          # first-party · native: src/{lib.rs, fetch.rs, classify.rs (§7.5: what a response actually is), politeness.rs (§7.3: per-host and global limits), extract.rs, guard.rs, locate.rs, cache.rs, search/}
 │   │   ├── google-drive/                 # bundled third-party · mcp-remote · user-supplied OAuth client; ui/index.tsx helper panel
 │   │   ├── github/                       # bundled third-party · mcp-remote · CIMD/DCR
 │   │   └── playwright/                   # bundled third-party · mcp-stdio on the user's Node

@@ -409,6 +409,17 @@ Chrome takes the lying-bot penalty and gains nothing.
 Measured: ten-way concurrency earned a rate-limit refusal from a site whose robots file requests
 a thirty-second delay. Both facts are in §15.
 
+*Built 2026-09-16 (`src/politeness.rs`).* Neither row of that table was enforced before, which
+made the measurement above a description of what Gantry did rather than of what it avoided:
+`fetch_url` is `parallel_safe`, so a model opening eight pages of one documentation site opened
+eight connections to it at once, and the refusal it earned was attributed to the user's address
+for twenty minutes. Two permits per host and six altogether, and the half-second applies to when
+a request *starts* — two requests to one host may overlap, they may only not begin together,
+which is the part a server notices. The gate is taken per redirect hop, because a chain crosses
+hosts and the host owed the gap is the one about to be asked. Search backends are not behind it:
+the general engine has the much stricter ration of §6.4, and the subject indexes are APIs that
+publish their own limits.
+
 ### 7.4 Network safety
 
 The model chooses the URL, so the URL is untrusted input.

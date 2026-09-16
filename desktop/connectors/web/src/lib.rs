@@ -27,6 +27,7 @@ mod extract;
 mod fetch;
 mod guard;
 mod locate;
+mod politeness;
 mod search;
 
 use std::sync::Arc;
@@ -46,6 +47,7 @@ pub use classify::{
 pub use extract::{Article, Format, Window, article, nests_too_deep, window};
 pub use fetch::{MAX_BYTES, MAX_REDIRECTS, TIMEOUT, USER_AGENT};
 pub use locate::{Found, Heading, MAX_HEADINGS, MAX_MATCHES, find, outline};
+pub use politeness::{GLOBAL, MIN_GAP, PER_HOST, Politeness};
 pub use search::{
     Answer, COOLDOWN, DEFAULT_RESULTS, GAP, Hit, MAX_RESULTS, Ration, SearchError, Source, Spent,
     lookups, parse_crate, parse_crates, parse_duckduckgo, parse_mwmbl, parse_npm, parse_package,
@@ -76,6 +78,8 @@ pub struct Web {
     /// How much general web search is left. Rationed rather than unlimited, and shared by every
     /// call this connector makes. See `search::general`.
     ration: search::Ration,
+    /// How fast pages may be asked for, per host and altogether (§7.3). See `politeness`.
+    manners: politeness::Politeness,
 }
 
 impl Web {
@@ -91,6 +95,7 @@ impl Web {
             http: fetch::client(),
             pages: Cache::new(),
             ration: search::Ration::new(),
+            manners: politeness::Politeness::new(),
         }
     }
 }
@@ -283,7 +288,7 @@ impl Web {
             return Ok(Got::Page(page, Some(age)));
         }
 
-        let fetched = match fetch::get(&self.http, url).await {
+        let fetched = match fetch::get(&self.http, &self.manners, url).await {
             Ok(fetched) => fetched,
             Err(err) => return Ok(Got::Refused(ToolOutcome::error(err.to_string()))),
         };

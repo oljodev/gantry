@@ -13,6 +13,7 @@ use url::Url;
 
 use crate::classify::{self, Verdict};
 use crate::guard::{self, Refusal};
+use crate::politeness::Politeness;
 
 /// 03 §5. A page larger than this is not a page anybody wanted read aloud.
 pub const MAX_BYTES: usize = 5 * 1024 * 1024;
@@ -115,18 +116,26 @@ pub fn client() -> reqwest::Client {
 /// One retry, not two: the hint is capped at [`classify::MAX_RETRY_AFTER`] before it gets here,
 /// and a person is sitting in front of the tool call. A challenge is never retried at all — that
 /// is decided in [`classify`], which hands back no retry for one.
-pub async fn get(http: &reqwest::Client, raw: &str) -> Result<Fetched, FetchError> {
-    let first = get_once(http, raw).await?;
+pub async fn get(
+    http: &reqwest::Client,
+    manners: &Politeness,
+    raw: &str,
+) -> Result<Fetched, FetchError> {
+    let first = get_once(http, manners, raw).await?;
     let Some(after) = first.verdict.retry_after() else {
         return Ok(first);
     };
     log::debug!("{raw} asked for {}s; waiting", after.as_secs());
     tokio::time::sleep(after).await;
-    get_once(http, raw).await
+    get_once(http, manners, raw).await
 }
 
 /// Fetch one URL, following redirects by hand and checking each one.
-async fn get_once(http: &reqwest::Client, raw: &str) -> Result<Fetched, FetchError> {
+async fn get_once(
+    http: &reqwest::Client,
+    manners: &Politeness,
+    raw: &str,
+) -> Result<Fetched, FetchError> {
     let mut url = guard::parse(raw)?;
     let mut redirects: Vec<String> = Vec::new();
     let started = tokio::time::Instant::now();
@@ -136,6 +145,9 @@ async fn get_once(http: &reqwest::Client, raw: &str) -> Result<Fetched, FetchErr
             return Err(FetchError::DeadlineExceeded);
         }
         guard::check_address(&url).await?;
+        // Per hop, not per fetch: a redirect chain crosses hosts, and the host that is owed the
+        // gap is the one about to be asked. Held until the response's body has been read.
+        let _pass = manners.wait(url.host_str().unwrap_or_default()).await;
         let response = http
             .get(url.clone())
             .header(reqwest::header::ACCEPT, "text/html,text/*;q=0.9,*/*;q=0.5")
