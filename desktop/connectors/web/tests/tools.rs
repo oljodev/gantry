@@ -14,7 +14,7 @@ use gantry_core::{CallId, ChatId, InstanceId, Mode, ResultPart, TurnId};
 use tokio_util::sync::CancellationToken;
 
 fn web() -> Web {
-    Web::new("web".to_owned(), InstanceId::new())
+    Web::new("web".to_owned(), InstanceId::new(), None)
 }
 
 async fn call(

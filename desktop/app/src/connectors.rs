@@ -6,6 +6,7 @@
 
 use std::{
     collections::{BTreeMap, HashMap},
+    path::PathBuf,
     sync::Arc,
 };
 
@@ -65,6 +66,9 @@ pub struct ConnectorService {
     workspace: Arc<Workspace>,
     /// The login shell and its environment, captured once (`docs/connectors/shell.md` D2).
     shell_env: Arc<ShellEnv>,
+    /// Where a native connector may keep state that has to survive a restart — today only the
+    /// web connector's search ration (`docs/connectors/web.md` §6.4).
+    data_dir: PathBuf,
     /// What each local server wrote to stderr, for the failure that has to explain itself
     /// (03 §11 step 4).
     logs: gantry_connectors::logs::ConnectorLogs,
@@ -79,6 +83,7 @@ impl ConnectorService {
         registry: Arc<ConnectorRegistry>,
         workspace: Arc<Workspace>,
         shell_env: Arc<ShellEnv>,
+        data_dir: PathBuf,
     ) -> Self {
         Self {
             catalog: Catalog::embedded(),
@@ -87,6 +92,7 @@ impl ConnectorService {
             registry,
             workspace,
             shell_env,
+            data_dir,
             logs: gantry_connectors::logs::ConnectorLogs::new(),
             http: reqwest::Client::builder()
                 .user_agent(concat!("Gantry/", env!("CARGO_PKG_VERSION")))
@@ -981,6 +987,7 @@ impl ConnectorService {
                         instance.id,
                         &self.workspace,
                         &self.shell_env,
+                        &self.data_dir,
                     )
                 }) {
                     Some(connector) => self.registry.register(connector),
@@ -1204,6 +1211,7 @@ mod tests {
             registry,
             workspace,
             Arc::new(ShellEnv::inherited()),
+            dir.path().join("app-data"),
         );
         (dir, service)
     }

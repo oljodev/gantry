@@ -30,6 +30,7 @@ mod locate;
 mod politeness;
 mod search;
 
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -83,8 +84,11 @@ pub struct Web {
 }
 
 impl Web {
+    /// `state_dir` is where the search ration is kept between runs (§6.4). `None` is the
+    /// connector as it used to be — correct for one run and forgetful across restarts — and is
+    /// what the tests use.
     #[must_use]
-    pub fn new(namespace: String, instance_id: InstanceId) -> Self {
+    pub fn new(namespace: String, instance_id: InstanceId, state_dir: Option<PathBuf>) -> Self {
         Self {
             descriptor: ConnectorDescriptor {
                 id: namespace,
@@ -94,7 +98,10 @@ impl Web {
             },
             http: fetch::client(),
             pages: Cache::new(),
-            ration: search::Ration::new(),
+            ration: match state_dir {
+                Some(dir) => search::Ration::at(dir.join("search-ration.json")),
+                None => search::Ration::new(),
+            },
             manners: politeness::Politeness::new(),
         }
     }

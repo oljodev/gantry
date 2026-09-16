@@ -27,6 +27,7 @@ pub fn build(
     instance_id: InstanceId,
     workspace: &Arc<Workspace>,
     shell_env: &Arc<ShellEnv>,
+    data_dir: &std::path::Path,
 ) -> Option<Arc<dyn Connector>> {
     match catalog_id {
         gantry_connector_filesystem::ID => Some(Arc::new(
@@ -48,6 +49,10 @@ pub fn build(
         gantry_connector_web::ID => Some(Arc::new(gantry_connector_web::Web::new(
             namespace,
             instance_id,
+            // The search ration lives between runs (`docs/connectors/web.md` §6.4): a restart
+            // inside a twenty-minute block used to clear it, and walking back into a block is
+            // what extends it.
+            Some(data_dir.join("web")),
         ))),
         _ => None,
     }

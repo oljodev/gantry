@@ -268,10 +268,19 @@ those strangers and does not work anyway.
 
 ### 6.4 Tier 2: general search, rationed
 
-DuckDuckGo's Lite endpoint, POSTed with a complete browser header set. Its budget is enforced by
-Gantry rather than discovered by the user: a minimum gap of about twenty seconds, one query per
-`research` call, a small cap per turn, and detection of the block response opening a
-twenty-minute circuit breaker that falls through to Tier 3. Retrying into a block extends it.
+DuckDuckGo's Lite endpoint, POSTed with a complete, ordinary header set — and Gantry's own name
+on it, not a browser's (D15, §7.3). Its budget is enforced by Gantry rather than discovered by
+the user: a minimum gap of about twenty seconds, one query per `research` call, a small cap per
+turn, and detection of the block response opening a twenty-minute circuit breaker that falls
+through to Tier 3. Retrying into a block extends it.
+
+*The ration is kept between runs, from 2026-09-16* (`<data_dir>/web/search-ration.json`). It
+used to live in memory on monotonic instants, so quitting Gantry forgot both the gap and the
+cooldown — and a user whose search had just been blocked could restart the app and walk straight
+back into the block, which is the one response guaranteed to make it worse. Wall-clock
+milliseconds, two integers, written on every change; a deadline further off than the longest
+cooldown that could ever have been set is treated as a clock that moved rather than as a
+cooldown, so one backwards jump cannot shut the engine for a fortnight.
 
 Its terms of service contain no clause about automated access, and the robots file on the Lite
 and HTML hosts permits crawling, unlike the main site. Worth recording, though the operational

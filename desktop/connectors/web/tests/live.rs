@@ -24,7 +24,7 @@ use gantry_core::{CallId, ChatId, InstanceId, Mode, TurnId};
 use tokio_util::sync::CancellationToken;
 
 fn web() -> Web {
-    Web::new("web".to_owned(), InstanceId::new())
+    Web::new("web".to_owned(), InstanceId::new(), None)
 }
 
 /// One tool call, as the turn loop would make it.

@@ -198,6 +198,7 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn Error>> {
         tools.clone(),
         workspace.clone(),
         shell_env,
+        data_dir.clone(),
     ));
 
     let turns = TurnManager::new(
