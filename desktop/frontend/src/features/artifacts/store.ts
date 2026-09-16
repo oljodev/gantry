@@ -29,6 +29,12 @@ export interface ArtifactView {
   editing: boolean;
   draft: string;
   problems: Problem[];
+  /**
+   * The artifact has been stopped by hand (13 §5, hang risk 2): its frame is unmounted and
+   * stays unmounted until Run. Per artifact, not per version, and cleared whenever the panel
+   * moves to a different version.
+   */
+  stopped: boolean;
   /** Reports sent for `${version}`, so each version is reported once. */
   reported: Record<string, RenderReport>;
 }
@@ -60,6 +66,7 @@ export const emptyView = (): ArtifactView => ({
   editing: false,
   draft: '',
   problems: [],
+  stopped: false,
   reported: {},
 });
 

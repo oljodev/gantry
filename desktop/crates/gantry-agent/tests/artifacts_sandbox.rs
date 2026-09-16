@@ -24,9 +24,10 @@
 //! check that every shipped declaration still says what it says. They need no engine and run
 //! everywhere.
 //!
-//! One of §5's claims does not hold yet: `the_toolbar_can_stop_a_running_artifact` (hang risk
-//! 2's Stop was never built). Its test is written and `#[ignore]`d; remove the `#[ignore]`
-//! when the rule is made true.
+//! Every claim §5 makes now holds and has a test that says so. Three did not when the suite
+//! was first written, on 2026-09-13 — a frame could navigate itself away, an `html` artifact's
+//! scripts were never loop-guarded, and the toolbar had no Stop — and each of those tests was
+//! `#[ignore]`d with what it proved until the rule was made true on 2026-09-16.
 
 use std::{
     collections::{BTreeSet, HashMap},
@@ -988,22 +989,27 @@ fn declares_that_only_the_artifact_in_view_is_mounted() {
     );
 }
 
-/// **Not enforced.** 13 §5, hang risk 2 opens with "The toolbar's Stop unmounts the iframe".
-/// The panel's toolbar has Rendered/Source, the version stepper, Restore, Fix this, Copy and
-/// the menu; there is no Stop, so an artifact that spins in the tab the user is looking at
-/// cannot be stopped by hand.
+/// 13 §5, hang risk 2 opens with "The toolbar's Stop unmounts the iframe".
 ///
 /// It matters least of the three mitigations and most when the other two have failed: on
-/// WebKit the artifact shares the main thread with the app, so by the time a person wants Stop
-/// the window is already frozen and the click cannot land. That is an argument for the loop
-/// guard covering `html` too (see `an_html_artifacts_inline_script_is_loop_guarded`), not for
-/// leaving the escape hatch out.
+/// WebKit the artifact shares the main thread with the app, so an artifact that spins freezes
+/// the window and no click can land at all — which is why the loop guard covering `html` too
+/// (`an_html_artifacts_inline_script_is_loop_guarded`) came first. What Stop is for is
+/// everything that keeps running *without* freezing anything: a timer, an animation, audio, a
+/// render that will not settle.
+///
+/// Two halves, and the second is the one that makes it more than a drawn control: the frame
+/// has to be gone, not hidden. An iframe that is still in the tree is still running, whatever
+/// the toolbar says.
 #[test]
-#[ignore = "not built: the artifact toolbar has no Stop (13 §5, hang risk 2)"]
 fn the_toolbar_can_stop_a_running_artifact() {
     let panel = read("frontend/src/features/artifacts/ArtifactPanel.tsx");
     assert!(
-        panel.contains("aria-label=\"Stop\"") || panel.contains(">Stop<"),
+        panel.contains("view.stopped ? 'Run' : 'Stop'"),
         "the artifact toolbar has no Stop to unmount a running frame"
+    );
+    assert!(
+        panel.contains("if (stopped) return <Stopped"),
+        "Stop no longer takes the frame out of the tree, so a stopped artifact keeps running"
     );
 }

@@ -746,8 +746,9 @@ Three changes, all from Olav using it.
   navigates"), which the app document's `frame-src 'none'` now refuses, and an `html`
   artifact's inline scripts never got the loop-guard pass (§5 hang risk 1), which
   `artifact-runtime/src/html/loop-guard.js` now gives them on the way into the frame. Both
-  cases run with the rest. The third, the toolbar's **Stop** (hang risk 2), was never built
-  and is the remaining artifact work in this milestone.
+  cases run with the rest. So is the third, the toolbar's **Stop** (hang risk 2), which was
+  never built and now takes a running artifact's frame out of the tree. Nothing in §5 is
+  `#[ignore]`d any more.
 - Performance pass on WebKitGTK and WebView2: batching thresholds, virtualization, markdown memoization, long outputs, artifact mount time.
 - Crash recovery and cancellation tests across all connectors; the blob sweeper; database backup before migration.
 - ~~Fill the licensor name in `LICENSE`~~ **done 2026-09-11** (Olav Jodal), ahead of the repository going public; the first row of the conversion table in `LICENSING.md` still waits for the release date. Remove the `full-matrix` gate in `build.yml` once the repository is public — on a public repository, standard runners are free on every platform, which is the only reason the gate exists.

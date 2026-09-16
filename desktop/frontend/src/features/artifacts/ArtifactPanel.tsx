@@ -11,6 +11,8 @@ import {
   DownloadSimpleIcon,
   EyeIcon,
   PencilSimpleIcon,
+  PlayIcon,
+  StopIcon,
   WarningCircleIcon,
   WrenchIcon,
 } from '@phosphor-icons/react';
@@ -149,6 +151,7 @@ export function ArtifactPanel({ artifactId, onFixThis, onOpenUrl, bare }: Artifa
             draft: '',
             version: undefined,
             mode: 'rendered',
+            stopped: false,
           });
           clearProblems(artifactId);
         },
@@ -162,7 +165,7 @@ export function ArtifactPanel({ artifactId, onFixThis, onOpenUrl, bare }: Artifa
       { artifactId, version },
       {
         onSuccess: () => {
-          patchView(artifactId, { version: undefined });
+          patchView(artifactId, { version: undefined, stopped: false });
           clearProblems(artifactId);
           toast.add({ title: `Restored v${version} as v${latest + 1}`, type: 'success' });
         },
@@ -179,9 +182,40 @@ export function ArtifactPanel({ artifactId, onFixThis, onOpenUrl, bare }: Artifa
   };
   const step = (delta: number) => {
     const next = Math.min(latest, Math.max(1, version + delta));
-    patchView(artifactId, { version: next === latest ? undefined : next, editing: false });
+    patchView(artifactId, {
+      version: next === latest ? undefined : next,
+      editing: false,
+      stopped: false,
+    });
     clearProblems(artifactId);
   };
+  /**
+   * 13 §5, hang risk 2: unmount the frame and leave it unmounted. Whatever the artifact was
+   * doing — a timer, an animation, audio, a fetch it will never get — stops with the document.
+   *
+   * A version that has not reported yet is reported as stopped rather than left hanging: the
+   * model asked for a render and is waiting for the answer, and "it never finished" is an
+   * answer it can do something with.
+   */
+  const stop = () => {
+    patchView(artifactId, { stopped: true });
+    if (!sandboxed || live || !data || data.version !== version) return;
+    if (useArtifactStore.getState().views[artifactId]?.reported[reportKey]) return;
+    const report: RenderReport = {
+      status: 'error',
+      errors: [
+        {
+          phase: 'runtime',
+          message: 'Stopped before it finished rendering.',
+          line: null,
+          column: null,
+        },
+      ],
+    };
+    markReported(artifactId, version, report);
+    reportRender(artifactId, version, report);
+  };
+  const run = () => patchView(artifactId, { stopped: false });
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -236,6 +270,17 @@ export function ArtifactPanel({ artifactId, onFixThis, onOpenUrl, bare }: Artifa
             >
               <ArrowCounterClockwiseIcon />
               Restore this version
+            </Button>
+          )}
+          {sandboxed && !editing && !live && mode === 'rendered' && (
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label={view.stopped ? 'Run' : 'Stop'}
+              title={view.stopped ? 'Run this artifact again' : 'Stop this artifact'}
+              onClick={view.stopped ? run : stop}
+            >
+              {view.stopped ? <PlayIcon /> : <StopIcon />}
             </Button>
           )}
           {errors.length > 0 && onFixThis && (
@@ -325,6 +370,8 @@ export function ArtifactPanel({ artifactId, onFixThis, onOpenUrl, bare }: Artifa
             language={language}
             title={title}
             streaming={live}
+            stopped={view.stopped}
+            onRun={run}
             onReport={onSandboxReport}
             onConsole={onConsole}
             onOpenUrl={onOpenUrl}
@@ -344,6 +391,8 @@ function Rendered({
   language,
   title,
   streaming,
+  stopped,
+  onRun,
   onReport,
   onConsole,
   onOpenUrl,
@@ -353,6 +402,8 @@ function Rendered({
   language: string | null;
   title: string;
   streaming: StreamingArtifact | undefined;
+  stopped: boolean;
+  onRun: () => void;
   onReport: (r: SandboxReport) => void;
   onConsole: (line: ConsoleLine) => void;
   onOpenUrl?: (url: string) => void;
@@ -378,6 +429,8 @@ function Rendered({
           <CodeRenderer content={content} language={highlightLanguage(type, language)} streaming />
         );
       }
+      // Stopped: no frame at all, which is the whole point — an unmounted document runs nothing.
+      if (stopped) return <Stopped onRun={onRun} />;
       return (
         <SandboxHost
           type={type}
@@ -394,6 +447,23 @@ function Rendered({
         <div className="p-4 text-body text-fg-2">This build cannot render “{type}” artifacts.</div>
       );
   }
+}
+
+/** What the panel shows in place of an artifact that has been stopped (13 §5, hang risk 2). */
+function Stopped({ onRun }: { onRun: () => void }) {
+  return (
+    <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
+      <p className="text-body text-fg-2">
+        Stopped. Nothing in this artifact is running.
+        <br />
+        Running it again starts it from the beginning.
+      </p>
+      <Button variant="secondary" size="sm" onClick={onRun}>
+        <PlayIcon />
+        Run
+      </Button>
+    </div>
+  );
 }
 
 function Editor({
