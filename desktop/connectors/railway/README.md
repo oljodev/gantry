@@ -18,3 +18,15 @@ reach. `list-variables` is confirmed too, and it is the interesting one: it only
 what it reads is every environment variable of a service **fully rendered** — which is to say
 every key and password in it. That is the "reads a credential" rule of the guard, applied in
 the manifest so it holds before any guard is asked.
+
+## Six new tools, found by the probe (2026-09-16)
+
+Re-probing on the way past added `search-templates`, `describe-template`, `deploy-template`,
+`create-function`, `get-function-source-code` and `update-function-source-code` to the recorded
+fixture — the first drift this catalogue has caught on a live server, which is what the weekly
+probe of 17 §5 exists for. Three of them earned an override on the same reasoning as the
+fourteen above: `create-function` deploys a service the moment it is called, `deploy-template`
+creates and deploys every service a template declares, and `update-function-source-code`
+overwrites a running function's whole file — it does not patch it, so anything left out is gone.
+The three reads (`search-templates`, `describe-template`, `get-function-source-code`) keep the
+entry's default tier.

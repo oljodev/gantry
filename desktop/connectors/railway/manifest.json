@@ -55,6 +55,15 @@
     "accept-deploy": {
       "always_confirm": true
     },
+    "create-function": {
+      "always_confirm": true
+    },
+    "deploy-template": {
+      "always_confirm": true
+    },
+    "update-function-source-code": {
+      "always_confirm": true
+    },
     "create-deployment": {
       "always_confirm": true
     },

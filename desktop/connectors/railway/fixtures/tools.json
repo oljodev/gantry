@@ -153,6 +153,42 @@
       }
     },
     {
+      "name": "create-function",
+      "description": "Create a Railway Function: a service that runs one file of TypeScript on the Bun runtime, with no repository, Dockerfile or build step. Use this for webhook receivers, small HTTP APIs, cron jobs and scripts. Pass the complete code — a function with no code deploys nothing.\n\nApplies live by default, which deploys the function immediately. Pass staged: true with an environmentId to stage it in that environment's pending changes instead, in which case nothing deploys until the staged changes are committed with accept-deploy.\n\nFor a service built from a repository use create-deployment, and for one from a Docker image use create-service. To change a function's code afterwards use update-function-source-code; for its other settings (variables, cron schedule, healthcheck) use set-variables and update-service.\n\nWriting function code:\n- One file, TypeScript or TSX. The runtime writes it to `index.tsx` and runs it with Bun — Python, Go, Ruby and other languages will not run. For those, use create-service with an image, or create-deployment from a repo.\n- Imports are allowed. The runtime scans them, generates a package.json and installs with Bun, including versioned specifiers like `hono@4` and `zod@3`. Do not reference local files other than this one.\n- An HTTP service must listen: call `Bun.serve`, or default-export a fetch handler or Hono app. Read the port from `Bun.env.PORT`. Use generate-domain to give it a public URL.\n- If it is not an HTTP service, do not start a server. Write a script; it runs to completion.\n- Do not schedule work with a top-level `setInterval` — set a cronSchedule with update-service instead.\n- Prefer Bun globals over Node APIs: `Bun.env` for variables, `Bun.file`/`Bun.write` for file I/O, `Bun.sql` for Postgres, `Bun.s3` for object storage. The function filesystem is not durable — persist to a database or object storage.\n- Top-level await is available. Await every async call.\n- JSX needs the pragma, e.g. `/** @jsx jsx */` with `/** @jsxImportSource hono/jsx */`.\n- Send complete, working code. Placeholders and elided bodies get deployed as written.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "code": {
+            "description": "The function's complete TypeScript/TSX source, as one file. This is what gets deployed.",
+            "minLength": 1,
+            "type": "string"
+          },
+          "environmentId": {
+            "description": "Environment ID to create the function in. If omitted, it is created in all non-fork environments. Required when staged is true.",
+            "type": "string"
+          },
+          "name": {
+            "description": "Name for the new function. If omitted, a name is generated.",
+            "type": "string"
+          },
+          "projectId": {
+            "description": "The project ID to create the function in",
+            "type": "string"
+          },
+          "staged": {
+            "default": false,
+            "description": "Stage the function in the environment's pending changes instead of deploying it. It shows up on the canvas immediately but gets no instance until accept-deploy commits the staged changes (or the user applies them in the dashboard). Requires environmentId.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "projectId",
+          "code"
+        ],
+        "type": "object"
+      }
+    },
+    {
       "name": "create-project",
       "description": "Create a new Railway project",
       "input_schema": {
@@ -446,6 +482,65 @@
       }
     },
     {
+      "name": "deploy-template",
+      "description": "Deploy a Railway template into a project — a database (postgres, mysql, redis, mongo), a clustered high-availability database, or an application template. Creates every service the template declares, wired together, and deploys them. Pass staged: true to stage them for the user to review instead.\n\nCall describe-template first: it lists the env-var inputs the template requires and the HA counts it accepts. Required inputs must come from the user — never invent a value for a credential, API key or password. Optional inputs may be omitted, in which case the template's own defaults apply (including generated secrets).",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "code": {
+            "description": "The template's code (the slug in its railway.com/template/<code> URL), e.g. 'postgres', 'postgres-ha', 'redis'.",
+            "type": "string"
+          },
+          "coordinatorCount": {
+            "description": "For a clustered database template: how many coordinator nodes (etcd/Sentinel-style consensus members). Must be odd and at least 3. Omit to keep the template's authored count.",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          },
+          "environmentId": {
+            "description": "Environment to deploy into. Defaults to `production` if present, otherwise the project's oldest environment.",
+            "type": "string"
+          },
+          "projectId": {
+            "description": "The project to deploy the template into",
+            "type": "string"
+          },
+          "proxyCount": {
+            "description": "For a clustered database template: how many instances of the proxy/load-balancer tier (e.g. HAProxy). Omit to keep the template's authored count.",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          },
+          "replicaCount": {
+            "description": "For a clustered database template: how many replicas to deploy alongside the primary (2 replicas = 3 data nodes). Only counts describe-template lists under `allowedCounts` are accepted. Omit to keep the template's authored topology.",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          },
+          "staged": {
+            "default": false,
+            "description": "Stage the template's services in the environment's pending changes instead of deploying them. Nothing is provisioned until the staged changes are committed with accept-deploy (or applied in the dashboard).",
+            "type": "boolean"
+          },
+          "variables": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Values for the template's env-var inputs, keyed by variable name as reported by describe-template. A name several of the template's services declare gets the same value on each — which is what a shared database credential wants. Unknown names are rejected rather than ignored.",
+            "propertyNames": {
+              "type": "string"
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "code",
+          "projectId"
+        ],
+        "type": "object"
+      }
+    },
+    {
       "name": "describe-environment",
       "description": "Inventory of everything in a Railway environment — services, volumes, buckets, shared variable names — with staged changes applied. Each resource carries a `state`: live, staged-create (exists only in the pending patch), staged-delete, or live-with-staged-changes. Includes each service's source, regions, replicas, cron, volume mounts and latest deployment, and a `staged` summary of the pending patch. Pass `region` to keep only resources in that region. For per-field staged diffs use get-staged-changes; for one service's full config use describe-service; for runtime health use environment-status. If environmentId is omitted, the production environment is used.",
       "input_schema": {
@@ -492,6 +587,23 @@
         "required": [
           "projectId",
           "serviceId"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "describe-template",
+      "description": "Read one Railway template: its name, description, README, the services it creates, every env-var input it takes (which are required and which are optional), and — for clustered database templates like postgres-ha — the HA topology counts deploy-template can size. Call this before deploy-template so required inputs are collected from the user rather than guessed.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "code": {
+            "description": "The template's code (the slug in its railway.com/template/<code> URL), e.g. 'postgres', 'postgres-ha', 'redis'.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code"
         ],
         "type": "object"
       }
@@ -669,6 +781,32 @@
         "required": [
           "projectId",
           "name"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "get-function-source-code",
+      "description": "Get a Railway Function's source code and runtime in an environment. Works for a function that is deployed and for one that exists only as a staged change — `code` is whichever is current, `deployedCode` is what is actually running, and `staged` says whether a commit is pending. Read this before update-function-source-code, which replaces the whole file. For a function's other configuration use get-service-config, and for its variables use list-variables. If environmentId is omitted, the default environment is used.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "environmentId": {
+            "description": "Environment ID. Defaults to `production` if present, otherwise the project's oldest environment.",
+            "type": "string"
+          },
+          "projectId": {
+            "description": "The project ID",
+            "type": "string"
+          },
+          "serviceId": {
+            "description": "The function service ID",
+            "type": "string"
+          }
+        },
+        "required": [
+          "projectId",
+          "serviceId"
         ],
         "type": "object"
       }
@@ -1295,6 +1433,34 @@
       }
     },
     {
+      "name": "search-templates",
+      "description": "Search the Railway template marketplace by name, description or keyword — databases (postgres, mysql, mongo, redis, clickhouse), their high-availability variants, and application templates. Returns published templates ranked by relevance. Use describe-template to read a result's inputs before deploying it with deploy-template.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "limit": {
+            "default": 5,
+            "description": "Maximum templates to return. Defaults to 5.",
+            "maximum": 20,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "query": {
+            "description": "What to search for, e.g. 'postgres', 'high availability redis', 'n8n'.",
+            "type": "string"
+          },
+          "verifiedOnly": {
+            "description": "Only return templates Railway has verified. Prefer this for databases the user will run in production.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "type": "object"
+      }
+    },
+    {
       "name": "set-feature-flag",
       "description": "Create a project-scoped feature flag or update its default value. Use list-feature-flags and get-feature-flag to inspect existing flags first.",
       "input_schema": {
@@ -1373,6 +1539,43 @@
         "required": [
           "projectId",
           "variables"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "update-function-source-code",
+      "description": "Replace a Railway Function's source code. Send the complete file — this overwrites the function's code, it does not patch it, so anything you leave out is gone. Read the current code with get-function-source-code first if you are modifying rather than rewriting.\n\nApplies live by default, which deploys the new code immediately. Pass staged: true to stage it in the environment's pending changes instead, in which case the current code keeps running until the staged changes are committed with accept-deploy.\n\nUpdates one environment: the one you name, or the default environment. Code is the thing a function is, and a live update deploys it, so this does not fan out across every environment the way update-service does — call it per environment if you need that. For a function's other settings (variables, cron schedule, healthcheck, domains) use set-variables, update-service and generate-domain. For a service built from a repo or image, this is the wrong tool: use connect-service-source or redeploy.\n\nWriting function code:\n- One file, TypeScript or TSX. The runtime writes it to `index.tsx` and runs it with Bun — Python, Go, Ruby and other languages will not run. For those, use create-service with an image, or create-deployment from a repo.\n- Imports are allowed. The runtime scans them, generates a package.json and installs with Bun, including versioned specifiers like `hono@4` and `zod@3`. Do not reference local files other than this one.\n- An HTTP service must listen: call `Bun.serve`, or default-export a fetch handler or Hono app. Read the port from `Bun.env.PORT`. Use generate-domain to give it a public URL.\n- If it is not an HTTP service, do not start a server. Write a script; it runs to completion.\n- Do not schedule work with a top-level `setInterval` — set a cronSchedule with update-service instead.\n- Prefer Bun globals over Node APIs: `Bun.env` for variables, `Bun.file`/`Bun.write` for file I/O, `Bun.sql` for Postgres, `Bun.s3` for object storage. The function filesystem is not durable — persist to a database or object storage.\n- Top-level await is available. Await every async call.\n- JSX needs the pragma, e.g. `/** @jsx jsx */` with `/** @jsxImportSource hono/jsx */`.\n- Send complete, working code. Placeholders and elided bodies get deployed as written.",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "code": {
+            "description": "The function's complete new TypeScript/TSX source, as one file. Replaces the existing code entirely.",
+            "minLength": 1,
+            "type": "string"
+          },
+          "environmentId": {
+            "description": "Environment ID. Defaults to `production` if present, otherwise the project's oldest environment.",
+            "type": "string"
+          },
+          "projectId": {
+            "description": "The project ID",
+            "type": "string"
+          },
+          "serviceId": {
+            "description": "The function service ID",
+            "type": "string"
+          },
+          "staged": {
+            "default": false,
+            "description": "Stage the new code in the environment's pending changes instead of deploying it. The currently deployed code keeps running until the staged changes are committed with accept-deploy (or the user applies them in the dashboard).",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "projectId",
+          "serviceId",
+          "code"
         ],
         "type": "object"
       }
