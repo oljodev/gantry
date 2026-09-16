@@ -88,9 +88,11 @@ fn three_turns_of_one_chat_keep_the_same_prefix() {
     // Turn one: an ordinary question.
     let first = body(&request(vec![user("what time is it?")], tools.clone()));
 
-    // Turn two: the user edited their global instructions between the turns. 10 §4 says a chat
-    // that has spoken keeps the prompt it was answering and is *told* what changed — so the
-    // change arrives as a message and the frozen text is untouched.
+    // Turn two: between the turns the user edited their global instructions *and* changed a
+    // memory the chat was holding (10 §4, 12 §B6). A chat that has spoken keeps the prompt it
+    // was answering and is *told* what changed, so both arrive as messages and the frozen text
+    // is untouched. They are the same `SystemNote` part, which is the point: one path, so
+    // neither can grow a way of rewriting the prefix that the other does not have.
     let second = body(&request(
         vec![
             user("what time is it?"),
@@ -99,6 +101,12 @@ fn three_turns_of_one_chat_keep_the_same_prefix() {
                 Role::System,
                 vec![ContentPart::SystemNote {
                     text: "The user's instructions changed: answer in Norwegian.".into(),
+                }],
+            ),
+            msg(
+                Role::System,
+                vec![ContentPart::SystemNote {
+                    text: "Forget what you were told about the user's timezone.".into(),
                 }],
             ),
             user("and now?"),
@@ -111,16 +119,15 @@ fn three_turns_of_one_chat_keep_the_same_prefix() {
         prefix(&second),
         "an instruction change must not rewrite the prefix"
     );
-    let note = second["messages"]
+    let notes: String = second["messages"]
         .as_array()
         .unwrap()
         .iter()
-        .find(|m| m["role"] == "system")
-        .expect("the note travels as a message of its own");
-    assert!(
-        serde_json::to_string(note).unwrap().contains("Norwegian"),
-        "{note}"
-    );
+        .filter(|m| m["role"] == "system")
+        .map(|m| serde_json::to_string(m).unwrap())
+        .collect();
+    assert!(notes.contains("Norwegian"), "the instruction note: {notes}");
+    assert!(notes.contains("timezone"), "the memory note: {notes}");
 
     // Turn three: a connector was attached while the chat was open, so the tool array is not
     // the one the earlier thinking blocks were bound to. The system half still may not move;
