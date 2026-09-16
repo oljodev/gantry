@@ -11,7 +11,18 @@ Status (M11, 2026-09-13): §7's fetching ships as `fetch_url`, with paging and a
 document cache; §6.2's tier 0, §6.4's rationed DuckDuckGo Lite and mwmbl from §6.5 ship as
 `search`; and a deterministic half of §5's `query` idea ships as `find_in_page`, which returns a
 page's headings or a pattern's matches with the offsets to read from. Not built: §6.3's SearXNG,
-a per-turn cap on general queries, Wiby and YaCy, §5's passage ranking, and `research`. Everything marked **measured** was tested against
+a per-turn cap on general queries, Wiby and YaCy, §5's passage ranking, and `research`.
+
+**Manners, 2026-09-16.** Four things this document specified and the connector did not do. It
+sent a Chrome user-agent to the general engine, against D15 and against §7.3's own measurement.
+It had no per-host or global rate limit at all, so a model opening eight pages of one site
+opened eight connections to it (§7.3). It had none of §7.5's classification ladder, so a bot
+challenge served as a cheerful 200 went through the reader and reached the model as the
+article — the failure that section opens by naming. And `Retry-After` was ignored. The fifth was
+the general ration living only in memory, so a restart cleared a block the user had earned
+(§6.4). All five are fixed and each has a test.
+
+Everything marked **measured** was tested against
 the live web on 2026-09-07 from a residential connection, which is the position a Gantry user
 actually occupies. `docs/plan/03-connector-system.md` §5 holds the one-paragraph summary this
 replaces.
