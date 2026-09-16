@@ -297,6 +297,13 @@ forgotten the user's own playbooks is not more private, only worse.
   every chat including the one that asked for it. Pinning a skill to a project now also does what
   §A6 said it did: pinned skills are assembled into the frozen prompt as layer 7, which nothing
   did before, so a pin used to remove a skill from matching without adding it anywhere.
+- ~~**Pinning a skill to a chat.**~~ **Built 2026-09-16.** §A6 has said since M12 that the
+  attach menu's **Skills ▸** pins a skill to the chat, and everything under it was there —
+  `chat_skills`, `pin_skill_to_chat`, the 10 §4 note it appends, the hooks in the frontend,
+  layer 7 assembling the pins into the frozen prompt — with nothing anywhere calling it. The
+  submenu exists now: enabled skills, pinned ones first, twelve at a time with the library a
+  click away. Chat-scoped pinning was the half of §A6 nobody could reach; the project half has
+  worked since M11.
 - **The shared community catalog**, still deferred for the reasons in §A5 flow 3.
 - **`references/` in the editor.** A skill can carry them, they are imported, exported, indexed
   and readable with `gantry__read_skill_file`; the editor does not yet let you write one.

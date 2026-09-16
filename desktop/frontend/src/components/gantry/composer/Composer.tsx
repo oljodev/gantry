@@ -9,6 +9,7 @@ import {
   PaperclipIcon,
   PlugIcon,
   PlusIcon,
+  SparkleIcon,
   SquareIcon,
   XIcon,
 } from '@phosphor-icons/react';
@@ -125,6 +126,14 @@ export interface ComposerProps {
   onModelChange: (m: ModelRef) => void;
   /** Skills that can be invoked with `/name` (12 §A4 rule 5, §A6). */
   skills?: SkillChoice[];
+  /**
+   * The skills pinned to this chat (12 §A6): they ride in its frozen prompt whole, instead of
+   * waiting to be matched to a message. Absent where there is no chat to pin to.
+   */
+  pinnedSkills?: string[];
+  onPinSkill?: (name: string, pinned: boolean) => void;
+  /** Opens Customize → Skills, for the rest of the library and for writing one. */
+  onBrowseSkills?: () => void;
   onSend?: (text: string, attachments: PendingAttachment[], skills: string[]) => void;
   onStop?: () => void;
 }
@@ -174,6 +183,9 @@ export function Composer({
   onGuardChange,
   onModelChange,
   skills,
+  pinnedSkills,
+  onPinSkill,
+  onBrowseSkills,
   onSend,
   onStop,
 }: ComposerProps) {
@@ -426,6 +438,60 @@ export function Composer({
                   </DropdownMenuItem>
                 )}
               </DropdownMenuGroup>
+              {/* 12 §A6: pinning a skill here is the chat-scoped half of pinning. The
+                  library itself lives in Customize; this is the shortlist plus the door. */}
+              {onPinSkill && (
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger>
+                    <SparkleIcon />
+                    Skills
+                    {(pinnedSkills?.length ?? 0) > 0 && (
+                      <span className="ml-auto pr-1 text-meta text-fg-3">
+                        {pinnedSkills?.length} pinned
+                      </span>
+                    )}
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent className="w-72">
+                    <DropdownMenuLabel>Pinned to this chat</DropdownMenuLabel>
+                    {(skills ?? []).length === 0 ? (
+                      <DropdownMenuItem disabled>No skills are switched on</DropdownMenuItem>
+                    ) : (
+                      // Pinned first, so what is on this chat is never below a fold.
+                      [...(skills ?? [])]
+                        .sort(
+                          (a, b) =>
+                            Number(pinnedSkills?.includes(b.name) ?? false) -
+                            Number(pinnedSkills?.includes(a.name) ?? false),
+                        )
+                        .slice(0, 12)
+                        .map((skill) => (
+                          <DropdownMenuCheckboxItem
+                            key={skill.name}
+                            checked={pinnedSkills?.includes(skill.name) ?? false}
+                            onCheckedChange={(on) => onPinSkill(skill.name, on)}
+                            className="h-auto items-start py-1.5"
+                          >
+                            <span className="flex min-w-0 flex-col">
+                              <span>{skill.name}</span>
+                              <span className="truncate text-meta text-fg-3">
+                                {skill.description}
+                              </span>
+                            </span>
+                          </DropdownMenuCheckboxItem>
+                        ))
+                    )}
+                    {onBrowseSkills && (
+                      <>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onClick={onBrowseSkills}>
+                          <SparkleIcon />
+                          All skills…
+                        </DropdownMenuItem>
+                      </>
+                    )}
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+              )}
               <DropdownMenuSeparator />
               <DropdownMenuCheckboxItem
                 checked={webSearch}

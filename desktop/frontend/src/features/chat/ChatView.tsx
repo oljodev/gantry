@@ -50,7 +50,7 @@ import { hasFileTools, useTurnOnConnectors } from '@/features/connectors/fileCon
 import { WEB_CONNECTOR, webInstance } from '@/features/connectors/webSearch';
 import { MoveToProjectDialog } from '@/features/projects/MoveToProjectDialog';
 import { useProject } from '@/lib/ipc/hooks/projects';
-import { useSkills } from '@/lib/ipc/hooks/skills';
+import { useChatSkills, useSkillMutations, useSkills } from '@/lib/ipc/hooks/skills';
 import {
   useCatalog,
   useChatConnectors,
@@ -145,6 +145,10 @@ export function ChatView({
   const [paneOpen, setPaneOpen] = useState(() => openArtifactId !== undefined);
   const artifactList = useArtifacts(chatId);
   const skills = useSkills();
+  // Which skills are pinned to this chat (12 §A6). Pinning is a prompt layer, so the command
+  // behind it appends the 10 §4 note by itself; this is the control that was never drawn.
+  const pinnedSkills = useChatSkills(chatId);
+  const { pin: pinSkill } = useSkillMutations();
   const openArtifacts = useArtifactStore((s) => s.openByChat[chatId]);
   const openArtifact = useArtifactStore((s) => s.open);
   const closeArtifact = useArtifactStore((s) => s.close);
@@ -703,6 +707,21 @@ export function ChatView({
           }}
           onModelChange={(model: ModelRef) => patch({ model })}
           skills={skillChoices}
+          pinnedSkills={pinnedSkills.data ?? []}
+          onPinSkill={(name, pinned) =>
+            pinSkill.mutate(
+              { chatId, skillId: name, pinned },
+              {
+                onError: (err: unknown) =>
+                  toast.add({
+                    title: 'Could not pin that skill',
+                    description: describe(err),
+                    type: 'error',
+                  }),
+              },
+            )
+          }
+          onBrowseSkills={() => openCustomize('skills')}
           onSend={(text, attachments, invoked) => {
             // `/remember …` writes a memory instead of sending a turn (12 §B3): it is not a
             // question, and answering it would be noise.
