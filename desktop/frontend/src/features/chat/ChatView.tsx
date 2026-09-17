@@ -351,10 +351,12 @@ export function ChatView({
   const patch = (u: Parameters<typeof update.mutate>[0]['update']) =>
     update.mutate({ chatId, update: u });
   /**
-   * One switch, two mechanisms (02 §3, 03 §11). The provider's own search wins where the model
-   * has it: one round trip, nothing to install. Where it does not, the `web` connector answers
-   * the same question — so the switch attaches it rather than greying itself out, which is
-   * what it did for every model on a machine with no provider key.
+   * One switch, everything the app can do about the web (02 §3, 03 §11). The provider's own
+   * search is used wherever the model has it — one round trip, nothing to install — and the
+   * `web` connector is attached either way, because the connector is not only search: it reads
+   * a page, pages through a long one and finds a pattern in it, and none of that is something
+   * a provider's search tool does. Attaching only where the provider could not search left
+   * those three tools unreachable on exactly the models that read pages best.
    */
   const web = webInstance(installedConnectors.data ?? undefined);
   const searchesItself = caps?.server_web_search === true;
@@ -364,7 +366,8 @@ export function ChatView({
   const setWebSearch = (on: boolean) => {
     if (searchesItself) {
       patch({ web_search: on });
-    } else if (on) {
+    }
+    if (on) {
       void turnOnConnectors(chatId, [WEB_CONNECTOR]).catch((err: unknown) =>
         toast.add({
           title: 'Could not turn on web search',
