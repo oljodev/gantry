@@ -94,6 +94,23 @@ So: the login shell is asked for its environment (D2, unchanged), and commands r
 it exists, `/bin/sh` otherwise**. On Windows, PowerShell 7 when present, falling back to Windows
 PowerShell, both with `-NoProfile -NonInteractive`.
 
+**How the command text reaches PowerShell** (added 2026-09-17, when the Windows build was first
+compiled). Not as an argument after `-Command`: PowerShell re-parses everything after that flag
+with its own rules, while Rust quotes an argument with the C runtime's, and the two disagree
+about the backslash and the quote — `git commit -m "fix: thing"` arrives with backslashes in the
+message. The script is handed over as **`-EncodedCommand`**, base64 of UTF-16, which has no
+quoting to disagree about. The encoder prefixes one line setting `$OutputEncoding` and
+`[Console]::OutputEncoding` to UTF-8 without a byte-order mark, because PowerShell otherwise
+writes its output in the console's code page and a Norwegian machine hands the model mojibake.
+The encoder is compiled and tested on every platform; it is used only on Windows.
+
+**And the model is told which shell it has.** The `run_command` description ends with a sentence
+built from the captured shell: on Windows it says commands are separated with `;` (`&&` is a
+syntax error before PowerShell 7), that a one-off variable is `$env:NAME = 'value'`, and that
+PowerShell's own commands exist where a Unix program does not. Without it a model writes POSIX
+everywhere, and on Windows most of it fails on grammar — the same argument as the fish one
+above, one platform along.
+
 The shell that ran is reported in the result, and so is the login shell that supplied the
 environment, because "it worked in my terminal" and "it worked in Gantry" differing by shell is
 otherwise a mystery — and now they can differ by two shells.

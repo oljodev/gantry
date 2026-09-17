@@ -94,7 +94,9 @@ pub async fn run(
     let started = Instant::now();
     let mut cmd = Command::new(&env.program);
     cmd.args(&env.args)
-        .arg(command)
+        // Not `command` itself: PowerShell is handed the script base64-encoded, because its
+        // parsing of a quoted argument is not the C runtime's (`ShellEnv::command_arg`).
+        .arg(env.command_arg(command))
         .current_dir(cwd)
         .env_clear()
         .envs(env.vars.iter())

@@ -42,7 +42,7 @@ import { copyText, openExternal } from '@/lib/clipboard';
 import { rememberCommand } from '@/lib/composer/slash';
 import { commands, unwrap } from '@/lib/ipc/client';
 import { useFollowBottom } from '@/lib/followBottom';
-import { pickFolder } from '@/lib/folders';
+import { fileName, pickFolder } from '@/lib/folders';
 import { useArtifacts } from '@/lib/ipc/hooks/artifacts';
 import { useChat, useChatMutations } from '@/lib/ipc/hooks/chats';
 import { FileToolsDialog } from '@/features/connectors/FileToolsDialog';
@@ -868,7 +868,7 @@ function detailTab(item: ActivityItem, onRevert?: (path: string) => void): PaneT
     case 'edit':
       return {
         id: `diff-${item.id}`,
-        title: `${item.path.split('/').pop()} · diff`,
+        title: `${fileName(item.path)} · diff`,
         icon: <GitDiffIcon />,
         temporary: true,
         content: (
@@ -903,7 +903,7 @@ function detailTab(item: ActivityItem, onRevert?: (path: string) => void): PaneT
     case 'read':
       return {
         id: `read-${item.id}`,
-        title: item.path.split('/').pop() ?? item.path,
+        title: fileName(item.path),
         icon: <FileTextIcon />,
         temporary: true,
         content: (

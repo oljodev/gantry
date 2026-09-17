@@ -7,6 +7,7 @@
 //!   recorded fixtures instead, which is how CI runs it
 //! - `validate-skills`   the rules of a bundled skill that `build.rs` does not stop the
 //!   build for (12 §A2)
+//! - `check-windows`   type-check the Windows build from Linux; `--clippy` for the lint pass
 //! - `icons`             arrives with M13
 
 #![forbid(unsafe_code)]
@@ -22,6 +23,7 @@ use anyhow::{Context, bail};
 mod connectors;
 mod probe;
 mod skills;
+mod windows;
 
 const BINDINGS: &str = "desktop/frontend/src/bindings.ts";
 
@@ -40,13 +42,17 @@ fn main() -> ExitCode {
             )
         }
         "validate-skills" => skills::validate(&workspace_root()),
+        "check-windows" => windows::check(
+            &workspace_root(),
+            env::args().skip(2).any(|f| f == "--clippy"),
+        ),
         "icons" => {
             eprintln!("xtask {task}: not implemented yet (see docs/plan/09-roadmap.md)");
             Ok(())
         }
         _ => {
             eprintln!(
-                "usage: cargo xtask <gen-bindings | check-bindings | validate-connectors | probe-connectors [--offline] [--spawn] | validate-skills | icons>"
+                "usage: cargo xtask <gen-bindings | check-bindings | validate-connectors | probe-connectors [--offline] [--spawn] | validate-skills | check-windows [--clippy] | icons>"
             );
             return ExitCode::from(2);
         }

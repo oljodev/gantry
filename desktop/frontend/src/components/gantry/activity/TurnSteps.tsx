@@ -5,6 +5,7 @@ import { ActivityRow, Spinner } from '@/components/gantry/activity/ActivityRow';
 import { ThinkingBlock } from '@/components/gantry/chat/ThinkingBlock';
 import type { ActivityItem, Block } from '@/fixtures/types';
 import { connectorName } from '@/fixtures/connectors';
+import { fileName } from '@/lib/folders';
 import { cn } from '@/lib/utils';
 import { summarize } from '@/lib/view/summarize';
 
@@ -155,7 +156,7 @@ function stepInProgress(steps: StepBlock[]): string | undefined {
 function inProgressLabel(item: ActivityItem): string | undefined {
   switch (item.kind) {
     case 'edit':
-      return item.status === 'running' ? `Editing ${basename(item.path)}…` : undefined;
+      return item.status === 'running' ? `Editing ${fileName(item.path)}…` : undefined;
     case 'command':
       if (item.status === 'waiting') return 'Waiting for your decision';
       return item.status === 'running' ? 'Running a command…' : undefined;
@@ -189,8 +190,4 @@ function isFailed(item: ActivityItem): boolean {
     default:
       return false;
   }
-}
-
-function basename(path: string): string {
-  return path.split('/').pop() ?? path;
 }

@@ -16,6 +16,21 @@ export async function pickFolder(title = 'Add folder to workspace'): Promise<str
 
 /** The last component, for a chip that has to fit next to the model picker. */
 export function folderName(path: string): string {
+  return lastComponent(path);
+}
+
+/**
+ * The file's own name, for a row or a tab title.
+ *
+ * Beside `folderName` and not folded into it because the two are asked for different reasons,
+ * and because the thing they share is the part that is easy to get wrong: a Windows path is
+ * separated by `\`, and a name taken by splitting on `/` alone is the whole path there.
+ */
+export function fileName(path: string): string {
+  return lastComponent(path);
+}
+
+function lastComponent(path: string): string {
   const parts = path.split(/[/\\]/).filter(Boolean);
   return parts[parts.length - 1] ?? path;
 }

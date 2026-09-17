@@ -143,11 +143,11 @@ async fn ask_version(
 ) -> Option<String> {
     let mut command = tokio::process::Command::new(program);
     command.arg("--version").env_clear().envs(env);
+    // CREATE_NO_WINDOW: asking `node --version` must not flash a console (shell.md D1).
+    // `tokio::process::Command` has the method itself on Windows, so the std extension trait
+    // that the same line needs elsewhere is not imported here.
     #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
-    }
+    command.creation_flags(0x0800_0000);
     let output = tokio::time::timeout(TIMEOUT, command.output())
         .await
         .ok()?

@@ -354,7 +354,18 @@ fn syntax_gate(path: &str) -> Result<PathBuf, ScopeError> {
 /// The Windows spellings that open a different file than they appear to: alternate data
 /// streams, reserved device names, components that end in a dot or a space, and the verbatim,
 /// device and network prefixes.
-#[cfg(windows)]
+///
+/// **Compiled everywhere, called only on Windows.** It is pure string work with a security
+/// rule inside it, and a security rule that exists only inside `#[cfg(windows)]` on a machine
+/// that is not Windows is a comment: nothing compiles it, nothing tests it, and it is wrong for
+/// as long as nobody builds for Windows. The tests below run on every platform.
+#[cfg_attr(
+    not(windows),
+    allow(
+        dead_code,
+        reason = "called under cfg(windows); exercised by the tests everywhere"
+    )
+)]
 fn windows_gate(path: &str) -> Result<(), ScopeError> {
     const RESERVED: [&str; 22] = [
         "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8",
@@ -452,6 +463,47 @@ mod tests {
         assert!(syntax_gate("/a/b/c.rs").is_ok());
     }
 
+    /// The Windows gate, checked from Linux (it is compiled everywhere for exactly this).
+    /// Each of these is a spelling that reaches a different file than it appears to.
+    #[test]
+    fn the_windows_gate_refuses_every_alternate_spelling() {
+        for (path, expected) in [
+            (r"\\?\C:\Windows\win.ini", "verbatim"),
+            (r"\\server\share\file.txt", "verbatim"),
+            ("//server/share/file.txt", "verbatim"),
+            (r"C:file.txt", "drive-relative"),
+            (r"C:\secret.txt:hidden", "alternate data stream"),
+            (r"C:\work\report.txt ", "dot or a space"),
+            (r"C:\work\report.", "dot or a space"),
+            (r"C:\work\CON", "reserved device name"),
+            (r"C:\work\nul.txt", "reserved device name"),
+            (r"C:\work\com1.log", "reserved device name"),
+        ] {
+            let Err(ScopeError::Syntax(reason)) = windows_gate(path) else {
+                panic!("{path} should be refused by the syntax gate");
+            };
+            assert!(
+                reason.contains(expected),
+                "{path}: expected a refusal about {expected}, got {reason}"
+            );
+        }
+    }
+
+    /// And the ordinary paths it must let through, because a gate that refuses the normal case
+    /// is a gate nobody can use.
+    #[test]
+    fn the_windows_gate_lets_an_ordinary_path_through() {
+        for good in [
+            r"C:\Users\olav\dev\gantry\README.md",
+            r"C:/Users/olav/dev/gantry/README.md",
+            r"D:\work\conference\notes.md",
+            r"C:\work\connect.rs",
+            r"C:\work\.gitignore",
+        ] {
+            assert!(windows_gate(good).is_ok(), "{good} should be allowed");
+        }
+    }
+
     #[test]
     fn a_path_outside_every_root_says_which_folders_there_are() {
         let dir = tempfile::tempdir().unwrap();
@@ -460,18 +512,17 @@ mod tests {
         assert!(matches!(err, ScopeError::Outside { .. }), "{err}");
     }
 
+    #[cfg(unix)]
     #[test]
     fn a_link_that_leaves_the_root_is_refused_at_the_open() {
         let dir = tempfile::tempdir().unwrap();
         let outside = tempfile::tempdir().unwrap();
         std::fs::write(outside.path().join("secret.txt"), b"s3cret").unwrap();
-        #[cfg(unix)]
         std::os::unix::fs::symlink(
             outside.path().join("secret.txt"),
             dir.path().join("link.txt"),
         )
         .unwrap();
-        #[cfg(unix)]
         {
             let roots = roots(dir.path());
             let scoped = roots

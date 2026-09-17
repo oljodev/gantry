@@ -141,7 +141,7 @@ gantry/
 │   │   │       ├── artifacts/{mod.rs, registry.rs, edits.rs}   # the service (versions, the render handshake), the type registry mirrored by the frontend, exact-match edits
 │   │   │       ├── interactions.rs
 │   │   └── xtask/
-│   │       └── src/{main.rs, connectors.rs, probe.rs, skills.rs, icons.rs}   # finds the root by walking up to Cargo.lock
+│   │       └── src/{main.rs, connectors.rs, probe.rs, skills.rs, windows.rs, icons.rs}   # finds the root by walking up to Cargo.lock; windows.rs type-checks the Windows build from Linux
 │   │
 │   ├── connectors/                       # every connector, first-party or bundled, one folder each (03 §2)
 │   │   ├── README.md                     # the folder contract for contributors

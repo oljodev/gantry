@@ -48,7 +48,61 @@ The first Rust build takes a few minutes; later ones are incremental.
 | `cargo deny check` | dependency licences, advisories and sources (`cargo install cargo-deny --locked` once) |
 | `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm format` | frontend checks |
 | `cargo xtask gen-bindings` | regenerate `desktop/frontend/src/bindings.ts` after changing a command |
+| `cargo xtask check-windows [--clippy]` | type-check the Windows build from Linux or macOS (see below) |
 | `pnpm tauri build` | an installable bundle in `target/release/bundle/` |
+
+## Windows, from a machine that is not Windows
+
+The Windows code — PowerShell, the credential store, `npx.cmd`, the path gate — was written long
+before anything compiled it, and a `#[cfg(windows)]` block on a Linux machine is a comment.
+`rustup` hands out the Windows standard library to anyone who asks, so type-checking it is free:
+
+```sh
+rustup target add x86_64-pc-windows-msvc   # once
+cargo xtask check-windows                  # cargo check for Windows
+cargo xtask check-windows --clippy         # and the lint pass, with -D warnings
+```
+
+Two dependencies compile C for the target (SQLite, and aws-lc behind rustls) and their build
+scripts want `cl.exe` and `lib.exe`. **`cargo check` never links**, so nothing ever reads the
+object files they produce: the task writes a pair of stand-ins into `target/win-shims/` that
+create the files they are asked for and exit 0.
+
+| Proved | Not proved |
+|--------|------------|
+| Every `#[cfg(windows)]` item type-checks; every Windows-only dependency resolves; the crate graph builds for the target | That anything links, runs, or behaves. SQLite is not really compiled and TLS certainly is not. No test runs |
+
+Where a Windows-only decision is pure logic rather than a system call, it is written as an
+ordinary function, called under `cfg(windows)` and **tested on every platform** — the path gate
+in `gantry-workspace::scope` and the PowerShell encoder in the shell connector are both done that
+way. That is the only kind of Windows coverage a Linux machine can actually give.
+
+### The first Windows run (nobody has done it)
+
+What only a Windows machine can answer, in the order it is worth answering:
+
+1. `cargo xtask check-windows` is green here; `cargo test --workspace` on Windows is the first
+   real run of every test in the repository.
+2. `pnpm tauri dev` opens a window with no native frame (`set_decorations(false)`) — check that
+   it can still be dragged, snapped and resized, and that the traffic-light-free strip has the
+   three Windows buttons in the right order.
+3. A command from the model: `run_command` with `git status`. It must run in PowerShell with **no
+   console window flashing** (shell.md D1), return its output, and report the shell it used.
+4. A command with quotes in it — `git commit -m "fix: the thing"` — arrives unmangled. This is
+   what `-EncodedCommand` is for; through `-Command` the quoting rules of Rust and PowerShell
+   disagree.
+5. Non-ASCII output (`Write-Output "æøå"`) comes back as itself rather than as mojibake, and
+   there is no stray character at the top of the first line (the encoder asks PowerShell for
+   UTF-8 without a byte-order mark).
+6. A failing command's exit code reaches the model: `cmd /c exit 3` should report 3, not 0.
+7. **Kill**: start something long, press stop, and check with Task Manager that the tree is gone.
+8. The key: add a provider key, restart, and check Settings → Providers still says it is set —
+   that is the Windows credential store answering. It has no file fallback, by design.
+9. A folder with a space and a drive letter (`C:\Users\you\My Projects`) attaches, and the file
+   tools read and write inside it. Then check a file with CRLF line endings edits without the
+   diff claiming every line changed.
+10. `npx`-based connectors install: the manifest's `platform_overrides.win32.command` is
+    `npx.cmd`, and `PATHEXT` is what the runtime check searches with.
 
 ## Bindings
 

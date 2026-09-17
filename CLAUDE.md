@@ -49,6 +49,11 @@ update the document in the same commit.
 - The app: `pnpm tauri dev` (the Tauri CLI finds `desktop/app/tauri.conf.json` by itself). After
   changing a command: `cargo xtask gen-bindings` and commit `desktop/frontend/src/bindings.ts` (the
   `gen_bindings` test fails on drift).
+- Windows: `cargo xtask check-windows [--clippy]` type-checks the Windows build from here (it needs
+  `rustup target add x86_64-pc-windows-msvc` once). It proves the `#[cfg(windows)]` code compiles
+  and nothing more — nothing links and no test runs; `docs/dev/setup.md` has the checklist for what
+  only a Windows machine can answer. Windows-only logic that is pure — a path rule, an encoder —
+  is written as an ordinary function called under `cfg(windows)` and tested on every platform.
 - On this machine the editor runs in a Flatpak sandbox without WebKitGTK; anything that compiles
   `desktop/app` (`cargo build`, `cargo test --workspace`, `cargo xtask …`, `pnpm tauri …`) runs on
   the host through `host-spawn`, e.g. `host-spawn cargo test --workspace`. Pure crates check fine

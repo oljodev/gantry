@@ -1788,6 +1788,7 @@ name = "gantry-connector-shell"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "base64 0.22.1",
  "gantry-connectors",
  "gantry-core",
  "gantry-store",

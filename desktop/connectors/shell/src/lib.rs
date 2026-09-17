@@ -236,7 +236,14 @@ impl Connector for Shell {
     }
 
     async fn tools(&self) -> Result<Vec<ToolDef>, ConnectorError> {
-        Ok(definitions())
+        // The catalogue's description plus a sentence about the shell this machine actually
+        // has. `definitions()` cannot say it: the connector page is drawn before a shell is
+        // captured, and a model that is not told writes POSIX on Windows (env.rs).
+        let mut defs = definitions();
+        if let Some(run) = defs.iter_mut().find(|d| d.name == "run_command") {
+            run.description.push_str(&self.env.note_for_model());
+        }
+        Ok(defs)
     }
 
     async fn call(
