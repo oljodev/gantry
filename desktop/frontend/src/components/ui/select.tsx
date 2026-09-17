@@ -3,6 +3,7 @@ import { CaretDownIcon, CaretUpIcon, CheckIcon } from '@phosphor-icons/react';
 import type * as React from 'react';
 
 import { menuLabel, menuPopup, menuSeparator } from '@/components/ui/menu-styles';
+import { typeaheadLabel } from '@/lib/typeahead';
 import { cn } from '@/lib/utils';
 
 const Select = SelectPrimitive.Root;
@@ -102,10 +103,17 @@ function SelectLabel({ className, ...props }: SelectPrimitive.GroupLabel.Props) 
   );
 }
 
-function SelectItem({ className, children, ...props }: SelectPrimitive.Item.Props) {
+/**
+ * One row. Typing in an open menu jumps to the row that starts with what was typed, and the
+ * text it matches is this row's own — unless the row is a qualified id, in which case it is the
+ * name inside it (15 §8, [`typeaheadLabel`]): a menu of models is searched by the model.
+ */
+function SelectItem({ className, children, label, ...props }: SelectPrimitive.Item.Props) {
+  const text = typeof children === 'string' ? typeaheadLabel(children) : undefined;
   return (
     <SelectPrimitive.Item
       data-slot="select-item"
+      label={label ?? text}
       className={cn(
         'relative flex h-(--control-md) w-full cursor-default select-none items-center gap-2 rounded-2 pl-2 pr-8 text-ui text-fg outline-none data-highlighted:bg-hover data-disabled:pointer-events-none data-disabled:text-fg-disabled [&_svg]:size-4 [&_svg]:shrink-0',
         className,

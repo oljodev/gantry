@@ -134,7 +134,12 @@ function Field({
     return (
       <div className="flex flex-col gap-1.5">
         {label}
-        <Select value={typeof value === 'string' ? value : ''} onValueChange={onChange}>
+        {/* The labels, so the closed control reads the option rather than the value behind it. */}
+        <Select
+          value={typeof value === 'string' ? value : ''}
+          onValueChange={onChange}
+          items={field.options}
+        >
           <SelectTrigger id={field.key} aria-label={field.title}>
             <SelectValue placeholder="Choose one" />
           </SelectTrigger>

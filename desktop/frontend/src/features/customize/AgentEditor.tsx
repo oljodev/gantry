@@ -13,7 +13,9 @@ import {
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
-import type { AgentType, Mode, ModelRule, OpenField } from '@/bindings';
+import { modelLabel, useModelCatalog } from '@/lib/ipc/hooks/providers';
+import { typeaheadLabel } from '@/lib/typeahead';
+import type { AgentType, ModelRef, Mode, ModelRule, OpenField } from '@/bindings';
 
 const MODES: { value: Mode | 'inherit'; label: string }[] = [
   { value: 'inherit', label: 'Same as the chat' },
@@ -55,6 +57,15 @@ export function AgentEditor({
   onCancel: () => void;
 }) {
   const [draft, setDraft] = useState(agent);
+  // A model is named by the model (15 §8): `deepseek/deepseek-v4-flash` is how it is stored and
+  // "DeepSeek V4 Flash" is what it is called, and the second is both what to read and what a
+  // person types to find it.
+  const { providers } = useModelCatalog();
+  const name = (ref: ModelRef) => typeaheadLabel(modelLabel(providers, ref));
+  const refOf = (key: string): ModelRef => ({
+    provider: key.slice(0, key.indexOf('/')),
+    model: key.slice(key.indexOf('/') + 1),
+  });
   const isNew = agent.id === '';
   const set = (patch: Partial<AgentType>) => setDraft((d) => ({ ...d, ...patch }));
   const opens = (field: OpenField) => draft.open.includes(field);
@@ -156,13 +167,7 @@ export function AgentEditor({
                     set({ model: { kind: v } });
                     return;
                   }
-                  const at = v.indexOf('/');
-                  set({
-                    model: {
-                      kind: 'named',
-                      model: { provider: v.slice(0, at), model: v.slice(at + 1) },
-                    },
-                  });
+                  set({ model: { kind: 'named', model: refOf(v) } });
                 }}
               >
                 <SelectTrigger aria-label="Model" className="w-56">
@@ -172,7 +177,7 @@ export function AgentEditor({
                         ? "The caller's own model"
                         : v === 'rules'
                           ? 'Let it pick from my list'
-                          : v.slice(v.indexOf('/') + 1)
+                          : name(refOf(v))
                     }
                   </SelectValue>
                 </SelectTrigger>
@@ -184,7 +189,7 @@ export function AgentEditor({
                       key={`${r.model.provider}/${r.model.model}`}
                       value={`${r.model.provider}/${r.model.model}`}
                     >
-                      {r.model.model}
+                      {name(r.model)}
                     </SelectItem>
                   ))}
                 </SelectContent>

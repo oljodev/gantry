@@ -253,6 +253,15 @@ Two tiers. Both live in the app repository, in `desktop/frontend/src/components/
 
 Button (primary · secondary · ghost · danger; `sm` / `md` / `lg`; icon-only variant; loading state replaces the label with a 12 px spinner and keeps the width), Input, NumberInput (a bounded integer with `−` / `+` steppers at `control-md`; no native spinner), Textarea, Select, Combobox (`OptionPicker`: one control for "pick one of these", rendering the plain `Select` under nine options and a filter box over it, because that is where a menu stops being something you read and starts being something you search — fifty-three image models in a connector's settings is what put the number there; rows are the value on the left and a muted `meta` detail on the right, and the popup grows past the trigger's width rather than clipping every row at the same point), Checkbox, Switch, RadioGroup, Tabs, Dialog, Popover, DropdownMenu, ContextMenu, Tooltip (`meta` size, 400 ms delay, no arrow), Toast (bottom right, level 2, `ui` size, auto-dismiss 5 s, one action at most), ScrollArea (overlay scrollbars, 6 px thumb in `line-strong`, visible on hover and while scrolling), Separator, Badge (`micro`, `r-1`, neutral or semantic `-subtle` fill), Kbd (`micro` mono, `r-1`, `line` border), Skeleton (`bg-hover` shimmer), Command (the palette list).
 
+**Every menu is searched by typing.** A `Select` or a menu that is open takes letters and digits
+and jumps to the first row starting with what was typed — the primitives do it; what matters is
+the text they match. That text is the row's own, except where a row is a qualified id
+(`openrouter/black-forest-labs/flux.2-pro`, `Anthropic: Claude Sonnet 5`), and then it is the name
+inside it (`typeaheadLabel`): in a list of models every row would otherwise begin with the name of
+a company, and nobody looking for Flux types the provider they are already signed in to. A control
+whose closed state shows an id rather than a name has the same fault — `Select` is given `items`,
+or a render-prop `Value`, so it reads what the row read.
+
 The reshape pass replaces every shadcn default with a token, removes the default shadows and rings, sets the sizes above, swaps Lucide for Phosphor, and standardises the focus ring. It is done once, in the design milestone, and later shadcn updates are merged by hand.
 
 ### Composites

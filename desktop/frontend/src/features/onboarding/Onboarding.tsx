@@ -112,7 +112,14 @@ function KeyStep() {
       </div>
       <label className="flex flex-col gap-1.5">
         <span className="text-ui font-medium text-fg">Provider</span>
-        <Select value={chosen} onValueChange={(v) => setProvider(v as ProviderId)}>
+        {/* `items` is what makes the closed control read "OpenRouter" rather than `openrouter`:
+            the value is an id, and Base UI's Value shows the raw one unless it is given the
+            labels to look it up in. */}
+        <Select
+          value={chosen}
+          onValueChange={(v) => setProvider(v as ProviderId)}
+          items={rows.map((p) => ({ value: p.id, label: p.label }))}
+        >
           <SelectTrigger>
             <SelectValue />
           </SelectTrigger>

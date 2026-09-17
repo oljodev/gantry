@@ -188,18 +188,46 @@ function Choices() {
   );
 }
 
+const SHORT_MODELS = [
+  { value: 'claude-opus-5', label: 'Claude Opus 5' },
+  { value: 'claude-sonnet-5', label: 'Claude Sonnet 5' },
+  { value: 'claude-haiku-4-5', label: 'Claude Haiku 4.5' },
+];
+
+/** Long enough that finding a row means typing at it rather than reading down it. */
+const LONG_MODELS = [
+  'anthropic/claude-opus-5',
+  'anthropic/claude-sonnet-5',
+  'anthropic/claude-haiku-4-5',
+  'openai/gpt-5',
+  'openai/gpt-5-mini',
+  'openai/o4',
+  'google/gemini-3-pro',
+  'google/gemini-3-flash',
+  'deepseek/deepseek-v4-flash',
+  'deepseek/deepseek-r2',
+  'meta-llama/llama-4-70b',
+  'mistralai/mistral-large-3',
+  'x-ai/grok-5',
+  'qwen/qwen3-max',
+  'black-forest-labs/flux.2-pro',
+  'black-forest-labs/flux.2-schnell',
+].map((id) => ({ value: id, label: id }));
+
 function Selects() {
   return (
     <>
       <State label="Select">
-        <Select defaultValue="claude-opus-5">
+        <Select defaultValue="claude-opus-5" items={SHORT_MODELS}>
           <SelectTrigger>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="claude-opus-5">Claude Opus 5</SelectItem>
-            <SelectItem value="claude-sonnet-5">Claude Sonnet 5</SelectItem>
-            <SelectItem value="claude-haiku-4-5">Claude Haiku 4.5</SelectItem>
+            {SHORT_MODELS.map((m) => (
+              <SelectItem key={m.value} value={m.value}>
+                {m.label}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
         <Select>
@@ -216,6 +244,23 @@ function Selects() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="x">Disabled</SelectItem>
+          </SelectContent>
+        </Select>
+      </State>
+      <State label="Select · long enough to scroll, searched by typing">
+        {/* Open it and press `f`: the highlight goes to Flux, not to the provider every row
+            begins with (15 §8). The values are ids on purpose — that is the case the plain
+            text of a row cannot be typed. */}
+        <Select defaultValue={LONG_MODELS[0]!.value} items={LONG_MODELS}>
+          <SelectTrigger className="w-72">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent className="max-h-72 overflow-y-auto">
+            {LONG_MODELS.map((m) => (
+              <SelectItem key={m.value} value={m.value}>
+                {m.label}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </State>

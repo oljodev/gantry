@@ -11,6 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { typeaheadLabel } from '@/lib/typeahead';
 import { cn } from '@/lib/utils';
 
 /** One thing that can be picked: what is stored, what it is called, and why you would pick it. */
@@ -72,7 +73,12 @@ export function OptionPicker({
         </SelectTrigger>
         <SelectContent className="max-w-[min(34rem,80vw)]">
           {options.map((option) => (
-            <SelectItem key={option.value} value={option.value}>
+            // The row is two elements, so the text to type is named rather than read off it.
+            <SelectItem
+              key={option.value}
+              value={option.value}
+              label={typeaheadLabel(option.label)}
+            >
               <span className="min-w-0 flex-1 truncate">{option.label}</span>
               {option.detail && (
                 <span className="shrink-0 text-meta text-fg-3">{option.detail}</span>
