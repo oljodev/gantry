@@ -195,6 +195,19 @@
     opacity: 0;
     transform: translate(-50%, -50%) scale(0.98);
   }
+  /*
+   * A turn that is not on screen is not laid out (docs/dev/performance.md).
+   *
+   * Measured in WebKitGTK, the engine the Linux build runs in: sixty turns lay out in 9 ms
+   * rather than 48, two hundred in 32 rather than 95. `auto` in `contain-intrinsic-size` means
+   * the remembered size replaces the estimate as soon as the turn has been laid out once, so
+   * the scrollbar settles instead of drifting; `--turn-height` is the view's own guess, from
+   * the turn's blocks, which is what it starts from.
+   */
+  .turn-skip {
+    content-visibility: auto;
+    contain-intrinsic-size: auto var(--turn-height, 400px);
+  }
   .backdrop-anim {
     transition: opacity var(--dur-3) var(--ease-out);
   }

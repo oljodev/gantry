@@ -43,8 +43,35 @@ export function toTurns(
     if (live && live.turnId === t.id && (t.status === 'running' || live.status === 'running')) {
       return liveTurn(t, live, modelLabel, titles);
     }
-    return finishedTurn(t, modelLabel, titles);
+    return cachedTurn(t, modelLabel, titles);
   });
+}
+
+/**
+ * Finished turns, built once (docs/dev/performance.md).
+ *
+ * This runs on every frame of a streaming answer, and every frame it rebuilt the whole
+ * transcript — sixty turns of blocks, activity rows and footers, of which exactly one had
+ * changed. A finished turn is a pure function of what it is given, and the backend hands back
+ * the same `TurnDto` object until the chat query refetches, so the identity of that is the
+ * cache key. Weak, so a chat the user has left is not held in memory by its own view model.
+ *
+ * The two other inputs are compared rather than trusted. `titles` is one object per chat query
+ * and holds still; the label is a closure, and a closure rebuilt on each render would quietly
+ * turn this cache off for ever — so what is compared is the name it produces, which is one
+ * lookup and cannot be got wrong by a caller.
+ *
+ * The turn object being reused is also what lets `TurnView` skip the re-render entirely.
+ */
+const built = new WeakMap<TurnDto, { label: string; titles: ArtifactIndex; turn: Turn }>();
+
+function cachedTurn(t: TurnDto, modelLabel: Label, titles: ArtifactIndex): Turn {
+  const label = modelLabel(t.model);
+  const hit = built.get(t);
+  if (hit && hit.label === label && hit.titles === titles) return hit.turn;
+  const turn = finishedTurn(t, modelLabel, titles);
+  built.set(t, { label, titles, turn });
+  return turn;
 }
 
 /**

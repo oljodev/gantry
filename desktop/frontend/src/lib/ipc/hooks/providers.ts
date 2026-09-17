@@ -1,4 +1,5 @@
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useCallback } from 'react';
 
 import type {
   CustomEndpoint,
@@ -38,29 +39,43 @@ export interface CatalogProvider {
   loading: boolean;
 }
 
-/** Every provider with its cached model list; the picker and the settings table read this. */
+/** One empty list, so a catalog with nothing in it is still the same catalog. */
+const NO_ROWS: ProviderRow[] = [];
+const NO_MODELS: ModelInfo[] = [];
+
+/**
+ * Every provider with its cached model list; the picker and the settings table read this.
+ *
+ * Built through `combine`, which TanStack memoises against the query results, because the list
+ * this returns is a cache key elsewhere: the chat view holds a whole transcript against it, and
+ * a fresh array on every render would quietly rebuild the lot sixty times a second
+ * (docs/dev/performance.md).
+ */
 export function useModelCatalog(): { providers: CatalogProvider[]; isPending: boolean } {
   const providers = useProviders();
-  const rows: ProviderRow[] = providers.data ?? [];
-  const lists = useQueries({
+  const rows: ProviderRow[] = providers.data ?? NO_ROWS;
+  const combine = useCallback(
+    (results: { data?: ModelInfo[]; isPending: boolean }[]): CatalogProvider[] =>
+      rows.map((p, i) => ({
+        id: p.id,
+        label: p.label,
+        hasKey: p.key.present,
+        available: p.available,
+        models: results[i]?.data ?? NO_MODELS,
+        loading: results[i]?.isPending ?? false,
+      })),
+    [rows],
+  );
+  const list = useQueries({
     queries: rows.map((p) => ({
       queryKey: keys.models(p.id),
       queryFn: () => unwrap(commands.listModels(p.id, false)),
       enabled: isTauri() && p.key.present && p.available,
       staleTime: 60 * 60 * 1000,
     })),
+    combine,
   });
-  return {
-    isPending: providers.isPending && isTauri(),
-    providers: rows.map((p, i) => ({
-      id: p.id,
-      label: p.label,
-      hasKey: p.key.present,
-      available: p.available,
-      models: lists[i]?.data ?? [],
-      loading: lists[i]?.isPending ?? false,
-    })),
-  };
+  return { isPending: providers.isPending && isTauri(), providers: list };
 }
 
 /** What the catalog knows a model can do; `undefined` when the model is not listed. */

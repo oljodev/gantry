@@ -1,5 +1,5 @@
 import { WarningCircleIcon } from '@phosphor-icons/react';
-import { useEffect, useState } from 'react';
+import { type CSSProperties, memo, useEffect, useState } from 'react';
 
 import { type StepBlock, TurnSteps } from '@/components/gantry/activity/TurnSteps';
 import { ArtifactCard } from '@/components/gantry/chat/ArtifactCard';
@@ -23,7 +23,53 @@ import { UserMessage } from '@/components/gantry/chat/UserMessage';
 import { Markdown } from '@/components/gantry/markdown/Markdown';
 import { Button } from '@/components/ui/button';
 import { commands, isTauri } from '@/lib/ipc/client';
+import { cn } from '@/lib/utils';
 import type { ActivityItem, Block, Permission, Turn } from '@/fixtures/types';
+
+/**
+ * A turn, re-rendered only when the turn changed (docs/dev/performance.md).
+ *
+ * A streaming answer draws a frame sixty times a second, and in every one of them exactly one
+ * turn is different. `toTurns` hands back the same object for every finished turn, so this
+ * comparison is enough to leave the rest of the transcript alone — which on a long chat is the
+ * difference between redrawing one answer and redrawing all of them.
+ *
+ * **The callbacks are compared by presence, not by identity**, because the chat view builds
+ * them below its own early returns and cannot hold them still with a hook. The invariant that
+ * makes it safe, and that a new callback has to keep: *a handler here may not close over state
+ * that can change while the turn it belongs to does not*. The running turn is rebuilt on every
+ * frame and so always has the current one; a finished turn's handlers act on what they are
+ * given — the turn, the block, the id — and on things that do not move, like the chat id and
+ * the store's own actions. Anything else (the artifact titles, say) is already an input to the
+ * turn itself, so a change to it produces a new turn and a re-render with it.
+ */
+export const TurnView = memo(TurnViewInner, (prev, next) => {
+  if (
+    prev.turn !== next.turn ||
+    prev.detailed !== next.detailed ||
+    prev.isLast !== next.isLast ||
+    prev.installing !== next.installing
+  ) {
+    return false;
+  }
+  // A handler that appears or disappears changes what the turn offers, and that does show.
+  const keys = [
+    'onOpenItem',
+    'onAllowAnyway',
+    'onRevert',
+    'onDecide',
+    'onAccess',
+    'onElicit',
+    'onOffer',
+    'onSkill',
+    'onMemory',
+    'onAddKey',
+    'onCopy',
+    'onRate',
+    'onRetry',
+  ] as const;
+  return keys.every((key) => (prev[key] === undefined) === (next[key] === undefined));
+});
 
 /** Consecutive reasoning and activity blocks fold into one steps line (15 A7). */
 type Group = Block | { kind: 'steps'; steps: StepBlock[] };
@@ -42,30 +88,7 @@ function groupBlocks(blocks: Block[]): Group[] {
   return groups;
 }
 
-/**
- * One turn: the user block, then the assistant's text with its work folded inline in the
- * order it happened, artifact cards, an optional decision card, and the hover footer
- * (05 §1, 15 §7).
- */
-export function TurnView({
-  turn,
-  onOpenItem,
-  onAllowAnyway,
-  onRevert,
-  onDecide,
-  onAccess,
-  onElicit,
-  onOffer,
-  onSkill,
-  onMemory,
-  onAddKey,
-  installing,
-  isLast,
-  onCopy,
-  onRate,
-  onRetry,
-  detailed = false,
-}: {
+interface TurnViewProps extends Pick<TurnActionsProps, 'onCopy' | 'onRate' | 'onRetry'> {
   turn: Turn;
   /** The code surface shows the work open, with diffs and output inline (16 §6). */
   detailed?: boolean;
@@ -96,12 +119,42 @@ export function TurnView({
   /** The suggestion whose install is running. */
   installing?: string;
   isLast?: boolean;
-} & Pick<TurnActionsProps, 'onCopy' | 'onRate' | 'onRetry'>) {
+}
+
+/**
+ * One turn: the user block, then the assistant's text with its work folded inline in the
+ * order it happened, artifact cards, an optional decision card, and the hover footer
+ * (05 §1, 15 §7).
+ */
+function TurnViewInner({
+  turn,
+  onOpenItem,
+  onAllowAnyway,
+  onRevert,
+  onDecide,
+  onAccess,
+  onElicit,
+  onOffer,
+  onSkill,
+  onMemory,
+  onAddKey,
+  installing,
+  isLast,
+  onCopy,
+  onRate,
+  onRetry,
+  detailed = false,
+}: TurnViewProps) {
   const hasText = turn.blocks.some((b) => b.kind === 'text');
   const groups = groupBlocks(turn.blocks);
   const firstCard = groups.findIndex((b) => b.kind === 'permission');
   return (
-    <article className="group/turn flex min-w-0 flex-col gap-3 py-4">
+    <article
+      // Every turn but the newest is skipped while it is off screen (`.turn-skip`). The newest
+      // is the one being written into, and is on screen by definition.
+      className={cn('group/turn flex min-w-0 flex-col gap-3 py-4', !isLast && 'turn-skip')}
+      style={isLast ? undefined : ({ '--turn-height': `${guessHeight(turn)}px` } as CSSProperties)}
+    >
       <UserMessage user={turn.user} />
       <div className="flex flex-col">
         {groups.map((block, i) => {
@@ -343,3 +396,43 @@ function AnswerImage({
     </div>
   );
 }
+
+/**
+ * Roughly how tall this turn will be, for `contain-intrinsic-size` (docs/dev/performance.md).
+ *
+ * A guess, and only the first one: the browser replaces it with the real height the moment the
+ * turn has been laid out once. It exists so that the scrollbar of a chat nobody has scrolled
+ * through yet is about the right length, rather than every turn claiming the same 400 px.
+ * Wrong by a line here and there costs nothing; wrong by a factor of five is a scrollbar that
+ * moves under the hand.
+ */
+function guessHeight(turn: Turn): number {
+  let px = 72; // the user's own message, and the gaps around the turn
+  for (const block of turn.blocks) {
+    switch (block.kind) {
+      case 'text':
+        px += Math.max(LINE, Math.ceil(block.markdown.length / CHARS_PER_LINE) * LINE);
+        break;
+      case 'activity':
+        px += ROW * block.items.length;
+        break;
+      case 'thinking':
+        px += ROW;
+        break;
+      case 'artifact':
+        px += 96;
+        break;
+      case 'image':
+        px += 320;
+        break;
+      default:
+        px += 140; // a card of some kind: permission, access, elicitation, proposal
+    }
+  }
+  return px;
+}
+
+/** A line of chat text, a folded activity row, and how much text fits on one line. */
+const LINE = 22;
+const ROW = 32;
+const CHARS_PER_LINE = 90;

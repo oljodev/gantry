@@ -83,6 +83,29 @@ proprietary driver, and `WEBKIT_DISABLE_DMABUF_RENDERER=1` is the fallback. It i
 DMA-BUF works, so `main` sets it only where that driver is loaded, and never over a value the
 user set themselves (`desktop/app/src/linux.rs`).
 
+## The transcript
+
+A streaming answer redraws sixty times a second, and in every one of those frames exactly one
+turn is different. Three things follow from that, and all three were missing:
+
+1. **`toTurns` rebuilt the whole transcript every frame** — every block, activity row and footer
+   of every turn. A finished turn is now built once and handed back by identity, keyed on the
+   `TurnDto` the backend gave. Measured over a synthetic chat of 1200 tool calls: 2.7 ms a frame
+   in node, and node is the fast engine here.
+2. **`TurnView` re-rendered every turn.** It is now `memo`'d. Its callbacks are compared by
+   presence rather than identity, because the chat view builds them below its own early returns
+   and cannot hold them still with a hook; the invariant that makes that safe is written at the
+   component, and a new handler has to keep it.
+3. **Every turn was laid out, on screen or not.** `.turn-skip` puts `content-visibility: auto`
+   on every turn but the newest, with the view's own guess at its height as the intrinsic size.
+   Measured in WebKitGTK, which is what the Linux build runs in: sixty turns lay out in **9 ms
+   instead of 48**, two hundred in **32 instead of 95**, and a jump to the bottom still lands at
+   the bottom.
+
+The catalogue of providers and models is memoised for the same reason: the chat view holds a
+whole transcript against its identity, so an array rebuilt on each render would have turned the
+first of those caches off without a word.
+
 ## Adding a measurement
 
 ```ts
