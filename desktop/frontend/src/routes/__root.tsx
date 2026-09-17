@@ -9,7 +9,7 @@ import { AppShell, BareShell } from '@/app/layout/AppShell';
 import { Providers } from '@/app/providers';
 import { Toaster } from '@/components/ui/toast';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { CommandPalette } from '@/features/palette/CommandPalette';
+import { PaletteHost } from '@/features/palette/PaletteHost';
 
 /** Last-resort error surface: inline, with the message, never a blank window (15 §9). */
 function RootError({ error }: ErrorComponentProps) {
@@ -45,7 +45,7 @@ function Root() {
               <Outlet />
             </AppShell>
           )}
-          <CommandPalette />
+          <PaletteHost />
         </Toaster>
       </TooltipProvider>
     </Providers>

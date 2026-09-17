@@ -26,7 +26,7 @@ function DialogContent({
   ...props
 }: DialogPrimitive.Popup.Props & { showCloseButton?: boolean }) {
   // Every dialog in the app is timed by this one line (docs/dev/performance.md).
-  useOpenTiming('dialog');
+  const measure = useOpenTiming('dialog');
   return (
     <DialogPrimitive.Portal>
       <DialogPrimitive.Backdrop
@@ -40,6 +40,7 @@ function DialogContent({
           className,
         )}
         {...props}
+        ref={measure}
       >
         {children}
         {showCloseButton && (

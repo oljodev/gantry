@@ -15,12 +15,17 @@ export function Advanced() {
   const settings = useSettings();
   const update = useUpdateSettings();
   const store = useSecretStoreStatus();
+  // Speed is measured by the window itself, so it has something to say even in a browser with
+  // no backend behind it; the settings below do not.
   if (!isTauri()) {
     return (
-      <p className="text-body text-fg-2">
-        Not running inside the Gantry window, so there are no settings to edit. They show here in
-        the app.
-      </p>
+      <div className="flex flex-col gap-8">
+        <p className="text-body text-fg-2">
+          Not running inside the Gantry window, so there are no settings to edit. They show here in
+          the app.
+        </p>
+        <Speed />
+      </div>
     );
   }
   if (!settings.data) return <p className="text-body text-fg-3">Loading…</p>;

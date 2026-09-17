@@ -5,21 +5,19 @@ import {
   memo,
   type ReactNode,
   useContext,
+  useEffect,
   useState,
 } from 'react';
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
-import rehypeKatex from 'rehype-katex';
 import remarkGfm from 'remark-gfm';
-import remarkMath from 'remark-math';
 
 import { CodeBlock } from '@/components/gantry/markdown/CodeBlock';
 import { MarkdownImage } from '@/components/gantry/markdown/MarkdownImage';
 import { MermaidBlock } from '@/components/gantry/markdown/MermaidBlock';
 import { copyText, openExternal } from '@/lib/clipboard';
 import { splitBlocks } from '@/lib/markdown/blocks';
+import { hasMath, loadMath, mathPlugins } from '@/lib/markdown/math';
 import { cn } from '@/lib/utils';
-
-import 'katex/dist/katex.min.css';
 
 /** The markdown of the block being rendered, so a table can offer its own source for Copy. */
 const BlockSource = createContext('');
@@ -56,11 +54,12 @@ export function Markdown({ children, className }: { children: string; className?
 }
 
 const MarkdownBlock = memo(function MarkdownBlock({ text }: { text: string }) {
+  const math = useMath(text);
   return (
     <BlockSource.Provider value={text}>
       <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkMath]}
-        rehypePlugins={[[rehypeKatex, { throwOnError: false, output: 'html' }]]}
+        remarkPlugins={math ? [remarkGfm, ...math.remark] : [remarkGfm]}
+        rehypePlugins={math ? math.rehype : []}
         urlTransform={urlTransform}
         components={components}
       >
@@ -69,6 +68,20 @@ const MarkdownBlock = memo(function MarkdownBlock({ text }: { text: string }) {
     </BlockSource.Provider>
   );
 });
+
+/**
+ * KaTeX for a block that has a formula in it, and nothing at all for one that has not
+ * (`lib/markdown/math.ts`). The first such block in a window renders once as plain text while
+ * the plugins are fetched, and again when they arrive.
+ */
+function useMath(text: string) {
+  const needed = hasMath(text);
+  const [, setLoaded] = useState(mathPlugins() !== null);
+  useEffect(() => {
+    if (needed && mathPlugins() === null) void loadMath().then(() => setLoaded(true));
+  }, [needed]);
+  return needed ? mathPlugins() : null;
+}
 
 function Pre({ children }: ComponentProps<'pre'>) {
   const child = Array.isArray(children) ? children[0] : children;

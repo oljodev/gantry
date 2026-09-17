@@ -36,15 +36,21 @@ the database, the keyring, `setup`, the window, the webview. Only the dynamic li
 — on Linux that is WebKitGTK being loaded, which no code of ours can time.
 
 **A window's open time is measured from the user's finger**, not from the React state change: a
-capture listener stamps every `pointerdown` and `keydown`, and `useOpenTiming` in `DialogContent`
-records the gap to the second frame after the dialog mounted. That is the whole wait — the
-handler, the query, the render, the paint. A dialog that opens more than two seconds after the
-last keypress is not counted at all, because nobody asked for it and the number would be a
-measure of how long they had been sitting still.
+capture listener stamps every `pointerdown` and `keydown`, and `useOpenTiming` records the gap to
+the second frame after the dialog's popup arrived. That is the whole wait — the handler, the
+query, the fetch of the dialog's own code, the render, the paint. A dialog that opens more than
+two seconds after the last keypress is not counted at all, because nobody asked for it and the
+number would be a measure of how long they had been sitting still.
 
-**The name comes from the title.** `useOpenTiming` reads the dialog's own `DialogTitle` at the
-moment it measures, so every dialog in the app is timed by one line in `DialogContent` and none of
-them carries a label for the benefit of a stopwatch.
+**It hangs off the popup element, not off an effect.** The popup exists only while the dialog is
+open, so its arrival *is* the open. An effect would fire when the dialog component mounted, which
+for the several dialogs that sit mounted and closed until a flag flips is both the wrong moment
+and the only one.
+
+**The name comes from the title.** `useOpenTiming` reads the dialog's own `DialogTitle` from the
+element it was given, so the one line in `DialogContent` — and the one in `PrefsDialog`, which
+builds the Settings and Customize frames itself — times every dialog in the app, and none of them
+carries a label for the benefit of a stopwatch.
 
 **Every command is timed** by the wrapper in `lib/ipc/client.ts`, which is why every call site in
 the app imports `commands` from there and not from `@/bindings`.

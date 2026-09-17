@@ -4,6 +4,7 @@ import type { Icon } from '@phosphor-icons/react';
 import type { ReactNode } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { useOpenTiming } from '@/lib/perf';
 import { cn } from '@/lib/utils';
 
 export interface RailItem<T extends string> {
@@ -44,15 +45,21 @@ export function PrefsDialog<T extends string>({
   footer?: ReactNode;
   children: ReactNode;
 }) {
+  // The two largest windows in the app, timed like every other one (docs/dev/performance.md).
+  const measure = useOpenTiming('dialog');
   return (
     <DialogPrimitive.Root open={open} onOpenChange={(next) => !next && onClose()}>
       <DialogPrimitive.Portal>
         <DialogPrimitive.Backdrop className="backdrop-anim fixed inset-0 z-50 bg-backdrop" />
         <DialogPrimitive.Popup
+          ref={measure}
+          data-slot="dialog-content"
           className="float dialog-anim fixed top-1/2 left-1/2 z-50 flex h-(--prefs-height) w-(--prefs-width) -translate-x-1/2 -translate-y-1/2 overflow-hidden bg-raised p-0 text-ui text-fg outline-none"
           aria-label={title}
         >
-          <DialogPrimitive.Title className="sr-only">{title}</DialogPrimitive.Title>
+          <DialogPrimitive.Title data-slot="dialog-title" className="sr-only">
+            {title}
+          </DialogPrimitive.Title>
           <nav
             aria-label={`${title} sections`}
             className="flex w-(--settings-list) shrink-0 flex-col gap-1 border-r border-line-subtle bg-base p-3"

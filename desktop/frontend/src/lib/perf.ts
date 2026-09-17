@@ -14,7 +14,7 @@
  * entry rather than pushing everything else out of a ring buffer.
  */
 
-import { useEffect } from 'react';
+import { useCallback } from 'react';
 
 /** A span worth remembering individually. */
 export type Span = { name: string; ms: number; at: number };
@@ -135,40 +135,42 @@ export function sinceInput(): number {
 /**
  * How long this window took to appear, from the key or click that asked for it.
  *
- * Measured from the user's own finger to the second frame after the content mounted, which is
- * the first frame they could have seen it in. The name is read from the dialog's title at that
- * moment rather than passed in as a prop, so every dialog in the app is measured by the one
- * call in `DialogContent` and none of them carries a label for the benefit of a stopwatch.
+ * Returns a ref for the dialog's own popup element. The popup exists only while the dialog is
+ * open, so its arrival *is* the open — which is why this is a ref rather than an effect: a
+ * dialog component that sits mounted and closed until its state flips would otherwise be timed
+ * once, at the wrong moment, and never again.
  *
- * A dialog that nobody asked for — one opened by a finished turn, or by a notification — is not
+ * Measured to the second frame after it arrived, which is the first frame the user could have
+ * seen it in, and from their own finger rather than from the React state change: the handler,
+ * the query, the render and the paint are all inside the wait they felt. The name is read from
+ * the dialog's own title, so one call in `DialogContent` times every dialog in the app and none
+ * of them carries a label for the benefit of a stopwatch.
+ *
+ * A dialog nobody asked for — one opened by a finished turn, or by a notification — is not
  * counted: measuring it from whatever the user last touched would report a minute-long "open".
  */
-export function useOpenTiming(kind: string): void {
-  useEffect(() => {
-    let cancelled = false;
-    const frame = requestAnimationFrame(() =>
-      requestAnimationFrame(() => {
-        if (cancelled) return;
-        const ms = sinceInput();
-        if (ms === 0 || ms > UNPROMPTED_MS) return;
-        record(`${kind}: ${openLabel()}`, ms);
-      }),
-    );
-    return () => {
-      cancelled = true;
-      cancelAnimationFrame(frame);
-    };
-  }, [kind]);
+export function useOpenTiming(kind: string): (element: HTMLElement | null) => void {
+  return useCallback(
+    (element: HTMLElement | null) => {
+      if (!element) return;
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => {
+          const ms = sinceInput();
+          if (ms === 0 || ms > UNPROMPTED_MS) return;
+          record(`${kind}: ${openLabel(element)}`, ms);
+        }),
+      );
+    },
+    [kind],
+  );
 }
 
 /** Longer than this after the last key or click, nothing on screen is a reply to it. */
 const UNPROMPTED_MS = 2000;
 
-/** The newest dialog's title, for the row in the panel. */
-function openLabel(): string {
-  const dialogs = document.querySelectorAll('[data-slot="dialog-content"]');
-  const newest = dialogs[dialogs.length - 1];
-  const title = newest?.querySelector('[data-slot="dialog-title"]')?.textContent?.trim();
+/** The dialog's own title, for the row in the panel. */
+function openLabel(element: HTMLElement): string {
+  const title = element.querySelector('[data-slot="dialog-title"]')?.textContent?.trim();
   return title ? title.slice(0, 40) : 'untitled';
 }
 

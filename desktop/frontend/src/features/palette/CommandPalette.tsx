@@ -10,7 +10,7 @@ import {
   SidebarSimpleIcon,
   SunIcon,
 } from '@phosphor-icons/react';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 
 import {
   CommandDialog,
@@ -34,9 +34,16 @@ import { useUiStore } from '@/lib/stores/uiStore';
  * Cmd/Ctrl+K (15 A15, §8): actions, chats, messages, settings, projects and connectors in one
  * list; 560 px wide, top-aligned. Chats and messages come from the backend's full-text search
  * as you type; the static entries are matched here.
+ *
+ * Opened by `PaletteHost`, which holds the keystroke and loads this file when it is pressed.
  */
-export function CommandPalette() {
-  const [open, setOpen] = useState(false);
+export function CommandPalette({
+  open,
+  setOpen,
+}: {
+  open: boolean;
+  setOpen: (open: boolean) => void;
+}) {
   const [query, setQuery] = useState('');
   const navigate = useNavigate();
   const chats = useChats().data ?? [];
@@ -45,26 +52,6 @@ export function CommandPalette() {
   const catalog = useCatalog().data ?? [];
   const toggleSidebar = useUiStore((s) => s.toggleSidebar);
   const setTheme = useUiStore((s) => s.setTheme);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const mod = document.documentElement.dataset.os === 'macos' ? e.metaKey : e.ctrlKey;
-      // ⌘⇧K is the surface switch (16 §4) and ⌥ is nobody's. Without this the palette opened
-      // on top of the surface it had just switched to, which is two answers to one keystroke.
-      if (!mod || e.shiftKey || e.altKey) return;
-      if (e.key === 'k' || e.key === 'K') {
-        e.preventDefault();
-        setOpen((o) => !o);
-      }
-    };
-    const onEvent = () => setOpen(true);
-    window.addEventListener('keydown', onKey);
-    window.addEventListener('gantry:palette', onEvent);
-    return () => {
-      window.removeEventListener('keydown', onKey);
-      window.removeEventListener('gantry:palette', onEvent);
-    };
-  }, []);
 
   const run = (fn: () => void) => () => {
     setOpen(false);

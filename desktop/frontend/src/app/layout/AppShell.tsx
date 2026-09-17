@@ -4,9 +4,8 @@ import { type ReactNode, useEffect } from 'react';
 import { IncognitoButton } from '@/app/layout/IncognitoButton';
 import { Sidebar } from '@/app/layout/Sidebar';
 import { TitleStrip } from '@/app/layout/TitleStrip';
+import { Overlays } from '@/app/layout/Overlays';
 import { DeviceCodeDialog } from '@/features/connectors/DeviceCodeDialog';
-import { CustomizeDialog } from '@/features/customize/CustomizeDialog';
-import { SettingsDialog } from '@/features/settings/SettingsDialog';
 import { commands, isTauri } from '@/lib/ipc/client';
 import { useUiStore } from '@/lib/stores/uiStore';
 
@@ -22,8 +21,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <TitleStrip className="absolute inset-x-0 top-0 z-30" actions={<IncognitoButton />} />
         <main className="min-h-0 flex-1 overflow-hidden">{children}</main>
       </div>
-      <SettingsDialog />
-      <CustomizeDialog />
+      <Overlays />
       <DeviceCodeDialog />
     </div>
   );
