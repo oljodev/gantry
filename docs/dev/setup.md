@@ -68,6 +68,10 @@ scripts want `cl.exe` and `lib.exe`. **`cargo check` never links**, so nothing e
 object files they produce: the task writes a pair of stand-ins into `target/win-shims/` that
 create the files they are asked for and exit 0.
 
+CI runs the same command on its Linux runner, so a `#[cfg(windows)]` block that stops compiling
+fails a build here rather than at release time (the Windows job in `build.yml` is what actually
+builds and runs anything, and it is behind a manual dispatch until the repository is public).
+
 | Proved | Not proved |
 |--------|------------|
 | Every `#[cfg(windows)]` item type-checks; every Windows-only dependency resolves; the crate graph builds for the target | That anything links, runs, or behaves. SQLite is not really compiled and TLS certainly is not. No test runs |

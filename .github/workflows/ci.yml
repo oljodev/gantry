@@ -75,6 +75,16 @@ jobs:
       - name: Rust tests (includes the bindings drift check)
         run: cargo test --workspace
 
+      # The Windows build, from a Linux runner. `cargo check` never links, so a Windows machine
+      # is not needed to prove that every `#[cfg(windows)]` block still compiles — which is the
+      # thing that rots silently, because nobody here builds for Windows between releases
+      # (docs/dev/setup.md). It proves nothing about behaviour; the Windows job in build.yml is
+      # what runs anything.
+      - name: Windows type-check
+        run: |
+          rustup target add x86_64-pc-windows-msvc
+          cargo run -p xtask -- check-windows --clippy
+
       # The catalogue describes other people's servers, so these two check that it still agrees
       # with what those servers last said (17 §5). No network: the probe reads the fixtures that
       # were committed beside each manifest, which is what makes a manifest edit that contradicts
