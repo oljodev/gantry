@@ -113,6 +113,11 @@ Settings hold a list the user writes:
 | `anthropic/claude-sonnet-5` | research and reading long documents |
 | `openrouter/deepseek/deepseek-v4-flash` | anything short |
 
+A row is added by the **model dialog** — the composer's own (15 §7), opened from the button that
+shows the model — rather than by a menu with a filter box in it. Choosing between four hundred
+models is the question that dialog exists to answer, and a field a person can type into is a field
+that can hold something that is not a model.
+
 With the list empty, a sub agent runs the parent's model and the tool has no `model` argument.
 With entries, `model` is an enum of `"same as mine"` plus each row, each option carrying its
 "when to use it" text as its description, and the parent picks. The rules are *shown* to the

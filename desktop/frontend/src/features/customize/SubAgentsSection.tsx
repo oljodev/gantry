@@ -5,7 +5,6 @@ import { SettingsGroup, SettingsRow } from '@/components/gantry/settings/Setting
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { NumberInput } from '@/components/ui/number-input';
-import { OptionPicker } from '@/components/ui/option-picker';
 import {
   Select,
   SelectContent,
@@ -14,13 +13,15 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
+import { ModelPicker } from '@/components/gantry/composer/ModelPicker';
 import { AgentEditor } from '@/features/customize/AgentEditor';
-import { toCatalog } from '@/features/models/catalog';
 import { useAgentTypeMutations, useAgentTypes } from '@/lib/ipc/hooks/agents';
 import { useConnectors } from '@/lib/ipc/hooks/connectors';
-import { useModelCatalog } from '@/lib/ipc/hooks/providers';
 import { useSettings, useUpdateSettings } from '@/lib/ipc/hooks/settings';
 import type { AgentType, ModelRule, SubAgentSettings } from '@/bindings';
+
+/** What the **Add a model** button holds before anything is chosen: no model at all. */
+const NO_MODEL = { provider: '', model: '' };
 
 /** A blank type, in the shape a new one starts as: nothing fixed, nothing decided. */
 function blank(): AgentType {
@@ -56,7 +57,6 @@ export function SubAgentsSection() {
   const settings = useSettings();
   const updateSettings = useUpdateSettings();
   const installed = useConnectors();
-  const { providers } = useModelCatalog();
   const [editing, setEditing] = useState<AgentType | null>(null);
 
   const prefs = settings.data?.subagents;
@@ -65,16 +65,6 @@ export function SubAgentsSection() {
     updateSettings.mutate({ subagents: { ...prefs, ...patch } });
   };
 
-  /** Every model this machine's keys reach, for the rules table. */
-  const models = useMemo(
-    () =>
-      toCatalog(providers).map((m) => ({
-        value: m.key,
-        label: m.name,
-        detail: m.providerLabel,
-      })),
-    [providers],
-  );
   /** The namespaces a type may be given, plus the one that means "whatever the chat has". */
   const namespaces = useMemo(
     () => (installed.data ?? []).filter((c) => c.enabled).map((c) => c.namespace),
@@ -198,18 +188,15 @@ export function SubAgentsSection() {
         <div className="flex flex-col gap-2">
           {rules.map((rule, i) => (
             <div key={`${rule.model.provider}/${rule.model.model}`} className="flex gap-2">
-              <OptionPicker
-                label="Model"
-                className="w-64"
-                value={`${rule.model.provider}/${rule.model.model}`}
-                options={models}
-                onChange={(key) => {
-                  const at = key.indexOf('/');
+              {/* The same button and the same dialog the composer uses (15 §7). A field you can
+                  type into is a field that can hold something that is not a model. */}
+              <ModelPicker
+                variant="secondary"
+                className="w-64 shrink-0"
+                value={rule.model}
+                onChange={(model) => {
                   const next = [...rules];
-                  next[i] = {
-                    ...rule,
-                    model: { provider: key.slice(0, at), model: key.slice(at + 1) },
-                  };
+                  next[i] = { ...rule, model };
                   setRules(next);
                 }}
               />
@@ -235,30 +222,26 @@ export function SubAgentsSection() {
             </div>
           ))}
           <div>
-            <Button
+            {/* Picking a model is adding it. A model already on the list is left where it is,
+                with whatever was written beside it. */}
+            <ModelPicker
               variant="secondary"
-              disabled={models.length === 0}
-              onClick={() => {
-                const first = models.find(
-                  (m) => !rules.some((r) => `${r.model.provider}/${r.model.model}` === m.value),
-                );
-                if (!first) return;
-                const at = first.value.indexOf('/');
-                setRules([
-                  ...rules,
-                  {
-                    model: {
-                      provider: first.value.slice(0, at),
-                      model: first.value.slice(at + 1),
-                    },
-                    when: '',
-                  },
-                ]);
+              label="Add a model"
+              value={NO_MODEL}
+              onChange={(model) => {
+                if (
+                  rules.some(
+                    (r) => r.model.provider === model.provider && r.model.model === model.model,
+                  )
+                ) {
+                  return;
+                }
+                setRules([...rules, { model, when: '' }]);
               }}
             >
               <PlusIcon />
               Add a model
-            </Button>
+            </ModelPicker>
           </div>
         </div>
       </section>
