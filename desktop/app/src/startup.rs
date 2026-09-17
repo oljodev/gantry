@@ -233,6 +233,10 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn Error>> {
     // Skills and memory (12). The skill library is handed to the turn manager, which rescans
     // the folder before each turn; memory needs no such hand-off, because the selector reads
     // the same tables from inside the turn's own transaction.
+    // The sub-agent library gets whatever built-in it is missing (18 §3). Before the first
+    // turn, because a chat started in the first second still offers them.
+    gantry_agent::subagents::seed(&store);
+
     let skills = Skills::new(store.clone(), data_dir.join("skills"));
     if let Err(err) = skills.rescan() {
         log::warn!("could not index the skills folder: {err}");
@@ -244,6 +248,16 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn Error>> {
         Ok(0) => {}
         Ok(n) => log::info!("deleted {n} incognito session(s) left by the previous run"),
         Err(err) => log::warn!("could not delete the incognito sessions left behind: {err}"),
+    }
+    // And sub-agent transcripts past the age the user set (18 §9). Zero days is forever, which
+    // is the default: they then go when the chat that started them does.
+    match turns
+        .chats()
+        .sweep_sub_agents(settings.read().map_or(0, |s| s.subagents.keep_days))
+    {
+        Ok(0) => {}
+        Ok(n) => log::info!("deleted {n} sub-agent transcript(s) past their keep-for date"),
+        Err(err) => log::warn!("could not sweep the sub-agent transcripts: {err}"),
     }
     let projects = Arc::new(gantry_agent::Projects::new(store.clone(), blobs.clone()));
     let memories = Memories::new(store.clone());

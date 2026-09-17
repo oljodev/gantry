@@ -270,6 +270,18 @@ pub fn delete_incognito(conn: &Connection) -> Result<usize> {
     Ok(conn.execute("DELETE FROM chats WHERE incognito = 1", [])?)
 }
 
+/// Deletes sub-agent transcripts older than `cutoff` (18 §9, `settings.subagents.keep_days`).
+///
+/// Run at startup, like the incognito sweep above. It only ever reaches a chat a model had, and
+/// only one whose last message is older than the user's own number: a conversation a person had
+/// has no `parent_turn_id` and is never in this query.
+pub fn delete_old_sub_agents(conn: &Connection, cutoff: i64) -> Result<usize> {
+    Ok(conn.execute(
+        "DELETE FROM chats WHERE parent_turn_id IS NOT NULL AND last_message_at < ?1",
+        params![cutoff],
+    )?)
+}
+
 pub fn set_last_message_at(conn: &Connection, id: ChatId, at: i64) -> Result<()> {
     conn.execute(
         "UPDATE chats SET last_message_at = ?2, updated_at = ?2 WHERE id = ?1",

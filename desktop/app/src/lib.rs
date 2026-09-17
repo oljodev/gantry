@@ -129,6 +129,11 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::memory::read_memory_export,
             commands::memory::review_memory_import,
             commands::memory::import_memories,
+            commands::agents::list_agent_types,
+            commands::agents::save_agent_type,
+            commands::agents::delete_agent_type,
+            commands::agents::reset_agent_type,
+            commands::agents::set_agent_type_enabled,
         ])
         .events(tauri_specta::collect_events![
             events::ChatsChanged,
@@ -141,6 +146,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             events::SkillsChanged,
             events::MemoryChanged,
             events::ProjectsChanged,
+            events::AgentTypesChanged,
         ])
 }
 

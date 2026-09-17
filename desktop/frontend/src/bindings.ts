@@ -356,10 +356,37 @@ export const commands = {
 	 *  of surprise the whole feature is built to avoid.
 	 */
 	importMemories: (entries: MemoryDto[]) => typedError<number, ErrorDto>(__TAURI_INVOKE("import_memories", { entries })),
+	/**  The whole library, by name, switched-off types included. */
+	listAgentTypes: () => typedError<AgentType[], ErrorDto>(__TAURI_INVOKE("list_agent_types")),
+	/**
+	 *  Creates a type or replaces every field of one.
+	 * 
+	 *  The id is the name the model writes in a call, so it is fixed at creation: renaming a type
+	 *  would leave a `subagents__run` in some transcript naming something that no longer exists.
+	 */
+	saveAgentType: (agent: AgentType) => typedError<null, ErrorDto>(__TAURI_INVOKE("save_agent_type", { agent })),
+	/**
+	 *  Deletes a type the user wrote. A built-in is switched off instead, which the UI offers
+	 *  rather than a bin that refuses.
+	 */
+	deleteAgentType: (id: string) => typedError<null, ErrorDto>(__TAURI_INVOKE("delete_agent_type", { id })),
+	/**
+	 *  Puts a built-in back the way it shipped, keeping whether it is switched on.
+	 * 
+	 *  Switching it back on would be the surprising half: somebody asking for the original
+	 *  instructions has not asked for the type to start being offered again.
+	 */
+	resetAgentType: (id: string) => typedError<AgentType, ErrorDto>(__TAURI_INVOKE("reset_agent_type", { id })),
+	/**
+	 *  The switch on the row. Off means the model is not offered the type at all, which is a
+	 *  shorter tool description as well as one fewer thing it can do.
+	 */
+	setAgentTypeEnabled: (id: string, enabled: boolean) => typedError<null, ErrorDto>(__TAURI_INVOKE("set_agent_type_enabled", { id, enabled })),
 };
 
 /** Events */
 export const events = {
+	agentTypesChanged: makeEvent<AgentTypesChanged>("agent-types-changed"),
 	artifactsChanged: makeEvent<ArtifactsChanged>("artifacts-changed"),
 	chatsChanged: makeEvent<ChatsChanged>("chats-changed"),
 	connectorsChanged: makeEvent<ConnectorsChanged>("connectors-changed"),
@@ -566,6 +593,45 @@ export type AgentEvent_Serialize = {
 	turn_id: TurnId,
 	event: AgentEventKind_Serialize,
 };
+
+/**  Which model a sub agent runs (18 §5). */
+export type AgentModel = 
+/**  The parent's own model. The default, and the only one that needs no configuration. */
+{ kind: "inherit" } | 
+/**  Let the parent choose from the rules the user wrote, which are shown to it as a menu. */
+{ kind: "rules" } | 
+/**  One model, named here and not up for discussion. */
+{ kind: "named"; model: ModelRef };
+
+/**  One entry of the library (18 §3). */
+export type AgentType = {
+	/**  The slug the model names in a call, and the id of the row. */
+	id: string,
+	name: string,
+	/**  One line, read by the **parent** model when it chooses between types. */
+	description: string,
+	/**  The system prompt fragment the sub agent runs under. */
+	instructions: string,
+	model: AgentModel,
+	/**  The namespaces it may use. [`INHERIT`] stands for the parent chat's own list. */
+	connectors: string[],
+	/**  `None` means the parent chat's mode, whatever that is. */
+	mode: Mode | null,
+	guard: boolean | null,
+	/**  Whether it may change files in the session's folders, or only read them. */
+	write_files: boolean,
+	/**  Whether the user's memories reach its prompt, and whether it may load skills (12). */
+	memory: boolean,
+	skills: boolean,
+	/**  The fields the parent may set in the call. Everything else is the type's own. */
+	open: OpenField[],
+	/**  Shipped with Gantry. Editable; **Reset** puts the original back. */
+	builtin: boolean,
+	enabled: boolean,
+};
+
+/**  The sub-agent library changed: one was written, reset, deleted or switched (18 §3). */
+export type AgentTypesChanged = null;
 
 /**
  *  Facts about the running application, returned by the `app_info` command.
@@ -1853,6 +1919,9 @@ export type NewProject = {
 	instructions?: string,
 	workspace_path?: string | null,
 };
+
+/**  A field a type hands to the parent model instead of deciding itself (18 §3). */
+export type OpenField = "instructions" | "connectors" | "write" | "model" | "mode" | "memory" | "skills";
 
 export type PermissionDecision = { kind: "allow_once" } | 
 /**  Allow, and remember the answer for the rest of this chat at the given scope (04 §8). */

@@ -50,6 +50,10 @@ pub struct SkillsChanged;
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type, tauri_specta::Event)]
 pub struct ProjectsChanged;
 
+/// The sub-agent library changed: one was written, reset, deleted or switched (18 §3).
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type, tauri_specta::Event)]
+pub struct AgentTypesChanged;
+
 /// A memory was written, edited, deleted or restored (12 §B).
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type, tauri_specta::Event)]
 pub struct MemoryChanged;

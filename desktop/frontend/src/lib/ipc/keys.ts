@@ -36,6 +36,8 @@ export const keys = {
   skills: ['skills'] as const,
   skill: (id: string) => ['skill', id] as const,
   chatSkills: (chatId: string) => ['chat_skills', chatId] as const,
+  /** The sub-agent library (18 §3). */
+  agentTypes: ['agent_types'] as const,
   /** One filtered view of the memory store; `['memories']` invalidates every view (12 §B5). */
   memories: (query: unknown) => ['memories', query] as const,
   /** What a code session changed; the file diffs hang under the same prefix (16 §5). */

@@ -481,6 +481,9 @@ fn manager_windowed(
 /// checkbox both go through, so the test writes one.
 fn with_sub_agents(h: &Harness, chat: ChatId) {
     use gantry_store::repos::connectors::{NewInstance, attach, insert};
+    // Startup fills the library with whatever built-in is missing (18 §3); without this there
+    // is nothing for the model to name.
+    gantry_agent::subagents::seed(h.chats().store());
     let id = gantry_core::InstanceId::new();
     h.chats()
         .store()

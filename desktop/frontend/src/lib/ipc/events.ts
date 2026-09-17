@@ -42,6 +42,9 @@ export function useBackendEvents() {
         void qc.invalidateQueries({ queryKey: ['project'] });
         void qc.invalidateQueries({ queryKey: keys.chats });
       }),
+      events.agentTypesChanged.listen(() => {
+        void qc.invalidateQueries({ queryKey: keys.agentTypes });
+      }),
       events.memoryChanged.listen(() => {
         void qc.invalidateQueries({ queryKey: ['memories'] });
       }),

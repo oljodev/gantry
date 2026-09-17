@@ -18,6 +18,10 @@ CREATE INDEX chats_parent ON chats(parent_turn_id) WHERE parent_turn_id IS NOT N
 --
 -- `open_json` is the list of fields the *parent model* may set in the call. Everything not in it
 -- is fixed by the type, and naming it in a call is refused rather than ignored.
+--
+-- The rows Gantry ships are written by `gantry_agent::subagents::library::seed` at startup, not
+-- here: Reset has to know what the original said, and a second copy of the same paragraph in a
+-- SQL file is a second copy to keep in step.
 CREATE TABLE agent_types (
   -- The slug the model names in a call, and what the user reads.
   id            TEXT PRIMARY KEY,
@@ -44,26 +48,3 @@ CREATE TABLE agent_types (
   created_at    INTEGER NOT NULL,
   updated_at    INTEGER NOT NULL
 );
-
--- The two types that ship (18 §3, A4). One knows its job and fixes every field; one knows
--- nothing and lets the parent say everything, which is the shape a coding task wants.
-INSERT INTO agent_types (id, name, description, instructions, model, connectors_json, mode, guard,
-                         write_files, memory, skills, open_json, builtin, enabled, created_at, updated_at)
-VALUES
-  ('researcher', 'Researcher',
-   'Reads the web and reports back. Give it a question and what you need out of it. It cannot change anything.',
-   'You are a research sub agent. You were given one question by another model and your whole output is the answer to it.
-
-Read before you answer. Search, then open the promising results with fetch_url and read them; a snippet is not a source. Use find_in_page on a long page rather than paging through it from the top. Quote what a page actually says, with the address you read it at, and say plainly when you could not find something rather than filling the gap from memory.
-
-Answer the question you were given and nothing beside it. No preamble, no offer to continue, no questions back — nobody will read a question. Lead with the answer, then the evidence for it, then anything you could not settle.',
-   'inherit', '["web"]', 'auto', 1, 0, 0, 0, '[]', 1, 1,
-   unixepoch() * 1000, unixepoch() * 1000),
-  ('agent', 'General agent',
-   'A sub agent you brief yourself: write its instructions and say which tools it needs. Use it for work that is not research.',
-   'You are a sub agent. Another model gave you the task below and will read your report; the user will not see this conversation and cannot answer you.
-
-Do the work, then report: what you did, what you found, and anything the model that briefed you has to decide. No preamble and no questions back.',
-   'inherit', '["inherit"]', NULL, NULL, 0, 0, 0,
-   '["instructions","connectors","write","model"]', 1, 1,
-   unixepoch() * 1000, unixepoch() * 1000);

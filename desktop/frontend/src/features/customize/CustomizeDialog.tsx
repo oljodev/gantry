@@ -1,14 +1,22 @@
-import { BrainIcon, GearIcon, GraduationCapIcon, PuzzlePieceIcon } from '@phosphor-icons/react';
+import {
+  BrainIcon,
+  GearIcon,
+  GraduationCapIcon,
+  PuzzlePieceIcon,
+  UsersThreeIcon,
+} from '@phosphor-icons/react';
 
 import { PrefsDialog, RailLink, type RailItem } from '@/components/gantry/settings/PrefsDialog';
 import { ConnectorsSection } from '@/features/customize/ConnectorsSection';
 import { MemorySection } from '@/features/customize/MemorySection';
 import { SkillsSection } from '@/features/customize/SkillsSection';
+import { SubAgentsSection } from '@/features/customize/SubAgentsSection';
 import { CUSTOMIZE_SECTIONS, type CustomizeSection } from '@/features/settings/sections';
 import { useUiStore } from '@/lib/stores/uiStore';
 
 const ICONS: Record<CustomizeSection, RailItem<CustomizeSection>['icon']> = {
   connectors: PuzzlePieceIcon,
+  subagents: UsersThreeIcon,
   skills: GraduationCapIcon,
   memory: BrainIcon,
 };
@@ -37,6 +45,7 @@ export function CustomizeDialog() {
       footer={<RailLink icon={GearIcon} label="Settings" onClick={() => openSettings('general')} />}
     >
       {active === 'connectors' && <ConnectorsSection />}
+      {active === 'subagents' && <SubAgentsSection />}
       {active === 'skills' && <SkillsSection />}
       {active === 'memory' && <MemorySection />}
     </PrefsDialog>

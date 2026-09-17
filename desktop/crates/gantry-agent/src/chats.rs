@@ -930,6 +930,22 @@ impl ChatBook {
             .map_err(store_err)
     }
 
+    /// Deletes sub-agent transcripts past the age the user set (18 §9). Zero days means
+    /// forever, and then nothing is swept: a transcript belongs to the chat that started it and
+    /// goes when that chat does.
+    ///
+    /// Beside `sweep_incognito` at startup, for the same reason: a sweep that ran while the app
+    /// was in use would delete a transcript somebody had open.
+    pub fn sweep_sub_agents(&self, keep_days: u32) -> Result<usize, GantryError> {
+        if keep_days == 0 {
+            return Ok(0);
+        }
+        let cutoff = now_ms() - i64::from(keep_days) * 24 * 60 * 60 * 1000;
+        self.store
+            .write_blocking(move |conn| chats::delete_old_sub_agents(conn, cutoff))
+            .map_err(store_err)
+    }
+
     /// Deletes the chat with everything under it, and collects the blobs that leaves behind.
     ///
     /// The collection is here as well as in the weekly sweep so that deleting a chat full of

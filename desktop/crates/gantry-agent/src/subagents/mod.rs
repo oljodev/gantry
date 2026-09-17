@@ -10,6 +10,7 @@
 //! What makes it a sub agent is three fields on its chat row and one on its turn input.
 
 pub mod connector;
+pub mod library;
 mod spec;
 
 use std::sync::Arc;
@@ -27,6 +28,7 @@ use crate::{
 };
 
 pub use connector::{ID, SubAgents, definitions};
+pub use library::{builtins, original, seed};
 pub use spec::{Overrides, SubAgentRequest, resolve};
 
 /// What the parent's tool call gets back.

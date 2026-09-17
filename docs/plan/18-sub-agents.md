@@ -215,13 +215,27 @@ came out of building it that the plan above did not say:
 
 The UI is the ordinary tool-call row — `agent=researcher task=…` — until phase C.
 
-**Phase B — you can shape it.** Customize → **Sub agents**: the library list and its editor, with
-per-field *fixed / the parent decides*; the model rules table; the switches — ask me or the guard,
-the two limits, incognito, retention. Settings struct, persistence, bindings, gallery entries.
+**Phase B — you can shape it. Built 2026-09-17.** Customize → **Sub agents**: the library list and
+its editor with a *the caller decides* box beside every openable field, the model rules table, and
+the switches — ask me or the guard, the two limits, incognito, retention. Five commands
+(`list_agent_types`, `save_agent_type`, `delete_agent_type`, `reset_agent_type`,
+`set_agent_type_enabled`) and an `AgentTypesChanged` event; the settings beside them go through
+`update_settings` like everything else, because a page that saved through two mechanisms would be
+a page with two ways to fail.
+
+Two things changed from phase A while building it:
+
+- **The built-in types moved out of migration 0016 and into `subagents::library`**, seeded at
+  startup for whatever the table is missing. **Reset** has to know what the original said, and a
+  second copy of the same paragraph inside a SQL file is a second copy to keep in step. Seeding
+  fills what is *missing*, never what is there, so an edited `researcher` survives every release.
+- **`keep_days` actually sweeps.** It was going to be phase C, but a number in a settings form
+  that does nothing is worse than no number: `ChatBook::sweep_sub_agents` runs at startup beside
+  the incognito sweep, and zero — the default — means forever.
 
 **Phase C — you can see it.** The tree modal, live while running; a node's read-only transcript;
-the parent's line and the turn footer's roll-up; the Data & privacy line for sub-agent transcripts
-and the retention sweep.
+the parent's line and the turn footer's roll-up; the Data & privacy line for sub-agent
+transcripts.
 
 ## 11. Not in v1
 

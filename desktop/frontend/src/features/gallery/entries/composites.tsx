@@ -22,11 +22,13 @@ import { CommandOutput } from '@/components/gantry/pane/CommandOutput';
 import { DiffView } from '@/components/gantry/pane/DiffView';
 import { TierLabel } from '@/components/gantry/TierLabel';
 import { Button } from '@/components/ui/button';
+import { AgentEditor } from '@/features/customize/AgentEditor';
 import { KeyStatus } from '@/features/settings/Providers';
 import { State, type GalleryEntry } from '@/features/gallery/types';
 import { authChat, authDiff } from '@/fixtures/chat';
 import { connectors } from '@/fixtures/connectors';
 import type { ActivityItem, Hunk, Tier } from '@/fixtures/types';
+import type { AgentType } from '@/bindings';
 import type { PendingAttachment } from '@/lib/attachments';
 import { PlugIcon } from '@phosphor-icons/react';
 import { useEffect, useState } from 'react';
@@ -553,7 +555,51 @@ A footnote[^1] and an image:
 [^1]: Footnotes render too.
 `;
 
+/** A type with every field open, so the form shows every control it has (18 §3). */
+function AgentForm() {
+  const [agent, setAgent] = useState<AgentType>({
+    id: 'reviewer',
+    name: 'Reviewer',
+    description: 'Reads a diff and argues with it.',
+    instructions: 'Look for the bug the author would be embarrassed by.',
+    model: { kind: 'rules' },
+    connectors: ['inherit'],
+    mode: 'plan',
+    guard: null,
+    write_files: false,
+    memory: true,
+    skills: false,
+    open: ['instructions', 'write'],
+    builtin: false,
+    enabled: true,
+  });
+  return (
+    <State label="One agent type, mid-edit">
+      <div className="w-full max-w-2xl">
+        <AgentEditor
+          agent={agent}
+          namespaces={['filesystem', 'code-editor', 'shell', 'web']}
+          rules={[
+            {
+              model: { provider: 'anthropic', model: 'claude-sonnet-5' },
+              when: 'research and long documents',
+            },
+          ]}
+          onSave={setAgent}
+          onCancel={() => {}}
+        />
+      </div>
+    </State>
+  );
+}
+
 export const compositeEntries: GalleryEntry[] = [
+  {
+    id: 'agent-editor',
+    title: 'Sub agent editor',
+    group: 'Composites',
+    render: () => <AgentForm />,
+  },
   {
     id: 'activity',
     title: 'Activity rows · Turn summary',

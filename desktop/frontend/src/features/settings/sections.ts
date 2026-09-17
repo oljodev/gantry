@@ -1,6 +1,6 @@
 /**
  * The two dialogs' sections (docs/plan/11 §2, 15 A18). Settings holds what the app does;
- * Customize holds what you add to it — connectors, skills, memory.
+ * Customize holds what you add to it — connectors, sub agents, skills, memory.
  */
 
 export const SECTIONS = [
@@ -21,6 +21,7 @@ export function isSection(s: string): s is Section {
 
 export const CUSTOMIZE_SECTIONS = [
   ['connectors', 'Connectors'],
+  ['subagents', 'Sub agents'],
   ['skills', 'Skills'],
   ['memory', 'Memory'],
 ] as const;
