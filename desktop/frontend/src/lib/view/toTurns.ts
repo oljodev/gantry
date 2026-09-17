@@ -15,6 +15,7 @@ import type {
   ElicitationAsk,
   GuardMark,
   Permission,
+  SubAgentRun,
   Turn,
 } from '@/fixtures/types';
 import { isArtifactTool } from '@/features/artifacts/registry';
@@ -97,6 +98,7 @@ function finishedTurn(t: TurnDto, modelLabel: Label, titles: ArtifactIndex): Tur
           tokensIn: t.usage.input,
           tokensOut: t.usage.output,
           cached: t.usage.cache_read || undefined,
+          subTokens: subTokens(blocks),
         }
       : undefined,
     status: statusOf(t.status),
@@ -142,6 +144,7 @@ function liveTurn(t: TurnDto, live: LiveTurn, modelLabel: Label, titles: Artifac
             tokensIn: live.usage.input,
             tokensOut: live.usage.output,
             cached: live.usage.cache_read || undefined,
+            subTokens: subTokens(blocks),
           }
         : undefined,
     status:
@@ -221,8 +224,16 @@ function messagesToBlocks(
   const blocks: Block[] = [];
   const pushItem = (item: ActivityItem) => {
     const last = blocks[blocks.length - 1];
-    if (last?.kind === 'activity') last.items.push(item);
-    else blocks.push({ kind: 'activity', items: [item] });
+    if (last?.kind === 'activity') {
+      // Sub agents fold into the row already there (18 §7): a reply that started three of them
+      // says "Waiting for 3 sub agents" once, not three rows each saying it about one.
+      const prev = last.items[last.items.length - 1];
+      if (item.kind === 'subagents' && prev?.kind === 'subagents') {
+        prev.runs.push(...item.runs);
+        return;
+      }
+      last.items.push(item);
+    } else blocks.push({ kind: 'activity', items: [item] });
   };
   // Anthropic reports a provider search as two blocks — the call, then its results — so the row
   // is kept by id and filled in when the second one arrives. The row object is the one already
@@ -294,9 +305,15 @@ function messagesToBlocks(
       }
     }
   }
-  // Calls the stream announced but whose block has not been finalised yet.
+  // Calls the stream announced but whose block has not been finalised yet. A folded sub-agent
+  // row answers for every call in it, not only the one whose id it carries — otherwise the
+  // second and third calls of a round are added again beside the row that already shows them.
   const shown = new Set(
-    blocks.flatMap((b) => (b.kind === 'activity' ? b.items.map((i) => i.id) : [])),
+    blocks.flatMap((b) =>
+      b.kind === 'activity'
+        ? b.items.flatMap((i) => (i.kind === 'subagents' ? i.runs.map((r) => r.id) : [i.id]))
+        : [],
+    ),
   );
   for (const c of Object.values(calls)) {
     if (!shown.has(c.id) && c.message_id === lastMessage?.id)
@@ -365,6 +382,10 @@ function callItem(
   const [connector, tool] = call ? [call.connector, call.tool] : splitName(part?.name ?? '');
   const modelName = call?.model_tool_name ?? part?.name ?? '';
   if (isArtifactTool(modelName)) return artifactItem(id, tool, call, part, titles);
+  // A sub agent is not "using a connector": it is a conversation this one started, and the row
+  // is a door into it rather than a line about a tool (18 §7).
+  if (connector === 'subagents')
+    return { kind: 'subagents', id, runs: [subAgentRun(id, call, part)] };
   // The file connectors have richer rows than "used a tool": a read with its line range, a
   // search with its count, an edit with its diff (16 §6).
   // The guard decides about a command far more often than about anything else, so the rows a
@@ -430,6 +451,46 @@ function artifactItem(
 }
 
 /** The structured JSON of a finished call's result, if it has one. */
+/**
+ * One sub agent as the parent's row shows it (18 §7).
+ *
+ * What it was asked comes from the call's arguments, so the row says something while it runs;
+ * what it cost comes from the structured result, which the connector fills in with the type,
+ * the seconds, the tokens and the transcript's id — the id being what opens the tree at it.
+ */
+function subAgentRun(
+  id: string,
+  call: ToolCallDto | undefined,
+  part: Extract<ContentPart, { kind: 'tool_call' }> | undefined,
+): SubAgentRun {
+  const args = (call?.args ?? part?.args ?? {}) as Record<string, unknown>;
+  const result = resultJson(call);
+  const str = (v: unknown) => (typeof v === 'string' && v.length > 0 ? v : undefined);
+  const num = (v: unknown) => (typeof v === 'number' ? v : undefined);
+  return {
+    id,
+    agent: str(args.agent) ?? 'sub agent',
+    task: str(args.task) ?? '',
+    status: rowStatus(call),
+    chatId: str(result?.transcript),
+    seconds: num(result?.seconds),
+    tokens: num(result?.tokens),
+  };
+}
+
+/** What the sub agents under this turn spent, for the footer's second number. */
+function subTokens(blocks: Block[]): number | undefined {
+  let total = 0;
+  for (const b of blocks) {
+    if (b.kind !== 'activity') continue;
+    for (const item of b.items) {
+      if (item.kind !== 'subagents') continue;
+      for (const run of item.runs) total += run.tokens ?? 0;
+    }
+  }
+  return total > 0 ? total : undefined;
+}
+
 function resultJson(call: ToolCallDto | undefined): Record<string, unknown> | undefined {
   const first = call?.result?.[0];
   if (first?.kind === 'json' && first.json && typeof first.json === 'object') {

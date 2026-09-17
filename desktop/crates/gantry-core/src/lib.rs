@@ -28,7 +28,7 @@ pub mod skill;
 pub mod time;
 pub mod tool;
 
-pub use agent::{AgentModel, AgentType, INHERIT, OpenField};
+pub use agent::{AgentModel, AgentType, INHERIT, OpenField, SubAgentNode};
 pub use app_info::AppInfo;
 pub use artifact::{
     ArtifactContent, ArtifactDto, ArtifactVersionDto, RenderError, RenderReport, RenderStatus,

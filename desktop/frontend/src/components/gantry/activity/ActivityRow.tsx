@@ -13,6 +13,7 @@ import {
   ShieldWarningIcon,
   SparkleIcon,
   TerminalIcon,
+  UsersThreeIcon,
   XIcon,
 } from '@phosphor-icons/react';
 import { type ReactNode, useState } from 'react';
@@ -321,6 +322,39 @@ export function ActivityRow({
           onOpen={item.artifactId ? open : undefined}
         />
       );
+    case 'subagents': {
+      const waiting = item.runs.filter(
+        (r) => r.status === 'running' || r.status === 'waiting' || r.status === 'proposed',
+      ).length;
+      const failed = item.runs.filter(
+        (r) => r.status === 'failed' || r.status === 'cancelled' || r.status === 'denied',
+      ).length;
+      const seconds = Math.max(0, ...item.runs.map((r) => r.seconds ?? 0));
+      const tokens = item.runs.reduce((n, r) => n + (r.tokens ?? 0), 0);
+      return (
+        <Row
+          icon={<UsersThreeIcon />}
+          title={
+            waiting > 0
+              ? `Waiting for ${plural(waiting, 'sub agent')}`
+              : `${plural(item.runs.length, 'sub agent')} reported`
+          }
+          summary={item.runs.map((r) => r.agent).join(', ')}
+          status={
+            waiting > 0 ? (
+              <Spinner />
+            ) : (
+              <span className="flex items-center gap-1.5 text-meta text-fg-3 tnum">
+                {failed > 0 && <span className="text-bad">{failed} failed</span>}
+                {seconds > 0 && <span>{seconds} s</span>}
+                {tokens > 0 && <span>{tokens.toLocaleString()} tokens</span>}
+              </span>
+            )
+          }
+          onOpen={open}
+        />
+      );
+    }
     case 'context':
       return (
         <div className="flex min-h-6 items-center gap-1.5 px-1 text-meta text-fg-3">
@@ -723,4 +757,9 @@ function Done() {
 
 function Failed() {
   return <XIcon className="size-3.5 text-bad" aria-label="Failed" />;
+}
+
+/** "1 sub agent" / "3 sub agents": the row counts things, and the count reads as a sentence. */
+function plural(n: number, noun: string): string {
+  return `${n} ${noun}${n === 1 ? '' : 's'}`;
 }

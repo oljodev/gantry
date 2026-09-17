@@ -138,7 +138,28 @@ export type ActivityItem =
       action?: 'created' | 'updated';
       status?: 'running' | 'done' | 'failed' | 'cancelled';
     }
-  | { kind: 'context'; id: string; skills: string[]; memories: number };
+  | { kind: 'context'; id: string; skills: string[]; memories: number }
+  /**
+   * The sub agents one reply started (18 §7). Consecutive calls fold into one row, because
+   * "Waiting for 3 sub agents" is the sentence, not three rows each saying it once. The row is
+   * all the parent's chat says about them: their own steps happened in a conversation the user
+   * is not having, and clicking the row opens the tree that holds those.
+   */
+  | { kind: 'subagents'; id: string; runs: SubAgentRun[] };
+
+/** One sub agent inside that row: what it was, what it was asked, and what it cost. */
+export interface SubAgentRun {
+  /** The tool call that started it. */
+  id: string;
+  /** The type as the model named it. */
+  agent: string;
+  task: string;
+  status: 'running' | 'waiting' | 'done' | 'failed' | 'denied' | 'cancelled' | 'proposed';
+  /** Its transcript, once it has one: the tree opens the chat by this id. */
+  chatId?: string;
+  seconds?: number;
+  tokens?: number;
+}
 
 /**
  * The guard's verdict as a row shows it (04 §6). An allow is a small mark with the reason on
@@ -286,6 +307,12 @@ export interface Turn {
     /** Prefix tokens the provider served from its prompt cache (02 §3). Absent when it served
      * none, which is the answer as much as a number is: it means the prefix moved. */
     cached?: number;
+    /**
+     * Tokens spent by sub agents under this turn (18 §7). A turn that cost eight times what its
+     * own transcript explains is the first thing a user will ask about, so the footer says both
+     * numbers rather than one number that is not the whole bill.
+     */
+    subTokens?: number;
   };
   status: 'done' | 'running' | 'waiting' | 'failed' | 'cancelled' | 'interrupted';
   /** When the turn ended, for "2 min ago"; absent while running. */

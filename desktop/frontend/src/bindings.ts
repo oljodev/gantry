@@ -382,6 +382,14 @@ export const commands = {
 	 *  shorter tool description as well as one fewer thing it can do.
 	 */
 	setAgentTypeEnabled: (id: string, enabled: boolean) => typedError<null, ErrorDto>(__TAURI_INVOKE("set_agent_type_enabled", { id, enabled })),
+	/**
+	 *  The sub agents one turn started, for the tree modal (18 §7).
+	 * 
+	 *  Read on demand rather than pushed: while a turn runs the tree refetches, and when nothing is
+	 *  running there is nothing to push. A sub agent's own transcript comes from `get_chat` like
+	 *  any other chat — it is one, and the tree is the only list that shows them.
+	 */
+	listSubAgents: (turnId: TurnId) => typedError<SubAgentNode[], ErrorDto>(__TAURI_INVOKE("list_sub_agents", { turnId })),
 };
 
 /** Events */
@@ -1210,7 +1218,16 @@ export type DataInfo = {
 	database_path: string,
 	/**  Size of the database file and its WAL, in bytes. */
 	database_bytes: number,
+	/**
+	 *  Conversations the user had. Sub agents are chat rows too (18 A1) and are counted apart,
+	 *  because "412 chats" on a machine with forty of them would be a number about the schema.
+	 */
 	chat_count: number,
+	/**
+	 *  Sub-agent transcripts kept (18 §9). They go when the chat that started them goes, and
+	 *  sooner if a retention is set.
+	 */
+	sub_agent_count: number,
 	/**
 	 *  Files under `blobs/`: attachments, artifact versions, the edit journal's before and
 	 *  after, project knowledge (06 §1).
@@ -2432,6 +2449,31 @@ export type SkillsChanged = null;
 
 /**  Why the model stopped. */
 export type StopReason = { kind: "end_turn" } | { kind: "tool_use" } | { kind: "max_tokens" } | { kind: "refusal"; category: string | null } | { kind: "content_filter" } | { kind: "pause_turn" } | { kind: "cancelled" } | { kind: "other"; reason: string };
+
+/**
+ *  One node of the agent tree (18 §7): a sub agent as the modal draws it.
+ * 
+ *  A row of its own rather than the chat summary it is built from, because the tree asks for
+ *  things a sidebar row never needs — the task it was given, which type started it, what its
+ *  turn cost — and none of those live on a `ChatSummary`.
+ */
+export type SubAgentNode = {
+	/**  Its transcript, which the tree opens read-only. */
+	chat_id: ChatId,
+	/**  Its own turn, absent only in the moment between the chat row and the turn row. */
+	turn_id: TurnId | null,
+	/**  The type's id, as the model named it in the call. */
+	agent: string,
+	/**  The type's name today, falling back to the id when the type has since been deleted. */
+	name: string,
+	/**  What it was asked to do: the parent's words, which are its whole brief. */
+	task: string,
+	model: ModelRef,
+	status: TurnStatus,
+	started_at: number,
+	ended_at: number | null,
+	usage: Usage | null,
+};
 
 /**  Who answers a sub agent's permission card. */
 export type SubAgentPermission = 

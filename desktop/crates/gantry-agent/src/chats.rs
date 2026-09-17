@@ -6,7 +6,7 @@ use std::sync::Arc;
 use gantry_core::{
     ChatDetail, ChatGrant, ChatId, ChatSummary, ContentPart, Feedback, GantryError, MediaSource,
     Message, MessageId, Mode, ModelRef, ProjectGrant, ProjectId, ReasoningEffort, Role, StopReason,
-    Surface, ToolCallDto, TurnDto, TurnId, TurnStatus, Usage, now_ms,
+    SubAgentNode, Surface, ToolCallDto, TurnDto, TurnId, TurnStatus, Usage, now_ms,
 };
 use gantry_store::{
     BlobStore, Store,
@@ -916,6 +916,49 @@ impl ChatBook {
                 },
                 other => store_err(other),
             })
+    }
+
+    /// The sub agents one turn started, for the tree (18 §7).
+    ///
+    /// Everything the tree draws in one query rather than one per node: a turn with six sub
+    /// agents under it is refetched while it runs, and six round trips per second to say
+    /// "still running" is six times the work of one.
+    ///
+    /// The name comes from the library as it stands today, and falls back to the id: a type
+    /// the user has since deleted still started this conversation, and the tree has to be able
+    /// to say so rather than draw a node with no name on it.
+    pub fn sub_agents(&self, parent_turn: TurnId) -> Result<Vec<SubAgentNode>, GantryError> {
+        self.store
+            .read(move |conn| {
+                let library = gantry_store::repos::agents::list(conn)?;
+                let mut out = Vec::new();
+                for chat in chats::for_parent_turn(conn, parent_turn)? {
+                    let turn = turns::last_for_chat(conn, chat.id)?;
+                    let agent = chat.agent_type.clone().unwrap_or_default();
+                    let task = messages::list_for_chat(conn, chat.id)?
+                        .into_iter()
+                        .find(|m| m.message.role == Role::User)
+                        .map(|m| m.message.text())
+                        .unwrap_or_default();
+                    out.push(SubAgentNode {
+                        chat_id: chat.id,
+                        turn_id: turn.as_ref().map(|t| t.id),
+                        name: library
+                            .iter()
+                            .find(|a| a.id == agent)
+                            .map_or_else(|| agent.clone(), |a| a.name.clone()),
+                        agent,
+                        task,
+                        model: turn.as_ref().map_or(chat.model, |t| t.model.clone()),
+                        status: turn.as_ref().map_or(TurnStatus::Running, |t| t.status),
+                        started_at: turn.as_ref().map_or(chat.created_at, |t| t.started_at),
+                        ended_at: turn.as_ref().and_then(|t| t.ended_at),
+                        usage: turn.and_then(|t| t.usage),
+                    });
+                }
+                Ok(out)
+            })
+            .map_err(store_err)
     }
 
     /// Deletes every incognito session left behind (15 A21). An incognito chat is meant to

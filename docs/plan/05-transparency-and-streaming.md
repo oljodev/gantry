@@ -16,6 +16,7 @@ Activity is shown **inline in the assistant's message**, in the order it happene
 | Notice | "Earlier conversation summarized", "Thinking context reset", refusal | — | detail |
 | Artifact | "Created artifact · Title (React)", "Updated artifact · Title (v3)" | source streaming into the panel | the artifact panel (13) |
 | Context used | "2 skills, 5 memories" | — | which skills and memories were injected this turn (12) |
+| Sub agents | "Waiting for 2 sub agents", then "2 sub agents reported · 34 s · 18,400 tokens" | spinner; one row however many were started | the agent tree, and each one's own transcript (18 §7) |
 
 A collapsed summary line at the top of each turn ("7 tool calls · 3 files changed · 2 commands") lets a reader skim; expanding shows the rows. Everything is keyboard-navigable.
 

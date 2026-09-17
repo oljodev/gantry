@@ -134,6 +134,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::agents::delete_agent_type,
             commands::agents::reset_agent_type,
             commands::agents::set_agent_type_enabled,
+            commands::agents::list_sub_agents,
         ])
         .events(tauri_specta::collect_events![
             events::ChatsChanged,

@@ -23,12 +23,13 @@ import { DiffView } from '@/components/gantry/pane/DiffView';
 import { TierLabel } from '@/components/gantry/TierLabel';
 import { Button } from '@/components/ui/button';
 import { AgentEditor } from '@/features/customize/AgentEditor';
+import { AgentTree } from '@/features/chat/AgentTreeDialog';
 import { KeyStatus } from '@/features/settings/Providers';
 import { State, type GalleryEntry } from '@/features/gallery/types';
 import { authChat, authDiff } from '@/fixtures/chat';
 import { connectors } from '@/fixtures/connectors';
 import type { ActivityItem, Hunk, Tier } from '@/fixtures/types';
-import type { AgentType } from '@/bindings';
+import type { AgentType, SubAgentNode } from '@/bindings';
 import type { PendingAttachment } from '@/lib/attachments';
 import { PlugIcon } from '@phosphor-icons/react';
 import { useEffect, useState } from 'react';
@@ -101,6 +102,30 @@ const extra: ActivityItem[] = [
     ],
   },
   { kind: 'web', id: 'x10', query: 'what a gantry is', status: 'running', results: [] },
+  // Sub agents fold into one line however many a reply started (18 §7): waiting, then reported.
+  {
+    kind: 'subagents',
+    id: 'x11',
+    runs: [
+      { id: 'x11', agent: 'researcher', task: 'read the port authority pages', status: 'running' },
+      { id: 'x12', agent: 'agent', task: 'draft the summary table', status: 'running' },
+    ],
+  },
+  {
+    kind: 'subagents',
+    id: 'x13',
+    runs: [
+      {
+        id: 'x13',
+        agent: 'researcher',
+        task: 'read the port authority pages',
+        status: 'done',
+        chatId: 'chat-a',
+        seconds: 34,
+        tokens: 18_400,
+      },
+    ],
+  },
 ];
 
 /** What Stop leaves behind: a call that never finished, on a turn that is no longer running. */
@@ -593,7 +618,66 @@ function AgentForm() {
   );
 }
 
+/** The tree the parent's sub-agent line opens (18 §7), with one of each status. */
+function AgentTreeState() {
+  const [open, setOpen] = useState<string | null>('chat-a');
+  const node = (
+    chat_id: string,
+    name: string,
+    task: string,
+    status: SubAgentNode['status'],
+    usage: number | null,
+  ): SubAgentNode => ({
+    chat_id,
+    turn_id: `${chat_id}-turn`,
+    agent: name.toLowerCase().replace(' ', '-'),
+    name,
+    task,
+    model: { provider: 'openrouter', model: 'deepseek/deepseek-v4-flash' },
+    status,
+    started_at: 0,
+    ended_at: status === 'running' ? null : 34_000,
+    usage:
+      usage === null
+        ? null
+        : {
+            input: usage,
+            output: 400,
+            cache_read: 0,
+            cache_write: 0,
+            reasoning: 0,
+            cost_usd: null,
+          },
+  });
+  return (
+    <State label="The tree, with a node of each status">
+      <div className="float flex h-80 w-full max-w-2xl gap-4 p-4">
+        <AgentTree
+          nodes={[
+            node('chat-a', 'Researcher', 'read the port authority pages', 'completed', 18_000),
+            node('chat-b', 'General agent', 'draft the summary table', 'running', null),
+            node('chat-c', 'Researcher', 'find the 1974 span figures', 'failed', 900),
+          ]}
+          parentLabel="DeepSeek V4 Flash"
+          selected={open}
+          empty="Nothing started yet."
+          onSelect={setOpen}
+        />
+        <p className="text-meta text-fg-3">
+          The node opens its own transcript here, in the turn view the chat uses.
+        </p>
+      </div>
+    </State>
+  );
+}
+
 export const compositeEntries: GalleryEntry[] = [
+  {
+    id: 'agent-tree',
+    title: 'Agent tree',
+    group: 'Composites',
+    render: () => <AgentTreeState />,
+  },
   {
     id: 'agent-editor',
     title: 'Sub agent editor',

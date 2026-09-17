@@ -154,3 +154,17 @@ pub async fn set_agent_type_enabled(
     let _ = AgentTypesChanged.emit(&app);
     Ok(())
 }
+
+/// The sub agents one turn started, for the tree modal (18 §7).
+///
+/// Read on demand rather than pushed: while a turn runs the tree refetches, and when nothing is
+/// running there is nothing to push. A sub agent's own transcript comes from `get_chat` like
+/// any other chat — it is one, and the tree is the only list that shows them.
+#[tauri::command]
+#[specta::specta]
+pub fn list_sub_agents(
+    state: State<'_, AppState>,
+    turn_id: gantry_core::TurnId,
+) -> Result<Vec<gantry_core::SubAgentNode>, ErrorDto> {
+    Ok(state.turns.chats().sub_agents(turn_id)?)
+}

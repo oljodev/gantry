@@ -138,3 +138,29 @@ impl AgentType {
         self.open.contains(&field)
     }
 }
+
+/// One node of the agent tree (18 §7): a sub agent as the modal draws it.
+///
+/// A row of its own rather than the chat summary it is built from, because the tree asks for
+/// things a sidebar row never needs — the task it was given, which type started it, what its
+/// turn cost — and none of those live on a `ChatSummary`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
+pub struct SubAgentNode {
+    /// Its transcript, which the tree opens read-only.
+    pub chat_id: crate::ChatId,
+    /// Its own turn, absent only in the moment between the chat row and the turn row.
+    pub turn_id: Option<crate::TurnId>,
+    /// The type's id, as the model named it in the call.
+    pub agent: String,
+    /// The type's name today, falling back to the id when the type has since been deleted.
+    pub name: String,
+    /// What it was asked to do: the parent's words, which are its whole brief.
+    pub task: String,
+    pub model: ModelRef,
+    pub status: crate::TurnStatus,
+    #[specta(type = specta_typescript::Number)]
+    pub started_at: i64,
+    #[specta(type = Option<specta_typescript::Number>)]
+    pub ended_at: Option<i64>,
+    pub usage: Option<crate::Usage>,
+}

@@ -173,6 +173,19 @@ pub fn get(conn: &Connection, id: ChatId) -> Result<Option<ChatRecord>> {
         .optional()?)
 }
 
+/// The sub agents one turn started, oldest first (docs/plan/18 §7).
+///
+/// The one query that asks for chats a person is not having. Order is creation order, because
+/// that is the order the parent asked for them in, and a tree that reorders itself while it
+/// runs is a tree nobody can point at.
+pub fn for_parent_turn(conn: &Connection, parent_turn: TurnId) -> Result<Vec<ChatRecord>> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {COLUMNS} FROM chats WHERE parent_turn_id = ?1 ORDER BY created_at, id"
+    ))?;
+    let rows = stmt.query_map(params![parent_turn.to_string()], from_row)?;
+    Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
+}
+
 /// Every session of one surface, archived ones included, most recent first. The two lists never
 /// mix: a code session does not appear among the chats and the reverse (16 §6).
 pub fn list(conn: &Connection, surface: Surface) -> Result<Vec<ChatRecord>> {

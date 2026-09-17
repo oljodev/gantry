@@ -2491,6 +2491,39 @@ async fn a_sub_agent_does_the_work_and_hands_back_one_report() {
     );
     let listed = m.chats().list(gantry_core::Surface::Chat).unwrap();
     assert_eq!(listed.len(), 1, "the sidebar shows the conversation only");
+
+    // The one list that does show it: the tree the parent's line opens (18 §7). It names the
+    // type, the task in the parent's own words, and what the turn cost, because the whole
+    // point of the modal is answering "what did it do and what did it cost".
+    let tree = m.chats().sub_agents(detail.turns[0].id).unwrap();
+    assert_eq!(tree.len(), 1);
+    assert_eq!(tree[0].agent, "researcher");
+    assert_eq!(tree[0].name, "Researcher");
+    assert_eq!(tree[0].task, "what is a gantry crane");
+    assert_eq!(tree[0].status, TurnStatus::Completed);
+    assert_eq!(tree[0].chat_id, hidden_id(&store));
+    assert!(tree[0].ended_at.is_some(), "it finished before the parent");
+
+    // And the transcript itself reads back like any other chat, which is what makes the tree
+    // openable: no second projection, the same turn view the chat uses.
+    let inside = m.chats().get(tree[0].chat_id).unwrap().unwrap();
+    assert!(inside.turns[0].assistant_text().contains("A gantry crane"));
+}
+
+/// The id of the one sub-agent chat in the store, for the assertions above.
+fn hidden_id(store: &gantry_store::Store) -> gantry_core::ChatId {
+    store
+        .read(|c| {
+            let id: String = c.query_row(
+                "SELECT id FROM chats WHERE parent_turn_id IS NOT NULL",
+                [],
+                |r| r.get(0),
+            )?;
+            Ok(id)
+        })
+        .unwrap()
+        .parse()
+        .unwrap()
 }
 
 /// Stopping the parent stops what it started (18 §9). Without this a cancelled turn leaves a

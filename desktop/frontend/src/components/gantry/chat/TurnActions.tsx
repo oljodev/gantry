@@ -86,6 +86,9 @@ export function TurnActions({ turn, pinned, onCopy, onRate, onRetry }: TurnActio
               {/* What the provider served from its prompt cache: the answer to "is the
                   frozen prefix still the frozen prefix" (02 §3), where a person can see it. */}
               {f.cached !== undefined && ` · ${f.cached.toLocaleString()} cached`}
+              {/* What the sub agents under this turn spent (18 §7): a turn that cost eight
+                  times what its own transcript explains is the first thing to want explained. */}
+              {f.subTokens !== undefined && ` · ${f.subTokens.toLocaleString()} in sub agents`}
             </span>
           </>
         )}

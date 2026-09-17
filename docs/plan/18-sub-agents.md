@@ -233,9 +233,31 @@ Two things changed from phase A while building it:
   that does nothing is worse than no number: `ChatBook::sweep_sub_agents` runs at startup beside
   the incognito sweep, and zero — the default — means forever.
 
-**Phase C — you can see it.** The tree modal, live while running; a node's read-only transcript;
-the parent's line and the turn footer's roll-up; the Data & privacy line for sub-agent
-transcripts.
+**Phase C — you can see it. Built 2026-09-17.** The parent's one line where the tool call was —
+*"Waiting for 2 sub agents"*, then *"1 sub agent reported · 34 s · 18,400 tokens"* — the tree it
+opens, each node's read-only transcript inside the modal, the footer's roll-up, and the
+Data & privacy row that says the transcripts exist. One command (`list_sub_agents`) and one DTO
+(`SubAgentNode`); everything else is projection.
+
+Four things came out of building it:
+
+- **The line is folded in the view model, not in the backend.** Consecutive `subagents__run`
+  calls become one `subagents` activity item holding one run each, because "Waiting for 3 sub
+  agents" is the sentence — three rows each saying it about one agent is a log file. The fold
+  turned up a real bug in the projection: the pass that adds calls the stream announced but the
+  transcript has not caught up with matched on the row's id, and a row that stands for three
+  calls carries one id, so the second and third were added a second time. It now answers for
+  every call in it.
+- **The row does not fold away with the tool work.** `TurnSteps` keeps it beside the context and
+  notice rows, always visible: it is the one line the parent's chat says about a conversation the
+  user is not having (A6), and behind "used a tool ×3" it would say nothing at all.
+- **Live is a one-second refetch, not a new event.** A sub agent's events reach the database and
+  no channel — nobody is watching its conversation — so the tree polls while anything under the
+  turn is running and stops when nothing is. An event would have been a second delivery path for
+  a modal that is open for a minute at a time.
+- **`chat_count` in Data & privacy stopped counting sub agents.** They are chat rows (A1), and
+  "412 chats" on a machine with forty of them is a number about the schema. Sub-agent transcripts
+  are counted on a row of their own, which is where the retention is explained.
 
 ## 11. Not in v1
 

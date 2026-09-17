@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import type { AgentType } from '@/bindings';
+import type { AgentType, TurnId } from '@/bindings';
 import { commands, isTauri, unwrap } from '@/lib/ipc/client';
 import { keys } from '@/lib/ipc/keys';
 
@@ -41,4 +41,21 @@ export function useAgentTypeMutations() {
   });
 
   return { save, remove, reset, setEnabled };
+}
+
+/**
+ * The sub agents one turn started (18 §7), for the tree the parent's line opens.
+ *
+ * Polled rather than pushed while something is still running. A sub agent's events reach the
+ * database but no channel — nobody is watching its conversation (18 A6) — so a second's
+ * refetch is what "live" means here, and a tree with nothing left running stops asking.
+ */
+export function useSubAgents(turnId: TurnId | null, parentRunning: boolean) {
+  return useQuery({
+    queryKey: keys.subAgents(turnId ?? ''),
+    queryFn: () => unwrap(commands.listSubAgents(turnId as TurnId)),
+    enabled: isTauri() && turnId !== null,
+    refetchInterval: (query) =>
+      parentRunning || query.state.data?.some((n) => n.status === 'running') ? 1000 : false,
+  });
 }

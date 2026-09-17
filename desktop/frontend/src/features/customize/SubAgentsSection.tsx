@@ -130,7 +130,9 @@ export function SubAgentsSection() {
           >
             <SelectTrigger aria-label="Who answers" className="w-52">
               <SelectValue>
-                {(v: SubAgentSettings['permission']) => (v === 'guard' ? 'The guard answers' : 'Ask me')}
+                {(v: SubAgentSettings['permission']) =>
+                  v === 'guard' ? 'The guard answers' : 'Ask me'
+                }
               </SelectValue>
             </SelectTrigger>
             <SelectContent>

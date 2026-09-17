@@ -46,9 +46,13 @@ export function TurnSteps({
 }) {
   const [open, setOpen] = useState(defaultOpen || detailed);
   const items = steps.flatMap((s) => (s.kind === 'activity' ? s.items : []));
-  // Context and notices are always visible; only reasoning and tool work fold.
-  const plain = items.filter((i) => i.kind === 'context' || i.kind === 'notice');
-  const folded = items.filter((i) => i.kind !== 'context' && i.kind !== 'notice');
+  // Context, notices and the sub-agent line are always visible; only reasoning and tool work
+  // folds. A sub agent's row is the one line the parent's chat says about a conversation the
+  // user is not in (18 A6) — folded away behind "used a tool" it would say nothing at all.
+  const isPlain = (i: ActivityItem) =>
+    i.kind === 'context' || i.kind === 'notice' || i.kind === 'subagents';
+  const plain = items.filter(isPlain);
+  const folded = items.filter((i) => !isPlain(i));
 
   if (folded.length === 0) {
     return (
@@ -64,7 +68,7 @@ export function TurnSteps({
           ) : null,
         )}
         {plain.map((item) => (
-          <ActivityRow key={item.id} item={item} />
+          <ActivityRow key={item.id} item={item} onOpen={onOpen} />
         ))}
       </div>
     );
@@ -77,7 +81,7 @@ export function TurnSteps({
   return (
     <div className="my-2">
       {plain.map((item) => (
-        <ActivityRow key={item.id} item={item} />
+        <ActivityRow key={item.id} item={item} onOpen={onOpen} />
       ))}
       <button
         type="button"

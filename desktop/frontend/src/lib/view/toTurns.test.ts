@@ -357,3 +357,61 @@ describe('a permission card that lets an argument be changed (04 §7)', () => {
     expect(Object.keys(permission.args)).toEqual(['prompt', 'model']);
   });
 });
+
+describe('the sub agents a reply started (18 §7)', () => {
+  const started = (id: string, agent: string, extra: Partial<ToolCallDto> = {}) =>
+    call({
+      id,
+      connector: 'subagents',
+      connector_name: 'Sub agents',
+      tool: 'run',
+      model_tool_name: 'subagents__run',
+      args: { agent, task: `do ${agent} things` },
+      tier: 'app',
+      ...extra,
+    });
+  const reported = (seconds: number, tokens: number, transcript: string) =>
+    ({
+      result: [{ kind: 'json', json: { seconds, tokens, transcript, status: 'completed' } }],
+    }) as Partial<ToolCallDto>;
+
+  it('folds three calls into one line, because that is the sentence', () => {
+    const items = rows([
+      started('c1', 'researcher', reported(12, 4000, 'chat-a')),
+      started('c2', 'agent', reported(30, 6000, 'chat-b')),
+      started('c3', 'agent', { status: 'running' }),
+    ]);
+    expect(items).toHaveLength(1);
+    const item = items[0]!;
+    if (item.kind !== 'subagents') throw new Error('not the sub-agent row');
+    expect(item.runs.map((r) => r.agent)).toEqual(['researcher', 'agent', 'agent']);
+    expect(item.runs[0]!.chatId).toBe('chat-a');
+    expect(item.runs[0]!.task).toBe('do researcher things');
+    // The one still going is what makes the row say "waiting" rather than "reported".
+    expect(item.runs[2]!.status).toBe('running');
+  });
+
+  it('adds what they spent to the footer, so the turn explains its own bill', () => {
+    const detail = chat([
+      started('c1', 'researcher', reported(12, 4000, 'chat-a')),
+      started('c2', 'agent', reported(30, 6000, 'chat-b')),
+    ]);
+    const turn = {
+      ...detail.turns[0]!,
+      usage: { input: 100, output: 50, cache_read: 0, cache_write: 0 },
+    } as unknown as TurnDto;
+    const [only] = toTurns({ ...detail, turns: [turn] }, undefined, (r) => r.model);
+    expect(only!.footer?.tokensIn).toBe(100);
+    expect(only!.footer?.subTokens).toBe(10_000);
+  });
+
+  it('says nothing about sub agents on a turn that started none', () => {
+    const detail = chat([call({})]);
+    const turn = {
+      ...detail.turns[0]!,
+      usage: { input: 100, output: 50, cache_read: 0, cache_write: 0 },
+    } as unknown as TurnDto;
+    const [only] = toTurns({ ...detail, turns: [turn] }, undefined, (r) => r.model);
+    expect(only!.footer?.subTokens).toBeUndefined();
+  });
+});

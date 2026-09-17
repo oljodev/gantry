@@ -49,6 +49,7 @@ import { FileToolsDialog } from '@/features/connectors/FileToolsDialog';
 import { hasFileTools, useTurnOnConnectors } from '@/features/connectors/fileConnectors';
 import { WEB_CONNECTOR, webInstance } from '@/features/connectors/webSearch';
 import { MoveToProjectDialog } from '@/features/projects/MoveToProjectDialog';
+import { AgentTreeDialog } from '@/features/chat/AgentTreeDialog';
 import { useProject } from '@/lib/ipc/hooks/projects';
 import { useChatSkills, useSkillMutations, useSkills } from '@/lib/ipc/hooks/skills';
 import {
@@ -135,6 +136,8 @@ export function ChatView({
   const [movingToProject, setMovingToProject] = useState(false);
   /** The folder just added to a chat that has no way to read one (03 §11). */
   const [folderWithoutTools, setFolderWithoutTools] = useState<string | null>(null);
+  /** The turn whose agent tree is open (18 §7), from a click on its sub-agent line. */
+  const [treeTurn, setTreeTurn] = useState<string | null>(null);
   const unguardedOk = useUiStore((s) => s.unguarded.includes(chatId));
   const rememberUnguarded = useUiStore((s) => s.rememberUnguarded);
   const [asking, setAsking] = useState<{
@@ -211,9 +214,15 @@ export function ChatView({
     [revert.file],
   );
   const openItem = useCallback(
-    (item: ActivityItem) => {
+    (item: ActivityItem, turnId?: string) => {
       if (item.kind === 'artifact') {
         if (item.artifactId) showArtifact(item.artifactId);
+        return;
+      }
+      // The sub-agent line opens the tree rather than the right pane (18 A7): the pane belongs
+      // to artifacts and files, and a conversation is not a thing to read in a column.
+      if (item.kind === 'subagents') {
+        setTreeTurn(turnId ?? null);
         return;
       }
       const tab = detailTab(item, revertPath);
@@ -613,7 +622,7 @@ export function ChatView({
                 detailed={surface === 'code'}
                 onAddKey={() => openSettings('providers')}
                 isLast={i === turns.length - 1}
-                onOpenItem={openItem}
+                onOpenItem={(item) => openItem(item, turn.id)}
                 onAllowAnyway={(callId) => {
                   void allowBlocked(chatId, callId).catch((err: unknown) => {
                     toast.add({
@@ -815,6 +824,14 @@ export function ChatView({
       )}
       {movingToProject && (
         <MoveToProjectDialog chatId={chatId} onClose={() => setMovingToProject(false)} />
+      )}
+      {treeTurn !== null && (
+        <AgentTreeDialog
+          turnId={treeTurn}
+          parentTurn={turns.find((t) => t.id === treeTurn)}
+          running={running}
+          onClose={() => setTreeTurn(null)}
+        />
       )}
       {paneOpen && tabs.length > 0 && (
         <RightPane

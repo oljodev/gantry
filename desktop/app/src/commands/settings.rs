@@ -156,7 +156,12 @@ pub struct DataInfo {
     /// Size of the database file and its WAL, in bytes.
     #[specta(type = specta_typescript::Number)]
     pub database_bytes: u64,
+    /// Conversations the user had. Sub agents are chat rows too (18 A1) and are counted apart,
+    /// because "412 chats" on a machine with forty of them would be a number about the schema.
     pub chat_count: u32,
+    /// Sub-agent transcripts kept (18 §9). They go when the chat that started them goes, and
+    /// sooner if a retention is set.
+    pub sub_agent_count: u32,
     /// Files under `blobs/`: attachments, artifact versions, the edit journal's before and
     /// after, project knowledge (06 §1).
     pub blob_count: u32,
@@ -174,9 +179,22 @@ pub fn get_data_info(state: State<'_, AppState>) -> Result<DataInfo, ErrorDto> {
             bytes += m.len();
         }
     }
-    let chat_count = state
+    let (chat_count, sub_agent_count) = state
         .store
-        .read(|c| Ok(c.query_row("SELECT count(*) FROM chats", [], |r| r.get::<_, u32>(0))?))
+        .read(|c| {
+            Ok((
+                c.query_row(
+                    "SELECT count(*) FROM chats WHERE parent_turn_id IS NULL",
+                    [],
+                    |r| r.get::<_, u32>(0),
+                )?,
+                c.query_row(
+                    "SELECT count(*) FROM chats WHERE parent_turn_id IS NOT NULL",
+                    [],
+                    |r| r.get::<_, u32>(0),
+                )?,
+            ))
+        })
         .map_err(GantryError::from)?;
     let (blob_count, blob_bytes) = blob_usage(state.blobs.root());
     Ok(DataInfo {
@@ -184,6 +202,7 @@ pub fn get_data_info(state: State<'_, AppState>) -> Result<DataInfo, ErrorDto> {
         database_path: db.to_string_lossy().into_owned(),
         database_bytes: bytes,
         chat_count,
+        sub_agent_count,
         blob_count,
         blob_bytes,
     })

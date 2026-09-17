@@ -14,6 +14,7 @@ import { toast } from '@/components/ui/toast';
 import { isTauri } from '@/lib/ipc/client';
 import { useChatMutations, useChats } from '@/lib/ipc/hooks/chats';
 import { useDataInfo, useDataMutations } from '@/lib/ipc/hooks/settings';
+import { useUiStore } from '@/lib/stores/uiStore';
 
 /**
  * Settings → Data & privacy (11 §2): where the data lives, export a chat, back up the database,
@@ -26,6 +27,9 @@ export function Data() {
   const { openDataDir, backup, maintain, sweepBlobs } = useDataMutations();
   const [chatId, setChatId] = useState<string>('');
   const [format, setFormat] = useState<ExportFormat>('markdown');
+  // The retention itself lives on the Sub agents page beside the switches it belongs with
+  // (18 §10 phase B); this row is the line in Data & privacy that says the rows exist.
+  const openCustomize = useUiStore((s) => s.openCustomize);
 
   if (!isTauri()) {
     return (
@@ -123,6 +127,18 @@ export function Data() {
               {maintain.isPending ? 'Checking…' : 'Check and compact'}
             </Button>
           </div>
+        </SettingsRow>
+        <SettingsRow
+          label="Sub-agent transcripts"
+          hint={
+            d
+              ? `${d.sub_agent_count} conversation${d.sub_agent_count === 1 ? '' : 's'} a model had on your behalf. They are deleted with the chat that started them, and sooner if you set a retention.`
+              : '…'
+          }
+        >
+          <Button variant="secondary" size="sm" onClick={() => openCustomize('subagents')}>
+            Sub agents
+          </Button>
         </SettingsRow>
         <SettingsRow
           label="Attachments and artifacts"
