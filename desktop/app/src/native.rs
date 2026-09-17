@@ -8,7 +8,7 @@
 
 use std::sync::{Arc, RwLock};
 
-use gantry_connector_shell::ShellEnv;
+use gantry_connector_shell::PendingShellEnv;
 use gantry_connectors::Connector;
 use gantry_core::{InstanceId, Settings, ToolDef};
 use gantry_providers::ProviderRegistry;
@@ -25,7 +25,7 @@ pub struct Deps {
     /// Roots, file IO and the edit journal, shared by every local connector (03 §5).
     pub workspace: Arc<Workspace>,
     /// The login shell and its environment, captured once (`docs/connectors/shell.md` D2).
-    pub shell_env: Arc<ShellEnv>,
+    pub shell_env: Arc<PendingShellEnv>,
     /// Where a native connector may keep state that has to survive a restart.
     pub data_dir: std::path::PathBuf,
     /// `media` only: the provider clients, for the endpoints that make a picture (02 §4b).

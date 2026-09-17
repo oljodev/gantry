@@ -8,7 +8,7 @@ use std::{
     time::Duration,
 };
 
-use gantry_connector_shell::{Shell, ShellEnv};
+use gantry_connector_shell::{PendingShellEnv, Shell, ShellEnv};
 use gantry_connectors::{
     ChatScope, Connector, OutputStream, ToolCallRequest, ToolEventSink, ToolOutcome,
 };
@@ -91,7 +91,7 @@ fn fixture() -> Fixture {
             workspace.clone(),
             // The inherited environment, never the developer's login shell: a test that reads
             // `~/.zshrc` passes or fails by whose machine it runs on.
-            Arc::new(ShellEnv::inherited()),
+            Arc::new(PendingShellEnv::ready(ShellEnv::inherited())),
         ),
         _dir: dir,
         work,
@@ -114,7 +114,7 @@ fn homeless(home: &tempfile::TempDir) -> Fixture {
         "shell".into(),
         InstanceId::new(),
         f.workspace.clone(),
-        Arc::new(env),
+        Arc::new(PendingShellEnv::ready(env)),
     );
     f
 }

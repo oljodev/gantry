@@ -306,6 +306,70 @@ pub fn powershell_encoded(command: &str) -> String {
 const PS_PRELUDE: &str =
     "$OutputEncoding = [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)\n";
 
+/// A [`ShellEnv`] being captured on another thread, waited for by the first command that needs
+/// it (`docs/connectors/shell.md` D2).
+///
+/// The capture runs the user's login shell, which reads their profile: on a machine with a
+/// version manager and a prompt framework that is a few hundred milliseconds, and the timeout
+/// above allows five seconds of it. None of that belongs in front of a window, and nothing
+/// before the first command needs the answer — so the shell is asked at startup and the answer
+/// is collected when it is first read, which is usually long after it arrived.
+pub struct PendingShellEnv {
+    ready: std::sync::OnceLock<ShellEnv>,
+    pending: std::sync::Mutex<Option<std::thread::JoinHandle<ShellEnv>>>,
+}
+
+impl PendingShellEnv {
+    /// Starts the capture and returns at once.
+    #[must_use]
+    pub fn capture() -> Self {
+        Self {
+            ready: std::sync::OnceLock::new(),
+            pending: std::sync::Mutex::new(Some(std::thread::spawn(ShellEnv::capture))),
+        }
+    }
+
+    /// An environment that is already known. For tests, and for the places that build a shell
+    /// without wanting the user's profile in it.
+    #[must_use]
+    pub fn ready(env: ShellEnv) -> Self {
+        let ready = std::sync::OnceLock::new();
+        let _ = ready.set(env);
+        Self {
+            ready,
+            pending: std::sync::Mutex::new(None),
+        }
+    }
+
+    /// The environment, waiting for the capture if it is still running. A capture thread that
+    /// panicked leaves the process environment, which is what a failed capture leaves anyway.
+    pub fn get(&self) -> &ShellEnv {
+        if let Some(env) = self.ready.get() {
+            return env;
+        }
+        let taken = self
+            .pending
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .take();
+        if let Some(handle) = taken {
+            let _ = self
+                .ready
+                .set(handle.join().unwrap_or_else(|_| ShellEnv::inherited()));
+        }
+        self.ready.get_or_init(ShellEnv::inherited)
+    }
+}
+
+impl std::fmt::Debug for PendingShellEnv {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.ready.get() {
+            Some(env) => write!(f, "PendingShellEnv({env:?})"),
+            None => f.write_str("PendingShellEnv(capturing)"),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

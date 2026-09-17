@@ -27,7 +27,7 @@ use gantry_core::{ChatId, CommandClass, InstanceId, PlanModePolicy, RiskTier, To
 use gantry_workspace::{Workspace, WorkspaceError};
 use tokio_util::sync::CancellationToken;
 
-pub use env::ShellEnv;
+pub use env::{PendingShellEnv, ShellEnv};
 pub use run::{DEFAULT_TIMEOUT_MS, Ended, MAX_TIMEOUT_MS};
 
 /// The connector manifest, embedded at build time (`docs/plan/03-connector-system.md` §3).
@@ -39,7 +39,7 @@ pub const ID: &str = "shell";
 pub struct Shell {
     descriptor: ConnectorDescriptor,
     workspace: Arc<Workspace>,
-    env: Arc<ShellEnv>,
+    env: Arc<PendingShellEnv>,
     /// Commands in flight, so `kill_command` has something to reach.
     running: Mutex<HashMap<String, CancellationToken>>,
 }
@@ -50,7 +50,7 @@ impl Shell {
         namespace: String,
         instance_id: InstanceId,
         workspace: Arc<Workspace>,
-        env: Arc<ShellEnv>,
+        env: Arc<PendingShellEnv>,
     ) -> Self {
         Self {
             descriptor: ConnectorDescriptor {
@@ -111,7 +111,7 @@ impl Shell {
     /// exists. Nothing is weakened by that — with nothing attached there is no boundary to hold,
     /// and a command line can `cd` wherever it likes in any case (shell.md §7).
     fn home_directory(&self, cwd: Option<&str>) -> Result<PathBuf, String> {
-        let home = self.env.home().ok_or_else(|| {
+        let home = self.env.get().home().ok_or_else(|| {
             "this chat has no folder attached and your home folder could not be found, so there \
              is nowhere to run a command. Attach a folder with the + button in the composer."
                 .to_owned()
@@ -183,7 +183,7 @@ impl Shell {
 
         let result = run::run(
             run::Job {
-                env: &self.env,
+                env: self.env.get(),
                 command: &command,
                 cwd: &cwd,
                 extra_env: &extra_env,
@@ -202,8 +202,8 @@ impl Shell {
             .remove(req.call_id.as_str());
 
         match result {
-            Ok(output) => outcome(&command, &cwd, &class, &output, &self.env),
-            Err(err) => ToolOutcome::error(start_failure(&command, &err, &self.env)),
+            Ok(output) => outcome(&command, &cwd, &class, &output, self.env.get()),
+            Err(err) => ToolOutcome::error(start_failure(&command, &err, self.env.get())),
         }
     }
 
@@ -241,7 +241,7 @@ impl Connector for Shell {
         // captured, and a model that is not told writes POSIX on Windows (env.rs).
         let mut defs = definitions();
         if let Some(run) = defs.iter_mut().find(|d| d.name == "run_command") {
-            run.description.push_str(&self.env.note_for_model());
+            run.description.push_str(&self.env.get().note_for_model());
         }
         Ok(defs)
     }

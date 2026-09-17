@@ -26,7 +26,7 @@ use tauri_specta::Event;
 use crate::{
     AppState,
     connectors::ConnectorService,
-    events::{ChatsChanged, InteractionsChanged},
+    events::{ChatsChanged, InteractionsChanged, SkillsChanged},
 };
 
 /// Turns that end and titles that arrive reach the frontend as `chats:changed`; pending
@@ -98,6 +98,12 @@ fn init_phases(app: &mut App, phases: &mut crate::perf::Phases) -> Result<(), Bo
         data_dir.display(),
         log_dir.display()
     );
+    #[cfg(target_os = "linux")]
+    if let Some(value) = std::env::var_os(crate::linux::DMABUF) {
+        // Set by `main` on the NVIDIA driver, or by the user. Either way it decides how the
+        // window is painted, so it belongs in the log beside the version (`linux.rs`).
+        log::info!("{}={:?}", crate::linux::DMABUF, value);
+    }
     phases.step("directories");
 
     // The title strip is drawn by the app on every OS. macOS keeps its decorations in Overlay
@@ -205,9 +211,11 @@ fn init_phases(app: &mut App, phases: &mut crate::perf::Phases) -> Result<(), Bo
         blobs.clone(),
         data_dir.clone(),
     ));
-    // The login shell answers once, at startup: a GUI app otherwise runs commands with a
-    // nearly empty PATH on macOS (`docs/connectors/shell.md` D2).
-    let shell_env = Arc::new(gantry_connector_shell::ShellEnv::capture());
+    // The login shell answers once per run: a GUI app otherwise runs commands with a nearly
+    // empty PATH on macOS (`docs/connectors/shell.md` D2). Asked here, read by the first
+    // command that needs it — the profile of a well-equipped developer takes a good part of a
+    // second to run, and none of that belongs in front of the window.
+    let shell_env = Arc::new(gantry_connector_shell::PendingShellEnv::capture());
     phases.step("login shell");
     // Filled in below, once there is a turn manager to point at (18 §1).
     let turn_handle: Arc<std::sync::RwLock<std::sync::Weak<TurnManager>>> =
@@ -255,28 +263,18 @@ fn init_phases(app: &mut App, phases: &mut crate::perf::Phases) -> Result<(), Bo
     gantry_agent::subagents::seed(&store);
     phases.step("sub-agent library");
 
+    // The folder is walked on the housekeeping thread below; the index it fills is the one the
+    // turn manager was handed here, and the turn manager rescans before every turn anyway.
     let skills = Skills::new(store.clone(), data_dir.join("skills"));
-    if let Err(err) = skills.rescan() {
-        log::warn!("could not index the skills folder: {err}");
-    }
     turns.set_skills(skills.clone());
     phases.step("skills");
     // An incognito session lives as long as its window (15 A21). Nothing but a crash can leave
-    // one behind, and this is where that one case is answered — before any list can read it.
+    // one behind, and this is where that one case is answered — before any list can read it,
+    // which is why this one sweep is not on the housekeeping thread with the others.
     match turns.chats().sweep_incognito() {
         Ok(0) => {}
         Ok(n) => log::info!("deleted {n} incognito session(s) left by the previous run"),
         Err(err) => log::warn!("could not delete the incognito sessions left behind: {err}"),
-    }
-    // And sub-agent transcripts past the age the user set (18 §9). Zero days is forever, which
-    // is the default: they then go when the chat that started them does.
-    match turns
-        .chats()
-        .sweep_sub_agents(settings.read().map_or(0, |s| s.subagents.keep_days))
-    {
-        Ok(0) => {}
-        Ok(n) => log::info!("deleted {n} sub-agent transcript(s) past their keep-for date"),
-        Err(err) => log::warn!("could not sweep the sub-agent transcripts: {err}"),
     }
     phases.step("sweeps");
     let projects = Arc::new(gantry_agent::Projects::new(store.clone(), blobs.clone()));
@@ -312,12 +310,13 @@ fn init_phases(app: &mut App, phases: &mut crate::perf::Phases) -> Result<(), Bo
             Ok(())
         });
     }
-    // Recently deleted is thirty days, and this is the only place that notices they are up.
-    match memories.sweep() {
-        Ok(0) => {}
-        Ok(n) => log::info!("swept {n} memories out of Recently deleted"),
-        Err(err) => log::warn!("could not sweep Recently deleted: {err}"),
-    }
+    housekeeping(
+        app.handle().clone(),
+        skills.clone(),
+        memories.clone(),
+        turns.clone(),
+        &settings,
+    );
     phases.step("memory");
     // The connector tools ask the user through the same interaction registry the permission
     // cards use (03 §9, 04 §9), so they are registered once the turn manager owns it.
@@ -371,6 +370,47 @@ fn init_phases(app: &mut App, phases: &mut crate::perf::Phases) -> Result<(), Bo
         }
     });
     Ok(())
+}
+
+/// The work a start does not have to wait for (docs/dev/performance.md).
+///
+/// Walking the skills folder, expiring sub-agent transcripts and emptying Recently deleted are
+/// all housekeeping: nobody is waiting on their answers, and none of them can be seen on the
+/// first screen. They used to run between the database opening and the window appearing. An
+/// ordinary thread rather than the async runtime, because every one of them is a blocking file
+/// or database call.
+///
+/// The one event it emits is for the skill index, which a Customize page opened in the first
+/// second would otherwise show as empty until something else invalidated it.
+fn housekeeping(
+    app: AppHandle,
+    skills: Arc<gantry_agent::Skills>,
+    memories: Arc<gantry_agent::Memories>,
+    turns: Arc<TurnManager>,
+    settings: &Arc<RwLock<Settings>>,
+) {
+    let keep_days = settings.read().map_or(0, |s| s.subagents.keep_days);
+    std::thread::spawn(move || {
+        match skills.rescan() {
+            Ok(()) => {
+                let _ = SkillsChanged.emit(&app);
+            }
+            Err(err) => log::warn!("could not index the skills folder: {err}"),
+        }
+        // Sub-agent transcripts past the age the user set (18 §9). Zero days is forever, which
+        // is the default: they then go when the chat that started them does.
+        match turns.chats().sweep_sub_agents(keep_days) {
+            Ok(0) => {}
+            Ok(n) => log::info!("deleted {n} sub-agent transcript(s) past their keep-for date"),
+            Err(err) => log::warn!("could not sweep the sub-agent transcripts: {err}"),
+        }
+        // Recently deleted is thirty days, and this is the only place that notices they are up.
+        match memories.sweep() {
+            Ok(0) => {}
+            Ok(n) => log::info!("swept {n} memories out of Recently deleted"),
+            Err(err) => log::warn!("could not sweep Recently deleted: {err}"),
+        }
+    });
 }
 
 /// The settings document from its section rows; a missing or unreadable section keeps its

@@ -121,10 +121,11 @@ impl ConnectorService {
             .catalog
             .get(catalog_id)
             .ok_or_else(|| GantryError::not_found(format!("catalog entry {catalog_id}")))?;
-        Ok(
-            gantry_connectors::runtime::detect(&manifest.requires(), &self.native.shell_env.vars)
-                .await,
+        Ok(gantry_connectors::runtime::detect(
+            &manifest.requires(),
+            &self.native.shell_env.get().vars,
         )
+        .await)
     }
 
     /// The form a connector asks for at install (03 §11 step 2), and what this instance already
@@ -1259,7 +1260,9 @@ mod tests {
             registry,
             crate::native::Deps {
                 workspace,
-                shell_env: Arc::new(gantry_connector_shell::ShellEnv::inherited()),
+                shell_env: Arc::new(gantry_connector_shell::PendingShellEnv::ready(
+                    gantry_connector_shell::ShellEnv::inherited(),
+                )),
                 data_dir: dir.path().join("app-data"),
                 providers,
                 store,

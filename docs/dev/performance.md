@@ -63,6 +63,26 @@ slow list** holds only spans over `SLOW_MS` (8 ms, one frame of a 120 Hz screen)
 just hitched". So a span recorded on every frame costs one map entry rather than pushing
 everything else out of a ring buffer.
 
+## What was taken off the startup path
+
+Nothing may sit between the process starting and the window painting unless the first screen
+needs it. What now runs elsewhere:
+
+| Was | Is | Why |
+|---|---|---|
+| The login shell captured before the window (`ShellEnv::capture`) | A background thread; the first command that needs it waits (`PendingShellEnv`) | It runs the user's profile — a version manager and a prompt framework is a good part of a second, and the timeout allows five |
+| The skills folder walked, sub-agent transcripts expired, Recently deleted emptied | One housekeeping thread after `setup` | Nobody is waiting on any of them, and none of them can be seen on the first screen |
+| Settings, Customize, the command palette and KaTeX parsed before the first paint | Fetched when opened, prefetched two seconds later | 1612 kB of JavaScript in front of a window whose first screen is a chat; now 738 kB |
+
+What stays: the directories, the database and its migrations, crash recovery, the settings the
+window's own background colour is chosen from, the keyring and the provider registry, and the
+incognito sweep — which has to finish before any list can read what a crash left behind.
+
+**On Linux the window may not paint at all.** WebKitGTK's DMA-BUF path is broken on the NVIDIA
+proprietary driver, and `WEBKIT_DISABLE_DMABUF_RENDERER=1` is the fallback. It is slower where
+DMA-BUF works, so `main` sets it only where that driver is loaded, and never over a value the
+user set themselves (`desktop/app/src/linux.rs`).
+
 ## Adding a measurement
 
 ```ts

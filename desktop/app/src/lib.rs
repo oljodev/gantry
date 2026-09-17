@@ -8,6 +8,7 @@
 mod commands;
 mod connectors;
 mod events;
+pub mod linux;
 mod native;
 mod perf;
 mod startup;
