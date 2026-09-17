@@ -10,6 +10,11 @@ import * as __TAURI_EVENT from "@tauri-apps/api/event";
 export const commands = {
 	/**  Facts about the running app: version, OS, directories. The M0 round-trip command. */
 	appInfo: () => typedError<AppInfo, ErrorDto>(__TAURI_INVOKE("app_info")),
+	/**
+	 *  What startup spent, and how long ago it was (`perf.rs`). Read by Settings → Advanced, which
+	 *  joins it to the webview's own marks.
+	 */
+	startupTiming: () => __TAURI_INVOKE<StartupTiming>("startup_timing"),
 	getSettings: () => typedError<Settings, ErrorDto>(__TAURI_INVOKE("get_settings")),
 	/**
 	 *  Replaces the given sections, persists them and returns the whole document. A change to the
@@ -2446,6 +2451,30 @@ export type SkillSource =
 
 /**  The skill library changed: one was written, imported, deleted, switched or pinned (12 §A). */
 export type SkillsChanged = null;
+
+/**  One phase of startup. */
+export type StartupPhase = {
+	/**  A few words, in the app's own vocabulary: "database", "keychain", "login shell". */
+	name: string,
+	ms: number,
+};
+
+/**
+ *  What the backend spent before the window could paint, returned by `startup_timing`.
+ * 
+ *  One number per phase of `startup::init`, in the order they ran, plus the clock the
+ *  frontend joins its own marks to: `since_start_ms` is how long ago the process began, read
+ *  at the moment of the call, so a mark taken in the webview can be placed on the same line
+ *  as the work that happened before the webview existed (docs/dev/performance.md).
+ */
+export type StartupTiming = {
+	/**  First line of `run()` to the end of `setup`. */
+	total_ms: number,
+	/**  Each phase, in the order it ran. */
+	phases: StartupPhase[],
+	/**  First line of `run()` to this call. */
+	since_start_ms: number,
+};
 
 /**  Why the model stopped. */
 export type StopReason = { kind: "end_turn" } | { kind: "tool_use" } | { kind: "max_tokens" } | { kind: "refusal"; category: string | null } | { kind: "content_filter" } | { kind: "pause_turn" } | { kind: "cancelled" } | { kind: "other"; reason: string };

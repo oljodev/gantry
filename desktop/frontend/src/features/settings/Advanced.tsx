@@ -4,6 +4,7 @@ import { NumberInput } from '@/components/ui/number-input';
 import { Switch } from '@/components/ui/switch';
 import { isTauri } from '@/lib/ipc/client';
 import { useSecretStoreStatus, useSettings, useUpdateSettings } from '@/lib/ipc/hooks/settings';
+import { Speed } from '@/features/settings/Speed';
 import { advancedDefaults } from '@/lib/settingsDefaults';
 
 /**
@@ -96,6 +97,7 @@ export function Advanced() {
           </span>
         </SettingsRow>
       </SettingsGroup>
+      <Speed />
     </div>
   );
 }

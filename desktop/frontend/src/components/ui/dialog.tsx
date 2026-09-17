@@ -3,6 +3,7 @@ import { XIcon } from '@phosphor-icons/react';
 import type * as React from 'react';
 
 import { Button } from '@/components/ui/button';
+import { useOpenTiming } from '@/lib/perf';
 import { cn } from '@/lib/utils';
 
 /** Level 3: floating recipe plus a backdrop; centred, 200 ms scale-in (15 §6, §10). */
@@ -24,6 +25,8 @@ function DialogContent({
   showCloseButton = true,
   ...props
 }: DialogPrimitive.Popup.Props & { showCloseButton?: boolean }) {
+  // Every dialog in the app is timed by this one line (docs/dev/performance.md).
+  useOpenTiming('dialog');
   return (
     <DialogPrimitive.Portal>
       <DialogPrimitive.Backdrop

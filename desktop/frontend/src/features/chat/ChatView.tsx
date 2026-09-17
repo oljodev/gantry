@@ -62,6 +62,7 @@ import { InstallDialog } from '@/features/connectors/InstallDialog';
 import { useInstallFlow } from '@/features/connectors/install';
 import { modelCapabilities, modelLabel, useModelCatalog } from '@/lib/ipc/hooks/providers';
 import { useSettings } from '@/lib/ipc/hooks/settings';
+import { timed } from '@/lib/perf';
 import { chatDefaults } from '@/lib/settingsDefaults';
 import { useRunStore } from '@/lib/stores/runStore';
 import { useUiStore } from '@/lib/stores/uiStore';
@@ -344,7 +345,10 @@ export function ChatView({
   }
   const detail = chat.data;
   const running = live?.status === 'running' || detail.active_turn !== null;
-  const turns = toTurns(detail, live, (ref) => modelLabel(providers, ref), artifacts);
+  // Timed because it runs on every frame of a streaming answer (docs/dev/performance.md).
+  const turns = timed('transcript', () =>
+    toTurns(detail, live, (ref) => modelLabel(providers, ref), artifacts),
+  );
   // Capability-driven controls (02 §2): the catalog says what the model can do; an unlisted
   // model keeps thinking available.
   //

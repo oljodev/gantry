@@ -29,7 +29,7 @@ pub mod time;
 pub mod tool;
 
 pub use agent::{AgentModel, AgentType, INHERIT, OpenField, SubAgentNode};
-pub use app_info::AppInfo;
+pub use app_info::{AppInfo, StartupPhase, StartupTiming};
 pub use artifact::{
     ArtifactContent, ArtifactDto, ArtifactVersionDto, RenderError, RenderReport, RenderStatus,
     VersionSource,

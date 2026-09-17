@@ -75,6 +75,15 @@ pub fn log_plugin() -> TauriPlugin<tauri::Wry> {
 }
 
 pub fn init(app: &mut App) -> Result<(), Box<dyn Error>> {
+    // Timed whether it succeeds or not: a startup that failed halfway is exactly the one whose
+    // numbers are worth reading (perf.rs).
+    let mut phases = crate::perf::Phases::new();
+    let result = init_phases(app, &mut phases);
+    phases.finish();
+    result
+}
+
+fn init_phases(app: &mut App, phases: &mut crate::perf::Phases) -> Result<(), Box<dyn Error>> {
     let data_dir = app.path().app_data_dir()?;
     let log_dir = app.path().app_log_dir()?;
     for dir in [&data_dir, &log_dir] {
@@ -89,6 +98,7 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn Error>> {
         data_dir.display(),
         log_dir.display()
     );
+    phases.step("directories");
 
     // The title strip is drawn by the app on every OS. macOS keeps its decorations in Overlay
     // mode (the traffic lights); Windows and Linux drop the native frame here rather than in
@@ -100,6 +110,7 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn Error>> {
 
     let store = Arc::new(Store::open(data_dir.join("gantry.db"))?);
     let blobs = Arc::new(BlobStore::open(data_dir.join("blobs"))?);
+    phases.step("database");
     // Crash recovery (01 §3, 09 M2): whatever the previous process left running is closed and
     // every transcript is made replayable again.
     let recovered =
@@ -113,6 +124,7 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn Error>> {
             recovered.results
         );
     }
+    phases.step("crash recovery");
 
     // The OS credential store is touched from a plain thread: its clients bring their own
     // event loops and must not be driven from inside an async runtime.
@@ -125,8 +137,10 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn Error>> {
     };
     log::info!("secret store: {:?}", secrets.status());
     let secrets = Arc::new(secrets);
+    phases.step("keychain");
 
     let settings = Arc::new(RwLock::new(load_settings(&store)?));
+    phases.step("settings");
 
     // The window's own background, before the webview has painted anything (15 A20).
     //
@@ -152,6 +166,7 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn Error>> {
             tauri::window::Color(0xf4, 0xf4, 0xf5, 0xff)
         }));
     }
+    phases.step("window colour");
 
     // The five accounts of 02 §1, one row each; custom endpoints are added from Settings.
     store.write_blocking(|conn| {
@@ -179,6 +194,7 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn Error>> {
         http_client(env!("CARGO_PKG_VERSION")),
     ));
     providers.rebuild()?;
+    phases.step("providers");
 
     // Runtime tools are always registered; installed connectors join them below.
     let artifacts = Arc::new(Artifacts::new(store.clone(), blobs.clone()));
@@ -192,6 +208,7 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn Error>> {
     // The login shell answers once, at startup: a GUI app otherwise runs commands with a
     // nearly empty PATH on macOS (`docs/connectors/shell.md` D2).
     let shell_env = Arc::new(gantry_connector_shell::ShellEnv::capture());
+    phases.step("login shell");
     // Filled in below, once there is a turn manager to point at (18 §1).
     let turn_handle: Arc<std::sync::RwLock<std::sync::Weak<TurnManager>>> =
         Arc::new(std::sync::RwLock::new(std::sync::Weak::new()));
@@ -236,12 +253,14 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn Error>> {
     // The sub-agent library gets whatever built-in it is missing (18 §3). Before the first
     // turn, because a chat started in the first second still offers them.
     gantry_agent::subagents::seed(&store);
+    phases.step("sub-agent library");
 
     let skills = Skills::new(store.clone(), data_dir.join("skills"));
     if let Err(err) = skills.rescan() {
         log::warn!("could not index the skills folder: {err}");
     }
     turns.set_skills(skills.clone());
+    phases.step("skills");
     // An incognito session lives as long as its window (15 A21). Nothing but a crash can leave
     // one behind, and this is where that one case is answered — before any list can read it.
     match turns.chats().sweep_incognito() {
@@ -259,6 +278,7 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn Error>> {
         Ok(n) => log::info!("deleted {n} sub-agent transcript(s) past their keep-for date"),
         Err(err) => log::warn!("could not sweep the sub-agent transcripts: {err}"),
     }
+    phases.step("sweeps");
     let projects = Arc::new(gantry_agent::Projects::new(store.clone(), blobs.clone()));
     let memories = Memories::new(store.clone());
     // A memory the user changed reaches the chats it was frozen into (12 §B6): every write
@@ -298,6 +318,7 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn Error>> {
         Ok(n) => log::info!("swept {n} memories out of Recently deleted"),
         Err(err) => log::warn!("could not sweep Recently deleted: {err}"),
     }
+    phases.step("memory");
     // The connector tools ask the user through the same interaction registry the permission
     // cards use (03 §9, 04 §9), so they are registered once the turn manager owns it.
     tools.register(Arc::new(
@@ -317,6 +338,7 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn Error>> {
                 ),
             ),
     ));
+    phases.step("runtime tools");
 
     app.manage(AppState {
         data_dir,

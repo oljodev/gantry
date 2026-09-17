@@ -9,6 +9,7 @@ mod commands;
 mod connectors;
 mod events;
 mod native;
+mod perf;
 mod startup;
 mod state;
 
@@ -20,6 +21,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
     tauri_specta::Builder::<tauri::Wry>::new()
         .commands(tauri_specta::collect_commands![
             commands::app::app_info,
+            commands::app::startup_timing,
             commands::settings::get_settings,
             commands::settings::update_settings,
             commands::settings::get_guardrails,
@@ -161,6 +163,9 @@ fn typescript() -> specta_typescript::Typescript {
 }
 
 pub fn run() {
+    // Before anything else: this is the instant every startup number is measured from.
+    perf::start_clock();
+
     let builder = specta_builder();
 
     #[cfg(debug_assertions)]

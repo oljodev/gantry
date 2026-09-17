@@ -23,6 +23,7 @@ import { useArtifactStore } from '@/features/artifacts/store';
 import { commands, unwrap } from '@/lib/ipc/client';
 import { invalidateChat } from '@/lib/ipc/hooks/chats';
 import { keys } from '@/lib/ipc/keys';
+import { record } from '@/lib/perf';
 import { partialStrings } from '@/lib/partialJson';
 
 /** One message of the running turn; `parts` is sparse by block index while it streams. */
@@ -127,9 +128,16 @@ function schedule() {
   else requestAnimationFrame(run);
 }
 
+/**
+ * When each chat's turn was asked for, so that the wait before the first word can be named.
+ * Dropped as soon as that word arrives.
+ */
+const asked = new Map<ChatId, number>();
+
 /** Applies every queued batch in one store update: one React commit per frame (05 §4). */
 function drain() {
   if (queue.size === 0) return;
+  const started = performance.now();
   const pending = new Map(queue);
   queue.clear();
   const finished: ChatId[] = [];
@@ -161,10 +169,29 @@ function drain() {
     }
     return { byChat };
   });
+  // What the frame cost, and — once per turn — how long the model kept the user waiting
+  // (docs/dev/performance.md). The second is the number the composer is judged by.
+  record('stream frame', performance.now() - started);
+  for (const chatId of pending.keys()) {
+    const at = asked.get(chatId);
+    if (at === undefined) continue;
+    const live = useRunStore.getState().byChat[chatId];
+    if (live && hasOutput(live)) {
+      asked.delete(chatId);
+      record('reply: first token', performance.now() - at);
+    }
+  }
   for (const chatId of finished) if (queryClient) invalidateChat(queryClient, chatId);
   // The guard never interrupts, so a block is announced rather than asked (04 §6). The toast
   // is the only notification; the sidebar's own dot is what says which chat it was in.
   for (const b of blocked) onGuardBlock?.(b);
+}
+
+/** Anything the turn has produced: a word, a thought, or a tool it decided to call. */
+function hasOutput(live: LiveTurn): boolean {
+  return (
+    live.callOrder.length > 0 || live.messages.some((m) => m.parts.some((p) => p !== undefined))
+  );
 }
 
 let onGuardBlock: ((block: GuardBlock) => void) | undefined;
@@ -496,6 +523,7 @@ export function fresh(turnId: TurnId): LiveTurn {
 export const useRunStore = create<RunState>()((set, get) => ({
   byChat: {},
   send: async (chatId, text, attachments = [], skills = []) => {
+    asked.set(chatId, performance.now());
     const channel = channelFor(chatId);
     const turnId = await unwrap(commands.sendMessage(chatId, text, attachments, skills, channel));
     adopt(set, chatId, turnId);

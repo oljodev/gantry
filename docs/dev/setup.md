@@ -51,6 +51,10 @@ The first Rust build takes a few minutes; later ones are incremental.
 | `cargo xtask check-windows [--clippy]` | type-check the Windows build from Linux or macOS (see below) |
 | `pnpm tauri build` | an installable bundle in `target/release/bundle/` |
 
+Speed is measured in the running app rather than in a benchmark: Settings → Advanced → Speed, and
+one `startup:` line per run in `<log dir>/gantry.log`. [performance.md](performance.md) says what
+is counted and how to add a measurement.
+
 ## Windows, from a machine that is not Windows
 
 The Windows code — PowerShell, the credential store, `npx.cmd`, the path gate — was written long
