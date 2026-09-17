@@ -1,7 +1,8 @@
 # Media generation
 
-One tool, `media__generate`: the chat model makes a picture, a piece of spoken audio, or a video
-clip, and it appears in the reply where the model asked for it.
+Two tools. `media__generate` makes a picture, a piece of spoken audio, or a video clip, and it
+appears in the reply where the model asked for it. `media__list_models` says what there is to
+make it with.
 
 - **Runs:** in Gantry, in this process. Nothing to install.
 - **Needs:** a provider key you already added, on a provider that serves media models — today
@@ -50,6 +51,20 @@ the blob store, the sweeper can reach it, and no provider replays it back to the
 One consequence worth knowing: the model cannot look at what it made. It knows the picture exists
 and what it asked for, and that is all. The system addendum tells it so, because a model that
 thinks it can check its own work will claim to have done it.
+
+## Looking before guessing
+
+`media__list_models` reports every media model on a provider you have a key for, cheapest first,
+with the price and the options each one offers — the aspect ratios, resolutions, lengths,
+qualities and voices `generate` would otherwise refuse a call for. It reads the cached model list
+(02 §2): no network, no charge, nothing touched. It is `read`, so no mode asks about it.
+
+It exists because the failure it prevents is a specific one. A chat model asked for a picture
+reaches for a model id it remembers — and an id remembered from training is exactly the kind of
+thing that has been renamed since. Refusing that call is right, but a refusal that ends there
+costs a round trip and usually ends with the model asking *you* which model to use. So every
+refusal about a model name now ends by naming this tool, and the row a call with no `model` would
+have got is marked `default_without_a_model`.
 
 ## Choosing the model
 

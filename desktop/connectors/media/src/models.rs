@@ -258,3 +258,120 @@ pub fn check(chosen: &Candidate, options: &MediaOptions) -> Result<(), String> {
     }
     Ok(())
 }
+
+/// One model as `list_models` reports it: the id a later call would name, what it costs, and
+/// the options it offers.
+///
+/// The capability lists are the provider's own spellings, copied rather than normalised — they
+/// are what `check` compares against, so a list that read differently here would be a second
+/// version of the truth, and the model would be told one thing and refused by another.
+#[must_use]
+pub fn row(candidate: &Candidate, is_default: bool) -> serde_json::Value {
+    let caps = &candidate.info.capabilities;
+    let mut row = serde_json::Map::new();
+    row.insert("id".into(), candidate.key().into());
+    row.insert("kind".into(), kind_name(candidate.kind).into());
+    row.insert(
+        "unit_cost_usd".into(),
+        match candidate.unit_cost() {
+            Some(cost) => serde_json::json!(cost),
+            None => serde_json::Value::Null,
+        },
+    );
+    if is_default {
+        row.insert("default_without_a_model".into(), true.into());
+    }
+    let mut list = |key: &str, values: &[String]| {
+        if !values.is_empty() {
+            row.insert(key.to_owned(), serde_json::json!(values));
+        }
+    };
+    list("aspect_ratios", &caps.aspect_ratios);
+    list("resolutions", &caps.resolutions);
+    list("qualities", &caps.qualities);
+    list("voices", &caps.voices);
+    if !caps.durations.is_empty() {
+        row.insert(
+            "durations_seconds".into(),
+            serde_json::json!(caps.durations),
+        );
+    }
+    serde_json::Value::Object(row)
+}
+
+/// Whether a model matches what a search asked for: the words are looked for in the id, all of
+/// them, in any order, case-insensitively. A search nobody typed matches everything.
+#[must_use]
+pub fn matches(candidate: &Candidate, search: &str) -> bool {
+    let key = candidate.key().to_ascii_lowercase();
+    search
+        .split_whitespace()
+        .all(|word| key.contains(&word.to_ascii_lowercase()))
+}
+
+/// What `list_models` answers: a sentence and a line per model for the model to read, and the
+/// same list as JSON for it to act on.
+///
+/// Pure, and separate from the tool, so the thing under test is the filtering rather than a
+/// connector holding a database. `available` is already ranked, so "cheapest first" is inherited
+/// rather than re-decided — the list a call sees and the model a call gets are the same order.
+#[must_use]
+pub fn listing(
+    available: &[Candidate],
+    kind: Option<Kind>,
+    search: &str,
+    limit: usize,
+) -> (String, serde_json::Value) {
+    // What a call with no `model` would pick, marked in the list, so the model can see that
+    // leaving it out is a real answer rather than a gap it has to fill.
+    let defaults: Vec<String> = [Kind::Image, Kind::Speech, Kind::Video]
+        .into_iter()
+        .filter_map(|k| available.iter().find(|c| c.kind == k))
+        .map(Candidate::key)
+        .collect();
+    let matching: Vec<&Candidate> = available
+        .iter()
+        .filter(|c| kind.is_none_or(|k| c.kind == k))
+        .filter(|c| matches(c, search))
+        .collect();
+    let shown: Vec<&Candidate> = matching.iter().take(limit).copied().collect();
+    let rows: Vec<serde_json::Value> = shown
+        .iter()
+        .map(|c| row(c, defaults.contains(&c.key())))
+        .collect();
+
+    let mut summary = if matching.is_empty() {
+        format!(
+            "Nothing matches that. There are {} media models altogether; ask again without \
+             `search`.",
+            available.len()
+        )
+    } else if matching.len() == shown.len() {
+        format!("{} models, cheapest first.", shown.len())
+    } else {
+        format!(
+            "{} of {} models, cheapest first. Narrow it with `kind` or `search`, or raise \
+             `limit`.",
+            shown.len(),
+            matching.len()
+        )
+    };
+    for candidate in &shown {
+        summary.push_str(&format!(
+            "\n{} \u{2014} {}, {}",
+            candidate.key(),
+            kind_name(candidate.kind),
+            match candidate.unit_cost() {
+                Some(cost) => format!("${cost:.4} a unit"),
+                None => "no published price".to_owned(),
+            }
+        ));
+    }
+    let structured = serde_json::json!({
+        "models": rows,
+        "shown": shown.len(),
+        "matching": matching.len(),
+        "available": available.len(),
+    });
+    (summary, structured)
+}

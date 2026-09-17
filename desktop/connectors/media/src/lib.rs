@@ -34,7 +34,8 @@ use gantry_store::Store;
 use tokio_util::sync::CancellationToken;
 
 pub use models::{
-    Candidate, Kind, check, choose, describe_kind, kind_name, list, parse_kind, rank,
+    Candidate, Kind, check, choose, describe_kind, kind_name, list, listing, matches, parse_kind,
+    rank, row,
 };
 
 /// The connector manifest, embedded at build time (03 §3).
@@ -45,6 +46,13 @@ pub const ID: &str = "media";
 /// The longest prompt a generation endpoint is asked to read. These models take one string, and
 /// a prompt past this length is a document rather than a description of a picture.
 pub const MAX_PROMPT_CHARS: usize = 8_000;
+
+/// How many models `list_models` reports when the call does not say. Enough to see the shape of
+/// what is available without pasting a provider's whole catalogue into the conversation.
+pub const DEFAULT_LISTED: usize = 40;
+
+/// The most it will report however large a `limit` asks for.
+pub const MAX_LISTED: usize = 200;
 
 pub struct Media {
     descriptor: ConnectorDescriptor,
@@ -106,7 +114,8 @@ impl Media {
             .filter(|m| !m.is_empty());
 
         let available = models::list(&self.providers, &self.store);
-        let chosen = models::choose(&available, named, wanted)?;
+        let chosen =
+            models::choose(&available, named, wanted).map_err(|e| self.with_the_list(e))?;
 
         // What the user picked for this model in the dialog, then whatever the call names on
         // top of it. Nothing is invented: a field nobody chose is a field the request omits,
@@ -128,6 +137,68 @@ impl Media {
             chosen,
             options,
         })
+    }
+
+    /// A refusal about *which model* ends with the way to stop guessing. The name is the
+    /// namespaced one, because that is the only name the model can actually call — and a model
+    /// that has just been told a name does not exist will otherwise try another one it
+    /// remembers rather than the list that is one call away.
+    fn with_the_list(&self, message: String) -> String {
+        format!(
+            "{message} Call `{}__list_models` to see every model this machine can use.",
+            self.descriptor.id
+        )
+    }
+
+    /// The catalogue, as the model asked to see it.
+    ///
+    /// Nothing is requested from anybody: this reads the cached model list the provider registry
+    /// already keeps (02 §2), so it costs nothing and cannot fail on the network. It exists
+    /// because the alternative to a list is a memory — and a model id a chat model remembers
+    /// from its training is exactly the kind of thing that has been renamed since.
+    fn list_models(&self, args: &serde_json::Value) -> ToolOutcome {
+        let wanted = match args
+            .get("kind")
+            .and_then(serde_json::Value::as_str)
+            .map(models::parse_kind)
+            .transpose()
+        {
+            Ok(kind) => kind,
+            Err(message) => return ToolOutcome::error(message),
+        };
+        let search = args
+            .get("search")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default()
+            .trim()
+            .to_owned();
+        let limit = usize::try_from(
+            args.get("limit")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(DEFAULT_LISTED as u64),
+        )
+        .unwrap_or(DEFAULT_LISTED)
+        .clamp(1, MAX_LISTED);
+
+        let available = models::list(&self.providers, &self.store);
+        if available.is_empty() {
+            return ToolOutcome::error(
+                "There are no media models on this machine: the user needs a provider key, and \
+                 the model list refreshed in Settings \u{2192} Providers.",
+            );
+        }
+        let (summary, structured) = models::listing(&available, wanted, &search, limit);
+        ToolOutcome::Complete {
+            content: vec![
+                gantry_core::ResultPart::Text { text: summary },
+                gantry_core::ResultPart::Json {
+                    json: structured.clone(),
+                },
+            ],
+            structured: Some(structured),
+            is_error: false,
+            media: Vec::new(),
+        }
     }
 
     async fn generate(
@@ -344,6 +415,7 @@ impl Connector for Media {
                     outcome = self.generate(&args, &req, &sink) => Ok(outcome),
                 }
             }
+            "list_models" => Ok(self.list_models(&req.args)),
             other => Err(ConnectorError::UnknownTool(other.to_owned())),
         }
     }
@@ -380,8 +452,11 @@ pub fn definitions() -> Vec<ToolDef> {
                 "model": {
                     "type": "string",
                     "description": "`provider/model`, e.g. `openrouter/black-forest-labs/flux-1.1-pro`. \
-                                    Omit to use the cheapest model of that kind the user has a key for; \
-                                    the result says which one that was."
+                                    **Leave this out** unless the user named a model or you have just \
+                                    read the id from `list_models`: omitted, the call uses the user's \
+                                    own default for this kind, and the result says which model that \
+                                    was. A name you remember from elsewhere is the one way this call \
+                                    fails for free."
                 },
                 "aspect_ratio": { "type": "string", "description": "`16:9`, `1:1` — only what the model lists." },
                 "resolution": { "type": "string", "description": "A video model's own spelling, e.g. `1080p`." },
@@ -394,5 +469,42 @@ pub fn definitions() -> Vec<ToolDef> {
         RiskTier::WriteExternal,
     );
     generate.parallel_safe = false;
-    vec![generate]
+
+    // Read, and free: this is the cached catalogue, not a request to anybody. A tool that costs
+    // nothing and answers the one question that makes `generate` fail is a tool the model should
+    // never have to ask permission to use.
+    let list_models = ToolDef::new(
+        "list_models",
+        "List the media models this machine can actually use: every image, speech and video \
+         model on a provider the user has a key for, cheapest first, with what each costs and \
+         the options each one offers. Call this instead of guessing a model id — ids you \
+         remember from elsewhere are usually not the ones installed here — and call it when the \
+         user asks what is available. It reads a local list: no network, no charge, no account \
+         touched. The model marked `default_without_a_model` is what `generate` uses when it is \
+         not given one.",
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "kind": {
+                    "type": "string",
+                    "enum": ["image", "speech", "video"],
+                    "description": "Only models that make this. Omit for all three."
+                },
+                "search": {
+                    "type": "string",
+                    "description": "Words that must all appear in the model id, e.g. `flux` or \
+                                    `openrouter video`."
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "How many to report. Default 40, at most 200."
+                }
+            }
+        }),
+        RiskTier::Read,
+    );
+    let mut list_models = list_models;
+    // Reading a list beside a generation is two different things happening, not two charges.
+    list_models.parallel_safe = true;
+    vec![generate, list_models]
 }

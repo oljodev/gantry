@@ -4,7 +4,9 @@
 //! everything that happens before one is called. None of it needs a network, which is the point:
 //! every refusal this connector can make, it makes for free.
 
-use gantry_connector_media::{Candidate, Kind, choose, definitions, kind_name, parse_kind, rank};
+use gantry_connector_media::{
+    Candidate, Kind, choose, definitions, kind_name, listing, parse_kind, rank,
+};
 use gantry_core::{MediaOptions, ProviderId, RiskTier};
 use gantry_providers::{ModelCapabilities, ModelInfo, Pricing, provider::Modality};
 
@@ -19,16 +21,23 @@ fn model(id: &str, out: Modality, price: Option<f64>) -> ModelInfo {
         created_at: None,
         context_window: None,
         max_output: None,
+        // Each kind is priced where its own endpoint publishes it (02 §4b): an image by the
+        // picture, speech by the token, video by the second. A helper that put every price in
+        // one field would make `unit_cost` look like it worked when it did not.
         pricing: price.map(|p| Pricing {
             input_per_mtok: 0.0,
-            output_per_mtok: 0.0,
+            output_per_mtok: if out == Modality::Speech { p } else { 0.0 },
             cache_read_per_mtok: None,
             image_input_usd: None,
-            image_output_usd: Some(p),
+            image_output_usd: (out == Modality::Image).then_some(p),
             request_usd: None,
             audio_input_per_mtok: None,
             audio_output_per_mtok: None,
-            video_per_second_usd: std::collections::BTreeMap::new(),
+            video_per_second_usd: if out == Modality::Video {
+                std::collections::BTreeMap::from([("720p".to_owned(), p)])
+            } else {
+                std::collections::BTreeMap::new()
+            },
         }),
         capabilities,
     }
@@ -61,7 +70,6 @@ fn catalogue() -> Vec<Candidate> {
 #[test]
 fn the_one_tool_is_an_external_write_and_never_runs_beside_itself() {
     let defs = definitions();
-    assert_eq!(defs.len(), 1, "one connector, one tool");
     assert_eq!(defs[0].name, "generate");
     assert_eq!(defs[0].tier, RiskTier::WriteExternal);
     assert!(
@@ -225,4 +233,83 @@ fn the_kinds_are_named_the_way_the_arguments_spell_them() {
     assert_eq!(kind_name(Kind::Image), "image");
     assert_eq!(kind_name(Kind::Speech), "speech");
     assert_eq!(kind_name(Kind::Video), "video");
+}
+
+/// Two tools, and only one of them can spend anything. Reading the catalogue is a local read,
+/// so a mode that asks before every external write does not ask before this.
+#[test]
+fn looking_at_the_list_costs_nothing() {
+    let defs = definitions();
+    assert_eq!(defs.len(), 2);
+    let list = &defs[1];
+    assert_eq!(list.name, "list_models");
+    assert_eq!(list.tier, RiskTier::Read);
+    assert!(list.parallel_safe);
+    assert!(
+        list.input_schema.get("required").is_none(),
+        "every argument is a way to narrow it; none of them is needed"
+    );
+}
+
+/// The list is what stops the guessing, so the thing a call with no `model` would get is marked
+/// in it. Without that the model has a list and no idea which of it is the answer.
+#[test]
+fn the_list_marks_what_a_call_with_no_model_would_use() {
+    let (text, json) = listing(&catalogue(), None, "", 40);
+    assert!(text.starts_with("5 models, cheapest first."), "{text}");
+    let models = json["models"].as_array().unwrap();
+    let defaults: Vec<&str> = models
+        .iter()
+        .filter(|m| m["default_without_a_model"] == serde_json::json!(true))
+        .map(|m| m["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(defaults, ["openrouter/cheap-draw", "openrouter/speak"]);
+    assert_eq!(json["available"], 5);
+}
+
+#[test]
+fn a_kind_and_a_search_narrow_the_list() {
+    let (_, json) = listing(&catalogue(), Some(Kind::Speech), "", 40);
+    assert_eq!(json["matching"], 1);
+    assert_eq!(json["models"][0]["id"], "openrouter/speak");
+
+    let (_, json) = listing(&catalogue(), None, "xai cheap", 40);
+    assert_eq!(json["matching"], 1);
+    assert_eq!(json["models"][0]["id"], "xai/cheap-draw");
+}
+
+/// A limit that cuts the list says so, with the number it cut to, because a model that thinks it
+/// has seen everything will conclude a model is missing rather than ask for more.
+#[test]
+fn a_cut_list_says_how_much_was_cut() {
+    let (text, json) = listing(&catalogue(), None, "", 2);
+    assert!(text.starts_with("2 of 5 models"), "{text}");
+    assert!(text.contains("`limit`"), "{text}");
+    assert_eq!(json["shown"], 2);
+    assert_eq!(json["matching"], 5);
+}
+
+#[test]
+fn a_search_that_matches_nothing_says_how_many_there_are() {
+    let (text, json) = listing(&catalogue(), None, "sora", 40);
+    assert!(text.contains("5 media models altogether"), "{text}");
+    assert_eq!(json["shown"], 0);
+}
+
+/// The options in a row are the ones `check` compares against: one list, so the model cannot be
+/// told one thing and refused by another.
+#[test]
+fn a_row_carries_the_options_the_model_would_be_refused_for() {
+    let mut film = candidate("openrouter", "film", Kind::Video, Some(0.1));
+    film.info.capabilities.durations = vec![4, 8];
+    film.info.capabilities.resolutions = vec!["720p".into(), "1080p".into()];
+    let (_, json) = listing(&[film], None, "", 40);
+    let row = &json["models"][0];
+    assert_eq!(row["durations_seconds"], serde_json::json!([4, 8]));
+    assert_eq!(row["resolutions"], serde_json::json!(["720p", "1080p"]));
+    assert!(
+        row.get("voices").is_none(),
+        "a list the provider never published is absent, not empty: {row}"
+    );
+    assert_eq!(row["unit_cost_usd"], serde_json::json!(0.1));
 }

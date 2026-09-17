@@ -67,7 +67,7 @@ export const connectors: Connector[] = [
   { slug: 'media', name: 'Media generation', status: 'available', category: 'media', firstParty: true, auth: 'none', runtime: 'native',
     does: 'Let the model make a picture, a voice-over or a clip',
     summary: 'The chat model calls a drawing, speaking or video model as one step of its work, and what comes back appears in the reply at that point — not as a link, not as a file on your disk. One call makes one thing, on the provider key you already added and at your own account’s price, and the result says which model answered and what it cost. Asks before every generation outside Auto.',
-    capabilities: ['generate an image', 'read this aloud', 'make a short clip', 'pick a specific model'] },
+    capabilities: ['generate an image', 'read this aloud', 'make a short clip', 'list the models you can use'] },
   { slug: 'github', name: 'GitHub', status: 'available', category: 'developer', auth: 'oauth', runtime: 'mcp-remote', website: 'https://github.com',
     does: 'Repositories, issues and pull requests',
     summary: 'Read code and issues, open and review pull requests, and check runs, from the chat. Opening a pull request is an external write and asks first outside Auto.',

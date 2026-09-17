@@ -393,6 +393,7 @@ a per-turn cap (§6.4), the user's own SearXNG (§6.3), Wiby and YaCy (§6.5).
 | Tool | Input → output | Tier |
 |------|----------------|------|
 | `generate` | `{ prompt, kind?: image\|speech\|video, model?, aspect_ratio?, resolution?, duration_seconds?, quality?, voice? }` → which model answered, what kind of file, how big, what it cost — and the file itself, in the answer | write_external |
+| `list_models` | `{ kind?, search?, limit? }` → every media model on a provider with a key, cheapest first, with its price and the options it offers; the automatic choice is marked | read |
 
 Built 2026-09-17. It is the other direction from the media *routing* of 02 §4b: routing is for a
 turn whose **chosen** model draws, and this is for a chat model that wants a picture as one step
@@ -414,12 +415,22 @@ the reply through `ToolOutcome::media` (§4), which is what puts it at the point
 consequence is worth stating: **the model cannot look at what it made**, and the prompt addendum
 says so, because a model that thinks it can check its own work will claim to have done it.
 
-**Which model.** `model` is `provider/model` and may be left out; left out, it is the cheapest of
-the requested kind among providers with a key, and the result names it. A model with no published
+**Which model.** `model` is `provider/model` and may be left out; left out, it is the user's own
+default for that kind (their connector settings, below) and otherwise the cheapest of the kind
+among providers with a key, and the result names it. A model with no published
 price is never the automatic choice — an unknown price is the one that cannot be defended
 afterwards. Whatever the user chose for that model in the dialog (`ChatSettings.model_options`,
 11 §1) is used here too, with anything the call names on top, and an option the model does not
 offer is refused **before** the request rather than after the charge.
+
+**Guessing is what `list_models` is for.** A chat model asked for a picture reaches for a model
+id it remembers, and an id remembered from training is exactly the kind of thing that has been
+renamed since — the first live run of this connector was a model inventing `muse-image`, being
+correctly refused, and then asking the user which model to use. Refusing is right; ending there
+is not. So the catalogue is a tool of its own: `read`, free, no network, reading the cached model
+list of 02 §2. Every refusal about a model *name* ends by naming it, and the row a call with no
+`model` would have got is marked `default_without_a_model`, so the list answers "which one" as
+well as "which ones".
 
 Gating: `write_external`, so Manual and Auto-edit ask and the card names the model, unguarded
 Auto does not, and the guard judges it in guarded Auto. It is not in `default_connectors`: a
