@@ -484,7 +484,21 @@
       "required": ["type", "title"],
       "properties": {
         "type": {
-          "enum": ["string", "number", "boolean", "directory", "file"]
+          "enum": ["string", "number", "boolean", "directory", "file", "select"]
+        },
+        "options": {
+          "type": "array",
+          "description": "What a `select` chooses between. A native connector whose options are live data \u2014 the models this machine can reach \u2014 leaves this out and fills them in when the form is asked for.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["value", "label"],
+            "properties": {
+              "value": { "type": "string" },
+              "label": { "type": "string" },
+              "detail": { "type": "string" }
+            }
+          }
         },
         "title": {
           "type": "string"

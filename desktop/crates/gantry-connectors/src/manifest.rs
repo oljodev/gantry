@@ -257,6 +257,10 @@ pub struct UserConfigFieldSpec {
     /// Whatever JSON the manifest wrote; the form shows it as text either way.
     #[serde(default)]
     pub default: Option<serde_json::Value>,
+    /// What a `select` chooses between, where the manifest knows them. A native connector whose
+    /// options are live data leaves this empty and fills them in at form time.
+    #[serde(default)]
+    pub options: Vec<gantry_core::UserConfigOption>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -450,6 +454,7 @@ impl Manifest {
                     serde_json::Value::String(s) => s.clone(),
                     other => other.to_string(),
                 }),
+                options: spec.options.clone(),
             })
             .collect()
     }

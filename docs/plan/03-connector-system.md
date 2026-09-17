@@ -55,7 +55,7 @@ Field reference (`manifest_version: "1"`). The `user_config` block is deliberate
 | `homepage`, `documentation`, `privacy_policy`, `license` | string | |
 | `runtime` | object | One of the three shapes below |
 | `auth` | object | `none`, `api_key`, `headers`, or `oauth2` (below) |
-| `user_config` | map | Keys → `{ type: string\|number\|boolean\|directory\|file, title, description, required, default, multiple, sensitive, min, max }`. `sensitive` values go to the secret vault. Referenced as `${user_config.KEY}` in `runtime` strings |
+| `user_config` | map | Keys → `{ type: string\|number\|boolean\|directory\|file\|select, title, description, required, default, multiple, sensitive, min, max, options }`. `sensitive` values go to the secret vault. Referenced as `${user_config.KEY}` in `runtime` strings. `select` chooses from `options` (`{ value, label, detail }`); a native connector whose options are live data leaves them out of the manifest and fills them in when the form is asked for (§11) |
 | `settings_ui` | path | Custom panel entry (`ui/index.tsx`) |
 | `multi_instance` | bool | Default false |
 | `risk` | object | `{ network: none\|local\|internet, local_system: none\|read\|write\|execute, default_tool_tier: <tier>, notes: markdown }` — shown in permission prompts |
@@ -432,6 +432,15 @@ list of 02 §2. Every refusal about a model *name* ends by naming it, and the ro
 `model` would have got is marked `default_without_a_model`, so the list answers "which one" as
 well as "which ones".
 
+**Its settings** (§11 step 2, live options): a default model per kind and a ceiling on what one
+generation may cost. The defaults are the answer to "it should work without me naming a model" —
+a call that leaves `model` out gets the model *this user* chose for that kind, and falls through
+to the cheapest only when they chose none, or when what they chose is not available today, which
+the result says in a sentence rather than swapping models silently. The ceiling is the other half
+of the same worry: this tool spends real money and the amount is decided by whatever the chat
+model typed. A generation over it is refused before anything is sent — and so is one whose model
+publishes no price, for the same reason an unpriced model is never the automatic choice.
+
 Gating: `write_external`, so Manual and Auto-edit ask and the card names the model, unguarded
 Auto does not, and the guard judges it in guarded Auto. It is not in `default_connectors`: a
 connector that spends money is one the user attaches on purpose.
@@ -601,6 +610,18 @@ The whole catalog is browsable; every entry, first-party included, is inert unti
 
    *As built (2026-09-11, `gantry-connectors/src/runtime.rs`).* Four decisions worth keeping. The refusal lives in `ConnectorService::install`, not only in the dialog, so no path can create an instance whose runtime is absent — such an instance is a row in the Connectors list that fails every call with an error about `npx`, a sentence that means nothing where it is read. The `PATH` searched is the login shell's, written out rather than taken from a `which` crate, because every crate of that name reads the *process* environment and every version manager there is — nvm, asdf, mise, volta, pyenv — puts its shims only on the shell's. A version range this cannot parse counts as satisfied: `>=20`, `>20`, `=20`, a bare `20` and `*` are understood, and refusing an install over a range Gantry cannot read would be Gantry's gap charged to the user. And Linux gets no `apt` line for Node on purpose — distributions ship majors too old for the servers that ask for it, so that button would mean "install this, then fail this check again".
 2. **Configuration.** The `user_config` form; sensitive values go to the vault (§7).
+
+   *Live options (2026-09-17).* A manifest can say which keys a connector stores; it cannot
+   always say what the menu behind one of them contains. `media`'s default model per kind is the
+   models *this* user's provider keys reach today — a fact about their account, not about the
+   connector — so `ConnectorService::user_config_form` asks `native::settings_fields` for the
+   catalog id and lets what it says about a key win over the manifest's own entry. The manifest
+   still declares the keys, so what a connector stores is readable without running it, and
+   `validate-connectors` still checks them; the code fills in the options. A `select` whose
+   options nobody could supply renders as a plain box rather than as a menu of nothing. The
+   connector reads its answers **per call** rather than holding them from when it was built: the
+   settings form writes them while the turn loop keeps the same connector object, so a cached
+   copy would be the answer the user had before they changed it.
 
    *As built (2026-09-11).* `${user_config.KEY}` is substituted into every runtime string — command, arguments, environment values, URL, headers — by `Manifest::config_with`, and a **sensitive** answer is deliberately not among them: it goes to the vault as a `user_config_secret` credential and the config row keeps only the name of the variable it fills (06 §3), so a database anybody can read never holds a token. An unanswered key is left standing rather than blanked, because `--host ${user_config.HOST}` fails with a message naming the key while `--host ` fails somewhere inside the server, later, saying something else. The answers are kept in `user_config_json` beside the substituted config rather than only inside it: the settings panel has to show what was typed last time, and a URL with the value baked in cannot be taken apart again. `set_user_config` writes both and rebuilds the registry in one step, because a config built from stale answers is a connector running against the host it used to have. The form is ordered by key — a form has to come out in *some* order, and the alternative is whatever order serde read the object in, which changes between runs.
 3. **Command preview.** The exact command, arguments and environment variable *names* that will run, as the security posture in §6 requires.

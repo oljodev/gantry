@@ -3,6 +3,13 @@ import { FolderOpenIcon } from '@phosphor-icons/react';
 import type { UserConfigField } from '@/bindings';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { pickFolder } from '@/lib/folders';
 
@@ -62,6 +69,34 @@ function Field({
       {field.description && <p className="text-meta text-fg-2">{field.description}</p>}
     </div>
   );
+
+  // A `select` whose options nobody could supply falls back to a box: a menu of nothing is a
+  // control that cannot be answered, where a typed value at least reaches the connector.
+  const options = field.options ?? [];
+  if (field.type === 'select' && options.length > 0) {
+    const current = options.find((o) => o.value === value);
+    return (
+      <div className="flex flex-col gap-1.5">
+        {label}
+        <Select value={value} onValueChange={(next) => onChange(next as string)}>
+          <SelectTrigger id={field.key} aria-label={field.title} className="w-full">
+            <SelectValue placeholder={options[0]?.label}>{current?.label}</SelectValue>
+          </SelectTrigger>
+          <SelectContent className="max-w-[min(30rem,80vw)]">
+            {options.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                <span className="min-w-0 flex-1 truncate">{option.label}</span>
+                {option.detail && (
+                  <span className="shrink-0 text-meta text-fg-3">{option.detail}</span>
+                )}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {current?.detail && <p className="text-meta text-fg-3">{current.detail}</p>}
+      </div>
+    );
+  }
 
   if (field.type === 'boolean') {
     return (

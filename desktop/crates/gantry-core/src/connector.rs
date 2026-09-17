@@ -221,6 +221,26 @@ pub struct UserConfigField {
     /// The manifest's default, as a string the form can show. A field with one is never empty.
     #[serde(default)]
     pub default: Option<String>,
+    /// What a `select` is choosing between. Empty for every other kind — and for a `select`
+    /// whose options are not known yet, which the form shows as a plain box rather than as a
+    /// menu of nothing.
+    ///
+    /// A manifest may write them out, and a native connector may fill them in when the form is
+    /// asked for (03 §11 step 2): `media`'s default model per kind is the models this machine
+    /// can reach *now*, which is a fact about the user's provider keys and nothing a manifest
+    /// could have said a year ago.
+    #[serde(default)]
+    pub options: Vec<UserConfigOption>,
+}
+
+/// One choice in a `select`, with what to say about it: `detail` is the price, the provider, the
+/// small print — the reason to pick this one rather than the one above it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+pub struct UserConfigOption {
+    pub value: String,
+    pub label: String,
+    #[serde(default)]
+    pub detail: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
@@ -231,6 +251,8 @@ pub enum UserConfigKind {
     Boolean,
     Directory,
     File,
+    /// One of a list. The list is `options`, and an empty one means nobody could supply it.
+    Select,
 }
 
 /// A catalog entry as the Discover list shows it (03 §10).

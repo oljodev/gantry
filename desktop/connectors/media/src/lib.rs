@@ -20,6 +20,7 @@
 #![forbid(unsafe_code)]
 
 mod models;
+mod settings;
 
 use std::sync::{Arc, RwLock};
 
@@ -37,6 +38,18 @@ pub use models::{
     Candidate, Kind, check, choose, describe_kind, kind_name, list, listing, matches, parse_kind,
     rank, row,
 };
+pub use settings::{AUTOMATIC, MAX_COST_USD, Preferences, fields as settings_form, key_for};
+
+/// The settings form for an installed instance (03 §11 step 2), with the model menus filled in
+/// from the models this machine can reach right now. `desktop/app/src/native.rs` asks for it
+/// when the connector's settings are opened.
+#[must_use]
+pub fn settings_fields(
+    providers: &Arc<ProviderRegistry>,
+    store: &Arc<Store>,
+) -> Vec<gantry_core::UserConfigField> {
+    settings_form(&models::list(providers, store))
+}
 
 /// The connector manifest, embedded at build time (03 §3).
 pub const MANIFEST: &str = include_str!("../manifest.json");
@@ -114,8 +127,17 @@ impl Media {
             .filter(|m| !m.is_empty());
 
         let available = models::list(&self.providers, &self.store);
-        let chosen =
-            models::choose(&available, named, wanted).map_err(|e| self.with_the_list(e))?;
+        let prefs = self.preferences();
+        let preferred = named.is_none().then(|| prefs.default_for(wanted)).flatten();
+        let chosen = models::choose(&available, named, wanted, preferred)
+            .map_err(|e| self.with_the_list(e))?;
+        prefs.affordable(&chosen)?;
+        // A default that is no longer there is worth a sentence rather than a silent swap: the
+        // user chose that model once, and a bill from a different one should not be the first
+        // they hear of it.
+        let note = preferred
+            .filter(|p| *p != chosen.key())
+            .map(|p| format!("The user's default for this kind, {p}, is not available today."));
 
         // What the user picked for this model in the dialog, then whatever the call names on
         // top of it. Nothing is invented: a field nobody chose is a field the request omits,
@@ -136,7 +158,24 @@ impl Media {
             prompt,
             chosen,
             options,
+            note,
         })
+    }
+
+    /// What the user chose in this connector's settings (03 §11 step 2).
+    ///
+    /// Read per call rather than held from when the connector was built: the settings page
+    /// writes the answers and the turn loop keeps the same connector, so a value cached at
+    /// build time would be the one the user had before they changed it.
+    fn preferences(&self) -> settings::Preferences {
+        let Some(id) = self.descriptor.instance_id else {
+            return settings::Preferences::default();
+        };
+        let values = self
+            .store
+            .read(move |c| gantry_store::repos::connectors::user_config(c, id))
+            .unwrap_or_default();
+        settings::Preferences::read(&values)
     }
 
     /// A refusal about *which model* ends with the way to stop guessing. The name is the
@@ -211,6 +250,7 @@ impl Media {
             prompt,
             chosen,
             options,
+            note,
         } = match self.generate_args(args) {
             Ok(parsed) => parsed,
             Err(message) => return ToolOutcome::error(message),
@@ -272,7 +312,7 @@ impl Media {
                 describe_kind(chosen.kind)
             ));
         }
-        answer(&chosen, &parts, usage.as_ref())
+        answer(&chosen, &parts, usage.as_ref(), note.as_deref())
     }
 }
 
@@ -280,6 +320,9 @@ struct Request {
     prompt: String,
     chosen: Candidate,
     options: MediaOptions,
+    /// Something the model should say in its own words, because the call did not do quite what
+    /// the settings said it would.
+    note: Option<String>,
 }
 
 fn is_media(part: &ContentPart) -> bool {
@@ -328,6 +371,7 @@ fn answer(
     chosen: &Candidate,
     parts: &[ContentPart],
     usage: Option<&gantry_core::Usage>,
+    note: Option<&str>,
 ) -> ToolOutcome {
     let mime = parts.first().and_then(mime_of).unwrap_or_default();
     let bytes: usize = parts.iter().filter_map(size_of).sum();
@@ -340,6 +384,10 @@ fn answer(
     );
     if let Some(cost) = cost {
         summary.push_str(&format!(" It cost ${cost:.4}."));
+    }
+    if let Some(note) = note {
+        summary.push(' ');
+        summary.push_str(note);
     }
     let structured = serde_json::json!({
         "model": chosen.key(),

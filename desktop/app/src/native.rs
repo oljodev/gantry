@@ -94,6 +94,24 @@ pub fn build(
     }
 }
 
+/// The settings form a native connector asks for, with whatever it fills in live (03 §11 step 2).
+///
+/// Separate from the manifest's `user_config` because the two answer different questions. A
+/// manifest can say *which* keys a connector stores; it cannot say what the menu behind one of
+/// them contains, when that is the models this user's own keys reach today. So the manifest
+/// declares the keys and this fills in the options, and a connector with nothing live to add
+/// says `None` and the manifest's own form stands.
+#[must_use]
+pub fn settings_fields(catalog_id: &str, deps: &Deps) -> Option<Vec<gantry_core::UserConfigField>> {
+    match catalog_id {
+        gantry_connector_media::ID => Some(gantry_connector_media::settings_fields(
+            &deps.providers,
+            &deps.store,
+        )),
+        _ => None,
+    }
+}
+
 /// The tools a native connector offers, without building one: what **Install** records so the
 /// connector's page lists its tools before it has ever been called.
 #[must_use]

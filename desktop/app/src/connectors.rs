@@ -133,11 +133,24 @@ impl ConnectorService {
         &self,
         catalog_id: &str,
     ) -> Result<Vec<gantry_core::UserConfigField>, GantryError> {
-        Ok(self
+        let mut fields = self
             .catalog
             .get(catalog_id)
             .map(|m| m.user_config_fields())
-            .unwrap_or_default())
+            .unwrap_or_default();
+        // A native connector may know things about its own form that a manifest cannot: which
+        // models this machine can reach, and what each one costs. It answers with the whole
+        // form, and what it says about a key the manifest also declares wins — the live answer
+        // is the one that is true today.
+        if let Some(live) = crate::native::settings_fields(catalog_id, &self.native) {
+            for field in live {
+                match fields.iter_mut().find(|f| f.key == field.key) {
+                    Some(existing) => *existing = field,
+                    None => fields.push(field),
+                }
+            }
+        }
+        Ok(fields)
     }
 
     pub fn user_config(&self, id: InstanceId) -> Result<BTreeMap<String, String>, GantryError> {

@@ -35,6 +35,24 @@ is not offered is a single call that spends an amount nobody can see in advance.
 The same rule is why the call does not retry: `retries` is 1, so a request that fails is a
 request that failed, not a second charge for something asked for once.
 
+## Settings
+
+Open the connector in **Customize → Connectors** and it has a form of its own:
+
+- **A default model per kind** — picture, spoken audio, clip. The menu is the models your own
+  provider keys reach, cheapest first, with each one's price. This is what a call gets when it
+  does not name a model, which is what it should normally do. "Cheapest available" is the
+  starting answer and stays honest as prices change.
+- **Most one generation may cost** — a ceiling in dollars. Anything over it is refused before
+  the request goes out, and so is a model whose provider publishes no price: a price nobody
+  published cannot be shown to be under a ceiling. Leave it empty for no ceiling.
+
+The options are built when the form is opened, from the same catalogue `generate` chooses from,
+so the form cannot offer a model the tool would then refuse. The answers are read on every call,
+so changing one takes effect on the next generation rather than on the next restart. If a default
+you chose stops being available — a key removed, a model retired — the cheapest answers instead
+and the result says so, rather than quietly billing you for a different model.
+
 ## Where the picture goes
 
 Two places, on purpose.

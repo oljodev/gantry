@@ -2516,9 +2516,32 @@ export type UserConfigField = {
 	sensitive?: boolean,
 	/**  The manifest's default, as a string the form can show. A field with one is never empty. */
 	default?: string | null,
+	/**
+	 *  What a `select` is choosing between. Empty for every other kind — and for a `select`
+	 *  whose options are not known yet, which the form shows as a plain box rather than as a
+	 *  menu of nothing.
+	 * 
+	 *  A manifest may write them out, and a native connector may fill them in when the form is
+	 *  asked for (03 §11 step 2): `media`'s default model per kind is the models this machine
+	 *  can reach *now*, which is a fact about the user's provider keys and nothing a manifest
+	 *  could have said a year ago.
+	 */
+	options?: UserConfigOption[],
 };
 
-export type UserConfigKind = "string" | "number" | "boolean" | "directory" | "file";
+export type UserConfigKind = "string" | "number" | "boolean" | "directory" | "file" | 
+/**  One of a list. The list is `options`, and an empty one means nobody could supply it. */
+"select";
+
+/**
+ *  One choice in a `select`, with what to say about it: `detail` is the price, the provider, the
+ *  small print — the reason to pick this one rather than the one above it.
+ */
+export type UserConfigOption = {
+	value: string,
+	label: string,
+	detail?: string | null,
+};
 
 /**  Who made a version (13 §7). */
 export type VersionSource = "model_create" | "model_update" | "model_edit" | "user_edit" | "user_restore";

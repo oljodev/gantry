@@ -154,7 +154,7 @@ gantry/
 │   │   ├── code-editor/                  # first-party · native: src/lib.rs, tests/edits.rs (the four tools; the work is in gantry-workspace)
 │   │   ├── shell/                        # first-party · native: src/{lib.rs, run.rs, kill.rs, shells.rs}, fixtures/commands.txt (classifier corpus)
 │   │   ├── web/                          # first-party · native: src/{lib.rs, fetch.rs, classify.rs (§7.5: what a response actually is), politeness.rs (§7.3: per-host and global limits), extract.rs, guard.rs, locate.rs, cache.rs, search/}
-│   │   ├── media/                        # first-party · native: src/{lib.rs, models.rs (which model makes it, and every refusal that costs nothing)} — one tool, one generation per call (03 §5)
+│   │   ├── media/                        # first-party · native: src/{lib.rs, models.rs (which model makes it, and every refusal that costs nothing), settings.rs (a default model per kind, a ceiling per generation)} — one generation per call, plus a free `list_models` (03 §5)
 │   │   ├── google-drive/                 # bundled third-party · mcp-remote · user-supplied OAuth client; ui/index.tsx helper panel
 │   │   ├── github/                       # bundled third-party · mcp-remote · CIMD/DCR
 │   │   └── playwright/                   # bundled third-party · mcp-stdio on the user's Node

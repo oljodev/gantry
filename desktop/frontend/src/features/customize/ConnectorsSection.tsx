@@ -307,7 +307,7 @@ function ConnectorSettings({ instance }: { instance: ConnectorInstanceDto }) {
   };
 
   return (
-    <div className="mt-3 flex flex-col gap-3 border-t border-line-subtle pt-3">
+    <div className="flex flex-col gap-3">
       <div className="flex items-center gap-1.5 text-meta text-fg-3">
         <SlidersHorizontalIcon className="size-3.5" />
         Settings
@@ -405,7 +405,10 @@ function InstalledRow({
       )}
       {open && (
         <div className="border-t border-line-subtle p-3">
-          <code className="selectable block break-all font-mono text-mono text-fg-3">
+          {/* Settings first: what a connector stores for you is the part you came here to
+              change, where its namespace and its tool list are the part you came to read. */}
+          {instance.catalog_id && <ConnectorSettings instance={instance} />}
+          <code className="selectable mt-3 block break-all font-mono text-mono text-fg-3">
             {instance.namespace}
           </code>
           {instance.tools.length > 0 && (
@@ -421,7 +424,6 @@ function InstalledRow({
               ))}
             </ul>
           )}
-          {instance.catalog_id && <ConnectorSettings instance={instance} />}
           <div className="mt-3 flex items-center gap-2">
             <Button variant="secondary" size="sm" onClick={onReconnect}>
               <ArrowClockwiseIcon />

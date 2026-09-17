@@ -134,11 +134,18 @@ pub fn rank(models: &mut [Candidate]) {
     });
 }
 
-/// The model to use: the one the call named, or the cheapest of the kind it asked for.
+/// The model to use: the one the call named, else the user's own default for that kind, else
+/// the cheapest of it.
+///
+/// `preferred` is the user's settings answer (`settings.rs`) and is only consulted when the call
+/// named nothing — a model the chat model asked for by name is not quietly replaced by a
+/// setting. A preference that is no longer available falls through to the cheapest rather than
+/// failing: the user chose a model, not a promise that a provider would keep it.
 pub fn choose(
     available: &[Candidate],
     named: Option<&str>,
     wanted: Option<Kind>,
+    preferred: Option<&str>,
 ) -> Result<Candidate, String> {
     if let Some(named) = named {
         // `provider/model` first, then a bare model id when it is unambiguous: a model that
@@ -182,6 +189,13 @@ pub fn choose(
             offer(available, None)
         ));
     };
+    if let Some(preferred) = preferred
+        && let Some(found) = available
+            .iter()
+            .find(|c| c.kind == wanted && (c.key() == preferred || c.model == preferred))
+    {
+        return Ok(found.clone());
+    }
     available
         .iter()
         .find(|c| c.kind == wanted)

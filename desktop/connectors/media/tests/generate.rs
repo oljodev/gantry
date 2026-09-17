@@ -4,8 +4,11 @@
 //! everything that happens before one is called. None of it needs a network, which is the point:
 //! every refusal this connector can make, it makes for free.
 
+use std::collections::BTreeMap;
+
 use gantry_connector_media::{
-    Candidate, Kind, choose, definitions, kind_name, listing, parse_kind, rank,
+    AUTOMATIC, Candidate, Kind, MANIFEST, Preferences, choose, definitions, key_for, kind_name,
+    listing, parse_kind, rank, settings_form,
 };
 use gantry_core::{MediaOptions, ProviderId, RiskTier};
 use gantry_providers::{ModelCapabilities, ModelInfo, Pricing, provider::Modality};
@@ -97,9 +100,9 @@ fn a_kind_is_spelled_the_way_a_person_would() {
 
 #[test]
 fn without_a_model_the_cheapest_of_that_kind_answers() {
-    let chosen = choose(&catalogue(), None, Some(Kind::Image)).unwrap();
+    let chosen = choose(&catalogue(), None, Some(Kind::Image), None).unwrap();
     assert_eq!(chosen.key(), "openrouter/cheap-draw");
-    let chosen = choose(&catalogue(), None, Some(Kind::Speech)).unwrap();
+    let chosen = choose(&catalogue(), None, Some(Kind::Speech), None).unwrap();
     assert_eq!(chosen.key(), "openrouter/speak");
 }
 
@@ -118,7 +121,9 @@ fn the_order_is_cheapest_first_and_unpriced_last() {
     let order: Vec<String> = models.iter().map(|c| c.model.clone()).collect();
     assert_eq!(order, ["bbb-draw", "mmm-draw", "zzz-draw", "aaa-draw"]);
     assert_eq!(
-        choose(&models, None, Some(Kind::Image)).unwrap().model,
+        choose(&models, None, Some(Kind::Image), None)
+            .unwrap()
+            .model,
         "bbb-draw",
         "the cheapest is what a call with no model gets"
     );
@@ -126,20 +131,20 @@ fn the_order_is_cheapest_first_and_unpriced_last() {
 
 #[test]
 fn a_bare_model_id_works_when_only_one_provider_has_it() {
-    let chosen = choose(&catalogue(), Some("dear-draw"), None).unwrap();
+    let chosen = choose(&catalogue(), Some("dear-draw"), None, None).unwrap();
     assert_eq!(chosen.key(), "openrouter/dear-draw");
 }
 
 #[test]
 fn a_bare_id_on_two_providers_asks_which() {
-    let err = choose(&catalogue(), Some("cheap-draw"), None).unwrap_err();
+    let err = choose(&catalogue(), Some("cheap-draw"), None, None).unwrap_err();
     assert!(err.contains("openrouter/cheap-draw"), "{err}");
     assert!(err.contains("xai/cheap-draw"), "{err}");
 }
 
 #[test]
 fn a_full_key_beats_the_ambiguity() {
-    let chosen = choose(&catalogue(), Some("xai/cheap-draw"), None).unwrap();
+    let chosen = choose(&catalogue(), Some("xai/cheap-draw"), None, None).unwrap();
     assert_eq!(chosen.provider.as_str(), "xai");
 }
 
@@ -147,7 +152,7 @@ fn a_full_key_beats_the_ambiguity() {
 /// gets real ids back rather than "not found".
 #[test]
 fn an_unknown_model_is_refused_with_what_there_is() {
-    let err = choose(&catalogue(), Some("dall-e-9"), Some(Kind::Image)).unwrap_err();
+    let err = choose(&catalogue(), Some("dall-e-9"), Some(Kind::Image), None).unwrap_err();
     assert!(err.contains("dall-e-9"), "{err}");
     assert!(err.contains("openrouter/cheap-draw"), "{err}");
     assert!(
@@ -158,7 +163,13 @@ fn an_unknown_model_is_refused_with_what_there_is() {
 
 #[test]
 fn a_model_that_makes_the_wrong_thing_is_refused_before_it_is_paid_for() {
-    let err = choose(&catalogue(), Some("openrouter/speak"), Some(Kind::Image)).unwrap_err();
+    let err = choose(
+        &catalogue(),
+        Some("openrouter/speak"),
+        Some(Kind::Image),
+        None,
+    )
+    .unwrap_err();
     assert!(
         err.contains("spoken audio") && err.contains("a picture"),
         "{err}"
@@ -167,20 +178,20 @@ fn a_model_that_makes_the_wrong_thing_is_refused_before_it_is_paid_for() {
 
 #[test]
 fn no_model_and_no_kind_is_a_question_rather_than_a_guess() {
-    let err = choose(&catalogue(), None, None).unwrap_err();
+    let err = choose(&catalogue(), None, None, None).unwrap_err();
     assert!(err.contains("`kind`"), "{err}");
 }
 
 #[test]
 fn a_kind_nobody_can_make_says_so() {
-    let err = choose(&catalogue(), None, Some(Kind::Video)).unwrap_err();
+    let err = choose(&catalogue(), None, Some(Kind::Video), None).unwrap_err();
     assert!(err.contains("a video clip"), "{err}");
     assert!(err.contains("Available:"), "{err}");
 }
 
 #[test]
 fn with_nothing_at_all_the_error_names_the_setting_that_fixes_it() {
-    let err = choose(&[], None, Some(Kind::Image)).unwrap_err();
+    let err = choose(&[], None, Some(Kind::Image), None).unwrap_err();
     assert!(err.contains("Settings"), "{err}");
 }
 
@@ -312,4 +323,164 @@ fn a_row_carries_the_options_the_model_would_be_refused_for() {
         "a list the provider never published is absent, not empty: {row}"
     );
     assert_eq!(row["unit_cost_usd"], serde_json::json!(0.1));
+}
+
+/// The manifest says which keys this connector stores; the code fills in the menus behind them.
+/// Two lists of the same keys is two places to forget one, so they are compared here rather than
+/// hoped about.
+#[test]
+fn the_manifest_declares_every_setting_the_code_writes() {
+    let manifest: serde_json::Value = serde_json::from_str(MANIFEST).expect("a manifest");
+    let declared: Vec<&str> = manifest["user_config"]
+        .as_object()
+        .expect("user_config")
+        .keys()
+        .map(String::as_str)
+        .collect();
+    let mut built: Vec<String> = settings_form(&catalogue())
+        .into_iter()
+        .map(|f| f.key)
+        .collect();
+    built.sort();
+    assert_eq!(declared, built, "the manifest and the form disagree");
+}
+
+/// The menu is the catalogue, so the form cannot offer a model the tool would then refuse — and
+/// "cheapest available" is a real entry rather than an empty box, because a blank first row
+/// reads as a question nobody has answered.
+#[test]
+fn the_model_menus_are_built_from_the_models_there_are() {
+    let mut available = catalogue();
+    rank(&mut available);
+    let form = settings_form(&available);
+    let image = form
+        .iter()
+        .find(|f| f.key == key_for(Kind::Image))
+        .expect("an image field");
+    assert_eq!(image.options[0].value, AUTOMATIC);
+    assert_eq!(
+        image.options[0].detail.as_deref(),
+        Some("today: openrouter/cheap-draw")
+    );
+    let offered: Vec<&str> = image.options[1..]
+        .iter()
+        .map(|o| o.value.as_str())
+        .collect();
+    assert_eq!(
+        offered,
+        [
+            "openrouter/cheap-draw",
+            "xai/cheap-draw",
+            "openrouter/dear-draw",
+            "openrouter/mystery-draw"
+        ],
+        "cheapest first, unpriced last, and no speech model in the picture menu"
+    );
+    assert_eq!(image.options[1].detail.as_deref(), Some("$0.0100 a unit"));
+}
+
+#[test]
+fn a_default_model_answers_a_call_that_names_none() {
+    let prefs = Preferences::read(&BTreeMap::from([(
+        key_for(Kind::Image).to_owned(),
+        "openrouter/dear-draw".to_owned(),
+    )]));
+    let preferred = prefs.default_for(Some(Kind::Image));
+    let chosen = choose(&catalogue(), None, Some(Kind::Image), preferred).unwrap();
+    assert_eq!(chosen.key(), "openrouter/dear-draw");
+    assert_eq!(
+        prefs.default_for(Some(Kind::Speech)),
+        None,
+        "a kind with no default of its own still takes the cheapest"
+    );
+}
+
+/// A model the call named is never replaced by a setting: the setting is what happens when
+/// nobody said anything.
+#[test]
+fn a_named_model_beats_the_users_default() {
+    let prefs = Preferences::read(&BTreeMap::from([(
+        key_for(Kind::Image).to_owned(),
+        "openrouter/dear-draw".to_owned(),
+    )]));
+    let chosen = choose(
+        &catalogue(),
+        Some("openrouter/cheap-draw"),
+        Some(Kind::Image),
+        prefs.default_for(Some(Kind::Image)),
+    )
+    .unwrap();
+    assert_eq!(chosen.key(), "openrouter/cheap-draw");
+}
+
+/// A provider key removed, or a model retired: the preference stops being available and the
+/// cheapest answers rather than the call failing over a setting.
+#[test]
+fn a_default_that_is_gone_falls_through_to_the_cheapest() {
+    let chosen = choose(
+        &catalogue(),
+        None,
+        Some(Kind::Image),
+        Some("openrouter/retired-draw"),
+    )
+    .unwrap();
+    assert_eq!(chosen.key(), "openrouter/cheap-draw");
+}
+
+#[test]
+fn the_automatic_sentinel_is_not_a_model_name() {
+    let prefs = Preferences::read(&BTreeMap::from([(
+        key_for(Kind::Image).to_owned(),
+        AUTOMATIC.to_owned(),
+    )]));
+    assert_eq!(prefs.default_for(Some(Kind::Image)), None);
+}
+
+/// The ceiling is checked here, against the published price, before anything is sent — the
+/// whole point being that a refusal costs nothing and a charge cannot be taken back.
+#[test]
+fn a_ceiling_refuses_the_expensive_one_before_the_request() {
+    let prefs = Preferences::read(&BTreeMap::from([(
+        gantry_connector_media::MAX_COST_USD.to_owned(),
+        "$0.10".to_owned(),
+    )]));
+    assert_eq!(prefs.ceiling, Some(0.10));
+    let cheap = candidate("openrouter", "cheap-draw", Kind::Image, Some(0.01));
+    assert!(prefs.affordable(&cheap).is_ok());
+
+    let dear = candidate("openrouter", "dear-draw", Kind::Image, Some(0.40));
+    let err = prefs.affordable(&dear).unwrap_err();
+    assert!(err.contains("$0.4000") && err.contains("$0.10"), "{err}");
+    assert!(err.contains("list_models"), "{err}");
+}
+
+/// A price nobody published cannot be shown to be under a ceiling. Same reasoning as the
+/// automatic choice: the unknown one is the one that cannot be defended afterwards.
+#[test]
+fn a_model_with_no_price_is_refused_while_a_ceiling_stands() {
+    let prefs = Preferences::read(&BTreeMap::from([(
+        gantry_connector_media::MAX_COST_USD.to_owned(),
+        "1".to_owned(),
+    )]));
+    let mystery = candidate("openrouter", "mystery-draw", Kind::Image, None);
+    let err = prefs.affordable(&mystery).unwrap_err();
+    assert!(err.contains("publishes no price"), "{err}");
+
+    let none = Preferences::default();
+    assert!(
+        none.affordable(&mystery).is_ok(),
+        "with no ceiling set, an unpriced model is only ever a model nobody chose automatically"
+    );
+}
+
+/// Settings are typed by people. A ceiling that cannot be read is not a reason to stop drawing.
+#[test]
+fn an_unreadable_ceiling_is_no_ceiling() {
+    for text in ["", "  ", "lots", "-3", "0"] {
+        let prefs = Preferences::read(&BTreeMap::from([(
+            gantry_connector_media::MAX_COST_USD.to_owned(),
+            text.to_owned(),
+        )]));
+        assert_eq!(prefs.ceiling, None, "{text:?}");
+    }
 }
