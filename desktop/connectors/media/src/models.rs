@@ -403,7 +403,7 @@ pub fn row(candidate: &Candidate, is_default: bool) -> serde_json::Value {
         },
     );
     if is_default {
-        row.insert("default_without_a_model".into(), true.into());
+        row.insert("used_when_no_model_is_named".into(), true.into());
     }
     let mut list = |key: &str, values: &[String]| {
         if !values.is_empty() {
@@ -433,46 +433,54 @@ pub fn matches(candidate: &Candidate, search: &str) -> bool {
         .all(|word| key.contains(&word.to_ascii_lowercase()))
 }
 
+/// Everything `list_models` needs to answer: the catalogue, what to narrow it to, and what the
+/// **tool** would actually do — which is the part that has to come from outside.
+pub struct Listing<'a> {
+    pub available: &'a [Candidate],
+    pub now_ms: i64,
+    pub kind: Option<Kind>,
+    pub search: &'a str,
+    pub limit: usize,
+    /// What a call with no `model` would get, per kind, decided by [`pick`] rather than by this
+    /// function. The first live run marked the *newest* model as the automatic one while the
+    /// tool was using the user's own default, and the chat model noticed the contradiction and
+    /// wrote a paragraph about it: a list that disagrees with the tool it describes is worse
+    /// than no list.
+    pub defaults: &'a [String],
+    /// The user's settings say the chat model does not choose the model at all, so the list is
+    /// for answering "what is there", not for picking from.
+    pub fixed: bool,
+}
+
 /// What `list_models` answers: a sentence and a line per model for the model to read, and the
 /// same list as JSON for it to act on.
 ///
 /// Pure, and separate from the tool, so the thing under test is the filtering rather than a
-/// connector holding a database. `available` is already ranked, so "cheapest first" is inherited
+/// connector holding a database. `available` is already ranked, so "newest first" is inherited
 /// rather than re-decided — the list a call sees and the model a call gets are the same order.
 #[must_use]
-pub fn listing(
-    available: &[Candidate],
-    now_ms: i64,
-    kind: Option<Kind>,
-    search: &str,
-    limit: usize,
-) -> (String, serde_json::Value) {
+pub fn listing(l: &Listing<'_>) -> (String, serde_json::Value) {
     // Only what a chat model may pick (`MAX_AGE_DAYS`). The older ones are counted rather than
     // hidden in silence: a list that simply lacked them would have the model conclude a model it
     // remembers was never here.
-    let older = available.len() - available.iter().filter(|c| c.recent(now_ms)).count();
-    let available: Vec<Candidate> = available
+    let older = l.available.len() - l.available.iter().filter(|c| c.recent(l.now_ms)).count();
+    let available: Vec<Candidate> = l
+        .available
         .iter()
-        .filter(|c| c.recent(now_ms))
+        .filter(|c| c.recent(l.now_ms) || l.defaults.iter().any(|d| d == &c.key()))
         .cloned()
         .collect();
     let available = available.as_slice();
-    // What a call with no `model` would pick, marked in the list, so the model can see that
-    // leaving it out is a real answer rather than a gap it has to fill.
-    let defaults: Vec<String> = [Kind::Image, Kind::Speech, Kind::Video]
-        .into_iter()
-        .filter_map(|k| available.iter().find(|c| c.kind == k))
-        .map(Candidate::key)
-        .collect();
+
     let matching: Vec<&Candidate> = available
         .iter()
-        .filter(|c| kind.is_none_or(|k| c.kind == k))
-        .filter(|c| matches(c, search))
+        .filter(|c| l.kind.is_none_or(|k| c.kind == k))
+        .filter(|c| matches(c, l.search))
         .collect();
-    let shown: Vec<&Candidate> = matching.iter().take(limit).copied().collect();
+    let shown: Vec<&Candidate> = matching.iter().take(l.limit).copied().collect();
     let rows: Vec<serde_json::Value> = shown
         .iter()
-        .map(|c| row(c, defaults.contains(&c.key())))
+        .map(|c| row(c, l.defaults.iter().any(|d| d == &c.key())))
         .collect();
 
     let mut summary = if matching.is_empty() {
@@ -496,6 +504,12 @@ pub fn listing(
             " {older} more are over a year old and are not yours to pick; the user can still \
              choose one in this connector's settings."
         ));
+    }
+    if l.fixed {
+        summary.push_str(
+            " The user has fixed which model is used, so this list is for answering their \
+             questions rather than for choosing from.",
+        );
     }
     for candidate in &shown {
         summary.push_str(&format!(

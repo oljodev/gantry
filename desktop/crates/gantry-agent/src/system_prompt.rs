@@ -9,7 +9,7 @@ use gantry_core::{
 use crate::memory::MemoryEdit;
 
 /// Bumped whenever `assets/prompts/core.md` or a mode fragment changes meaning.
-pub const CORE_VERSION: u32 = 8;
+pub const CORE_VERSION: u32 = 9;
 
 const CORE: &str = include_str!("../../../assets/prompts/core.md");
 const MODE_MANUAL: &str = include_str!("../../../assets/prompts/modes/manual.md");

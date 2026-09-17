@@ -35,8 +35,8 @@ use gantry_store::Store;
 use tokio_util::sync::CancellationToken;
 
 pub use models::{
-    Candidate, Kind, MAX_AGE_DAYS, Picked, check, choose, describe_kind, detail, kind_name, list,
-    listing, matches, model_choice, named_by, parse_kind, pick, rank, row,
+    Candidate, Kind, Listing, MAX_AGE_DAYS, Picked, check, choose, describe_kind, detail,
+    kind_name, list, listing, matches, model_choice, named_by, parse_kind, pick, rank, row,
 };
 pub use settings::{
     AUTOMATIC, DEFAULT_MODEL_RULE, Preferences, Rule, fields as settings_form, key_for,
@@ -196,7 +196,7 @@ impl Media {
     /// already keeps (02 §2), so it costs nothing and cannot fail on the network. It exists
     /// because the alternative to a list is a memory — and a model id a chat model remembers
     /// from its training is exactly the kind of thing that has been renamed since.
-    fn list_models(&self, args: &serde_json::Value) -> ToolOutcome {
+    fn list_models(&self, args: &serde_json::Value, mode: Mode) -> ToolOutcome {
         let wanted = match args
             .get("kind")
             .and_then(serde_json::Value::as_str)
@@ -227,8 +227,27 @@ impl Media {
                  the model list refreshed in Settings \u{2192} Providers.",
             );
         }
-        let (summary, structured) =
-            models::listing(&available, gantry_core::now_ms(), wanted, &search, limit);
+        // What the tool would actually do, asked of the same function the tool asks, so the
+        // list cannot say one model and the call use another.
+        let now = gantry_core::now_ms();
+        let prefs = self.preferences();
+        let defaults: Vec<String> = [Kind::Image, Kind::Speech, Kind::Video]
+            .into_iter()
+            .filter_map(|kind| {
+                models::pick(&available, now, &prefs, mode, None, Some(kind))
+                    .ok()
+                    .map(|p| p.candidate.key())
+            })
+            .collect();
+        let (summary, structured) = models::listing(&models::Listing {
+            available: &available,
+            now_ms: now,
+            kind: wanted,
+            search: &search,
+            limit,
+            defaults: &defaults,
+            fixed: prefs.rule.overrides(mode),
+        });
         ToolOutcome::Complete {
             content: vec![
                 gantry_core::ResultPart::Text { text: summary },
@@ -441,8 +460,13 @@ impl Connector for Media {
         &self.descriptor
     }
 
+    /// The tools as this installation's settings make them (03 §11 step 2).
+    ///
+    /// Read per turn, because `ToolSet::assemble` asks every connector for its tools on every
+    /// turn: a user who has just said "always use my model" sees the argument disappear on the
+    /// next message rather than on the next restart.
     async fn tools(&self) -> Result<Vec<ToolDef>, ConnectorError> {
-        Ok(definitions())
+        Ok(tools_for(&self.preferences()))
     }
 
     /// The model, on the permission card (04 §7).
@@ -502,26 +526,51 @@ impl Connector for Media {
                     outcome = self.generate(&args, &req, &sink) => Ok(outcome),
                 }
             }
-            "list_models" => Ok(self.list_models(&req.args)),
+            "list_models" => Ok(self.list_models(&req.args, req.scope.mode)),
             other => Err(ConnectorError::UnknownTool(other.to_owned())),
         }
     }
 }
 
-/// The one tool (03 §3). Not `parallel_safe`: two generations at once are two charges, and the
-/// permission card for the second would be answered while the first was already running.
+/// The tools as **Install** records them, before this installation has any settings of its own
+/// (03 §3). What a chat actually sees comes from `tools_for` with the user's answers.
 #[must_use]
 pub fn definitions() -> Vec<ToolDef> {
+    tools_for(&Preferences::default())
+}
+
+/// The two tools, shaped by what the user has decided (03 §5).
+///
+/// When their rule is "always my model", `generate` loses its `model` argument outright. A tool
+/// whose argument is going to be ignored is worse than one that never offered it: the first live
+/// run under that rule had the model list the catalogue, name a model, read a result naming a
+/// different one, and write a paragraph working out which of the two was real. An argument that
+/// is not there cannot be argued with.
+///
+/// Not `parallel_safe`: two generations at once are two charges, and the permission card for the
+/// second would be answered while the first was already running.
+#[must_use]
+pub fn tools_for(prefs: &Preferences) -> Vec<ToolDef> {
+    let fixed = prefs.rule == Rule::Always;
     let mut generate = ToolDef::new(
         "generate",
-        "Make one picture, one piece of spoken audio, or one video clip, using a model built \
-         for it, and put it in your reply. Use this when the user asks for an image, a voice-over, \
-         a sound or a clip — not for a diagram, which is an artifact, and not for reading a file. \
-         Exactly one thing is made per call: call again for a second. What comes back appears in \
-         the answer at this point on its own, so write about it, not a link to it. \
-         `kind` says what to make; `model` names a specific one as `provider/model` and can be \
-         left out, and the result says which model was used and what it cost. Every call spends \
-         money on the user's own account.",
+        format!(
+            "Make one picture, one piece of spoken audio, or one video clip, using a model built \
+             for it, and put it in your reply. Use this when the user asks for an image, a \
+             voice-over, a sound or a clip — not for a diagram, which is an artifact, and not for \
+             reading a file. Exactly one thing is made per call: call again for a second. What \
+             comes back appears in the answer at this point on its own, so write about it, not a \
+             link to it. `kind` says what to make. {} Every call spends money on the user's own \
+             account.",
+            if fixed {
+                "The user has fixed which model makes each kind, in this connector's settings, \
+                 so there is nothing for you to choose and no model to name: just say what to \
+                 make. The result says which model answered and what it cost."
+            } else {
+                "`model` names a specific one as `provider/model` and can be left out, and the \
+                 result says which model was used and what it cost."
+            }
+        ),
         serde_json::json!({
             "type": "object",
             "properties": {
@@ -533,19 +582,7 @@ pub fn definitions() -> Vec<ToolDef> {
                 "kind": {
                     "type": "string",
                     "enum": ["image", "speech", "video"],
-                    "description": "What kind of thing to make. Required unless `model` names a \
-                                    model that only makes one kind."
-                },
-                "model": {
-                    "type": "string",
-                    "description": "`provider/model`, e.g. `openrouter/black-forest-labs/flux-1.1-pro`. \
-                                    **Leave this out** unless the user named a model or you have just \
-                                    read the id from `list_models`: omitted, the call uses the user's \
-                                    own default for this kind, and the result says which model that \
-                                    was. A name you remember from elsewhere is the one way this call \
-                                    fails for free. Models released more than a year ago are not \
-                                    yours to pick; the user can still choose one in this \
-                                    connector's settings."
+                    "description": "What kind of thing to make."
                 },
                 "aspect_ratio": { "type": "string", "description": "`16:9`, `1:1` — only what the model lists." },
                 "resolution": { "type": "string", "description": "A video model's own spelling, e.g. `1080p`." },
@@ -557,21 +594,55 @@ pub fn definitions() -> Vec<ToolDef> {
         }),
         RiskTier::WriteExternal,
     );
+    if !fixed {
+        // The argument exists only where it can be honoured. Where it does, `kind` may be left
+        // out if the model named makes one kind only.
+        let properties = generate.input_schema["properties"]
+            .as_object_mut()
+            .expect("the schema is an object");
+        properties["kind"]["description"] = serde_json::json!(
+            "What kind of thing to make. Required unless `model` names a model that only makes \
+             one kind."
+        );
+        properties.insert(
+            "model".to_owned(),
+            serde_json::json!({
+                "type": "string",
+                "description": "`provider/model`, e.g. `openrouter/black-forest-labs/flux-1.1-pro`. \
+                                **Leave this out** unless the user named a model or you have just \
+                                read the id from `list_models`: omitted, the call uses the user's \
+                                own default for this kind, and the result says which model that \
+                                was. A name you remember from elsewhere is the one way this call \
+                                fails for free. Models released more than a year ago are not \
+                                yours to pick; the user can still choose one in this connector's \
+                                settings."
+            }),
+        );
+    }
     generate.parallel_safe = false;
 
     // Read, and free: this is the cached catalogue, not a request to anybody. A tool that costs
     // nothing and answers the one question that makes `generate` fail is a tool the model should
     // never have to ask permission to use.
-    let list_models = ToolDef::new(
+    let mut list_models = ToolDef::new(
         "list_models",
-        "List the media models this machine can actually use: every image, speech and video \
-         model on a provider the user has a key for, newest first, with when each was released, \
-         what it charges where its provider published that, and the options it offers. Call this \
-         instead of guessing a model id — ids you remember from elsewhere are usually not the \
-         ones installed here — and call it when the user asks what is available. It reads a \
-         local list: no network, no charge, no account touched. The model marked \
-         `default_without_a_model` is what `generate` uses when it is not given one. Models over \
-         a year old are left out, because they are not yours to pick.",
+        format!(
+            "List the media models this machine can actually use: every image, speech and video \
+             model on a provider the user has a key for, newest first, with when each was \
+             released, what it charges where its provider published that, and the options it \
+             offers. {} It reads a local list: no network, no charge, no account touched. Models \
+             over a year old are left out, because they are not yours to pick.",
+            if fixed {
+                "Call it when the user asks what is available. It is **not** a step before \
+                 generating: the user has fixed which model is used, so there is nothing to \
+                 choose here."
+            } else {
+                "Call this instead of guessing a model id — ids you remember from elsewhere are \
+                 usually not the ones installed here — and call it when the user asks what is \
+                 available. The model marked `used_when_no_model_is_named` is what `generate` \
+                 uses when it is not given one."
+            }
+        ),
         serde_json::json!({
             "type": "object",
             "properties": {
@@ -593,7 +664,6 @@ pub fn definitions() -> Vec<ToolDef> {
         }),
         RiskTier::Read,
     );
-    let mut list_models = list_models;
     // Reading a list beside a generation is two different things happening, not two charges.
     list_models.parallel_safe = true;
     vec![generate, list_models]

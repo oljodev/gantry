@@ -470,6 +470,15 @@ shows which it picked), **that and always in Auto** (where no card asks anything
 choice would otherwise go unseen), or **always** (the chat model never chooses, and is told its
 `model` argument was ignored rather than left to try it again).
 
+**The tools change shape with the settings** (as built, 2026-09-17). `Media::tools()` is asked on
+every turn by `ToolSet::assemble`, so under the "always my model" rule `generate` simply has **no
+`model` argument**, and `list_models` says it is for answering questions rather than a step before
+generating. An argument that is going to be ignored is worse than one that was never offered: the
+first live run under that rule had the model list the catalogue, name a model, read a result
+naming a different one, and spend a paragraph working out which was real. For the same reason
+`list_models` marks the automatic choice by asking `pick` — the list said "newest" while the tool
+used the user's default, and the model noticed.
+
 A spending ceiling lived here for a day and was removed by the same measurement that reordered the
 list: with 87 of 101 models publishing no price, a dollar ceiling refuses nearly every generation
 while looking like a safety feature. What replaced it is the rule above — the useful control over

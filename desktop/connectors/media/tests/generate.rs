@@ -7,9 +7,43 @@
 use std::collections::BTreeMap;
 
 use gantry_connector_media::{
-    AUTOMATIC, Candidate, DEFAULT_MODEL_RULE, Kind, MANIFEST, Preferences, Rule, choose,
+    AUTOMATIC, Candidate, DEFAULT_MODEL_RULE, Kind, Listing, MANIFEST, Preferences, Rule, choose,
     definitions, key_for, kind_name, listing, model_choice, parse_kind, pick, rank, settings_form,
+    tools_for,
 };
+
+/// A listing of the given catalogue, with the automatic choice worked out the way the tool does.
+fn list(
+    available: &[Candidate],
+    kind: Option<Kind>,
+    search: &str,
+    limit: usize,
+) -> (String, serde_json::Value) {
+    let defaults: Vec<String> = [Kind::Image, Kind::Speech, Kind::Video]
+        .into_iter()
+        .filter_map(|k| {
+            pick(
+                available,
+                NOW,
+                &Preferences::default(),
+                Mode::Manual,
+                None,
+                Some(k),
+            )
+            .ok()
+            .map(|p| p.candidate.key())
+        })
+        .collect();
+    listing(&Listing {
+        available,
+        now_ms: NOW,
+        kind,
+        search,
+        limit,
+        defaults: &defaults,
+        fixed: false,
+    })
+}
 use gantry_core::{MediaOptions, Mode, ProviderId, RiskTier};
 use gantry_providers::{ModelCapabilities, ModelInfo, Pricing, provider::Modality};
 
@@ -536,12 +570,12 @@ fn the_kinds_are_named_the_way_the_arguments_spell_them() {
 /// in it. Without that the model has a list and no idea which of it is the answer.
 #[test]
 fn the_list_marks_what_a_call_with_no_model_would_use() {
-    let (text, json) = listing(&catalogue(), NOW, None, "", 40);
+    let (text, json) = list(&catalogue(), None, "", 40);
     assert!(text.starts_with("5 models, newest first."), "{text}");
     let models = json["models"].as_array().unwrap();
     let defaults: Vec<&str> = models
         .iter()
-        .filter(|m| m["default_without_a_model"] == serde_json::json!(true))
+        .filter(|m| m["used_when_no_model_is_named"] == serde_json::json!(true))
         .map(|m| m["id"].as_str().unwrap())
         .collect();
     assert_eq!(defaults, ["openrouter/new-draw", "openrouter/speak"]);
@@ -551,7 +585,7 @@ fn the_list_marks_what_a_call_with_no_model_would_use() {
 /// it exists rather than left to conclude it never did.
 #[test]
 fn the_list_leaves_out_what_the_chat_model_may_not_pick() {
-    let (text, json) = listing(&catalogue(), NOW, Some(Kind::Image), "", 40);
+    let (text, json) = list(&catalogue(), Some(Kind::Image), "", 40);
     let ids: Vec<&str> = json["models"]
         .as_array()
         .unwrap()
@@ -566,11 +600,11 @@ fn the_list_leaves_out_what_the_chat_model_may_not_pick() {
 
 #[test]
 fn a_kind_and_a_search_narrow_the_list() {
-    let (_, json) = listing(&catalogue(), NOW, Some(Kind::Speech), "", 40);
+    let (_, json) = list(&catalogue(), Some(Kind::Speech), "", 40);
     assert_eq!(json["matching"], 1);
     assert_eq!(json["models"][0]["id"], "openrouter/speak");
 
-    let (_, json) = listing(&catalogue(), NOW, None, "xai new", 40);
+    let (_, json) = list(&catalogue(), None, "xai new", 40);
     assert_eq!(json["matching"], 1);
     assert_eq!(json["models"][0]["id"], "xai/new-draw");
 }
@@ -579,7 +613,7 @@ fn a_kind_and_a_search_narrow_the_list() {
 /// has seen everything will conclude a model is missing rather than ask for more.
 #[test]
 fn a_cut_list_says_how_much_was_cut() {
-    let (text, json) = listing(&catalogue(), NOW, None, "", 2);
+    let (text, json) = list(&catalogue(), None, "", 2);
     assert!(text.starts_with("2 of 5 models"), "{text}");
     assert!(text.contains("`limit`"), "{text}");
     assert_eq!(json["shown"], 2);
@@ -588,7 +622,7 @@ fn a_cut_list_says_how_much_was_cut() {
 
 #[test]
 fn a_search_that_matches_nothing_says_how_many_there_are() {
-    let (text, json) = listing(&catalogue(), NOW, None, "sora", 40);
+    let (text, json) = list(&catalogue(), None, "sora", 40);
     assert!(text.contains("5 media models altogether"), "{text}");
     assert_eq!(json["shown"], 0);
 }
@@ -601,7 +635,7 @@ fn a_row_carries_the_options_the_model_would_be_refused_for() {
     let mut film = aged("openrouter", "film", Kind::Video, Some(0.12), 2);
     film.info.capabilities.durations = vec![4, 8];
     film.info.capabilities.resolutions = vec!["720p".into(), "1080p".into()];
-    let (_, json) = listing(&[film], NOW, None, "", 40);
+    let (_, json) = list(&[film], None, "", 40);
     let row = &json["models"][0];
     assert_eq!(row["durations_seconds"], serde_json::json!([4, 8]));
     assert_eq!(row["resolutions"], serde_json::json!(["720p", "1080p"]));
@@ -734,4 +768,111 @@ fn with_no_kind_at_all_the_menu_is_everything() {
             .any(|o| o.detail.as_deref().is_some_and(|d| d.starts_with("speech"))),
         "a mixed menu says which kind each one is"
     );
+}
+
+// ---------------------------------------------------------------- what the settings do to the tools
+
+/// From a live run on 2026-09-17, under "always my model": the model listed the catalogue, read
+/// that the automatic choice was the newest model, named nothing, got a result naming a
+/// different model, and wrote a paragraph working out which of the two was real. The list has to
+/// agree with the tool.
+#[test]
+fn the_list_marks_the_model_the_call_would_actually_use() {
+    let available = catalogue();
+    let prefs = prefs(&[
+        (key_for(Kind::Image), "openrouter/mid-draw"),
+        (DEFAULT_MODEL_RULE, Rule::Always.as_str()),
+    ]);
+    let defaults: Vec<String> = [Kind::Image]
+        .into_iter()
+        .filter_map(|k| {
+            pick(&available, NOW, &prefs, Mode::Auto, None, Some(k))
+                .ok()
+                .map(|p| p.candidate.key())
+        })
+        .collect();
+    let (text, json) = listing(&Listing {
+        available: &available,
+        now_ms: NOW,
+        kind: Some(Kind::Image),
+        search: "",
+        limit: 40,
+        defaults: &defaults,
+        fixed: prefs.rule.overrides(Mode::Auto),
+    });
+    let marked: Vec<&str> = json["models"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|m| m["used_when_no_model_is_named"] == serde_json::json!(true))
+        .map(|m| m["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        marked,
+        ["openrouter/mid-draw"],
+        "the user's model, not the newest"
+    );
+    assert!(text.contains("fixed which model"), "{text}");
+}
+
+/// An older model the user has made their default is in the list, even though no chat model may
+/// name one: it is what the next call will use, and a list that left it out would be a list of
+/// models that are not going to answer.
+#[test]
+fn the_users_older_default_is_in_the_list_it_will_answer_from() {
+    let available = catalogue();
+    let defaults = vec!["openrouter/old-draw".to_owned()];
+    let (_, json) = listing(&Listing {
+        available: &available,
+        now_ms: NOW,
+        kind: Some(Kind::Image),
+        search: "",
+        limit: 40,
+        defaults: &defaults,
+        fixed: true,
+    });
+    let ids: Vec<&str> = json["models"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|m| m["id"].as_str().unwrap())
+        .collect();
+    assert!(ids.contains(&"openrouter/old-draw"), "{ids:?}");
+}
+
+/// "Always my model" takes the argument away rather than ignoring it. An argument that will be
+/// ignored is worse than one that was never offered: the model spends a call finding out.
+#[test]
+fn fixing_the_model_takes_the_argument_off_the_tool() {
+    let open = tools_for(&Preferences::default());
+    assert!(open[0].input_schema["properties"].get("model").is_some());
+    assert!(open[1].description.contains("instead of guessing"));
+
+    let fixed = tools_for(&prefs(&[(DEFAULT_MODEL_RULE, Rule::Always.as_str())]));
+    assert!(
+        fixed[0].input_schema["properties"].get("model").is_none(),
+        "there is nothing to choose, so there is no argument"
+    );
+    assert!(fixed[0].description.contains("fixed which model"));
+    assert!(
+        fixed[1]
+            .description
+            .contains("not** a step before generating"),
+        "and no reason to go looking first: {}",
+        fixed[1].description
+    );
+    assert_eq!(fixed[0].tier, RiskTier::WriteExternal);
+}
+
+/// The other two rules leave the argument alone: under them the chat model may still name one,
+/// and in Auto the user's own default quietly wins, which `pick` decides rather than the schema.
+#[test]
+fn the_softer_rules_leave_the_argument_alone() {
+    for rule in [Rule::Unnamed, Rule::Unattended] {
+        let defs = tools_for(&prefs(&[(DEFAULT_MODEL_RULE, rule.as_str())]));
+        assert!(
+            defs[0].input_schema["properties"].get("model").is_some(),
+            "{rule:?}"
+        );
+    }
 }

@@ -36,7 +36,8 @@ pub const TOP_N: usize = 3;
 pub struct Terms {
     /// Stemmed, stopword-free single words.
     pub words: HashSet<String>,
-    /// Adjacent pairs, so a trigger phrase like "borrow checker" can hit.
+    /// Adjacent pairs, **including** stopwords, so a trigger phrase like "borrow checker" or
+    /// "look over" can hit and only hit when the phrase is really there.
     pub bigrams: HashSet<String>,
     /// The same words unstemmed, for the full-text query the memory selector makes (12 §B4).
     pub raw: Vec<String>,
@@ -49,6 +50,31 @@ impl Terms {
     }
 }
 
+/// One token of a message or a trigger: what it looked like, what it stems to, and whether it
+/// is a word that carries no signal on its own.
+struct Token {
+    lower: String,
+    stem: String,
+    stop: bool,
+}
+
+/// Lowercase, split on anything that is not a letter or digit, stem lightly. Stopwords are
+/// kept, in place, because a phrase is a phrase: dropping them here is what turned the trigger
+/// "look over" into the single word "look", which then matched "very good looking nature" and
+/// sent a code-review playbook with a request for a picture (found live, 2026-09-17).
+fn tokens(text: &str) -> Vec<Token> {
+    text.split(|c: char| !c.is_alphanumeric())
+        .filter(|t| !t.is_empty())
+        .map(str::to_lowercase)
+        .filter(|lower| lower.len() >= 2)
+        .map(|lower| Token {
+            stem: stem(&lower),
+            stop: STOPWORDS.contains(&lower.as_str()),
+            lower,
+        })
+        .collect()
+}
+
 /// Lowercase, split on anything that is not a letter or digit, drop stopwords, stem lightly.
 ///
 /// The stemming is a handful of suffix rules rather than a stemmer crate. 12 §A4 named
@@ -57,31 +83,21 @@ impl Terms {
 /// job is a heuristic inside another heuristic.
 #[must_use]
 pub fn terms(message: &str) -> Terms {
+    let tokens = tokens(message);
     let mut words = HashSet::new();
     let mut raw = Vec::new();
-    let mut ordered: Vec<String> = Vec::new();
-    for token in message
-        .split(|c: char| !c.is_alphanumeric())
-        .filter(|t| !t.is_empty())
-    {
-        let lower = token.to_lowercase();
-        if lower.len() < 2 || STOPWORDS.contains(&lower.as_str()) {
-            // A stopword still takes its place in the sequence, so "how to review" does not
-            // produce the bigram "how review".
-            ordered.push(String::new());
+    for token in &tokens {
+        if token.stop {
             continue;
         }
-        if !raw.contains(&lower) {
-            raw.push(lower.clone());
+        if !raw.contains(&token.lower) {
+            raw.push(token.lower.clone());
         }
-        let stem = stem(&lower);
-        words.insert(stem.clone());
-        ordered.push(stem);
+        words.insert(token.stem.clone());
     }
-    let bigrams = ordered
+    let bigrams = tokens
         .windows(2)
-        .filter(|w| !w[0].is_empty() && !w[1].is_empty())
-        .map(|w| format!("{} {}", w[0], w[1]))
+        .map(|w| format!("{} {}", w[0].stem, w[1].stem))
         .collect();
     Terms {
         words,
@@ -181,8 +197,12 @@ pub fn matches(message: &str, skills: &[SkillDto], skip: &HashSet<String>) -> Ve
 
 /// Whether a trigger appears in the message: a phrase against the bigrams, a word against the
 /// words.
+///
+/// Tokenised exactly like the message, stopwords and all, so the two sides agree about what a
+/// phrase is. A one-word trigger that is itself a stopword matches nothing, because `words`
+/// never holds one.
 fn hit(terms: &Terms, trigger: &str) -> bool {
-    let parts: Vec<String> = words_of(trigger);
+    let parts: Vec<String> = tokens(trigger).into_iter().map(|t| t.stem).collect();
     match parts.len() {
         0 => false,
         1 => terms.words.contains(&parts[0]),
@@ -265,6 +285,106 @@ mod tests {
             skill("code-review", "Review a change carefully.", &["review"]),
         ];
         assert!(matches("hello, how are you today?", &skills, &HashSet::new()).is_empty());
+    }
+
+    /// The bundled skills, as they actually ship, against a message that is about none of them.
+    ///
+    /// From a live run on 2026-09-17: "Could you please create a image of very good looking
+    /// nature?" pulled in `code-review` and sent its whole playbook with the turn. A skill is
+    /// several thousand tokens of instruction the user pays for and the model then tries to
+    /// follow, so a false match is worse than a missed one.
+    #[test]
+    fn an_image_request_matches_none_of_the_bundled_skills() {
+        let bundled = [
+            skill(
+                "artifact-authoring",
+                "Build a Gantry artifact that renders the first time: choosing between markdown, code, html, svg, mermaid and react, the React component contract and its six importable modules, what the sandbox does not have, and how to answer a render error. Use when creating or editing an artifact, building a component, page, diagram, chart or interactive demo, or when an artifact failed to render.",
+                &[
+                    "artifact",
+                    "component",
+                    "react",
+                    "chart",
+                    "diagram",
+                    "mermaid",
+                    "svg",
+                    "html page",
+                    "interactive",
+                    "render error",
+                ],
+            ),
+            skill(
+                "code-review",
+                "Review a change the way a careful colleague would: correctness first, then the failure the author cannot see, then the cost of maintaining it, with every comment naming a concrete scenario rather than a preference. Use when reviewing code, a diff, a pull request or a patch, when asked what is wrong with a piece of code, or before merging.",
+                &[
+                    "code review",
+                    "review",
+                    "pull request",
+                    "diff",
+                    "patch",
+                    "merge",
+                    "critique",
+                    "look over",
+                ],
+            ),
+            skill(
+                "commit-messages",
+                "Write a commit message that says what changed and why, in the imperative present tense, with a subject under 72 characters and a body that explains the reasoning rather than restating the diff. Use when committing, writing or rewriting a commit message, preparing a pull request description, or when the user mentions git, a commit, staging or a changelog entry.",
+                &[
+                    "commit",
+                    "commit message",
+                    "git",
+                    "pull request",
+                    "changelog",
+                    "squash",
+                    "amend",
+                ],
+            ),
+            skill(
+                "writing-a-plan",
+                "Turn a vague piece of work into a plan somebody can act on: the decision and why, the scope as a short list of concrete deliverables, the order of the work, what will be verified, and what was deliberately left out. Use when asked for a plan, a design, an approach, an implementation strategy or a proposal, or before starting a change large enough to need one.",
+                &[
+                    "plan",
+                    "design doc",
+                    "proposal",
+                    "approach",
+                    "strategy",
+                    "roadmap",
+                    "break this down",
+                    "how should we",
+                ],
+            ),
+        ];
+        let got = matches(
+            "Could you please create a image of very good looking nature?",
+            &bundled,
+            &HashSet::new(),
+        );
+        assert!(
+            got.is_empty(),
+            "nothing here is about any of these: {got:?}"
+        );
+    }
+
+    /// The other half of the same fix: a phrase trigger whose words include a stopword works,
+    /// rather than quietly becoming a one-word trigger or nothing at all. `how should we` and
+    /// `break this down` had never matched anything before this.
+    #[test]
+    fn a_phrase_trigger_matches_the_phrase_and_nothing_looser() {
+        let review = skill("code-review", "Review a change.", &["look over"]);
+        assert!(score(&terms("can you look over this diff"), &review).score >= QUALIFYING_SCORE);
+        assert!(
+            score(&terms("a very good looking nature scene"), &review).score < QUALIFYING_SCORE
+        );
+
+        let plan = skill(
+            "writing-a-plan",
+            "Write a plan.",
+            &["how should we", "break this down"],
+        );
+        assert!(score(&terms("how should we do the migration"), &plan).score >= QUALIFYING_SCORE);
+        assert!(score(&terms("break this down for me"), &plan).score >= QUALIFYING_SCORE);
+        // The words on their own are not the phrase.
+        assert!(score(&terms("we broke down the door"), &plan).score < QUALIFYING_SCORE);
     }
 
     #[test]

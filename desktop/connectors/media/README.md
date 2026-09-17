@@ -49,6 +49,10 @@ Open the connector in **Customize → Connectors** and it has a form of its own:
   choice would otherwise go unseen), or *always* (it never chooses; it is told its `model`
   argument was ignored, rather than left to try it again).
 
+Under *always*, the `model` argument disappears from the tool altogether and `list_models` stops
+being advertised as a step before generating — there is nothing to choose, so there is nothing to
+look up first. Under the other two rules the argument stays, because it can still be honoured.
+
 The options are built when the form is opened, from the same catalogue `generate` chooses from,
 so the form cannot offer a model the tool would then refuse. The answers are read on every call,
 so changing one takes effect on the next generation rather than on the next restart. If a default

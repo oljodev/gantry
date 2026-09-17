@@ -59,7 +59,9 @@ Deterministic keyword matching, plus the model pulling skills on demand. No embe
 
 For each user message:
 
-1. Tokenize the message: lowercase, split on non-alphanumerics, drop stopwords, light stemming (`rust-stemmers`). Keep trigger phrases with spaces as bigrams.
+1. Tokenize the message: lowercase, split on non-alphanumerics, light stemming (`rust-stemmers`). Keep trigger phrases with spaces as bigrams.
+
+   *As built, corrected 2026-09-17.* Stopwords are dropped from the **words** a score counts, but **kept in the bigram stream on both sides** — the message's and the trigger's. Dropping them from a trigger is what turned `look over` into the single word `look`, which then matched "a very good **looking** nature scene" and sent the whole `code-review` playbook along with a request for a picture. It cut the other way too: `how should we` and `break this down` are all stopwords bar one, so they tokenized to nothing and had never matched anything at all. A phrase is a phrase; both sides tokenize it the same way, and a one-word trigger that is itself a stopword matches nothing because the word set never holds one.
 2. Score each enabled, unpinned skill: `3 × trigger hits + 2 × name hits + 1 × description hits`. A skill qualifies at score ≥ 3 (one trigger hit, or a name hit plus a description hit).
 3. Rank, take the top 3, and skip any skill injected within the last 6 turns of this chat (the model still has it in context; re-injecting only costs tokens).
 4. Add `gantry-always` skills and skills pinned to the project or chat, which live in the frozen prompt instead (10 §2) and are never re-injected.
