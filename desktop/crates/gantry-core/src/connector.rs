@@ -291,4 +291,8 @@ pub struct CatalogEntryDto {
     /// for one only when this is set; asking otherwise is asking for something that does not
     /// exist.
     pub auth_needs_client_id: bool,
+    /// Part of the app rather than a choice (03 §11, `catalog.install_by_default`): installed on
+    /// first run and not removable, because the control that uses it is drawn whether or not it
+    /// is there.
+    pub install_by_default: bool,
 }

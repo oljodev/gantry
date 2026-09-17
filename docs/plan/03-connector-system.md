@@ -64,7 +64,7 @@ Field reference (`manifest_version: "1"`). The `user_config` block is deliberate
 | `tool_overrides` | map | Runtime-discovered tool name → `{ risk, always_confirm, parallel_safe }` |
 | `prompt` | object | `{ system_addendum: markdown, usage_hints: string[] }` injected into the system prompt while attached |
 | `compatibility` | object | `{ platforms: [darwin, win32, linux], gantry: ">=0.1.0" }` |
-| `catalog` | object | `{ featured, sort_weight, suggest_for: string[] }` — matching hints for connector suggestions (§9) |
+| `catalog` | object | `{ featured, sort_weight, suggest_for: string[], install_by_default }` — matching hints for connector suggestions (§9); `install_by_default` installs the entry at first start and makes it unremovable (§11) |
 
 Runtime shapes:
 
@@ -609,7 +609,7 @@ The "Add custom server" dialog accepts a stdio command (with args and env) or a 
 
 Purpose: let the model *recommend installing* a connector when the task needs one. It never installs anything by itself.
 
-Session 1 modelled this as an always-installed "meta-connector". Session 2's rule that no connector is ever installed without an explicit user action (§11) makes that shape contradictory, so the capability is reclassified as two **runtime tools owned by `gantry-agent`** (`runtime_tools/catalog.rs`), like `gantry__request_access` (04 §9). They are app behaviour, not a connector: no external system, no auth, no process. A General setting, **Suggest connectors**, turns them off; the catalog index itself lives in `gantry-connectors::catalog`.
+Session 1 modelled this as an always-installed "meta-connector". The rule that a connector is installed only by an explicit user action, or by being part of the app with a control of its own (§11), makes that shape contradictory either way — connector search is neither — so the capability is reclassified as two **runtime tools owned by `gantry-agent`** (`runtime_tools/catalog.rs`), like `gantry__request_access` (04 §9). They are app behaviour, not a connector: no external system, no auth, no process. A General setting, **Suggest connectors**, turns them off; the catalog index itself lives in `gantry-connectors::catalog`.
 
 As built (M10, 2026-09-08):
 
@@ -632,13 +632,21 @@ As built (M10, 2026-09-08):
 
 The curated catalog is hand-authored. **Which servers it holds, in what order they land and how a batch is verified without a human signing in to each service is document 17.** Vendor and community directories (mcpservers.org's official-server listings among them) are the *input*: a candidate is picked from a directory, tried against the real server, and turned into a folder under `desktop/connectors/<id>/` with a manifest, icon and README written by hand (§2, §3). Nothing is consumed from a directory at runtime. A catalog entry is therefore a tested artifact with the same review path as code, which is what makes the distribution decision below reasonable.
 
-### Nothing is installed by default
+### Almost nothing is installed by default
 
-The whole catalog is browsable; every entry, first-party included, is inert until the user acts on it. There are no default-on connectors, and exactly one action installs more than one thing at a time. Three consequences are handled explicitly:
+The whole catalog is browsable, and every entry that integrates with somebody else's service — first-party included — is inert until the user acts on it. Exactly one action installs more than one thing at a time.
+
+The exception is the handful of connectors that are **part of the app rather than an integration**: `catalog.install_by_default` in the manifest, installed at the first start by `ConnectorService::install_defaults` before the registry is built. An entry may set it only when all four are true: first-party, native, keyless, and **already reachable from a control of its own in the interface**. The last one is the real test. The composer has drawn a **Web search** switch since M0b; a switch that installs something the first time it is pressed behaves differently on the first press from every press after it, and a user who removed the connector finds the switch broken with nothing on screen saying why. `web` is the first entry to set it (2026-09-17).
+
+A default connector is not removable — `remove` refuses it, and the row loses its bin — because the next start would install it again; the Off switch is the way to stop it, and that survives. It is otherwise an ordinary instance: an ordinary row on Settings → Connectors, attached per chat like any other, authorizing nothing on its own.
+
+Where a connector has a control of its own, that control is the **only** place it is offered. The composer's + menu lists installed connectors and, further down, the **Web search** switch; `web` is filtered out of the list above, because two rows that attach the same instance is one row too many and the one that says what it is *for* is the one worth keeping.
+
+Three consequences of the general rule are handled explicitly:
 
 - **Opening the Code surface** installs and attaches `filesystem`, `code-editor` and `shell` together (16 C6, §8). This is the one exception to "one click, one install", and it is an exception in convenience only: opening the surface is the explicit action, the empty state names all three before the first message, each is an ordinary instance in the Connectors list, and any of them can be removed. A code session whose shell was removed still edits. The alternative — asking a user who just chose a folder to install three things by hand — was tried on paper and reads as an obstacle course.
 - **Attaching is not installing** (2026-09-11). Nothing is installed by default; a chat may still *start with* connectors the user already installed, because a chat that attaches nothing begins every conversation with a permission card instead of an answer. `chat.default_connectors` holds the namespaces, ships as `["filesystem"]`, and is a row in Settings → General. The shell and the code editor are deliberately not in that default — the surface split is what keeps them out of a chat — and opening a Code session attaches all three as 16 C6 says. A namespace that is not installed, or is disabled, is skipped in silence: a preference that failed to create the chat would be worse than one that did nothing. Every call still follows the mode, so attaching authorizes nothing on its own.
-- **Add folder to workspace** in a *chat* with the filesystem connector not installed shows one dialog offering to install it. A chat is never given the code editor or the shell; the surface split (16) is what makes that clean. The same one-dialog pattern applies to the Web search toggle and the `web` connector.
+- **Add folder to workspace** in a *chat* with the filesystem connector not installed shows one dialog offering to install it. A chat is never given the code editor or the shell; the surface split (16) is what makes that clean. The Web search toggle used to work the same way; it no longer has to, because `web` is installed by the time the toggle is drawn.
 - Connector suggestions (§9) are runtime tools, not a connector, so they need no installation; they never install anything without the card's Install button.
 
 ### The install flow, by transport

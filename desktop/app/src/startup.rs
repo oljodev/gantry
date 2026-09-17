@@ -318,6 +318,9 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn Error>> {
     // Installed connectors are registered without waiting for the window: a chat that starts
     // immediately still sees its tools. A server that cannot be reached is logged, not fatal.
     tauri::async_runtime::spawn(async move {
+        // The app's own connectors first, so the first run has them without anybody installing
+        // anything (03 §11). It is a no-op on every run after the first.
+        connectors.install_defaults().await;
         if let Err(err) = connectors.rebuild().await {
             log::warn!("registering the installed connectors: {err}");
         }

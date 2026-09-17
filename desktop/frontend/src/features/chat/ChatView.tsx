@@ -110,12 +110,17 @@ export function ChatView({
   const openSettings = useUiStore((s) => s.openSettings);
   const connectorChoices = useMemo(
     () =>
-      (installedConnectors.data ?? []).map((c) => ({
-        id: c.id,
-        name: c.name,
-        attached: (chatConnectors.data ?? []).includes(c.id),
-        ready: c.enabled && c.auth_state === 'authorized' && c.tools.length > 0,
-      })),
+      (installedConnectors.data ?? [])
+        // `web` is installed on every machine and already has a switch of its own further down
+        // the same menu (see `setWebSearch`). Two rows that attach the same instance is one row
+        // too many, and the one that says what it is *for* is the one worth keeping.
+        .filter((c) => c.catalog_id !== WEB_CONNECTOR)
+        .map((c) => ({
+          id: c.id,
+          name: c.name,
+          attached: (chatConnectors.data ?? []).includes(c.id),
+          ready: c.enabled && c.auth_state === 'authorized' && c.tools.length > 0,
+        })),
     [installedConnectors.data, chatConnectors.data],
   );
   const catalog = useCatalog();

@@ -62,6 +62,7 @@
       "read this",
       "link"
     ],
-    "sort_weight": 127
+    "sort_weight": 127,
+    "install_by_default": true
   }
 }

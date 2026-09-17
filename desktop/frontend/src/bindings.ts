@@ -750,6 +750,12 @@ export type CatalogEntryDto = {
 	 *  exist.
 	 */
 	auth_needs_client_id: boolean,
+	/**
+	 *  Part of the app rather than a choice (03 §11, `catalog.install_by_default`): installed on
+	 *  first run and not removable, because the control that uses it is drawn whether or not it
+	 *  is there.
+	 */
+	install_by_default: boolean,
 };
 
 /**  Everything the chat view needs. */

@@ -281,6 +281,16 @@ pub struct CatalogMeta {
     pub sort_weight: f64,
     #[serde(default)]
     pub suggest_for: Vec<String>,
+    /// Installed on first run, without anybody choosing it (03 §11).
+    ///
+    /// For the handful of connectors that are part of the app rather than an integration with
+    /// somebody else's service: keyless, first-party, native, and already reachable from a
+    /// control of their own in the interface. `web` is the first — the composer has had a
+    /// **Web search** switch since M0b, and a switch that has to install something the first
+    /// time it is used is a switch that fails differently on the first press than on the
+    /// second.
+    #[serde(default)]
+    pub install_by_default: bool,
 }
 
 /// `${user_config.KEY}` replaced by what the user gave, everywhere it appears.
@@ -505,6 +515,7 @@ impl Manifest {
                 .and_then(|a| a.setup_url())
                 .map(str::to_owned),
             auth_needs_client_id: self.auth.needs_client_id(),
+            install_by_default: self.catalog.install_by_default,
         }
     }
 

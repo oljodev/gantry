@@ -49,6 +49,12 @@ export function ConnectorsSection() {
   const catalog = useCatalog();
   const connectors = useConnectors();
   const { connect, setEnabled, remove } = useConnectorMutations();
+  // The catalogue ids the app installs itself. Their rows keep the switch and lose the bin:
+  // `remove` refuses them in the backend, and a button that always errors is worse than none.
+  const builtIn = useMemo(
+    () => new Set((catalog.data ?? []).filter((e) => e.install_by_default).map((e) => e.id)),
+    [catalog.data],
+  );
   const { runInstall: install, busyId: busy } = useInstallFlow();
 
   // Something opened this section *at* a connector — the palette, so far. Seed the search with
@@ -187,7 +193,9 @@ export function ConnectorsSection() {
               instance={instance}
               onReconnect={() => connect.mutate(instance.id)}
               onToggle={(enabled) => setEnabled.mutate({ instanceId: instance.id, enabled })}
-              onRemove={() => remove.mutate(instance.id)}
+              onRemove={
+                builtIn.has(instance.catalog_id ?? '') ? null : () => remove.mutate(instance.id)
+              }
               onFinishSetup={() => {
                 const entry = (catalog.data ?? []).find((c) => c.id === instance.catalog_id);
                 if (entry) void runInstall(entry);
@@ -350,7 +358,8 @@ function InstalledRow({
   instance: ConnectorInstanceDto;
   onReconnect: () => void;
   onToggle: (enabled: boolean) => void;
-  onRemove: () => void;
+  /** Absent for a connector that is part of the app: it would come back at the next start. */
+  onRemove: (() => void) | null;
   onFinishSetup: () => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -437,15 +446,17 @@ function InstalledRow({
                 {log ? 'Hide log' : 'Show log'}
               </Button>
             )}
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-bad hover:bg-bad-subtle"
-              onClick={onRemove}
-            >
-              <TrashIcon />
-              Remove
-            </Button>
+            {onRemove && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-bad hover:bg-bad-subtle"
+                onClick={onRemove}
+              >
+                <TrashIcon />
+                Remove
+              </Button>
+            )}
           </div>
           {log && <ServerLog instanceId={instance.id} />}
         </div>

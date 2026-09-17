@@ -234,6 +234,33 @@ impl ConnectorService {
         Ok(())
     }
 
+    /// Installs the connectors that are part of the app rather than a choice (03 §11).
+    ///
+    /// Called once at startup, before the registry is built. A connector marked
+    /// `catalog.install_by_default` is installed when nothing in the database claims its
+    /// catalogue id yet — so removing one keeps it removed until the next default arrives,
+    /// which is the difference between a default and a thing that cannot be turned off.
+    ///
+    /// Failure is logged, never fatal: a machine that cannot install `web` should still start.
+    pub async fn install_defaults(&self) {
+        let installed: Vec<String> = match self.instances() {
+            Ok(list) => list.into_iter().filter_map(|i| i.catalog_id).collect(),
+            Err(err) => {
+                log::warn!("could not read the installed connectors: {err}");
+                return;
+            }
+        };
+        for manifest in self.catalog.all() {
+            if !manifest.catalog.install_by_default || installed.contains(&manifest.id) {
+                continue;
+            }
+            match self.install(&manifest.id).await {
+                Ok(_) => log::info!("{} is installed by default", manifest.name),
+                Err(err) => log::warn!("could not install {} by default: {err}", manifest.name),
+            }
+        }
+    }
+
     pub async fn install(&self, catalog_id: &str) -> Result<InstanceId, GantryError> {
         let manifest = self
             .catalog
@@ -339,6 +366,20 @@ impl ConnectorService {
     /// Removes an instance, its credentials and its registered OAuth clients (03 §11).
     pub async fn remove(&self, id: InstanceId) -> Result<(), GantryError> {
         let instance = self.instance(id)?;
+        // A default is installed again at the next start, so removing one is a button that
+        // works until you restart. Refusing says the true thing: switch it off instead, which
+        // is a setting and survives (03 §11).
+        if instance
+            .catalog_id
+            .as_deref()
+            .and_then(|c| self.catalog.get(c))
+            .is_some_and(|m| m.catalog.install_by_default)
+        {
+            return Err(GantryError::invalid(format!(
+                "{} is part of Gantry and cannot be removed; switch it off instead",
+                instance.name
+            )));
+        }
         self.logs.clear(id);
         self.registry.remove(&instance.namespace);
         for secret in self
@@ -1285,6 +1326,36 @@ mod tests {
             .into_iter()
             .map(|d| d.name)
             .collect()
+    }
+
+    #[tokio::test]
+    async fn the_app_s_own_connectors_install_themselves_once() {
+        let (_dir, service) = service();
+        assert!(service.instances().unwrap().is_empty());
+
+        service.install_defaults().await;
+        let after: Vec<String> = service
+            .instances()
+            .unwrap()
+            .into_iter()
+            .filter_map(|i| i.catalog_id)
+            .collect();
+        assert_eq!(
+            after,
+            vec!["web".to_owned()],
+            "the composer draws its switch"
+        );
+
+        // Every later start finds it there. A second copy would take the `web-2` namespace and
+        // the switch would attach whichever one it found first.
+        service.install_defaults().await;
+        assert_eq!(service.instances().unwrap().len(), 1);
+
+        // And it is not removable: it would be back at the next start, which makes the button a
+        // lie rather than a choice.
+        let id = service.instances().unwrap()[0].id;
+        let err = service.remove(id).await.unwrap_err();
+        assert!(format!("{err:?}").contains("part of Gantry"), "{err:?}");
     }
 
     #[test]

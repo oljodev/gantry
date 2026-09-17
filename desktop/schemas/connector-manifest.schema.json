@@ -208,6 +208,9 @@
           "items": {
             "type": "string"
           }
+        },
+        "install_by_default": {
+          "type": "boolean"
         }
       }
     }
