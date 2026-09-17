@@ -370,9 +370,13 @@ describe('the sub agents a reply started (18 §7)', () => {
       tier: 'app',
       ...extra,
     });
+  // The shape the connector actually sends: the report the model reads, then the accounting.
   const reported = (seconds: number, tokens: number, transcript: string) =>
     ({
-      result: [{ kind: 'json', json: { seconds, tokens, transcript, status: 'completed' } }],
+      result: [
+        { kind: 'text', text: 'Here is what I found.' },
+        { kind: 'json', json: { seconds, tokens, transcript, status: 'completed' } },
+      ],
     }) as Partial<ToolCallDto>;
 
   it('folds three calls into one line, because that is the sentence', () => {

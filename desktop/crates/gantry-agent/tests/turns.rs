@@ -2460,6 +2460,24 @@ async fn a_sub_agent_does_the_work_and_hands_back_one_report() {
     let preview = call.result_preview.clone().unwrap_or_default();
     assert!(preview.contains("rides on legs"), "{preview}");
 
+    // And beside the report, what it cost: the row in the parent's chat and the turn footer
+    // read these, and a number kept only in `structured` reaches neither — the runner keeps a
+    // call's content and drops the rest.
+    let accounting = call
+        .result
+        .as_ref()
+        .expect("the call kept its result")
+        .iter()
+        .find_map(|p| match p {
+            gantry_core::ResultPart::Json { json } => Some(json.clone()),
+            _ => None,
+        })
+        .expect("the result carries what the sub agent cost");
+    assert_eq!(accounting["agent"], "Researcher");
+    assert_eq!(accounting["status"], "completed");
+    assert!(accounting["transcript"].is_string(), "{accounting}");
+    assert!(accounting["seconds"].is_number(), "{accounting}");
+
     // And the sub agent's own steps are not in the parent's transcript: the user reads what
     // their model said, not the forty pages somebody had to read to answer it (18 A6).
     let parent_text = detail.turns[0].assistant_text();

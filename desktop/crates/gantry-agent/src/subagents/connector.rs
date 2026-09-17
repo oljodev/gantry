@@ -297,15 +297,25 @@ impl Connector for SubAgents {
                 } else {
                     report.text.clone()
                 };
+                // The report, then what it cost. The second part is a `Json` rather than only
+                // the `structured` field beside it because `structured` reaches nobody: the
+                // runner keeps a call's `content` and drops the rest, so a number that lives
+                // only there is a number the row and the turn footer never see.
+                let summary = json!({
+                    "agent": report.agent,
+                    "status": status_word(report.status),
+                    "seconds": report.ms / 1000,
+                    "transcript": report.chat_id.to_string(),
+                    "tokens": report.usage.as_ref().map(|u| u.input + u.output),
+                });
                 Ok(ToolOutcome::Complete {
-                    content: vec![gantry_core::ResultPart::Text { text }],
-                    structured: Some(json!({
-                        "agent": report.agent,
-                        "status": status_word(report.status),
-                        "seconds": report.ms / 1000,
-                        "transcript": report.chat_id.to_string(),
-                        "tokens": report.usage.as_ref().map(|u| u.input + u.output),
-                    })),
+                    content: vec![
+                        gantry_core::ResultPart::Text { text },
+                        gantry_core::ResultPart::Json {
+                            json: summary.clone(),
+                        },
+                    ],
+                    structured: Some(summary),
                     is_error: report.status == gantry_core::TurnStatus::Failed,
                     media: Vec::new(),
                 })

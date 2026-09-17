@@ -491,10 +491,18 @@ function subTokens(blocks: Block[]): number | undefined {
   return total > 0 ? total : undefined;
 }
 
+/**
+ * The structured half of a result, wherever it sits in it.
+ *
+ * Not only the first part: a connector that answers with prose *and* the facts about it — the
+ * sub-agent tool hands back the report and then what it cost — puts the text first, because
+ * the text is what the model came for.
+ */
 function resultJson(call: ToolCallDto | undefined): Record<string, unknown> | undefined {
-  const first = call?.result?.[0];
-  if (first?.kind === 'json' && first.json && typeof first.json === 'object') {
-    return first.json as Record<string, unknown>;
+  for (const part of call?.result ?? []) {
+    if (part.kind === 'json' && part.json && typeof part.json === 'object') {
+      return part.json as Record<string, unknown>;
+    }
   }
   return undefined;
 }
