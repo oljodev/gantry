@@ -3,13 +3,7 @@ import { FolderOpenIcon } from '@phosphor-icons/react';
 import type { UserConfigField } from '@/bindings';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { OptionPicker } from '@/components/ui/option-picker';
 import { Switch } from '@/components/ui/switch';
 import { pickFolder } from '@/lib/folders';
 
@@ -78,21 +72,17 @@ function Field({
     return (
       <div className="flex flex-col gap-1.5">
         {label}
-        <Select value={value} onValueChange={(next) => onChange(next as string)}>
-          <SelectTrigger id={field.key} aria-label={field.title} className="w-full">
-            <SelectValue placeholder={options[0]?.label}>{current?.label}</SelectValue>
-          </SelectTrigger>
-          <SelectContent className="max-w-[min(30rem,80vw)]">
-            {options.map((option) => (
-              <SelectItem key={option.value} value={option.value}>
-                <span className="min-w-0 flex-1 truncate">{option.label}</span>
-                {option.detail && (
-                  <span className="shrink-0 text-meta text-fg-3">{option.detail}</span>
-                )}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <OptionPicker
+          id={field.key}
+          label={field.title}
+          value={value}
+          options={options.map((o) => ({
+            value: o.value,
+            label: o.label,
+            detail: o.detail ?? undefined,
+          }))}
+          onChange={onChange}
+        />
         {current?.detail && <p className="text-meta text-fg-3">{current.detail}</p>}
       </div>
     );

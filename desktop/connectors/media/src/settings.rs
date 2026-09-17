@@ -129,52 +129,51 @@ impl Preferences {
 /// works: the model at the top is the one that answers when nobody chooses.
 #[must_use]
 pub fn fields(available: &[Candidate], now_ms: i64) -> Vec<UserConfigField> {
-    let mut fields: Vec<UserConfigField> =
-        [Kind::Image, Kind::Speech, Kind::Video]
-            .into_iter()
-            .map(|kind| {
-                let mut options = vec![UserConfigOption {
-                    value: AUTOMATIC.to_owned(),
-                    label: "Newest available".to_owned(),
-                    detail: available
-                        .iter()
-                        .find(|c| c.kind == kind && c.recent(now_ms))
-                        .map(|c| format!("today: {}", c.key())),
-                }];
-                options.extend(available.iter().filter(|c| c.kind == kind).map(|c| {
-                    UserConfigOption {
-                        value: c.key(),
-                        label: c.key(),
-                        // The age of an old one is said here rather than hidden: this menu is
-                        // the one place a model over a year old can be chosen, and choosing one
-                        // on purpose needs to look different from choosing one by accident.
-                        detail: Some(match c.recent(now_ms) {
-                            true => detail(c),
-                            false => format!(
-                                "{} \u{b7} {}",
-                                detail(c),
-                                c.age(now_ms).unwrap_or_else(|| "older".to_owned())
-                            ),
-                        }),
-                    }
-                }));
-                UserConfigField {
-                    key: key_for(kind).to_owned(),
-                    kind: UserConfigKind::Select,
-                    title: format!("Default model for {}", describe_kind(kind)),
-                    description: Some(format!(
-                        "What a call uses when it does not name a model. The chat model can still \
+    let mut fields: Vec<UserConfigField> = [Kind::Image, Kind::Speech, Kind::Video]
+        .into_iter()
+        .map(|kind| {
+            let mut options = vec![UserConfigOption {
+                value: AUTOMATIC.to_owned(),
+                label: "Newest available".to_owned(),
+                detail: available
+                    .iter()
+                    .find(|c| c.kind == kind && c.recent(now_ms))
+                    .map(|c| format!("today: {}", c.key())),
+            }];
+            options.extend(available.iter().filter(|c| c.kind == kind).map(|c| {
+                UserConfigOption {
+                    value: c.key(),
+                    label: c.key(),
+                    // The age of an old one is said here rather than hidden: this menu is
+                    // the one place a model over a year old can be chosen, and choosing one
+                    // on purpose needs to look different from choosing one by accident.
+                    detail: Some(match c.recent(now_ms) {
+                        true => detail(c),
+                        false => format!(
+                            "{} \u{b7} {}",
+                            detail(c),
+                            c.age(now_ms).unwrap_or_else(|| "older".to_owned())
+                        ),
+                    }),
+                }
+            }));
+            UserConfigField {
+                key: key_for(kind).to_owned(),
+                kind: UserConfigKind::Select,
+                title: format!("Default model for {}", describe_kind(kind)),
+                description: Some(format!(
+                    "What a call uses when it does not name a model. The chat model can still \
                      name another one unless the rule below says otherwise; this is what it \
                      gets when it leaves `{}` out.",
-                        kind_name(kind)
-                    )),
-                    required: false,
-                    sensitive: false,
-                    default: Some(AUTOMATIC.to_owned()),
-                    options,
-                }
-            })
-            .collect();
+                    kind_name(kind)
+                )),
+                required: false,
+                sensitive: false,
+                default: Some(AUTOMATIC.to_owned()),
+                options,
+            }
+        })
+        .collect();
     fields.push(UserConfigField {
         key: DEFAULT_MODEL_RULE.to_owned(),
         kind: UserConfigKind::Select,

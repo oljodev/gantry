@@ -60,6 +60,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { OptionPicker } from '@/components/ui/option-picker';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
@@ -218,7 +219,75 @@ function Selects() {
           </SelectContent>
         </Select>
       </State>
+      <State label="Option picker · long enough to search">
+        <PickerExample />
+      </State>
     </>
+  );
+}
+
+/**
+ * The same control a connector's settings and a permission card use for a model (03 §5, 04 §7).
+ * Past `SEARCH_FROM` options it grows a filter box; below it, it is the `Select` above.
+ */
+function PickerExample() {
+  const options = [
+    {
+      value: 'openrouter/black-forest-labs/flux.2-pro',
+      label: 'openrouter/black-forest-labs/flux.2-pro',
+      detail: 'Sep 2026 · price not published',
+    },
+    {
+      value: 'openrouter/openai/gpt-image-2',
+      label: 'openrouter/openai/gpt-image-2',
+      detail: 'Aug 2026 · $30.00 / M drawn',
+    },
+    {
+      value: 'openrouter/bytedance-seed/seedream-5-0-pro',
+      label: 'openrouter/bytedance-seed/seedream-5-0-pro',
+      detail: 'Jul 2026 · price not published',
+    },
+    {
+      value: 'openrouter/google/gemini-3.1-flash-image',
+      label: 'openrouter/google/gemini-3.1-flash-image',
+      detail: 'Jun 2026 · $30.00 / M drawn',
+    },
+    {
+      value: 'openrouter/meta/muse-image',
+      label: 'openrouter/meta/muse-image',
+      detail: 'May 2026 · price not published',
+    },
+    {
+      value: 'openrouter/alibaba/wan-3.0-image',
+      label: 'openrouter/alibaba/wan-3.0-image',
+      detail: 'Apr 2026 · price not published',
+    },
+    {
+      value: 'openrouter/black-forest-labs/flux.2-flex',
+      label: 'openrouter/black-forest-labs/flux.2-flex',
+      detail: 'Mar 2026 · price not published',
+    },
+    {
+      value: 'openrouter/openai/gpt-image-1-mini',
+      label: 'openrouter/openai/gpt-image-1-mini',
+      detail: 'Feb 2026 · $8.00 / M drawn',
+    },
+    {
+      value: 'openrouter/stability/sd-4-ultra',
+      label: 'openrouter/stability/sd-4-ultra',
+      detail: 'Jan 2026 · price not published',
+    },
+    {
+      value: 'openrouter/ideogram/ideogram-4',
+      label: 'openrouter/ideogram/ideogram-4',
+      detail: 'Dec 2025 · price not published',
+    },
+  ];
+  const [value, setValue] = useState(options[1]!.value);
+  return (
+    <div className="w-96">
+      <OptionPicker label="Model" value={value} options={options} onChange={setValue} />
+    </div>
   );
 }
 

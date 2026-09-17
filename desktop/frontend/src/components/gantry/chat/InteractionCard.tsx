@@ -7,6 +7,7 @@ import { TierLabel } from '@/components/gantry/TierLabel';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Kbd } from '@/components/ui/kbd';
+import { OptionPicker } from '@/components/ui/option-picker';
 import {
   Select,
   SelectContent,
@@ -204,32 +205,14 @@ export function PermissionCard({
               <div className="flex items-center gap-2">
                 <span className="shrink-0 text-ui text-fg-2">{choice.label}</span>
                 {choice.options.length > 0 ? (
-                  <Select
+                  <OptionPicker
+                    label={choice.label}
                     value={valueOf(choice)}
-                    onValueChange={(v) => setPicked((p) => ({ ...p, [choice.key]: v as string }))}
-                  >
-                    <SelectTrigger
-                      aria-label={choice.label}
-                      disabled={pending}
-                      className="min-w-0 flex-1"
-                    >
-                      <SelectValue placeholder="Choose one">
-                        <span className="truncate font-mono text-mono">{valueOf(choice)}</span>
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent className="max-w-[min(34rem,80vw)]">
-                      {choice.options.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          <span className="min-w-0 flex-1 truncate font-mono text-mono">
-                            {option.label}
-                          </span>
-                          {option.detail && (
-                            <span className="shrink-0 text-meta text-fg-3">{option.detail}</span>
-                          )}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    options={choice.options}
+                    disabled={pending}
+                    onChange={(next) => setPicked((p) => ({ ...p, [choice.key]: next }))}
+                    className="min-w-0 flex-1"
+                  />
                 ) : (
                   <span className="min-w-0 flex-1 truncate font-mono text-mono text-fg">
                     {valueOf(choice) || '—'}
