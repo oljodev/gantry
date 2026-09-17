@@ -177,6 +177,12 @@ impl Connector for Fake {
                 serde_json::json!({}),
                 RiskTier::Read,
             ),
+            ToolDef::new(
+                "paint",
+                "Makes a picture",
+                serde_json::json!({}),
+                RiskTier::Read,
+            ),
         ])
     }
     async fn call(
@@ -191,6 +197,16 @@ impl Connector for Fake {
                 serde_json::json!({ "echo": req.args["text"] }),
             )),
             "write" => Ok(ToolOutcome::text("written")),
+            // What the `media` connector does: a result the model reads, and a part for the
+            // answer itself (03 §4).
+            "paint" => Ok(ToolOutcome::text("A red square, 1 px.").with_media(vec![
+                gantry_core::ContentPart::Image {
+                    source: gantry_core::MediaSource::Base64 {
+                        data: ONE_PIXEL.to_owned(),
+                    },
+                    mime: "image/png".to_owned(),
+                },
+            ])),
             "boom" | "crash" => Err(ConnectorError::Failed("kaboom".into())),
             "stream" => {
                 for line in ["compiling gantry-core\n", "compiling gantry-agent\n"] {
@@ -540,6 +556,7 @@ async fn a_text_turn_completes_and_is_recorded() {
             "fake__boom",
             "fake__crash",
             "fake__stream",
+            "fake__paint",
             "gantry__clock",
             "gantry__search_connectors",
             "gantry__request_access",
@@ -727,6 +744,9 @@ async fn a_turn_can_be_started_from_a_plain_thread() {
     wait_for(|| sink.completed().is_some()).await;
     assert_eq!(sink.completed(), Some(TurnStatus::Completed));
 }
+
+/// A one-pixel PNG, base64. Small enough to read in a diff, real enough to be stored.
+const ONE_PIXEL: &str = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
 
 // ---- M3: the tool loop ----------------------------------------------------------------
 
@@ -1110,6 +1130,7 @@ async fn plan_mode_offers_only_tools_it_would_allow() {
             "fake__echo",
             "fake__boom",
             "fake__stream",
+            "fake__paint",
             "gantry__clock",
             "gantry__search_connectors",
             "gantry__request_access",
@@ -2149,4 +2170,75 @@ async fn a_read_prompt_in_plan_mode_offers_all_reads_and_a_folder() {
         RiskTier::Read,
         &serde_json::json!({ "path": "/etc/passwd" })
     ));
+}
+
+/// 03 §4: a tool may contribute to the answer, not only to its own result. The picture lands in
+/// the reply at the point the call happened, its bytes go to the blob store rather than into the
+/// transcript, and the live event carries them so it appears at once.
+#[tokio::test]
+async fn a_tool_can_put_a_picture_in_the_answer() {
+    let m = manager_with(
+        vec![
+            tool_round("call_1", "fake__paint", serde_json::json!({})),
+            vec![text("There it is."), end()],
+        ],
+        Duration::ZERO,
+        Settings::default(),
+    );
+    let chat = m.chat();
+    let sink = Arc::new(Collect::default());
+    m.start(
+        chat.id,
+        "draw something".into(),
+        Vec::new(),
+        Vec::new(),
+        sink.clone(),
+    )
+    .unwrap();
+    wait_for(|| sink.completed().is_some()).await;
+    assert_eq!(sink.completed(), Some(TurnStatus::Completed));
+
+    let detail = m.chats().get(chat.id).unwrap().unwrap();
+    let t = &detail.turns[0];
+    assert_eq!(
+        t.messages.len(),
+        4,
+        "assistant, tool, the picture, assistant"
+    );
+    assert_eq!(t.messages[2].role, Role::Assistant);
+    let ContentPart::Image { source, mime } = &t.messages[2].parts[0] else {
+        panic!(
+            "the third message is the picture: {:?}",
+            t.messages[2].parts
+        );
+    };
+    assert_eq!(mime, "image/png");
+    let gantry_core::MediaSource::Blob { hash } = source else {
+        panic!("what is written down is a hash, not the bytes: {source:?}");
+    };
+    assert_eq!(hash.len(), 64);
+
+    // The live event is the other half: it carries the bytes, so the picture is on screen
+    // before anything has been read back out of the store.
+    let live = sink.kinds().into_iter().find_map(|k| match k {
+        AgentEventKind::BlockDone {
+            part: ContentPart::Image { source, .. },
+            ..
+        } => Some(source),
+        _ => None,
+    });
+    assert!(
+        matches!(live, Some(gantry_core::MediaSource::Base64 { data }) if data == ONE_PIXEL),
+        "the live event carries the picture itself"
+    );
+
+    // The transcript carries it, because the transcript is what the chat is. What each provider
+    // does with an assistant message of media — nothing — is checked where the projections are
+    // (`gantry-providers/tests/answer_media.rs`).
+    let second = m.requests()[1].clone();
+    assert_eq!(
+        second.messages.last().map(|msg| msg.role),
+        Some(Role::Assistant),
+        "the picture is the last thing before the next round"
+    );
 }

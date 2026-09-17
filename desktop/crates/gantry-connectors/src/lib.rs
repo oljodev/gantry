@@ -69,6 +69,17 @@ pub enum ToolOutcome {
         content: Vec<ResultPart>,
         structured: Option<serde_json::Value>,
         is_error: bool,
+        /// Parts the call contributes to the **answer** rather than to its own result (03 §4).
+        ///
+        /// A picture a tool made is not something to describe in a result and hope the model
+        /// quotes: it belongs in the reply, at the point the model asked for it. The turn loop
+        /// appends these to the transcript as an assistant message of their own, right after
+        /// the results, so they render where the call happened, are parked in the blob store
+        /// like any other media, and are dropped on replay to a chat provider — which has
+        /// already been shown whatever the result itself carried.
+        ///
+        /// Empty for every connector but `media`.
+        media: Vec<gantry_core::ContentPart>,
     },
 }
 
@@ -92,6 +103,7 @@ impl ToolOutcome {
             }],
             structured: Some(value),
             is_error: false,
+            media: Vec::new(),
         }
     }
 
@@ -101,6 +113,7 @@ impl ToolOutcome {
             content: vec![ResultPart::Text { text: text.into() }],
             structured: None,
             is_error: false,
+            media: Vec::new(),
         }
     }
 
@@ -113,7 +126,16 @@ impl ToolOutcome {
             }],
             structured: None,
             is_error: true,
+            media: Vec::new(),
         }
+    }
+
+    /// The same, carrying media for the answer.
+    #[must_use]
+    pub fn with_media(mut self, parts: Vec<gantry_core::ContentPart>) -> Self {
+        let Self::Complete { media, .. } = &mut self;
+        *media = parts;
+        self
     }
 }
 

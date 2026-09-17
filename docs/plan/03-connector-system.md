@@ -246,6 +246,28 @@ does. Past that, a connector is free to choose, and the two answers are both cor
 Either way the call is recorded as `cancelled` with a result saying so, because a transcript is
 never sent with a call that has no result (02 §3).
 
+**What `media` is for** (added 2026-09-17, for the `media` connector of §5). A tool result is
+something the *model* reads; `media` is something the **reader** sees. A picture a tool made is
+not worth describing in a result and hoping the model quotes it back — it belongs in the reply,
+at the point the model asked for it. The turn loop appends these parts to the transcript as an
+assistant message of its own, immediately after the results, and four things then hold with no
+further code:
+
+- the reply renders it where the call happened, because the transcript is walked in order and
+  only assistant messages become blocks;
+- `append_turn_message` parks the bytes in the blob store like any other media, so the
+  transcript is not carrying megabytes of base64 (02 §4b);
+- the sweeper reaches the blob through the message's own parts, which a hash mentioned only
+  inside some text would not have (06 §6);
+- and every provider drops it again on the way out — an assistant message of media projects to
+  nothing at all on all four wire formats, which
+  `gantry-providers/tests/answer_media.rs` is the standing check for. It is not a second copy
+  sent to the model: the model was already shown whatever the tool's own result carried.
+
+The live event carries the bytes so the picture appears the moment it arrives; only what is
+written down is a hash. It is empty for every connector but `media`, and a failed call's media
+is dropped — a picture of nothing is not an answer.
+
 ```rust
 pub struct ToolCallRequest {
     pub call_id: CallId,
@@ -257,7 +279,8 @@ pub struct ToolCallRequest {
 }
 
 pub enum ToolOutcome {
-    Complete { content: Vec<ResultPart>, structured: Option<serde_json::Value>, is_error: bool },
+    Complete { content: Vec<ResultPart>, structured: Option<serde_json::Value>, is_error: bool,
+               media: Vec<ContentPart> },   // parts for the answer itself, not for the result
     InputRequired { requests: InputRequests, request_state: Option<String> }, // becomes an Interaction, then a retry
 }
 

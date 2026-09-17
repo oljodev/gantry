@@ -190,6 +190,15 @@ fn project(
                     _ => {}
                 }
             }
+            // An assistant message with nothing on this wire is not an empty assistant turn: it
+            // is a message made of parts this provider does not take. A tool's contribution to
+            // the answer (03 §4) is the case — a picture, which the model was already shown in
+            // the tool's own result — and sending `content: ""` for it would put an empty turn
+            // between two real ones. The other three clients build their items per part and so
+            // drop it already.
+            if text.is_empty() && reasoning.is_empty() && tool_calls.is_empty() {
+                return Vec::new();
+            }
             let mut msg = json!({ "role": "assistant", "content": text });
             if !reasoning.is_empty() {
                 msg["reasoning"] = json!(reasoning);

@@ -229,13 +229,13 @@ pub async fn run_turn(ctx: RunContext) {
                 call_count += u32::try_from(calls.len()).unwrap_or(u32::MAX);
                 transcript.push(assistant.clone());
                 let capped = rounds > ctx.max_tool_rounds;
-                let (results, cancelled) = if capped {
+                let (results, made, cancelled) = if capped {
                     let detail = format!(
                         "Gantry stopped this reply after {} tool rounds (Settings → Advanced).",
                         ctx.max_tool_rounds
                     );
                     close_unrun_calls(&ctx, &calls, ToolCallStatus::Cancelled, &detail);
-                    (synthetic_results(&calls, &detail), false)
+                    (synthetic_results(&calls, &detail), Vec::new(), false)
                 } else {
                     run_calls(&ctx, &assistant, &calls, &mut guard).await
                 };
@@ -258,6 +258,9 @@ pub async fn run_turn(ctx: RunContext) {
                     s.messages.push(LiveMessage::finished(&tool_message));
                 }
                 transcript.push(tool_message);
+                if let Some(message) = answer_media(&ctx, made) {
+                    transcript.push(message);
+                }
                 if let Some(change) = refresh_tools(&ctx, &mut attached).await {
                     ctx.chats.append_turn_message(
                         ctx.input.chat_id,
@@ -716,6 +719,52 @@ fn synthetic_results(calls: &[Call], text: &str) -> Vec<ContentPart> {
         .collect()
 }
 
+/// What a tool contributed to the **answer** (03 §4), as an assistant message of its own.
+///
+/// It is a message rather than a tool result because that is what the reply is made of: the
+/// transcript is walked in order and only assistant messages become blocks, so a picture put
+/// here lands exactly where the call happened — after the text that led to it, before the text
+/// that follows. Three things then hold without any further code. `append_turn_message` parks
+/// the bytes in the blob store, so the transcript is not carrying megabytes of base64. The
+/// sweeper reaches the blob through the message's own parts, which a hash mentioned only inside
+/// some text would not have (06 §6). And every provider's assistant projection drops media, so
+/// it is never replayed into a chat request — the model has already been shown whatever the
+/// tool's own result carried.
+///
+/// The live event carries the base64, so the picture appears the moment it arrives; only what
+/// is written down is a hash.
+fn answer_media(ctx: &RunContext, parts: Vec<ContentPart>) -> Option<Message> {
+    if parts.is_empty() {
+        return None;
+    }
+    let message = Message {
+        id: MessageId::new(),
+        role: Role::Assistant,
+        parts,
+        origin: None,
+        created_at: now_ms(),
+    };
+    for (i, part) in message.parts.iter().enumerate() {
+        ctx.active.batcher.push(AgentEventKind::BlockDone {
+            message_id: message.id,
+            block: u32::try_from(i).unwrap_or(u32::MAX),
+            part: part.clone(),
+        });
+    }
+    {
+        let mut s = ctx.active.state.lock().unwrap_or_else(|e| e.into_inner());
+        s.messages.push(LiveMessage::finished(&message));
+    }
+    ctx.chats.append_turn_message(
+        ctx.input.chat_id,
+        ctx.input.turn_id,
+        message.clone(),
+        None,
+        None,
+    );
+    Some(message)
+}
+
 /// Marks calls that never ran as over, in the live state and on the channel.
 fn close_unrun_calls(ctx: &RunContext, calls: &[Call], status: ToolCallStatus, detail: &str) {
     for c in calls {
@@ -815,9 +864,12 @@ async fn run_calls(
     assistant: &Message,
     calls: &[Call],
     guard: &mut GuardState,
-) -> (Vec<ContentPart>, bool) {
+) -> (Vec<ContentPart>, Vec<ContentPart>, bool) {
     let batcher = ctx.active.batcher.clone();
     let mut results: Vec<Option<ContentPart>> = (0..calls.len()).map(|_| None).collect();
+    // What each call contributed to the answer, kept in the model's order however the calls
+    // themselves finished (03 §4).
+    let mut answer: Vec<Vec<ContentPart>> = (0..calls.len()).map(|_| Vec::new()).collect();
     // Index, tool, who allowed it, and whether the attaching a `widens_access` call exists to
     // ask about has already been answered (04 §9) — by the mode, by the guard, or by **Allow
     // anyway**. Only `Decision::Ask`, which is the user being asked, leaves it unanswered.
@@ -1184,12 +1236,15 @@ async fn run_calls(
                 .iter()
                 .map(|(i, entry, _, decided)| execute(ctx, &calls[*i], entry.clone(), *decided));
             let outcomes = futures_util::future::join_all(futures).await;
-            for ((i, _, _, _), part) in allowed.iter().zip(outcomes) {
+            for ((i, _, _, _), (part, media)) in allowed.iter().zip(outcomes) {
                 results[*i] = Some(part);
+                answer[*i] = media;
             }
         } else {
             for (i, entry, _, decided) in &allowed {
-                results[*i] = Some(execute(ctx, &calls[*i], entry.clone(), *decided).await);
+                let (part, media) = execute(ctx, &calls[*i], entry.clone(), *decided).await;
+                results[*i] = Some(part);
+                answer[*i] = media;
             }
         }
         cancelled = ctx.active.cancel.is_cancelled();
@@ -1232,7 +1287,8 @@ async fn run_calls(
             })
         })
         .collect();
-    (results, cancelled)
+    let answer = answer.into_iter().flatten().collect();
+    (results, answer, cancelled)
 }
 
 /// The task as the guard sees it (04 §6): what the user asked for, where the work may happen,
@@ -1301,13 +1357,15 @@ fn recent_of(call: &Call, outcome: &'static str, decision: &str) -> judge::Recen
 }
 
 /// Runs one allowed call to its result part; cancellation yields an error result.
+/// Runs one allowed call: the tool result for the transcript, and whatever the call contributed
+/// to the answer itself (03 §4, `ToolOutcome::media` — today only the `media` connector).
 async fn execute(
     ctx: &RunContext,
     call: &Call,
     entry: ToolEntry,
     // 04 §9: whether the attaching this call exists to ask about already has its answer.
     attach_decided: bool,
-) -> ContentPart {
+) -> (ContentPart, Vec<ContentPart>) {
     let started = Instant::now();
     let req = ToolCallRequest {
         call_id: call.id.clone(),
@@ -1339,13 +1397,14 @@ async fn execute(
         r = entry.connector.call(req, sink, cancel) => Some(r),
     };
     let elapsed = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
-    let (status, is_error, content) = match outcome {
+    let (status, is_error, content, media) = match outcome {
         None => (
             ToolCallStatus::Cancelled,
             true,
             vec![ResultPart::Text {
                 text: CANCELLED_RESULT.to_owned(),
             }],
+            Vec::new(),
         ),
         Some(Err(err)) => (
             ToolCallStatus::Failed,
@@ -1353,18 +1412,27 @@ async fn execute(
             vec![ResultPart::Text {
                 text: err.to_string(),
             }],
+            Vec::new(),
         ),
         Some(Ok(ToolOutcome::Complete {
-            content, is_error, ..
+            content,
+            is_error,
+            media,
+            ..
         })) => {
             let (capped, whole) = cap_result(content, ctx.max_result_bytes);
             if let Some(text) = whole {
                 keep_whole_output(ctx, &call.id, &text);
             }
-            (ToolCallStatus::Completed, is_error, capped)
+            // A failed call's media would be a picture of nothing.
+            let media = if is_error { Vec::new() } else { media };
+            (ToolCallStatus::Completed, is_error, capped, media)
         }
     };
-    complete_call(ctx, &call.id, status, is_error, elapsed, content)
+    (
+        complete_call(ctx, &call.id, status, is_error, elapsed, content),
+        media,
+    )
 }
 
 /// Stores the output a cap cut down, so the row's drawer can show what the model was not sent

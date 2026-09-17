@@ -530,6 +530,7 @@ fn render(
             content: vec![gantry_core::ResultPart::Json { json: out.clone() }],
             structured: Some(out),
             is_error: true,
+            media: Vec::new(),
         };
     }
     ToolOutcome::json(out)

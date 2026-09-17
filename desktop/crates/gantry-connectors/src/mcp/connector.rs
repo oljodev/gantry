@@ -258,6 +258,9 @@ impl Connector for McpConnector {
             content,
             structured,
             is_error,
+            // An MCP server's answer never reaches the reply directly: what it sends is a tool
+            // result, and the model decides what to say about it.
+            media: Vec::new(),
         })
     }
 }

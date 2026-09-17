@@ -153,6 +153,7 @@ impl Fixture {
             content,
             structured,
             is_error,
+            ..
         } = outcome;
         if let Some(json) = structured {
             return json;
