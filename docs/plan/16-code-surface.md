@@ -247,7 +247,9 @@ choose; it does not make the boundary weaker.
 
 Per C6 the surface does not own tools; it turns three connectors on. Opening the Code surface for
 the first time installs and attaches `filesystem`, `code-editor` and `shell`, and every later code
-session attaches the same three. They are ordinary instances: one row each in
+session attaches the same three. Sub agents (18) join them as a fourth namespace, on by default
+here and a checkbox in a chat; they are not in the list below because they are part of the app
+rather than a catalogue entry, and they have no card to remove. They are ordinary instances: one row each in
 `connector_instances`, a card each in Discover, a detail page each, removable like anything else.
 Removing one leaves the surface working without it, which is the honest behaviour — a session
 whose shell was removed can still read and edit.

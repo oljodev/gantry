@@ -640,6 +640,11 @@ The exception is the handful of connectors that are **part of the app rather tha
 
 A default connector is not removable — `remove` refuses it, and the row loses its bin — because the next start would install it again; the Off switch is the way to stop it, and that survives. It is otherwise an ordinary instance: an ordinary row on Settings → Connectors, attached per chat like any other, authorizing nothing on its own.
 
+`catalog.hidden` goes one step further and keeps an entry out of Discover and out of Your
+connectors entirely, for a capability that is part of the app and has no card worth reading:
+sub agents (18 §1) are the first, installed by default, attached per chat like any other
+namespace, and configured on a page of their own.
+
 Where a connector has a control of its own, that control is the **only** place it is offered. The composer's + menu lists installed connectors and, further down, the **Web search** switch; `web` is filtered out of the list above, because two rows that attach the same instance is one row too many and the one that says what it is *for* is the one worth keeping.
 
 Three consequences of the general rule are handled explicitly:

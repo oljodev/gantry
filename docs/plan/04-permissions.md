@@ -300,6 +300,12 @@ pub struct Interaction {
 
 **Elicitation** (2026-09-11, 03 §6). A server may stop in the middle of a tool call and ask the user something: which repository, which of these three accounts. It is an `Interaction` like the rest and wears the same card, because to the person answering it is the same kind of moment — the turn has stopped and is waiting on them. It is deliberately **not** a permission: nobody is deciding whether the call may happen, it is happening, and it needs an answer to carry on. The card offers the protocol's three actions rather than two, because a server may act on the difference: **Send** returns the form, **Not this time** declines (no answer, carry on without it), and **Stop** cancels (the user is not answering; give up rather than ask again). Cancelling the turn answers `cancel` for the same reason. No connector in the catalogue elicits today — it is a 2026-07-28 feature and the servers that have it do not use it — so this is built and untested against a real server, which is worth knowing before trusting it.
 
+**A sub agent's card** (18 §6) is an ordinary `Interaction` with the **parent's** `chat_id` and
+`turn_id` in it, so it renders in the conversation the user is actually looking at rather than in
+a transcript they have to open a modal to find; the payload names the agent and its task. Where
+the setting says the guard answers instead, no card is made at all and the sub agent runs in Auto
+with the judge. A sub agent never holds more permission than its parent chat.
+
 ## 11. Audit
 
 `decision.requested` and `decision.resolved` events carry `source ∈ { mode, grant, user_once, user_chat_grant, judge, guardrail, scope, plan_mode }`. `tool_calls.decision_source` and `tool_calls.judge_json` make "what ran, who allowed it" a single query. The chat's Permissions panel shows the timeline; it can be exported as JSON.
