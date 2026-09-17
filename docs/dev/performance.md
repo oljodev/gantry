@@ -112,6 +112,11 @@ a second later, and the first change is never delayed, so the first word appears
 is the seven-megabyte runtime document behind it — fetched once per session, and now started
 when the pointer reaches an artifact card rather than when it is clicked.
 
+**The sidebar was redrawing with it.** It subscribed to the run store's whole `byChat` map,
+which is a new object on every frame of a streaming answer, so every chat row in the list was
+rebuilt sixty times a second to change one dot. It now reads three numbers per chat — running,
+decisions waiting, calls the guard blocked — as a short string, compared shallowly.
+
 The catalogue of providers and models is memoised for the same reason: the chat view holds a
 whole transcript against its identity, so an array rebuilt on each render would have turned the
 first of those caches off without a word.

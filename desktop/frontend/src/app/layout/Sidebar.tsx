@@ -9,6 +9,7 @@ import {
   SidebarSimpleIcon,
 } from '@phosphor-icons/react';
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
+import { useShallow } from 'zustand/shallow';
 
 import { Logo } from '@/components/gantry/Logo';
 import { SurfaceToggle } from '@/components/gantry/sidebar/SurfaceToggle';
@@ -25,7 +26,7 @@ import { useChatMutations, useChats } from '@/lib/ipc/hooks/chats';
 import { usePendingCounts } from '@/lib/ipc/hooks/interactions';
 import { useSettings } from '@/lib/ipc/hooks/settings';
 import { shortcutLabel } from '@/lib/shortcuts';
-import { useRunStore } from '@/lib/stores/runStore';
+import { type LiveTurn, useRunStore } from '@/lib/stores/runStore';
 import { SIDEBAR_MAX, SIDEBAR_MIN, useUiStore } from '@/lib/stores/uiStore';
 import { cn, isMac } from '@/lib/utils';
 
@@ -46,7 +47,15 @@ export function Sidebar() {
   const dragging = useRef(false);
   const chatsQuery = useChats(surface);
   const { start: startCodeSession } = useNewCodeSession();
-  const live = useRunStore((s) => s.byChat);
+  // What a running turn puts on a row — a dot, a count, a warning — and nothing else. Read as
+  // one short string per chat and compared shallowly, because `byChat` is a new object on every
+  // frame of a streaming answer, and subscribing to it redrew the whole list sixty times a
+  // second to change one dot (docs/dev/performance.md).
+  const live = useRunStore(
+    useShallow((s) =>
+      Object.fromEntries(Object.entries(s.byChat).map(([id, turn]) => [id, mark(turn)])),
+    ),
+  );
   const pendingCounts = usePendingCounts();
   const { update, remove, exportChat } = useChatMutations();
   const developer = useSettings().data?.advanced?.developer_mode === true;
@@ -82,12 +91,9 @@ export function Sidebar() {
     pinned: c.pinned,
     archived: c.archived,
     lastMessageAt: c.last_message_at,
-    running: live[c.id]?.status === 'running' || c.active_turn !== null,
-    pending: live[c.id]?.pending.length || pendingCounts[c.id] || undefined,
-    blocked:
-      Object.values(live[c.id]?.calls ?? {}).filter(
-        (call) => call.judge?.decision === 'deny' && !call.judge.overridden,
-      ).length || undefined,
+    running: running(live[c.id]) || c.active_turn !== null,
+    pending: pendingOf(live[c.id]) || pendingCounts[c.id] || undefined,
+    blocked: blockedOf(live[c.id]) || undefined,
     // A code session is its folder as much as its title, so the row says which one (16 §5).
     subtitle: c.roots[0] ? folderName(c.roots[0]) : undefined,
   }));
@@ -317,4 +323,28 @@ function SectionLabel({ children }: { children: ReactNode }) {
 
 function Muted({ children }: { children: ReactNode }) {
   return <div className="px-2 text-meta text-fg-3">{children}</div>;
+}
+
+/**
+ * A running turn as three numbers in a string: is it running, how many decisions is it waiting
+ * on, how many calls did the guard block. Everything else about the turn — its text, its
+ * thinking, its tool output — changes constantly and changes nothing here.
+ */
+function mark(turn: LiveTurn): string {
+  const blocked = Object.values(turn.calls).filter(
+    (call) => call.judge?.decision === 'deny' && !call.judge.overridden,
+  ).length;
+  return `${turn.status === 'running' ? 1 : 0}:${turn.pending.length}:${blocked}`;
+}
+
+function running(mark: string | undefined): boolean {
+  return mark?.startsWith('1:') ?? false;
+}
+
+function pendingOf(mark: string | undefined): number {
+  return Number(mark?.split(':')[1] ?? 0);
+}
+
+function blockedOf(mark: string | undefined): number {
+  return Number(mark?.split(':')[2] ?? 0);
 }
