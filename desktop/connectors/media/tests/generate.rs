@@ -8,7 +8,7 @@ use std::collections::BTreeMap;
 
 use gantry_connector_media::{
     AUTOMATIC, Candidate, Kind, MANIFEST, Preferences, choose, definitions, key_for, kind_name,
-    listing, parse_kind, rank, settings_form,
+    listing, model_choice, parse_kind, rank, settings_form,
 };
 use gantry_core::{MediaOptions, ProviderId, RiskTier};
 use gantry_providers::{ModelCapabilities, ModelInfo, Pricing, provider::Modality};
@@ -483,4 +483,109 @@ fn an_unreadable_ceiling_is_no_ceiling() {
         )]));
         assert_eq!(prefs.ceiling, None, "{text:?}");
     }
+}
+
+/// The card is where the money is agreed to, so it shows the model that is actually about to be
+/// charged — resolved, not as the chat model typed it.
+#[test]
+fn the_card_offers_the_model_the_call_would_use() {
+    let mut available = catalogue();
+    rank(&mut available);
+    let choice = model_choice(&available, &Preferences::default(), None, Some(Kind::Image));
+    assert_eq!(choice.key, "model");
+    assert_eq!(choice.value.as_deref(), Some("openrouter/cheap-draw"));
+    assert_eq!(choice.note, None);
+    let offered: Vec<&str> = choice.options.iter().map(|o| o.value.as_str()).collect();
+    assert_eq!(
+        offered,
+        [
+            "openrouter/cheap-draw",
+            "xai/cheap-draw",
+            "openrouter/dear-draw",
+            "openrouter/mystery-draw"
+        ],
+        "every picture model, cheapest first, and no speech model"
+    );
+    assert_eq!(choice.options[0].detail.as_deref(), Some("$0.0100 a unit"));
+}
+
+/// The failure this card exists for. A model the call named that is not here is **not** silently
+/// swapped: the card shows what would run instead and says why, before anything is pressed.
+#[test]
+fn a_model_that_is_not_here_is_named_on_the_card_rather_than_swapped_quietly() {
+    let mut available = catalogue();
+    rank(&mut available);
+    let choice = model_choice(
+        &available,
+        &Preferences::default(),
+        Some("muse-image"),
+        Some(Kind::Image),
+    );
+    assert_eq!(choice.value.as_deref(), Some("openrouter/cheap-draw"));
+    let note = choice.note.expect("a reason");
+    assert!(note.contains("muse-image"), "{note}");
+}
+
+#[test]
+fn a_model_the_call_named_is_what_the_card_shows() {
+    let mut available = catalogue();
+    rank(&mut available);
+    let choice = model_choice(
+        &available,
+        &Preferences::default(),
+        Some("openrouter/dear-draw"),
+        Some(Kind::Image),
+    );
+    assert_eq!(choice.value.as_deref(), Some("openrouter/dear-draw"));
+    assert_eq!(choice.note, None);
+}
+
+/// The menu offers only what the call would be allowed to spend, so the card and the ceiling
+/// cannot contradict each other in front of the user — and a model over the ceiling is said to
+/// be over it rather than quietly missing.
+#[test]
+fn a_ceiling_takes_the_expensive_ones_out_of_the_menu() {
+    let mut available = catalogue();
+    rank(&mut available);
+    let prefs = Preferences::read(&BTreeMap::from([(
+        gantry_connector_media::MAX_COST_USD.to_owned(),
+        "0.05".to_owned(),
+    )]));
+    let choice = model_choice(&available, &prefs, Some("openrouter/dear-draw"), None);
+    assert_eq!(choice.value.as_deref(), Some("openrouter/cheap-draw"));
+    let note = choice.note.expect("a reason");
+    assert!(note.contains("ceiling"), "{note}");
+    let offered: Vec<&str> = choice.options.iter().map(|o| o.value.as_str()).collect();
+    assert_eq!(offered, ["openrouter/cheap-draw", "xai/cheap-draw"]);
+}
+
+/// With no kind and no usable model there is still something to choose from: picking a model is
+/// what says which kind the call was about.
+#[test]
+fn with_no_kind_at_all_the_menu_is_everything() {
+    let mut available = catalogue();
+    rank(&mut available);
+    let choice = model_choice(&available, &Preferences::default(), None, None);
+    assert_eq!(choice.value, None);
+    assert_eq!(choice.options.len(), 5);
+    assert!(
+        choice
+            .options
+            .iter()
+            .any(|o| o.detail.as_deref() == Some("speech, $0.0200 a unit")),
+        "a mixed menu says which kind each one is"
+    );
+}
+
+#[test]
+fn the_card_says_when_a_default_is_standing_in() {
+    let mut available = catalogue();
+    rank(&mut available);
+    let prefs = Preferences::read(&BTreeMap::from([(
+        key_for(Kind::Image).to_owned(),
+        "openrouter/retired-draw".to_owned(),
+    )]));
+    let choice = model_choice(&available, &prefs, None, Some(Kind::Image));
+    assert_eq!(choice.value.as_deref(), Some("openrouter/cheap-draw"));
+    assert!(choice.note.unwrap().contains("retired-draw"));
 }

@@ -383,6 +383,9 @@ export function ChatView({
             kind: 'permission' as const,
             decision: grantDecision(permission.scopes.find((s) => s.id === answer.scope)),
             message: null,
+            // What the card's own controls were set to (04 §7): the model this generation is
+            // about to be charged for, as the user saw it when they pressed the button.
+            chosen: answer.chosen,
           }
         : {
             kind: 'permission' as const,

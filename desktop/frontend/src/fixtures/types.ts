@@ -175,6 +175,23 @@ export interface Permission {
    * what it grants rather than a label that has to be kept in step with a lookup elsewhere.
    */
   scopes: { id: string; label: string; grant?: GrantScope }[];
+  /**
+   * Arguments the card lets you change before the call runs (04 §7) — the model a generation is
+   * about to be charged for, and what else it could be. The connector supplies them, already
+   * resolved, so the card names the thing that is actually about to happen.
+   */
+  choices?: ArgChoiceView[];
+}
+
+/** One changeable argument on a permission card (04 §7). */
+export interface ArgChoiceView {
+  key: string;
+  label: string;
+  /** What the call will use unless it is changed here. */
+  value?: string;
+  options: { value: string; label: string; detail?: string }[];
+  /** Why this is not what the model asked for, when it is not. */
+  note?: string;
 }
 
 /** A mid-conversation access request (04 §9): installed, but not attached to this chat. */

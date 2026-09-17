@@ -54,10 +54,10 @@ pub use ids::{
     ProjectFileId, ProjectId, TurnId,
 };
 pub use interaction::{
-    AccessDecision, AccessRequest, ConnectorSuggestion, ElicitationAction, ElicitationField,
-    ElicitationFieldKind, ElicitationOption, ElicitationRequest, Interaction, InteractionKind,
-    InteractionPayload, InteractionResolution, InteractionStatus, PermissionDecision,
-    PermissionRequest, SuggestionOutcome,
+    AccessDecision, AccessRequest, ArgChoice, ChoiceOption, ConnectorSuggestion, ElicitationAction,
+    ElicitationField, ElicitationFieldKind, ElicitationOption, ElicitationRequest, Interaction,
+    InteractionKind, InteractionPayload, InteractionResolution, InteractionStatus,
+    PermissionDecision, PermissionRequest, SuggestionOutcome,
 };
 pub use judge::{JudgeDecision, JudgeFlag, JudgeSource, JudgeVerdict};
 pub use memory::{

@@ -566,9 +566,24 @@ function splitName(name: string): [string, string] {
 export function permissionOf(i: Interaction): Permission {
   if (i.payload.kind !== 'permission') throw new Error('not a permission');
   const r = i.payload.request;
+  const choices = (r.choices ?? []).map((c) => ({
+    key: c.key,
+    label: c.label,
+    value: c.value ?? undefined,
+    options: (c.options ?? []).map((o) => ({
+      value: o.value,
+      label: o.label,
+      detail: o.detail ?? undefined,
+    })),
+    note: c.note ?? undefined,
+  }));
   const args: Record<string, string> = {};
   if (r.args && typeof r.args === 'object' && !Array.isArray(r.args)) {
     for (const [k, v] of Object.entries(r.args as Record<string, unknown>)) {
+      // An argument with a control of its own is shown by that control, resolved; listing the
+      // model twice — once as the model typed it, once as it will run — invites reading the
+      // wrong one.
+      if (choices.some((c) => c.key === k)) continue;
       args[k] = typeof v === 'string' ? v : JSON.stringify(v);
     }
   }
@@ -585,6 +600,7 @@ export function permissionOf(i: Interaction): Permission {
     guard: r.guard ?? undefined,
     why: r.why ?? undefined,
     scopes: [{ id: 'once', label: 'Allow once' }, ...r.scopes.map((s) => scopeOption(s, r.tool))],
+    choices,
   };
 }
 

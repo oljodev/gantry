@@ -35,8 +35,8 @@ use gantry_store::Store;
 use tokio_util::sync::CancellationToken;
 
 pub use models::{
-    Candidate, Kind, check, choose, describe_kind, kind_name, list, listing, matches, parse_kind,
-    rank, row,
+    Candidate, Kind, check, choose, describe_kind, kind_name, list, listing, matches, model_choice,
+    parse_kind, rank, row,
 };
 pub use settings::{AUTOMATIC, MAX_COST_USD, Preferences, fields as settings_form, key_for};
 
@@ -441,6 +441,41 @@ impl Connector for Media {
 
     async fn tools(&self) -> Result<Vec<ToolDef>, ConnectorError> {
         Ok(definitions())
+    }
+
+    /// The model, on the permission card (04 §7).
+    ///
+    /// The card is where the money is agreed to, so it shows the model that is actually about to
+    /// be charged — resolved, not as the chat model typed it — and lets it be changed there.
+    /// Before this, a card naming a model the user did not want could only be denied, which cost
+    /// a round trip through the chat model to say "use that one instead"; the first live run of
+    /// this connector ended exactly that way.
+    ///
+    /// A model the call named that this machine does not have is **not** silently swapped: the
+    /// card shows what it would run instead and says why, and the user sees it before pressing
+    /// anything.
+    async fn choices(&self, req: &ToolCallRequest) -> Vec<gantry_core::ArgChoice> {
+        if req.tool != "generate" {
+            return Vec::new();
+        }
+        let wanted = req
+            .args
+            .get("kind")
+            .and_then(serde_json::Value::as_str)
+            .and_then(|k| models::parse_kind(k).ok());
+        let named = req
+            .args
+            .get("model")
+            .and_then(serde_json::Value::as_str)
+            .map(str::trim)
+            .filter(|m| !m.is_empty());
+
+        vec![models::model_choice(
+            &models::list(&self.providers, &self.store),
+            &self.preferences(),
+            named,
+            wanted,
+        )]
     }
 
     async fn call(

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { ChatDetail, JudgeVerdict, ToolCallDto, TurnDto } from '@/bindings';
 import type { ActivityItem } from '@/fixtures/types';
-import { toTurns } from '@/lib/view/toTurns';
+import { permissionOf, toTurns } from '@/lib/view/toTurns';
 
 function call(extra: Partial<ToolCallDto>): ToolCallDto {
   return {
@@ -294,5 +294,66 @@ describe("a provider's own web search, which no permission card ever mentioned (
       },
     ]);
     expect(items).toEqual([]);
+  });
+});
+
+describe('a permission card that lets an argument be changed (04 §7)', () => {
+  const interaction = (choices: unknown[]) =>
+    ({
+      id: 'i1',
+      chat_id: 'chat',
+      turn_id: 'turn',
+      kind: 'permission',
+      status: 'pending',
+      resolution: null,
+      created_at: 0,
+      resolved_at: null,
+      payload: {
+        kind: 'permission',
+        request: {
+          call_id: 'c1',
+          connector: 'media',
+          connector_name: 'Media generation',
+          tool: 'generate',
+          model_tool_name: 'media__generate',
+          tier: 'write_external',
+          args: { prompt: 'a moon city', model: 'muse-image' },
+          display: { kind: 'connector', summary: 'prompt=a moon city' },
+          why: null,
+          description: 'Makes one picture.',
+          guardrail: null,
+          guard: null,
+          scopes: [],
+          choices,
+        },
+      },
+    }) as never;
+
+  it('shows the resolved value and its menu, and stops listing the raw argument twice', () => {
+    const permission = permissionOf(
+      interaction([
+        {
+          key: 'model',
+          label: 'Model',
+          value: 'openrouter/flux',
+          note: 'There is no `muse-image` on this machine.',
+          options: [{ value: 'openrouter/flux', label: 'openrouter/flux', detail: '$0.04 a unit' }],
+        },
+      ]),
+    );
+    expect(permission.choices?.[0]).toMatchObject({
+      key: 'model',
+      value: 'openrouter/flux',
+      note: 'There is no `muse-image` on this machine.',
+    });
+    // The card shows the model through its own control, resolved; leaving it in the argument
+    // list as well would show two different answers to the same question.
+    expect(Object.keys(permission.args)).toEqual(['prompt']);
+  });
+
+  it('leaves an ordinary card exactly as it was', () => {
+    const permission = permissionOf(interaction([]));
+    expect(permission.choices).toEqual([]);
+    expect(Object.keys(permission.args)).toEqual(['prompt', 'model']);
   });
 });

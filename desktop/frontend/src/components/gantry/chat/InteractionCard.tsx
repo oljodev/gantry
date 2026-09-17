@@ -16,7 +16,7 @@ import {
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { connectorName } from '@/fixtures/connectors';
-import type { AccessAsk, ConnectorOffer, Permission } from '@/fixtures/types';
+import type { AccessAsk, ArgChoiceView, ConnectorOffer, Permission } from '@/fixtures/types';
 
 /**
  * The shared shell for every pending decision (04 §7, 15 §8): level 1, a 2 px accent bar,
@@ -52,9 +52,17 @@ export function InteractionCard({
   );
 }
 
-/** What the card reports back: allow with the chosen scope, or deny with an optional message. */
+/**
+ * What the card reports back: allow with the chosen scope and whatever the card's own controls
+ * were set to, or deny with an optional message.
+ *
+ * `chosen` carries every choice the card showed, not only the ones that were touched: the card
+ * shows a *resolved* value — the model that will actually be charged — and allowing it means
+ * allowing that one, whether or not the value came from a click.
+ */
 export type PermissionAnswer =
-  { kind: 'allow'; scope: string } | { kind: 'deny'; message?: string };
+  | { kind: 'allow'; scope: string; chosen: Record<string, string> }
+  | { kind: 'deny'; message?: string };
 
 /**
  * A permission prompt (04 §7). `Y` allows once and `N` denies while `hotkeys` is set (the
@@ -78,8 +86,18 @@ export function PermissionCard({
   const [scope, setScope] = useState(permission.scopes[0]?.id ?? 'once');
   const [denying, setDenying] = useState(false);
   const [message, setMessage] = useState('');
+  const choices = permission.choices ?? [];
+  const [picked, setPicked] = useState<Record<string, string>>({});
   const label = permission.scopes.find((s) => s.id === scope)?.label ?? 'Allow';
-  const allow = () => onDecide?.({ kind: 'allow', scope });
+  const valueOf = (choice: ArgChoiceView) => picked[choice.key] ?? choice.value ?? '';
+  const allow = () =>
+    onDecide?.({
+      kind: 'allow',
+      scope,
+      chosen: Object.fromEntries(
+        choices.map((c) => [c.key, valueOf(c)]).filter(([, value]) => value !== ''),
+      ),
+    });
   const deny = (text?: string) =>
     onDecide?.({ kind: 'deny', message: text?.trim() ? text.trim() : undefined });
 
@@ -179,6 +197,58 @@ export function PermissionCard({
         )
       }
     >
+      {choices.length > 0 && (
+        <div className="mb-3 flex flex-col gap-2">
+          {choices.map((choice) => (
+            <div key={choice.key} className="flex flex-col gap-1">
+              <div className="flex items-center gap-2">
+                <span className="shrink-0 text-ui text-fg-2">{choice.label}</span>
+                {choice.options.length > 0 ? (
+                  <Select
+                    value={valueOf(choice)}
+                    onValueChange={(v) => setPicked((p) => ({ ...p, [choice.key]: v as string }))}
+                  >
+                    <SelectTrigger
+                      aria-label={choice.label}
+                      disabled={pending}
+                      className="min-w-0 flex-1"
+                    >
+                      <SelectValue placeholder="Choose one">
+                        <span className="truncate font-mono text-mono">{valueOf(choice)}</span>
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent className="max-w-[min(34rem,80vw)]">
+                      {choice.options.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          <span className="min-w-0 flex-1 truncate font-mono text-mono">
+                            {option.label}
+                          </span>
+                          {option.detail && (
+                            <span className="shrink-0 text-meta text-fg-3">{option.detail}</span>
+                          )}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <span className="min-w-0 flex-1 truncate font-mono text-mono text-fg">
+                    {valueOf(choice) || '—'}
+                  </span>
+                )}
+                <span className="shrink-0 text-meta text-fg-3">
+                  {choice.options.find((o) => o.value === valueOf(choice))?.detail}
+                </span>
+              </div>
+              {choice.note && (
+                <p className="flex items-start gap-1.5 text-meta text-warn">
+                  <ShieldWarningIcon className="mt-px size-3.5 shrink-0" />
+                  <span>{choice.note}</span>
+                </p>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
       {Object.keys(permission.args).length > 0 ? (
         <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-ui">
           {Object.entries(permission.args).map(([k, v]) => (

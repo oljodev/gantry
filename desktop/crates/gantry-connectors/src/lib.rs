@@ -219,6 +219,22 @@ pub trait Connector: Send + Sync {
         sink: Arc<dyn ToolEventSink>,
         cancel: CancellationToken,
     ) -> Result<ToolOutcome, ConnectorError>;
+
+    /// What a permission card may let the user change about this call before it runs (04 §7).
+    ///
+    /// Asked once, while the card is being built, and only for a call that is actually going to
+    /// ask. The connector answers because it is the only thing that knows what its arguments
+    /// mean — which of them has a small set of equivalent answers, what those answers are now,
+    /// and which one this call has actually resolved to. Nothing here changes what a call is
+    /// *allowed* to do: a choice picks between things the connector has already said are the
+    /// same kind of thing.
+    ///
+    /// The default is no choices, which is right for nearly every tool: an argument the user
+    /// would have to compose rather than pick is a denial with a message, not a menu.
+    async fn choices(&self, req: &ToolCallRequest) -> Vec<gantry_core::ArgChoice> {
+        let _ = req;
+        Vec::new()
+    }
 }
 
 /// Every connector that can be called, by namespace id. Which of them a given chat may use is

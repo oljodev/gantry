@@ -225,6 +225,28 @@ impl Connector for Fake {
             other => Err(ConnectorError::UnknownTool(other.into())),
         }
     }
+
+    /// What `media` does for its model (04 §7): an argument with a small set of equivalent
+    /// answers, resolved, for the card to offer.
+    async fn choices(&self, req: &ToolCallRequest) -> Vec<gantry_core::ArgChoice> {
+        if req.tool != "write" {
+            return Vec::new();
+        }
+        vec![gantry_core::ArgChoice {
+            key: "target".to_owned(),
+            label: "Target".to_owned(),
+            value: Some("draft".to_owned()),
+            options: ["draft", "final"]
+                .into_iter()
+                .map(|value| gantry_core::ChoiceOption {
+                    value: value.to_owned(),
+                    label: value.to_owned(),
+                    detail: None,
+                })
+                .collect(),
+            note: None,
+        }]
+    }
 }
 
 #[derive(Default)]
@@ -884,6 +906,7 @@ async fn manual_mode_asks_and_allow_once_runs_the_call() {
         InteractionResolution::Permission {
             decision: PermissionDecision::AllowOnce,
             message: None,
+            chosen: Default::default(),
         },
     )
     .unwrap();
@@ -934,6 +957,7 @@ async fn a_denial_with_a_message_reaches_the_model() {
         InteractionResolution::Permission {
             decision: PermissionDecision::Deny,
             message: Some("not now, ask me tomorrow".into()),
+            chosen: Default::default(),
         },
     )
     .unwrap();
@@ -1703,6 +1727,7 @@ async fn a_guard_that_cannot_decide_asks_the_user() {
         InteractionResolution::Permission {
             decision: PermissionDecision::AllowOnce,
             message: None,
+            chosen: Default::default(),
         },
     )
     .unwrap();
@@ -2151,6 +2176,7 @@ async fn a_read_prompt_in_plan_mode_offers_all_reads_and_a_folder() {
                 },
             },
             message: None,
+            chosen: Default::default(),
         },
     )
     .unwrap();
@@ -2241,4 +2267,107 @@ async fn a_tool_can_put_a_picture_in_the_answer() {
         Some(Role::Assistant),
         "the picture is the last thing before the next round"
     );
+}
+
+/// A card that offers a choice runs the call the user was looking at (04 §7).
+///
+/// This is the whole point of the mechanism: before it, a card naming the wrong model could only
+/// be denied, which cost a round trip through the chat model to say "use that one instead". The
+/// row is updated too — the activity has to be about the call that happened, not about the one
+/// the model asked for.
+#[tokio::test]
+async fn a_card_can_change_an_argument_before_the_call_runs() {
+    let m = manager_with(
+        vec![
+            tool_round(
+                "c1",
+                "fake__write",
+                serde_json::json!({ "target": "draft" }),
+            ),
+            vec![text("Written."), end()],
+        ],
+        Duration::ZERO,
+        Settings::default(),
+    );
+    let chat = m.chat();
+    manual(&m, chat.id);
+    let sink = Arc::new(Collect::default());
+    m.start(chat.id, "go".into(), Vec::new(), Vec::new(), sink.clone())
+        .unwrap();
+
+    wait_for(|| !m.interactions().list_pending(Some(chat.id)).is_empty()).await;
+    let pending = m.interactions().list_pending(Some(chat.id));
+    let gantry_core::InteractionPayload::Permission { request } = &pending[0].payload else {
+        panic!("a permission card");
+    };
+    assert_eq!(request.choices.len(), 1);
+    assert_eq!(request.choices[0].key, "target");
+    assert_eq!(request.choices[0].value.as_deref(), Some("draft"));
+
+    m.resolve_interaction(
+        pending[0].id,
+        InteractionResolution::Permission {
+            decision: PermissionDecision::AllowOnce,
+            message: None,
+            chosen: std::collections::BTreeMap::from([
+                ("target".to_owned(), "final".to_owned()),
+                // Not offered, so not applied: a card picks between things the connector
+                // already called equivalent, and cannot widen the call.
+                ("path".to_owned(), "/etc/passwd".to_owned()),
+            ]),
+        },
+    )
+    .unwrap();
+    wait_for(|| sink.completed().is_some()).await;
+
+    let calls = m.fake.calls.lock().unwrap().clone();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].args["target"], "final");
+    assert!(calls[0].args.get("path").is_none(), "{:?}", calls[0].args);
+
+    let detail = m.chats().get(chat.id).unwrap().unwrap();
+    let row = &detail.turns[0].tool_calls[0];
+    assert_eq!(
+        row.args["target"], "final",
+        "the row is about the call that happened"
+    );
+}
+
+/// A value the card did not offer changes nothing — including when nothing else does either.
+#[tokio::test]
+async fn a_choice_the_card_never_offered_is_ignored() {
+    let m = manager_with(
+        vec![
+            tool_round(
+                "c1",
+                "fake__write",
+                serde_json::json!({ "target": "draft" }),
+            ),
+            vec![text("Written."), end()],
+        ],
+        Duration::ZERO,
+        Settings::default(),
+    );
+    let chat = m.chat();
+    manual(&m, chat.id);
+    let sink = Arc::new(Collect::default());
+    m.start(chat.id, "go".into(), Vec::new(), Vec::new(), sink.clone())
+        .unwrap();
+    wait_for(|| !m.interactions().list_pending(Some(chat.id)).is_empty()).await;
+    let pending = m.interactions().list_pending(Some(chat.id));
+    m.resolve_interaction(
+        pending[0].id,
+        InteractionResolution::Permission {
+            decision: PermissionDecision::AllowOnce,
+            message: None,
+            chosen: std::collections::BTreeMap::from([(
+                "target".to_owned(),
+                "whatever-i-typed".to_owned(),
+            )]),
+        },
+    )
+    .unwrap();
+    wait_for(|| sink.completed().is_some()).await;
+    let calls = m.fake.calls.lock().unwrap().clone();
+    assert_eq!(calls[0].args["target"], "draft");
 }

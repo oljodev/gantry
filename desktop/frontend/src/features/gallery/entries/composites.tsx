@@ -191,6 +191,50 @@ function Cards() {
           />
         </div>
       </State>
+      <State label="Permission · with a model to change">
+        <div className="w-full max-w-(--measure)">
+          <PermissionCard
+            permission={{
+              id: 'i1',
+              connector: 'media',
+              connectorName: 'Media generation',
+              tool: 'generate',
+              tier: 'write_external',
+              title: 'Media generation wants to run generate',
+              args: { prompt: 'A moon city at dusk, humanoid robots on the regolith' },
+              why: 'A picture would say this better than another paragraph.',
+              scopes: [{ id: 'once', label: 'Allow once' }],
+              // The card names the model that is about to be charged, resolved, and lets it be
+              // changed here rather than by denying and asking again (04 §7).
+              choices: [
+                {
+                  key: 'model',
+                  label: 'Model',
+                  value: 'openrouter/black-forest-labs/flux.2-pro',
+                  note: 'There is no `muse-image` on this machine.',
+                  options: [
+                    {
+                      value: 'openrouter/black-forest-labs/flux.2-pro',
+                      label: 'openrouter/black-forest-labs/flux.2-pro',
+                      detail: '$0.0400 a unit',
+                    },
+                    {
+                      value: 'openrouter/openai/gpt-image-2',
+                      label: 'openrouter/openai/gpt-image-2',
+                      detail: '$0.1100 a unit',
+                    },
+                    {
+                      value: 'openrouter/bytedance-seed/seedream-4.5',
+                      label: 'openrouter/bytedance-seed/seedream-4.5',
+                      detail: 'no published price',
+                    },
+                  ],
+                },
+              ],
+            }}
+          />
+        </div>
+      </State>
       <State label="Compaction marker">
         <div className="w-full max-w-(--measure)">
           <ActivityRow

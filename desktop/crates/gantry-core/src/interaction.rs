@@ -59,6 +59,45 @@ pub struct PermissionRequest {
     pub guard: Option<String>,
     /// The standing scopes this call may be granted, beyond "allow once" (04 §7, §8).
     pub scopes: Vec<GrantScope>,
+    /// Arguments the card lets the user change before the call runs (04 §7).
+    ///
+    /// Asked of the connector when the card is raised, so it is the connector — the only thing
+    /// that knows what its own arguments mean — that decides what is worth offering. Empty for
+    /// every tool that offers nothing, which is nearly all of them.
+    #[serde(default)]
+    pub choices: Vec<ArgChoice>,
+}
+
+/// One argument a permission card offers to change, with what to change it to.
+///
+/// The case it was built for is `media__generate`'s model. The card already names the model that
+/// is about to spend money; showing the name and not letting the user change it is the one
+/// unhelpful arrangement — deny and re-ask is the only way through, and it costs a whole round
+/// trip through the chat model to say "use that one instead".
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+pub struct ArgChoice {
+    /// The argument's name, as the tool's own schema spells it.
+    pub key: String,
+    /// What to call it on the card: "Model", not `model`.
+    pub label: String,
+    /// The value the call will use unless the user changes it. Already resolved: what the
+    /// connector *would* do, not what the model literally typed, so the card shows the thing
+    /// that is about to happen.
+    pub value: Option<String>,
+    /// What it may be changed to. A choice with none is shown but not editable.
+    pub options: Vec<ChoiceOption>,
+    /// Why the value is not what the model asked for, when it is not — a model it named that
+    /// this machine does not have, a default that stood in. Shown on the card as a warning,
+    /// because a silent substitution is the one thing a card like this must not do.
+    pub note: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+pub struct ChoiceOption {
+    pub value: String,
+    pub label: String,
+    /// The price, the provider, the small print: the reason to pick this one.
+    pub detail: Option<String>,
 }
 
 /// What an access-request card shows (04 §9): a connector that is installed but that this
@@ -157,8 +196,10 @@ pub struct ConnectorSuggestion {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum InteractionPayload {
+    /// Boxed like the two proposals below it: the request is much the largest of the payloads,
+    /// and every interaction of every other kind would otherwise carry its size around.
     Permission {
-        request: PermissionRequest,
+        request: Box<PermissionRequest>,
     },
     AccessRequest {
         request: AccessRequest,
@@ -255,6 +296,12 @@ pub enum InteractionResolution {
         decision: PermissionDecision,
         /// Shown to the model with a denial.
         message: Option<String>,
+        /// What the user chose for the request's `choices`, by argument key (04 §7). Only keys
+        /// the request offered are honoured, and only values it listed: the card widens what a
+        /// call may be *allowed* to do by nothing, it only picks between things the connector
+        /// already said were equivalent.
+        #[serde(default)]
+        chosen: std::collections::BTreeMap<String, String>,
     },
     AccessRequest {
         decision: AccessDecision,
@@ -319,7 +366,7 @@ mod tests {
     #[test]
     fn payload_and_resolution_are_tagged_by_kind() {
         let p = InteractionPayload::Permission {
-            request: PermissionRequest {
+            request: Box::new(PermissionRequest {
                 call_id: CallId::new(),
                 connector: "gantry".into(),
                 connector_name: "Gantry".into(),
@@ -336,7 +383,8 @@ mod tests {
                 guardrail: None,
                 guard: None,
                 scopes: GrantScope::for_call(RiskTier::Read, &serde_json::json!({}), None, false),
-            },
+                choices: Vec::new(),
+            }),
         };
         assert_eq!(serde_json::to_value(&p).unwrap()["kind"], "permission");
         let chat_grant = InteractionResolution::Permission {
@@ -344,6 +392,7 @@ mod tests {
                 scope: GrantScope::AllReads,
             },
             message: None,
+            chosen: std::collections::BTreeMap::new(),
         };
         let json = serde_json::to_value(&chat_grant).unwrap();
         assert_eq!(json["decision"]["kind"], "allow_chat");
@@ -357,6 +406,7 @@ mod tests {
                 },
             },
             message: None,
+            chosen: std::collections::BTreeMap::new(),
         };
         let json = serde_json::to_value(&scoped).unwrap();
         assert_eq!(json["decision"]["scope"]["kind"], "path_prefix");
@@ -364,6 +414,7 @@ mod tests {
         let r = InteractionResolution::Permission {
             decision: PermissionDecision::Deny,
             message: Some("no".into()),
+            chosen: std::collections::BTreeMap::new(),
         };
         let json = serde_json::to_value(&r).unwrap();
         assert_eq!(json["kind"], "permission");

@@ -593,6 +593,35 @@ export type AppearanceSettings = {
 };
 
 /**
+ *  One argument a permission card offers to change, with what to change it to.
+ * 
+ *  The case it was built for is `media__generate`'s model. The card already names the model that
+ *  is about to spend money; showing the name and not letting the user change it is the one
+ *  unhelpful arrangement — deny and re-ask is the only way through, and it costs a whole round
+ *  trip through the chat model to say "use that one instead".
+ */
+export type ArgChoice = {
+	/**  The argument's name, as the tool's own schema spells it. */
+	key: string,
+	/**  What to call it on the card: "Model", not `model`. */
+	label: string,
+	/**
+	 *  The value the call will use unless the user changes it. Already resolved: what the
+	 *  connector *would* do, not what the model literally typed, so the card shows the thing
+	 *  that is about to happen.
+	 */
+	value: string | null,
+	/**  What it may be changed to. A choice with none is shown but not editable. */
+	options: ChoiceOption[],
+	/**
+	 *  Why the value is not what the model asked for, when it is not — a model it named that
+	 *  this machine does not have, a default that stood in. Shown on the card as a warning,
+	 *  because a silent substitution is the one thing a card like this must not do.
+	 */
+	note: string | null,
+};
+
+/**
  *  A predicate on the call's arguments (04 §8). The path and command forms wait for the tools
  *  that produce them; both match by prefix on the named argument when it is a string.
  */
@@ -888,6 +917,13 @@ export type ChatUpdate = {
 
 export type ChatsChanged = {
 	chat_ids: ChatId[],
+};
+
+export type ChoiceOption = {
+	value: string,
+	label: string,
+	/**  The price, the provider, the small print: the reason to pick this one. */
+	detail: string | null,
 };
 
 /**  What an instance runs or talks to. Secret values are never in here (06 §3). */
@@ -1391,7 +1427,12 @@ export type InteractionId = string;
 export type InteractionKind = "permission" | "access_request" | "connector_suggestion" | "elicitation" | "auth_required" | "skill_proposal" | "memory_proposal";
 
 /**  The kind-specific body of an interaction. */
-export type InteractionPayload = { kind: "permission"; request: PermissionRequest } | { kind: "access_request"; request: AccessRequest } | { kind: "connector_suggestion"; suggestion: ConnectorSuggestion } | { kind: "elicitation"; request: ElicitationRequest } | 
+export type InteractionPayload = 
+/**
+ *  Boxed like the two proposals below it: the request is much the largest of the payloads,
+ *  and every interaction of every other kind would otherwise carry its size around.
+ */
+{ kind: "permission"; request: PermissionRequest } | { kind: "access_request"; request: AccessRequest } | { kind: "connector_suggestion"; suggestion: ConnectorSuggestion } | { kind: "elicitation"; request: ElicitationRequest } | 
 /**
  *  A skill the model wrote (12 §A5). Unlike every payload above it, the turn does not wait
  *  for this one: the card sits in the feed and the model carries on.
@@ -1403,7 +1444,14 @@ export type InteractionPayload = { kind: "permission"; request: PermissionReques
 /**  How an interaction ended. */
 export type InteractionResolution = { kind: "permission"; decision: PermissionDecision; 
 /**  Shown to the model with a denial. */
-message: string | null } | { kind: "access_request"; decision: AccessDecision; 
+message: string | null; 
+/**
+ *  What the user chose for the request's `choices`, by argument key (04 §7). Only keys
+ *  the request offered are honoured, and only values it listed: the card widens what a
+ *  call may be *allowed* to do by nothing, it only picks between things the connector
+ *  already said were equivalent.
+ */
+chosen?: { [key in string]: string } } | { kind: "access_request"; decision: AccessDecision; 
 /**  Shown to the model with a refusal. */
 message: string | null } | { kind: "connector_suggestion"; outcome: SuggestionOutcome } | { kind: "elicitation"; action: ElicitationAction; 
 /**  The filled-in form, by key. Empty unless the action was `Accept`. */
@@ -1819,6 +1867,14 @@ export type PermissionRequest = {
 	guard: string | null,
 	/**  The standing scopes this call may be granted, beyond "allow once" (04 §7, §8). */
 	scopes: GrantScope[],
+	/**
+	 *  Arguments the card lets the user change before the call runs (04 §7).
+	 * 
+	 *  Asked of the connector when the card is raised, so it is the connector — the only thing
+	 *  that knows what its own arguments mean — that decides what is worth offering. Empty for
+	 *  every tool that offers nothing, which is nearly all of them.
+	 */
+	choices?: ArgChoice[],
 };
 
 /**  US dollars per million tokens, plus the per-unit prices some models carry instead. */

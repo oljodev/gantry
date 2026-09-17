@@ -237,10 +237,20 @@ project.
 
 - Header: connector icon and name, tool name, tier badge, the connector's `risk.notes` on hover.
 - Body: what will happen, rendered by kind: a diff preview for edits, the command and cwd for shell, the target for connector calls, and the assistant's last sentence as "why".
+- Body, continued: any `choices` the connector offered — an argument with a small set of equivalent answers, shown resolved and changeable here (below).
 - Actions: **Allow once** · **Allow for this chat ▾** (scope: this tool · this path prefix · this command prefix · all reads) · **Deny ▾** (optionally with a message the model will see) · in Manual mode also **Switch to Auto-edit**.
 - Keyboard: `Y` allow once, `A` allow for chat, `N` deny. Several pending calls from one parallel batch stack, with **Allow all** for same-tier batches.
 
 The turn waits on the prompt. If the user leaves the chat, the sidebar shows a badge and the prompt is waiting when they return; an OS notification is optional. Cancelling the turn resolves the prompt as cancelled.
+
+**Choices on the card** (as built, 2026-09-17). A card may let the user *change* an argument before the call runs, not only allow or deny it. `PermissionRequest.choices` is a list of `{ key, label, value, options: [{ value, label, detail }], note }`, and the resolution carries back `chosen: { key: value }`.
+
+- **The connector decides what is offered.** `Connector::choices(&ToolCallRequest)` is asked once, while the card is built, and only for a call that is actually going to ask; the default is none, which is right for nearly every tool. An argument the user would have to *compose* rather than *pick* is a denial with a message, not a menu.
+- **The value shown is resolved, not literal.** The card shows what the connector *would* do — the model that will actually be charged — rather than what the chat model typed. Where those differ, `note` says why, in the card's own warning line: a silent substitution is the one thing a card like this must not do.
+- **It widens nothing.** Only keys the request offered and values it listed are applied; anything else is dropped. A choice picks between things the connector has already called equivalent, so the tier, the guardrails and the grant scopes decided about the call are still about the call that runs. The tool's own arguments are re-checked by the connector afterwards as they always were.
+- **The call that runs is the one the user looked at.** The runner patches the batch's own copy of the call and re-emits `tool_call.ready` with the new arguments, so the row, the projection and a late subscriber all describe what happened rather than what was asked for.
+
+The case that forced it: `media__generate`'s model. The card already named the model about to spend money, and naming it without letting it be changed is the one unhelpful arrangement — deny was the only way through, and it cost a round trip through the chat model to say "use that one instead". The first live run of that connector ended exactly that way (03 §5).
 
 ## 8. Grants
 

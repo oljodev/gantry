@@ -7,7 +7,7 @@
 
 use std::sync::Arc;
 
-use gantry_core::{MediaOptions, ProviderId};
+use gantry_core::{ArgChoice, ChoiceOption, MediaOptions, ProviderId};
 use gantry_providers::{ModelInfo, ProviderRegistry, catalog, openai_chat::media::MediaRoute};
 use gantry_store::Store;
 
@@ -388,4 +388,90 @@ pub fn listing(
         "available": available.len(),
     });
     (summary, structured)
+}
+
+/// The model as a permission card offers it (04 §7): the one this call would use, and the ones
+/// it could be changed to.
+///
+/// Pure, so the interesting part — what the card shows when the call named a model that is not
+/// here — is a test rather than a thing to try live at a dollar a go. A model the call named is
+/// never silently swapped: what stands in is shown, with the reason, before anything is pressed.
+#[must_use]
+pub fn model_choice(
+    all: &[Candidate],
+    prefs: &crate::settings::Preferences,
+    named: Option<&str>,
+    wanted: Option<Kind>,
+) -> ArgChoice {
+    let preferred = named.is_none().then(|| prefs.default_for(wanted)).flatten();
+    // The menu offers only what the call would be allowed to spend, so the card and the ceiling
+    // cannot contradict each other in front of the user.
+    let affordable: Vec<Candidate> = all
+        .iter()
+        .filter(|c| prefs.affordable(c).is_ok())
+        .cloned()
+        .collect();
+
+    let mut note = None;
+    // A model that was refused still says what kind of thing this call was about, which is how
+    // the menu stays about pictures when the picture model named was too dear.
+    let mut refused_kind = None;
+    let asked = match choose(all, named, wanted, preferred) {
+        Ok(candidate) => match prefs.affordable(&candidate) {
+            Ok(()) => Some(candidate),
+            Err(_) => {
+                note = Some(format!(
+                    "{} is over the ceiling you set for this connector.",
+                    candidate.key()
+                ));
+                refused_kind = Some(candidate.kind);
+                None
+            }
+        },
+        Err(_) => {
+            note = named.map(|named| format!("There is no `{named}` on this machine."));
+            // A name that matches nothing here may still match something that is only over the
+            // ceiling, which says the kind as well as any argument would.
+            refused_kind = named.and_then(|named| {
+                all.iter()
+                    .find(|c| c.key() == named || c.model == named)
+                    .map(|c| c.kind)
+            });
+            None
+        }
+    };
+    let kind = wanted.or(asked.as_ref().map(|c| c.kind)).or(refused_kind);
+    let chosen = asked.or_else(|| choose(&affordable, None, kind, preferred).ok());
+    if note.is_none()
+        && let (Some(preferred), Some(chosen)) = (preferred, chosen.as_ref())
+        && preferred != chosen.key()
+    {
+        note = Some(format!(
+            "Your default for this kind, {preferred}, is not available."
+        ));
+    }
+
+    // With no kind and no usable model, the menu is every model there is: picking one is what
+    // says which kind this call was about.
+    let options: Vec<ChoiceOption> = affordable
+        .iter()
+        .filter(|c| kind.is_none_or(|k| c.kind == k))
+        .map(|c| ChoiceOption {
+            value: c.key(),
+            label: c.key(),
+            detail: Some(match (c.unit_cost(), kind) {
+                (Some(cost), Some(_)) => format!("${cost:.4} a unit"),
+                (Some(cost), None) => format!("{}, ${cost:.4} a unit", kind_name(c.kind)),
+                (None, Some(_)) => "no published price".to_owned(),
+                (None, None) => format!("{}, no published price", kind_name(c.kind)),
+            }),
+        })
+        .collect();
+    ArgChoice {
+        key: "model".to_owned(),
+        label: "Model".to_owned(),
+        value: chosen.map(|c| c.key()),
+        options,
+        note,
+    }
 }

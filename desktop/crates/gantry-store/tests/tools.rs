@@ -106,7 +106,7 @@ fn the_projection_follows_a_call_from_start_to_completion() {
                 chat_id,
                 turn_id,
                 InteractionPayload::Permission {
-                    request: PermissionRequest {
+                    request: Box::new(PermissionRequest {
                         call_id: call_id.clone(),
                         connector: "gantry".into(),
                         connector_name: "Gantry".into(),
@@ -120,7 +120,8 @@ fn the_projection_follows_a_call_from_start_to_completion() {
                         guardrail: None,
                         guard: None,
                         scopes: Vec::new(),
-                    },
+                        choices: Vec::new(),
+                    }),
                 },
             );
             projections::apply(
@@ -152,6 +153,7 @@ fn the_projection_follows_a_call_from_start_to_completion() {
                         resolution: InteractionResolution::Permission {
                             decision: PermissionDecision::AllowOnce,
                             message: None,
+                            chosen: Default::default(),
                         },
                         source: DecisionSource::UserOnce,
                     },
@@ -238,7 +240,7 @@ fn recovery_closes_calls_prompts_and_transcripts() {
                 chat_id,
                 turn_id,
                 InteractionPayload::Permission {
-                    request: PermissionRequest {
+                    request: Box::new(PermissionRequest {
                         call_id: call_id.clone(),
                         connector: "gantry".into(),
                         connector_name: "Gantry".into(),
@@ -255,7 +257,8 @@ fn recovery_closes_calls_prompts_and_transcripts() {
                         guardrail: None,
                         guard: None,
                         scopes: Vec::new(),
-                    },
+                        choices: Vec::new(),
+                    }),
                 },
             );
             interactions::insert(conn, &interaction)?;

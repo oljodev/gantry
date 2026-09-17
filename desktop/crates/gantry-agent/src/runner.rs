@@ -82,6 +82,7 @@ struct Round {
     end: End,
 }
 
+#[derive(Clone)]
 struct Call {
     id: CallId,
     name: String,
@@ -866,6 +867,10 @@ async fn run_calls(
     guard: &mut GuardState,
 ) -> (Vec<ContentPart>, Vec<ContentPart>, bool) {
     let batcher = ctx.active.batcher.clone();
+    // The batch's own copy, because a permission card may change an argument before the call
+    // runs (04 §7): the user picking a different model on the card is the call that then
+    // happens, and the row, the guard's memory and the result all have to be about that one.
+    let mut calls = calls.to_vec();
     let mut results: Vec<Option<ContentPart>> = (0..calls.len()).map(|_| None).collect();
     // What each call contributed to the answer, kept in the model's order however the calls
     // themselves finished (03 §4).
@@ -1063,11 +1068,28 @@ async fn run_calls(
     for (i, entry, guardrail, guard_note) in asking {
         let call = &calls[i];
         let guardrail_kind = guardrail.as_ref().map(|g| g.kind);
+        // What this card may let the user change (04 §7). Asked only here, of a call that is
+        // actually going to ask, so a tool that offers choices costs nothing on the calls
+        // nobody is prompted about.
+        let choices = entry
+            .connector
+            .choices(&ToolCallRequest {
+                call_id: call.id.clone(),
+                tool: entry.def.name.clone(),
+                args: call.args.clone(),
+                scope: ChatScope {
+                    chat_id: ctx.input.chat_id,
+                    turn_id: ctx.input.turn_id,
+                    mode: ctx.input.mode,
+                    attach_decided: false,
+                },
+            })
+            .await;
         let interaction = Interaction::pending(
             ctx.input.chat_id,
             ctx.input.turn_id,
             InteractionPayload::Permission {
-                request: PermissionRequest {
+                request: Box::new(PermissionRequest {
                     call_id: call.id.clone(),
                     connector: entry.connector_id().to_owned(),
                     connector_name: entry.connector_name().to_owned(),
@@ -1090,7 +1112,8 @@ async fn run_calls(
                         guardrail_kind,
                         entry.def.always_confirm,
                     ),
-                },
+                    choices,
+                }),
             },
         );
         let rx = ctx.interactions.request(interaction.clone());
@@ -1126,7 +1149,29 @@ async fn run_calls(
             s.pending.retain(|p| p.id != interaction.id);
         }
         match &resolution {
-            InteractionResolution::Permission { decision, .. } if decision.allows() => {
+            InteractionResolution::Permission {
+                decision, chosen, ..
+            } if decision.allows() => {
+                // What the card changed, before anything else: the call that is allowed is the
+                // one the user was looking at when they pressed the button (04 §7).
+                if let Some(args) = chosen_args(&interaction, &calls[i].args, chosen) {
+                    let display = display_for(Some(&entry.def), &args);
+                    let call_id = calls[i].id.clone();
+                    calls[i].args = args.clone();
+                    update_call(ctx, &call_id, |c| {
+                        c.args = args.clone();
+                        c.display = display.clone();
+                    });
+                    // The same event the arguments arrived on, said again with what they are
+                    // now: the row, the projection and a late subscriber all learn the call
+                    // this way, so none of them ends up describing the call the user replaced.
+                    batcher.push(AgentEventKind::ToolCallReady {
+                        call_id,
+                        args,
+                        tier: entry.def.tier,
+                        display,
+                    });
+                }
                 // "Allow for this chat" is remembered before the call runs, so a crash in the
                 // middle of the call cannot lose the answer the user just gave (04 §8).
                 let source = match decision {
@@ -1186,6 +1231,7 @@ async fn run_calls(
                     resolution: InteractionResolution::Permission {
                         decision: PermissionDecision::Deny,
                         message: message.clone(),
+                        chosen: BTreeMap::new(),
                     },
                     source: DecisionSource::UserOnce,
                 });
@@ -1289,6 +1335,43 @@ async fn run_calls(
         .collect();
     let answer = answer.into_iter().flatten().collect();
     (results, answer, cancelled)
+}
+
+/// The arguments a card changed, or `None` when it changed nothing (04 §7).
+///
+/// Only keys the request offered as `choices`, and only values it listed, so the answer widens
+/// nothing: a card can pick between things the connector already called equivalent, and cannot
+/// turn a call to draw a picture into a call to delete a file. Anything else is dropped rather
+/// than refused — a card is answered once, and an answer that half-applied would be worse than
+/// one that was ignored.
+fn chosen_args(
+    interaction: &Interaction,
+    args: &serde_json::Value,
+    chosen: &BTreeMap<String, String>,
+) -> Option<serde_json::Value> {
+    if chosen.is_empty() {
+        return None;
+    }
+    let InteractionPayload::Permission { request } = &interaction.payload else {
+        return None;
+    };
+    let mut patched = args.clone();
+    let object = patched.as_object_mut()?;
+    let mut changed = false;
+    for (key, value) in chosen {
+        let Some(choice) = request.choices.iter().find(|c| &c.key == key) else {
+            continue;
+        };
+        if !choice.options.iter().any(|o| &o.value == value) {
+            continue;
+        }
+        if object.get(key).and_then(serde_json::Value::as_str) == Some(value.as_str()) {
+            continue;
+        }
+        object.insert(key.clone(), serde_json::Value::String(value.clone()));
+        changed = true;
+    }
+    changed.then_some(patched)
 }
 
 /// The task as the guard sees it (04 §6): what the user asked for, where the work may happen,
