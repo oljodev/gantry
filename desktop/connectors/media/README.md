@@ -1,0 +1,71 @@
+# Media generation
+
+One tool, `media__generate`: the chat model makes a picture, a piece of spoken audio, or a video
+clip, and it appears in the reply where the model asked for it.
+
+- **Runs:** in Gantry, in this process. Nothing to install.
+- **Needs:** a provider key you already added, on a provider that serves media models — today
+  that is OpenRouter's `POST /images`, `/audio/speech` and `/videos` (02 §4b). No second key, no
+  account of its own.
+- **Can reach:** the media models of the providers you have keys for, and nothing else. It writes
+  nothing to this machine.
+- **Costs:** every call is a real generation on your own account. A picture is cents; a clip can
+  be a dollar or more. The tool is `write_external`, so it asks before each call in Manual and
+  Auto-edit, and the card names the model. The result says what it actually cost.
+
+## This is not the media routing
+
+Picking an image model in the model dialog makes that model the one you are talking to: you send
+a prompt and it answers with a picture instead of words. That is `02 §4b` and it has been there
+since M4. This connector is the other direction — you keep talking to the chat model, and it
+calls a drawing model as one step of its own work, so it can say what it is about to make, make
+it, and then write about what it made.
+
+Both use the same endpoints and the same client. This connector adds no provider code: it builds
+a `ChatRequest` with the prompt as the only message and calls `Provider::stream`, which is where
+the routing already lives.
+
+## One generation per call
+
+There is no `n`, no batch and no loop. A model that wants three pictures calls three times, and
+each call is one charge on one permission card. Calling it repeatedly is fine and expected; what
+is not offered is a single call that spends an amount nobody can see in advance.
+
+The same rule is why the call does not retry: `retries` is 1, so a request that fails is a
+request that failed, not a second charge for something asked for once.
+
+## Where the picture goes
+
+Two places, on purpose.
+
+The **result** the model reads is a sentence and some numbers: which model answered, what kind of
+file, how big, what it cost. The bytes are not in it. A picture in a tool result is stored twice —
+once in the call row, once in the transcript — and read whole out of SQLite every time the chat is
+opened, which is the same argument 02 §4b makes about media models' own answers.
+
+The **file** goes to the answer, through `ToolOutcome::media` (03 §4). The turn loop appends it as
+an assistant message of its own, so it renders at the point of the call, its bytes are parked in
+the blob store, the sweeper can reach it, and no provider replays it back to the chat model.
+
+One consequence worth knowing: the model cannot look at what it made. It knows the picture exists
+and what it asked for, and that is all. The system addendum tells it so, because a model that
+thinks it can check its own work will claim to have done it.
+
+## Choosing the model
+
+`model` is `provider/model` and may be left out. Left out, the connector takes the **cheapest**
+model of the requested kind among providers with a key, and the result names it — a model with no
+published price is never the automatic choice, because an unknown price is the one that cannot be
+defended afterwards. A bare model id is accepted when only one provider has it.
+
+Whatever you chose for that model in the model dialog — the voice, the aspect ratio, the length —
+is used here too (`ChatSettings.model_options`, 11 §1), with anything the call names on top. An
+option the model does not offer is refused before the request is sent, naming what it does offer,
+rather than being sent and charged for.
+
+## Verified
+
+The endpoints, the polling and the blob parking are M4's and have their own tests. What is new
+here is tested offline: model choice and its refusals, option validation, the one-request rule,
+and the answer shape (`tests/generate.rs`). **Nobody has run a live generation from this
+connector** — it spends money, and Olav's checklist is where that happens.

@@ -6,11 +6,9 @@
 
 use std::{
     collections::{BTreeMap, HashMap},
-    path::PathBuf,
     sync::Arc,
 };
 
-use gantry_connector_shell::ShellEnv;
 use gantry_connectors::{
     ConnectorRegistry,
     auth::{self, AuthError, ClientSource, DeviceStart, discovery, flow},
@@ -24,7 +22,6 @@ use gantry_core::{
 };
 use gantry_secrets::{CredentialKind, OwnerKind, SecretVault};
 use gantry_store::{Store, repos};
-use gantry_workspace::Workspace;
 use serde::{Deserialize, Serialize};
 
 /// A stored OAuth result (06 §5: one credential per authorization, issuer included so a token
@@ -62,13 +59,8 @@ pub struct ConnectorService {
     store: Arc<Store>,
     secrets: Arc<SecretVault>,
     registry: Arc<ConnectorRegistry>,
-    /// Roots, file IO and the journal, which every native connector shares (03 §5).
-    workspace: Arc<Workspace>,
-    /// The login shell and its environment, captured once (`docs/connectors/shell.md` D2).
-    shell_env: Arc<ShellEnv>,
-    /// Where a native connector may keep state that has to survive a restart — today only the
-    /// web connector's search ration (`docs/connectors/web.md` §6.4).
-    data_dir: PathBuf,
+    /// What the native connectors are built from (03 §5).
+    native: crate::native::Deps,
     /// What each local server wrote to stderr, for the failure that has to explain itself
     /// (03 §11 step 4).
     logs: gantry_connectors::logs::ConnectorLogs,
@@ -81,18 +73,14 @@ impl ConnectorService {
         store: Arc<Store>,
         secrets: Arc<SecretVault>,
         registry: Arc<ConnectorRegistry>,
-        workspace: Arc<Workspace>,
-        shell_env: Arc<ShellEnv>,
-        data_dir: PathBuf,
+        native: crate::native::Deps,
     ) -> Self {
         Self {
             catalog: Catalog::embedded(),
             store,
             secrets,
             registry,
-            workspace,
-            shell_env,
-            data_dir,
+            native,
             logs: gantry_connectors::logs::ConnectorLogs::new(),
             http: reqwest::Client::builder()
                 .user_agent(concat!("Gantry/", env!("CARGO_PKG_VERSION")))
@@ -133,7 +121,10 @@ impl ConnectorService {
             .catalog
             .get(catalog_id)
             .ok_or_else(|| GantryError::not_found(format!("catalog entry {catalog_id}")))?;
-        Ok(gantry_connectors::runtime::detect(&manifest.requires(), &self.shell_env.vars).await)
+        Ok(
+            gantry_connectors::runtime::detect(&manifest.requires(), &self.native.shell_env.vars)
+                .await,
+        )
     }
 
     /// The form a connector asks for at install (03 §11 step 2), and what this instance already
@@ -985,9 +976,7 @@ impl ConnectorService {
                         catalog_id,
                         instance.namespace.clone(),
                         instance.id,
-                        &self.workspace,
-                        &self.shell_env,
-                        &self.data_dir,
+                        &self.native,
                     )
                 }) {
                     Some(connector) => self.registry.register(connector),
@@ -1200,18 +1189,28 @@ mod tests {
             },
         ));
         let registry = Arc::new(ConnectorRegistry::new());
-        let workspace = Arc::new(Workspace::new(
+        let workspace = Arc::new(gantry_workspace::Workspace::new(
             store.clone(),
             blobs,
             dir.path().join("app-data"),
         ));
+        let providers = Arc::new(gantry_providers::ProviderRegistry::new(
+            store.clone(),
+            secrets.clone(),
+            reqwest::Client::new(),
+        ));
         let service = ConnectorService::new(
-            store,
+            store.clone(),
             secrets,
             registry,
-            workspace,
-            Arc::new(ShellEnv::inherited()),
-            dir.path().join("app-data"),
+            crate::native::Deps {
+                workspace,
+                shell_env: Arc::new(gantry_connector_shell::ShellEnv::inherited()),
+                data_dir: dir.path().join("app-data"),
+                providers,
+                store,
+                settings: Arc::new(std::sync::RwLock::new(gantry_core::Settings::default())),
+            },
         );
         (dir, service)
     }

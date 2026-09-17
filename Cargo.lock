@@ -1700,6 +1700,7 @@ dependencies = [
  "gantry-agent",
  "gantry-connector-code-editor",
  "gantry-connector-filesystem",
+ "gantry-connector-media",
  "gantry-connector-shell",
  "gantry-connector-web",
  "gantry-connectors",
@@ -1762,6 +1763,22 @@ dependencies = [
  "log",
  "serde_json",
  "tempfile",
+ "tokio",
+ "tokio-util",
+]
+
+[[package]]
+name = "gantry-connector-media"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "futures-util",
+ "gantry-connectors",
+ "gantry-core",
+ "gantry-providers",
+ "gantry-store",
+ "log",
+ "serde_json",
  "tokio",
  "tokio-util",
 ]

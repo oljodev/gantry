@@ -6,12 +6,35 @@
 //! instead, because a connector crate depends on that crate for the `Connector` trait and the
 //! registry cannot depend back on it without a cycle (03 §5, corrected 2026-09-08).
 
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 use gantry_connector_shell::ShellEnv;
 use gantry_connectors::Connector;
-use gantry_core::{InstanceId, ToolDef};
+use gantry_core::{InstanceId, Settings, ToolDef};
+use gantry_providers::ProviderRegistry;
+use gantry_store::Store;
 use gantry_workspace::Workspace;
+
+/// Everything a native connector might be built from, in one place.
+///
+/// It was a widening argument list until `media` arrived wanting three things nothing else does
+/// — the provider clients, their model catalog and the settings cache — and a function whose
+/// parameters are six unrelated nouns is one nobody can call without reading it. The connectors
+/// that need none of this ignore the rest.
+pub struct Deps {
+    /// Roots, file IO and the edit journal, shared by every local connector (03 §5).
+    pub workspace: Arc<Workspace>,
+    /// The login shell and its environment, captured once (`docs/connectors/shell.md` D2).
+    pub shell_env: Arc<ShellEnv>,
+    /// Where a native connector may keep state that has to survive a restart.
+    pub data_dir: std::path::PathBuf,
+    /// `media` only: the provider clients, for the endpoints that make a picture (02 §4b).
+    pub providers: Arc<ProviderRegistry>,
+    /// `media` only: the model catalog lives in the same database.
+    pub store: Arc<Store>,
+    /// `media` only: what the user chose for a model in the dialog (11 §1).
+    pub settings: Arc<RwLock<Settings>>,
+}
 
 /// Builds the connector a native manifest names, or `None` when nothing is registered for it —
 /// which is how a manifest that ships before its code does stays harmless.
@@ -25,10 +48,16 @@ pub fn build(
     catalog_id: &str,
     namespace: String,
     instance_id: InstanceId,
-    workspace: &Arc<Workspace>,
-    shell_env: &Arc<ShellEnv>,
-    data_dir: &std::path::Path,
+    deps: &Deps,
 ) -> Option<Arc<dyn Connector>> {
+    let Deps {
+        workspace,
+        data_dir,
+        providers,
+        store,
+        settings,
+        shell_env,
+    } = deps;
     match catalog_id {
         gantry_connector_filesystem::ID => Some(Arc::new(
             gantry_connector_filesystem::Filesystem::new(namespace, instance_id, workspace.clone()),
@@ -45,6 +74,13 @@ pub fn build(
             instance_id,
             workspace.clone(),
             shell_env.clone(),
+        ))),
+        gantry_connector_media::ID => Some(Arc::new(gantry_connector_media::Media::new(
+            namespace,
+            instance_id,
+            providers.clone(),
+            store.clone(),
+            settings.clone(),
         ))),
         gantry_connector_web::ID => Some(Arc::new(gantry_connector_web::Web::new(
             namespace,
@@ -66,6 +102,7 @@ pub fn definitions(catalog_id: &str) -> Option<Vec<ToolDef>> {
         gantry_connector_filesystem::ID => Some(gantry_connector_filesystem::definitions()),
         gantry_connector_code_editor::ID => Some(gantry_connector_code_editor::definitions()),
         gantry_connector_shell::ID => Some(gantry_connector_shell::definitions()),
+        gantry_connector_media::ID => Some(gantry_connector_media::definitions()),
         gantry_connector_web::ID => Some(gantry_connector_web::definitions()),
         _ => None,
     }

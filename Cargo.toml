@@ -5,6 +5,7 @@ members = [
   "desktop/crates/*",
   "desktop/connectors/filesystem",
   "desktop/connectors/code-editor",
+  "desktop/connectors/media",
   "desktop/connectors/shell",
   "desktop/connectors/web",
 ]
@@ -31,6 +32,7 @@ gantry-agent = { path = "desktop/crates/gantry-agent" }
 gantry-connector-filesystem = { path = "desktop/connectors/filesystem" }
 gantry-connector-code-editor = { path = "desktop/connectors/code-editor" }
 gantry-connector-shell = { path = "desktop/connectors/shell" }
+gantry-connector-media = { path = "desktop/connectors/media" }
 gantry-connector-web = { path = "desktop/connectors/web" }
 
 # Shared third-party versions. Pin here, inherit everywhere.

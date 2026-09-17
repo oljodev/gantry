@@ -2,7 +2,7 @@
 //
 // 38 marks from Simple Icons (CC0; the trademarks stay their owners', and a mark here says
 // which service a connector reaches, not that anybody endorses Gantry — docs/plan/17 §8), and
-// 23 of Gantry's own glyphs for the services Simple Icons does not carry.
+// 24 of Gantry's own glyphs for the services Simple Icons does not carry.
 
 /** A brand mark is one filled path in the vendor's colour, once per theme; a glyph is this
  *  repository's own stroked drawing, which takes the colour of the text around it. */
@@ -196,6 +196,10 @@ export const MARKS: Record<string, ConnectorMarkArt> = {
     light: '#6d00cc',
     dark: '#9240d9',
     d: 'M13.38 3.498c-.27 0-.511.19-.566.465L9.85 18.986a.578.578 0 0 0 .453.678l4.095.826a.58.58 0 0 0 .682-.455l2.963-15.021a.578.578 0 0 0-.453-.678l-4.096-.826a.589.589 0 0 0-.113-.012zm-5.876.098a.576.576 0 0 0-.516.318L.062 17.697a.575.575 0 0 0 .256.774l3.733 1.877a.578.578 0 0 0 .775-.258l6.926-13.781a.577.577 0 0 0-.256-.776L7.762 3.658a.571.571 0 0 0-.258-.062zm11.74.115a.576.576 0 0 0-.576.576v15.426c0 .318.258.578.576.578h4.178a.58.58 0 0 0 .578-.578V4.287a.578.578 0 0 0-.578-.576Z',
+  },
+  media: {
+    kind: 'glyph',
+    body: '<rect x="3" y="4" width="18" height="14" rx="2"/><path d="M3 15l4.5-4.5 4 4 3-3L21 17"/><circle cx="15" cy="9" r="1.4"/>',
   },
   'microsoft-learn': {
     kind: 'glyph',

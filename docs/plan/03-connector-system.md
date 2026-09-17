@@ -310,7 +310,8 @@ Status after M3: the trait exists with `descriptor`, `tools` and `call` (`ToolOu
 
 ## 5. Native runtime: the first-party connectors
 
-All three local connectors use `gantry-workspace`, so the following holds once and for all:
+Five: `filesystem`, `code-editor`, `shell`, `web` and `media`. The first three touch the disk and
+share `gantry-workspace`, so the following holds once and for all:
 
 - **Scope.** Every path argument is canonicalized (symlinks resolved, Windows prefixes normalized) and must be under one of the chat's roots. Otherwise the tool returns a `scope_violation` error to the model with no prompt; the event is logged. Roots come from "Add folder to workspace", the project's workspace folder, or an access request.
 - **Sensitive paths** (`.env*`, `*.pem`, `*.key`, `id_rsa*`, `~/.ssh/**`, `~/.aws/**`, `*.kdbx`, `*.p12`) are a guardrail: reading or writing them always confirms, in every mode.
@@ -386,6 +387,43 @@ circuit breaker when a block is seen, and a fall through to mwmbl for anything r
 a per-turn cap (§6.4), the user's own SearXNG (§6.3), Wiby and YaCy (§6.5).
 
 `fetch_url`: 5 MB cap, ≤5 redirects, 20 s timeout, no cookies, private and loopback address ranges blocked. A page longer than `max_chars` is returned one window at a time rather than cut off: the result carries `first_char`, `total_chars`, `more` and `next_offset`, and `offset` is where the next call resumes — the same shape as `filesystem.read_file`'s `offset`/`total_lines`/`more`, in characters rather than lines. The document is held for five minutes so a page turn is neither a second download nor a second chance for the offsets to have moved, which also makes reading the same page twice in a chat cost one fetch. `find_in_page` reads that same document — headings, or a regular expression's matches, each with the offset to resume at — so locating a section and then reading it is one download and the offsets are measured in the string they will be used against. Provider-native web search (Anthropic, OpenAI, Gemini, xAI, OpenRouter plugin) is handled by the provider layer and remains the broader of the two: it searches everything, where this connector searches four indexes well. The provider layer is unaffected by the rule above — that search is part of a model call the user is already paying for, not an account Gantry asks them to open.
+
+### `media` — the model makes a picture, a voice or a clip
+
+| Tool | Input → output | Tier |
+|------|----------------|------|
+| `generate` | `{ prompt, kind?: image\|speech\|video, model?, aspect_ratio?, resolution?, duration_seconds?, quality?, voice? }` → which model answered, what kind of file, how big, what it cost — and the file itself, in the answer | write_external |
+
+Built 2026-09-17. It is the other direction from the media *routing* of 02 §4b: routing is for a
+turn whose **chosen** model draws, and this is for a chat model that wants a picture as one step
+of its own work. Both use the same endpoints — this connector adds no provider code at all. It
+builds a `ChatRequest` whose only message is the prompt and calls `Provider::stream`, which is
+where the routing already decides between `POST /images`, `/audio/speech` and `/videos`.
+
+**One generation per call.** There is no `n`, no batch and no loop: a model that wants three
+pictures calls three times. That is the shape of the thing being spent — each call is money on
+the user's own account — and a tool that could spend a variable amount per call would make every
+permission card a guess. For the same reason `retries` is 1 and the tool is not `parallel_safe`:
+a retry is a second charge for something asked for once, and two generations at a time are two
+charges decided as one.
+
+**Where what it makes goes.** Two places, and neither is a file on disk. The *result* the model
+reads is a sentence and some numbers — a picture in a tool result would be stored twice and read
+whole out of SQLite on every open, which is the argument 02 §4b already makes. The *file* goes to
+the reply through `ToolOutcome::media` (§4), which is what puts it at the point of the call. One
+consequence is worth stating: **the model cannot look at what it made**, and the prompt addendum
+says so, because a model that thinks it can check its own work will claim to have done it.
+
+**Which model.** `model` is `provider/model` and may be left out; left out, it is the cheapest of
+the requested kind among providers with a key, and the result names it. A model with no published
+price is never the automatic choice — an unknown price is the one that cannot be defended
+afterwards. Whatever the user chose for that model in the dialog (`ChatSettings.model_options`,
+11 §1) is used here too, with anything the call names on top, and an option the model does not
+offer is refused **before** the request rather than after the charge.
+
+Gating: `write_external`, so Manual and Auto-edit ask and the card names the model, unguarded
+Auto does not, and the guard judges it in guarded Auto. It is not in `default_connectors`: a
+connector that spends money is one the user attaches on purpose.
 
 ## 6. MCP runtime
 

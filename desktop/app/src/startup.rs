@@ -196,9 +196,14 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn Error>> {
         store.clone(),
         secrets.clone(),
         tools.clone(),
-        workspace.clone(),
-        shell_env,
-        data_dir.clone(),
+        crate::native::Deps {
+            workspace: workspace.clone(),
+            shell_env,
+            data_dir: data_dir.clone(),
+            providers: providers.clone(),
+            store: store.clone(),
+            settings: settings.clone(),
+        },
     ));
 
     let turns = TurnManager::new(

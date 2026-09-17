@@ -154,6 +154,7 @@ gantry/
 │   │   ├── code-editor/                  # first-party · native: src/lib.rs, tests/edits.rs (the four tools; the work is in gantry-workspace)
 │   │   ├── shell/                        # first-party · native: src/{lib.rs, run.rs, kill.rs, shells.rs}, fixtures/commands.txt (classifier corpus)
 │   │   ├── web/                          # first-party · native: src/{lib.rs, fetch.rs, classify.rs (§7.5: what a response actually is), politeness.rs (§7.3: per-host and global limits), extract.rs, guard.rs, locate.rs, cache.rs, search/}
+│   │   ├── media/                        # first-party · native: src/{lib.rs, models.rs (which model makes it, and every refusal that costs nothing)} — one tool, one generation per call (03 §5)
 │   │   ├── google-drive/                 # bundled third-party · mcp-remote · user-supplied OAuth client; ui/index.tsx helper panel
 │   │   ├── github/                       # bundled third-party · mcp-remote · CIMD/DCR
 │   │   └── playwright/                   # bundled third-party · mcp-stdio on the user's Node
@@ -218,7 +219,7 @@ gantry/
 │   ├── decisions/                        # ADRs from here on: 0001-….md
 │   └── dev/                              # setup per OS, debugging, release checklist (release.md includes the website checklist, 14 §4)
 │
-├── Cargo.toml                            # [workspace] members = ["desktop/app", "desktop/crates/*", "desktop/connectors/{filesystem,code-editor,shell,web}"]
+├── Cargo.toml                            # [workspace] members = ["desktop/app", "desktop/crates/*", "desktop/connectors/{filesystem,code-editor,media,shell,web}"]
 ├── Cargo.lock  rust-toolchain.toml  rustfmt.toml  clippy.toml  deny.toml
 ├── package.json                          # the pnpm workspace root: script shortcuts forwarding to desktop/frontend, the Tauri CLI, prettier
 ├── pnpm-workspace.yaml  pnpm-lock.yaml  .node-version  .prettierrc  .prettierignore

@@ -1,0 +1,52 @@
+{
+  "manifest_version": "1",
+  "id": "media",
+  "name": "Media generation",
+  "description": "Let the chat model make a picture, a voice-over or a clip while it works.",
+  "long_description": "A chat model can draw. Not itself — it calls a model built for it, the way it calls any other tool, and what comes back appears in the reply at the point it asked for it.\n\nThis is the other direction from picking an image model in the model dialog. There, the image model is who you are talking to and it answers with a picture instead of words. Here you keep talking to the chat model, and a picture is one step of its work: it can describe what it is about to make, make it, and then write about what it made.\n\nOne call makes one thing. There is no batch and no `n`: a model that wants three pictures calls three times, and each call is one charge you can see on the card. It uses the models your own provider keys reach, at your own account's prices, and the result says which model was used and what it cost.\n\nIt writes nothing to this machine. The file lives in the chat, the way an attachment does.",
+  "version": "0.1.0",
+  "icon": "icon.svg",
+  "category": "media",
+  "keywords": ["image", "picture", "draw", "speech", "voice", "audio", "video", "clip", "generate"],
+  "publisher": {
+    "name": "Gantry",
+    "url": "https://oljo.dev"
+  },
+  "first_party": true,
+  "homepage": "https://oljo.dev/connectors/media/",
+  "license": "FSL-1.1-ALv2",
+  "runtime": {
+    "kind": "native",
+    "crate": "gantry-connector-media",
+    "singleton": true
+  },
+  "auth": {
+    "type": "none"
+  },
+  "risk": {
+    "network": "internet",
+    "local_system": "none",
+    "default_tool_tier": "write_external",
+    "notes": "Every call spends money on the provider account whose key you added — a picture is cents, a clip can be a dollar or more. It asks before each generation outside Auto, and the card names the model. Nothing is written to this machine: what it makes lives in the chat."
+  },
+  "tools_generated": true,
+  "prompt": {
+    "system_addendum": "media__generate makes one picture, one piece of spoken audio, or one video clip, and it appears in your reply at the point you called it. Write about the thing itself; never describe it as a link, a file path or an attachment, and never claim to have looked at it afterwards — you cannot read it back. Call it once per thing: a second picture is a second call, and each one costs the user money, so do not make one nobody asked for, and do not regenerate to \"improve\" something unless you were asked to. A diagram is an artifact, not an image: use gantry__create_artifact with the mermaid type for anything with boxes and arrows. If you do not know which model to use, leave model out — the result says which one answered."
+  },
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "gantry": ">=0.1.0"
+  },
+  "catalog": {
+    "suggest_for": [
+      "make an image",
+      "draw",
+      "picture",
+      "generate an image",
+      "read this aloud",
+      "voice over",
+      "make a video"
+    ],
+    "sort_weight": 78
+  }
+}

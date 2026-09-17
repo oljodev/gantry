@@ -306,6 +306,14 @@ Neither sound nor video goes back to a provider: nothing accepts them as input, 
 whose only part was one would project to nothing at all, so projection replaces them with a
 sentence saying what happened.
 
+**The other direction, since 2026-09-17.** Everything above is for a turn whose *chosen* model
+draws or speaks. A chat model can now also call one as a tool — the `media` connector of 03 §5 —
+and it reuses this module exactly: a `ChatRequest` whose only message is the prompt, through
+`Provider::stream`, so `route` decides the endpoint the same way for both. Nothing about the
+endpoints, the polling or the 32 MB ceiling is duplicated there. What the connector adds is the
+part this module has no opinion about: which model, what it costs, and whether the option asked
+for is one the model offers.
+
 Two things are known to be unsettled until the first live run, both cheap to change: whether a
 music model (Lyria) accepts the `voice` the `audio` object carries, and whether the speech
 endpoint's error path really is JSON on a route that otherwise answers with a file — the client
