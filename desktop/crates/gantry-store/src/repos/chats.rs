@@ -2,7 +2,7 @@
 //! frozen system prompt. The transcript lives in `messages`, the turns in `turns`.
 
 use gantry_core::{
-    ChatId, Mode, ModelRef, ProjectId, ProviderId, ReasoningEffort, Surface, now_ms,
+    ChatId, Mode, ModelRef, ProjectId, ProviderId, ReasoningEffort, Surface, TurnId, now_ms,
 };
 use rusqlite::{Connection, OptionalExtension, Row, params};
 
@@ -35,13 +35,20 @@ pub struct ChatRecord {
     pub archived_at: Option<i64>,
     /// Never listed, never searched, deleted with its window (15 A21).
     pub incognito: bool,
+    /// The turn that started this chat as a sub agent (18 §8). `None` for a conversation a
+    /// person is having; `Some` for one a model is having on their behalf.
+    pub parent_turn_id: Option<TurnId>,
+    /// Which agent type it was started from, for the tree and for the transcript's header.
+    pub agent_type: Option<String>,
 }
 
-const COLUMNS: &str = "id, project_id, title, title_source, pinned, permission_mode, auto_guard, provider_id, model_id, effort, web_search, instructions, system_snapshot, system_snapshot_version, created_at, updated_at, last_message_at, archived_at, surface, incognito";
+const COLUMNS: &str = "id, project_id, title, title_source, pinned, permission_mode, auto_guard, provider_id, model_id, effort, web_search, instructions, system_snapshot, system_snapshot_version, created_at, updated_at, last_message_at, archived_at, surface, incognito, parent_turn_id, agent_type";
 
-/// Every list a person can reach leaves incognito sessions out; the only things that see them
-/// are `get` — the open window asking for its own chat — and the sweep that deletes them.
-const VISIBLE: &str = "incognito = 0";
+/// Every list a person can reach leaves incognito sessions out, and sub agents with them: one is
+/// a conversation that was promised not to be kept, the other a conversation the user is not
+/// having (18 A1). The only things that see either are `get` — the open window, or the tree,
+/// asking for one chat by id — and the sweeps that delete them.
+const VISIBLE: &str = "incognito = 0 AND parent_turn_id IS NULL";
 
 fn from_row(r: &Row<'_>) -> rusqlite::Result<ChatRecord> {
     Ok(ChatRecord {
@@ -77,13 +84,25 @@ fn from_row(r: &Row<'_>) -> rusqlite::Result<ChatRecord> {
         archived_at: r.get(17)?,
         surface: enum_from_str(r, 18)?,
         incognito: r.get::<_, i64>(19)? != 0,
+        parent_turn_id: r
+            .get::<_, Option<String>>(20)?
+            .map(|s| s.parse())
+            .transpose()
+            .map_err(|e| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    20,
+                    rusqlite::types::Type::Text,
+                    Box::new(e),
+                )
+            })?,
+        agent_type: r.get(21)?,
     })
 }
 
 pub fn insert(conn: &Connection, c: &ChatRecord) -> Result<()> {
     conn.execute(
         &format!(
-            "INSERT INTO chats ({COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)"
+            "INSERT INTO chats ({COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22)"
         ),
         params![
             c.id.to_string(),
@@ -106,6 +125,8 @@ pub fn insert(conn: &Connection, c: &ChatRecord) -> Result<()> {
             c.archived_at,
             enum_to_str(&c.surface),
             c.incognito as i64,
+            c.parent_turn_id.map(|t| t.to_string()),
+            c.agent_type.clone(),
         ],
     )?;
     Ok(())

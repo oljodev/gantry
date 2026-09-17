@@ -41,6 +41,7 @@ fn chat(book: &ChatBook) -> ChatId {
         incognito: false,
         project: None,
         grants: Vec::new(),
+        parent: None,
     })
     .unwrap()
     .id

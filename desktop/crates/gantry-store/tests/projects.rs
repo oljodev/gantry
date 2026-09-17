@@ -55,6 +55,8 @@ fn chat(project: Option<ProjectId>) -> chats::ChatRecord {
         last_message_at: now,
         archived_at: None,
         incognito: false,
+        parent_turn_id: None,
+        agent_type: None,
     }
 }
 

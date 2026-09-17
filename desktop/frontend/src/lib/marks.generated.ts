@@ -2,7 +2,7 @@
 //
 // 38 marks from Simple Icons (CC0; the trademarks stay their owners', and a mark here says
 // which service a connector reaches, not that anybody endorses Gantry — docs/plan/17 §8), and
-// 24 of Gantry's own glyphs for the services Simple Icons does not carry.
+// 25 of Gantry's own glyphs for the services Simple Icons does not carry.
 
 /** A brand mark is one filled path in the vendor's colour, once per theme; a glyph is this
  *  repository's own stroked drawing, which takes the colour of the text around it. */
@@ -336,6 +336,10 @@ export const MARKS: Record<string, ConnectorMarkArt> = {
     light: '#635bff',
     dark: '#635bff',
     d: 'M13.976 9.15c-2.172-.806-3.356-1.426-3.356-2.409 0-.831.683-1.305 1.901-1.305 2.227 0 4.515.858 6.09 1.631l.89-5.494C18.252.975 15.697 0 12.165 0 9.667 0 7.589.654 6.104 1.872 4.56 3.147 3.757 4.992 3.757 7.218c0 4.039 2.467 5.76 6.476 7.219 2.585.92 3.445 1.574 3.445 2.583 0 .98-.84 1.545-2.354 1.545-1.875 0-4.965-.921-6.99-2.109l-.9 5.555C5.175 22.99 8.385 24 11.714 24c2.641 0 4.843-.624 6.328-1.813 1.664-1.305 2.525-3.236 2.525-5.732 0-4.128-2.524-5.851-6.594-7.305h.003z',
+  },
+  subagents: {
+    kind: 'glyph',
+    body: '<circle cx="12" cy="5" r="2.4"/><circle cx="5" cy="19" r="2.4"/><circle cx="19" cy="19" r="2.4"/><path d="M12 7.4v3.1a2 2 0 0 1-2 2H7a2 2 0 0 0-2 2v2.1"/><path d="M12 10.5a2 2 0 0 0 2 2h3a2 2 0 0 1 2 2v2.1"/>',
   },
   supabase: {
     kind: 'brand',

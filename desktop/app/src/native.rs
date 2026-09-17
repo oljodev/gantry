@@ -34,6 +34,11 @@ pub struct Deps {
     pub store: Arc<Store>,
     /// `media` only: what the user chose for a model in the dialog (11 §1).
     pub settings: Arc<RwLock<Settings>>,
+    /// `subagents` only: the thing that runs turns, which is what starting a sub agent is
+    /// (18 §1). Weak and filled in after the fact, because the manager owns the registry this
+    /// connector is registered in: it is built after the connector service and cannot be
+    /// handed to it at construction, and two `Arc`s in a ring would never be dropped.
+    pub turns: Arc<RwLock<std::sync::Weak<gantry_agent::TurnManager>>>,
 }
 
 /// Builds the connector a native manifest names, or `None` when nothing is registered for it —
@@ -57,6 +62,7 @@ pub fn build(
         store,
         settings,
         shell_env,
+        turns,
     } = deps;
     match catalog_id {
         gantry_connector_filesystem::ID => Some(Arc::new(
@@ -79,6 +85,13 @@ pub fn build(
             namespace,
             instance_id,
             providers.clone(),
+            store.clone(),
+            settings.clone(),
+        ))),
+        gantry_agent::subagents::ID => Some(Arc::new(gantry_agent::subagents::SubAgents::new(
+            namespace,
+            instance_id,
+            turns.clone(),
             store.clone(),
             settings.clone(),
         ))),
@@ -122,6 +135,7 @@ pub fn definitions(catalog_id: &str) -> Option<Vec<ToolDef>> {
         gantry_connector_shell::ID => Some(gantry_connector_shell::definitions()),
         gantry_connector_media::ID => Some(gantry_connector_media::definitions()),
         gantry_connector_web::ID => Some(gantry_connector_web::definitions()),
+        gantry_agent::subagents::ID => Some(gantry_agent::subagents::definitions()),
         _ => None,
     }
 }

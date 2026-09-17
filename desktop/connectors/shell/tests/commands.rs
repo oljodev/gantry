@@ -72,6 +72,8 @@ fn fixture() -> Fixture {
         last_message_at: now,
         archived_at: None,
         incognito: false,
+        parent_turn_id: None,
+        agent_type: None,
     };
     let root = work.path().display().to_string();
     store

@@ -1,0 +1,46 @@
+{
+  "manifest_version": "1",
+  "id": "subagents",
+  "name": "Sub agents",
+  "description": "Let the model hand part of a job to another model and wait for its report.",
+  "long_description": "A sub agent is a conversation you never speak in. The model you are talking to gives it one task, it works on its own with its own tools, and its whole output is one report handed back — not to you, to the model that asked. Your chat stays about what you asked for, and the forty pages somebody had to read to answer it are in a transcript you can open if you want to.\n\nIt cannot see your conversation and you cannot send it messages. The one thing it can interrupt you for is permission: if it wants to run a command or change a file, the card appears in your chat, saying which agent asked. You can hand that to the guard instead.\n\nWhat a sub agent is comes from a library you can edit. Some types decide everything themselves — the researcher reads the web, reports back, and cannot change anything — and some leave the instructions and the tools to the model that starts them, which is what a coding task wants. One level only: a sub agent cannot start sub agents.\n\nIt is part of Gantry rather than an integration with anything: no server, no account, no key. It is on by default in Code sessions and a checkbox in a chat, and everything about it is on its own page under Customize.",
+  "version": "0.1.0",
+  "icon": "icon.svg",
+  "category": "gantry",
+  "keywords": ["agent", "delegate", "research", "parallel", "background", "helper"],
+  "publisher": {
+    "name": "Gantry",
+    "url": "https://oljo.dev"
+  },
+  "first_party": true,
+  "homepage": "https://oljo.dev/connectors/subagents/",
+  "license": "FSL-1.1-ALv2",
+  "runtime": {
+    "kind": "native",
+    "crate": "gantry-agent",
+    "singleton": true
+  },
+  "auth": {
+    "type": "none"
+  },
+  "risk": {
+    "network": "none",
+    "local_system": "none",
+    "default_tool_tier": "app",
+    "notes": "Starting a sub agent touches nothing outside Gantry. What the sub agent then does is asked about on its own terms: a permission card in your own chat naming the agent, or the guard, whichever Settings → Sub agents says. A sub agent is never allowed more than the chat that started it, and a type that may not change anything is shown no tool that could."
+  },
+  "tools_generated": true,
+  "prompt": {
+    "system_addendum": "Start a sub agent for work that would fill this conversation with material the user does not need to read, or that can be done beside what you are doing. Write the task for somebody who cannot see this conversation: they get your task text and their own instructions and nothing else. You wait until it reports; to run several at once, call the tool several times in the same turn rather than one after another. Tell the user you are delegating and what to, then stop talking until the reports are in. Do not start a sub agent for something you could answer in a sentence — it costs a whole conversation to ask."
+  },
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "gantry": ">=0.1.0"
+  },
+  "catalog": {
+    "suggest_for": ["sub agent", "delegate", "research this", "in parallel"],
+    "sort_weight": 126,
+    "install_by_default": true,
+    "hidden": true
+  }
+}

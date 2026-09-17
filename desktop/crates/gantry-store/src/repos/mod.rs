@@ -1,6 +1,7 @@
 //! Typed access to each table. Functions take a connection so they compose inside one
 //! `Store::write` or `Store::read` closure.
 
+pub mod agents;
 pub mod artifacts;
 pub mod blobs;
 pub mod chats;

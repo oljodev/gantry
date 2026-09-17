@@ -756,6 +756,12 @@ export type CatalogEntryDto = {
 	 *  is there.
 	 */
 	install_by_default: boolean,
+	/**
+	 *  Not shown in Discover, in Your connectors, or to the model's own connector search: it is
+	 *  part of the app and has its own page (03 §11, 18 §1). Still an ordinary instance
+	 *  underneath, which is what the composer's checkbox attaches.
+	 */
+	hidden: boolean,
 };
 
 /**  Everything the chat view needs. */
@@ -1817,6 +1823,13 @@ export type ModelRef = {
 	model: string,
 };
 
+/**  One row of the model menu the parent chooses from (18 §5). */
+export type ModelRule = {
+	model: ModelRef,
+	/**  The user's own words: "research and long documents", "anything short". */
+	when: string,
+};
+
 /**  A new memory, as the page's New, `/remember` and **Remember this** all hand it in. */
 export type NewMemory = {
 	text: string,
@@ -2217,6 +2230,8 @@ export type Settings = {
 	guardrails?: GuardrailSettings,
 	guard?: GuardSettings,
 	memory?: MemorySettings,
+	/**  What a model may hand to another model (18 §9). */
+	subagents?: SubAgentSettings,
 	advanced?: AdvancedSettings,
 };
 
@@ -2229,6 +2244,7 @@ export type SettingsPatch = {
 	guardrails?: GuardrailSettings | null,
 	guard?: GuardSettings | null,
 	memory?: MemorySettings | null,
+	subagents?: SubAgentSettings | null,
 	advanced?: AdvancedSettings | null,
 };
 
@@ -2347,6 +2363,47 @@ export type SkillsChanged = null;
 
 /**  Why the model stopped. */
 export type StopReason = { kind: "end_turn" } | { kind: "tool_use" } | { kind: "max_tokens" } | { kind: "refusal"; category: string | null } | { kind: "content_filter" } | { kind: "pause_turn" } | { kind: "cancelled" } | { kind: "other"; reason: string };
+
+/**  Who answers a sub agent's permission card. */
+export type SubAgentPermission = 
+/**
+ *  The card appears in the user's own chat, naming the agent that asked. The default:
+ *  taking the user out of decisions about their machine is not something to do by default.
+ */
+"ask" | 
+/**
+ *  The sub agent runs in Auto with the judge, whatever the parent chat's mode is, and the
+ *  user is never stopped. Its decisions are in Guard & guardrails like any other.
+ */
+"guard";
+
+/**
+ *  What a model may hand to another model (18 §9).
+ * 
+ *  The two limits are settings rather than constants because the right numbers depend on the
+ *  model and the money: three at once is generous for a chat and mean for a migration, and
+ *  nobody here can know which one this user is doing.
+ */
+export type SubAgentSettings = {
+	/**  Who answers when a sub agent's call needs permission (18 §6). */
+	permission?: SubAgentPermission,
+	/**  How many may run at the same time inside one turn. */
+	max_concurrent?: number,
+	/**  How many one turn may start altogether, however they overlap. */
+	max_per_turn?: number,
+	/**
+	 *  The models the parent may choose between, each with the user's own note on when it is
+	 *  for (18 §5). Empty means every sub agent runs the parent's model.
+	 */
+	model_rules?: ModelRule[],
+	/**
+	 *  Whether an incognito chat may start sub agents at all. Off: their transcripts are rows,
+	 *  and rows are the thing incognito promises not to leave (15 A21).
+	 */
+	in_incognito?: boolean,
+	/**  How long a sub agent's transcript is kept, in days. Zero is forever. */
+	keep_days?: number,
+};
 
 /**
  *  How a connector suggestion ended (03 §9). The install itself happens in the UI, through the

@@ -55,6 +55,12 @@ export function ConnectorsSection() {
     () => new Set((catalog.data ?? []).filter((e) => e.install_by_default).map((e) => e.id)),
     [catalog.data],
   );
+  // And the ones that are not catalogue entries at all (03 §11): part of the app, with a page
+  // of their own and nothing here to browse, install or remove. Sub agents are the first.
+  const hidden = useMemo(
+    () => new Set((catalog.data ?? []).filter((e) => e.hidden).map((e) => e.id)),
+    [catalog.data],
+  );
   const { runInstall: install, busyId: busy } = useInstallFlow();
 
   // Something opened this section *at* a connector — the palette, so far. Seed the search with
@@ -87,17 +93,20 @@ export function ConnectorsSection() {
     const q = query.trim().toLowerCase();
     return (catalog.data ?? []).filter(
       (c) =>
-        !q ||
-        c.name.toLowerCase().includes(q) ||
-        c.description.toLowerCase().includes(q) ||
-        c.keywords.some((k) => k.toLowerCase().includes(q)),
+        !c.hidden &&
+        (!q ||
+          c.name.toLowerCase().includes(q) ||
+          c.description.toLowerCase().includes(q) ||
+          c.keywords.some((k) => k.toLowerCase().includes(q))),
     );
   }, [catalog.data, query]);
 
   const installed = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return (connectors.data ?? []).filter((i) => !q || i.name.toLowerCase().includes(q));
-  }, [connectors.data, query]);
+    return (connectors.data ?? []).filter(
+      (i) => !hidden.has(i.catalog_id ?? '') && (!q || i.name.toLowerCase().includes(q)),
+    );
+  }, [connectors.data, hidden, query]);
 
   return (
     <>

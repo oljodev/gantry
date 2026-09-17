@@ -1264,6 +1264,7 @@ mod tests {
                 providers,
                 store,
                 settings: Arc::new(std::sync::RwLock::new(gantry_core::Settings::default())),
+                turns: Arc::new(std::sync::RwLock::new(std::sync::Weak::new())),
             },
         );
         (dir, service)
@@ -1340,19 +1341,20 @@ mod tests {
             .into_iter()
             .filter_map(|i| i.catalog_id)
             .collect();
+        // The composer draws a switch for one and a checkbox for the other before either has
+        // been installed, which is what `install_by_default` is for (03 §11).
         assert_eq!(
-            after,
-            vec!["web".to_owned()],
-            "the composer draws its switch"
+            after.iter().collect::<std::collections::BTreeSet<_>>(),
+            ["subagents".to_owned(), "web".to_owned()].iter().collect(),
         );
 
-        // Every later start finds it there. A second copy would take the `web-2` namespace and
-        // the switch would attach whichever one it found first.
+        // Every later start finds them there. A second copy would take the `web-2` namespace
+        // and the switch would attach whichever one it found first.
         service.install_defaults().await;
-        assert_eq!(service.instances().unwrap().len(), 1);
+        assert_eq!(service.instances().unwrap().len(), 2);
 
-        // And it is not removable: it would be back at the next start, which makes the button a
-        // lie rather than a choice.
+        // And they are not removable: they would be back at the next start, which makes the
+        // button a lie rather than a choice.
         let id = service.instances().unwrap()[0].id;
         let err = service.remove(id).await.unwrap_err();
         assert!(format!("{err:?}").contains("part of Gantry"), "{err:?}");

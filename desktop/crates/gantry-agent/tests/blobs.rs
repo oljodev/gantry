@@ -70,6 +70,7 @@ fn chat(book: &ChatBook) -> gantry_core::ChatId {
         incognito: false,
         project: None,
         grants: Vec::new(),
+        parent: None,
     })
     .unwrap()
     .id

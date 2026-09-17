@@ -25,6 +25,7 @@ use crate::{
     persist::PersistSink,
     runner::{self, RunContext},
     skills::Skills,
+    subagents::SubAgentStart,
     system_prompt::{
         CORE_VERSION, PromptContext, SystemPromptBuilder, chat_instructions_note,
         connector_inventory, mode_note, now_block, with_roots, with_turn_blocks,
@@ -128,6 +129,26 @@ pub struct ActiveTurn {
     pub batcher: Arc<Batcher>,
 }
 
+/// The ways one turn differs from another at the moment it starts: the skills the composer's
+/// `/name` forced, the turn a **Retry** replaces, and whether a model rather than a person is
+/// having this conversation (18 A1). Together rather than as three more parameters, because
+/// nearly every caller wants none of them.
+#[derive(Default)]
+pub(crate) struct StartOptions {
+    pub invoked: Vec<String>,
+    pub replacing: Option<TurnId>,
+    pub sub: Option<SubAgentStart>,
+}
+
+impl StartOptions {
+    fn from_user(invoked: Vec<String>) -> Self {
+        Self {
+            invoked,
+            ..Self::default()
+        }
+    }
+}
+
 pub struct TurnManager {
     chats: Arc<ChatBook>,
     providers: Arc<dyn ProviderSource>,
@@ -216,7 +237,7 @@ impl TurnManager {
         &self.interactions
     }
 
-    fn settings(&self) -> Settings {
+    pub(crate) fn settings(&self) -> Settings {
         self.settings
             .read()
             .unwrap_or_else(|e| e.into_inner())
@@ -403,6 +424,10 @@ impl TurnManager {
                     "filesystem".to_owned(),
                     "code-editor".to_owned(),
                     "shell".to_owned(),
+                    // On by default here and a checkbox in a chat (18 A14): a long piece of
+                    // work in a repository is where handing a piece of it to somebody else
+                    // pays for itself.
+                    crate::subagents::ID.to_owned(),
                 ],
                 gantry_core::Surface::Chat => defaults
                     .connectors
@@ -419,6 +444,7 @@ impl TurnManager {
             } else {
                 defaults.grants.unwrap_or_default()
             },
+            parent: None,
         })?;
         self.chats.record_snapshot_memories(chat.id, &memory_ids);
         Ok(chat)
@@ -674,7 +700,13 @@ impl TurnManager {
             user.parts.push(i.part);
             records.push(i.record);
         }
-        self.start_message(chat_id, user, records, invoked, None, sink)
+        self.start_message(
+            chat_id,
+            user,
+            records,
+            sink,
+            StartOptions::from_user(invoked),
+        )
     }
 
     /// Re-runs the chat's last turn: the old turn is dropped and its user message sent again.
@@ -688,7 +720,16 @@ impl TurnManager {
         // A retry re-sends the same message; the skills it named are named again by
         // matching it, and a `/name` the user typed is still in its text. The turn being
         // retried goes in the same write that starts its replacement.
-        self.start_message(chat_id, user, attachments, Vec::new(), Some(turn_id), sink)
+        self.start_message(
+            chat_id,
+            user,
+            attachments,
+            sink,
+            StartOptions {
+                replacing: Some(turn_id),
+                ..StartOptions::default()
+            },
+        )
     }
 
     /// **Allow anyway** (04 §6): the user overrules a block the guard made.
@@ -739,7 +780,7 @@ impl TurnManager {
             origin: None,
             created_at: now_ms(),
         };
-        self.start_message(chat_id, note, Vec::new(), Vec::new(), None, sink)
+        self.start_message(chat_id, note, Vec::new(), sink, StartOptions::default())
     }
 
     /// The Guard page's "this block was wrong" toggle (04 §6). It is stored with the decision
@@ -753,15 +794,24 @@ impl TurnManager {
         self.chats.amend_verdict(call_id, move |v| v.wrong = wrong)
     }
 
-    fn start_message(
+    pub(crate) fn start_message(
         self: &Arc<Self>,
         chat_id: ChatId,
         user: Message,
         attachments: Vec<NewAttachment>,
-        invoked: Vec<String>,
-        replacing: Option<TurnId>,
         sink: Arc<dyn EventSink>,
+        how: StartOptions,
     ) -> Result<TurnId, GantryError> {
+        let StartOptions {
+            invoked,
+            replacing,
+            sub,
+        } = how;
+        let sub_agent = sub.as_ref().map(|s| s.origin.clone());
+        let skills_allowed = sub.as_ref().is_none_or(|s| s.skills_on);
+        let read_only = sub.as_ref().is_some_and(|s| s.origin.read_only);
+        let parent_turn = sub.as_ref().map(|s| s.parent.clone());
+        let mut done = sub.map(|s| s.done);
         let settings = self.settings();
         // Skills are rescanned before the turn rather than on a timer: the folder is the user's
         // and they may have just edited it (12 §A3). A `stat` per folder is cheap enough to pay
@@ -780,6 +830,8 @@ impl TurnManager {
                 invoked,
                 memory_on: !settings.memory.paused,
                 replacing,
+                sub_agent: sub_agent.clone(),
+                skills_on: skills_allowed,
             },
         )?;
         let turn_id = input.turn_id;
@@ -887,7 +939,8 @@ impl TurnManager {
             }),
         };
         self.runtime.spawn(async move {
-            let tools = ToolSet::assemble(&connectors, mode, &attached, !incognito).await;
+            let tools =
+                ToolSet::assemble(&connectors, mode, &attached, !incognito, read_only).await;
             runner::run_turn(RunContext {
                 input,
                 provider: provider.clone(),
@@ -904,6 +957,7 @@ impl TurnManager {
                 connectors: connectors.clone(),
                 interactions,
                 notifier,
+                parent: parent_turn,
             })
             .await;
             manager
@@ -912,6 +966,13 @@ impl TurnManager {
                 .unwrap_or_else(|e| e.into_inner())
                 .remove(&active.id);
             manager.notify(chat_id);
+            // The sub agent is released the moment its turn is over, before the title
+            // generator would have run: nobody reads the title of a transcript that is opened
+            // from a tree, and the parent is waiting on this.
+            if let Some(done) = done.take() {
+                let _ = done.send(());
+                return;
+            }
             if first_turn && let Some(provider) = provider {
                 manager
                     .name_chat(chat_id, turn_id, provider, &model, &user_text)
@@ -1038,6 +1099,21 @@ impl TurnManager {
     }
 
     #[must_use]
+    /// The running turn itself, by id: what a sub agent needs to announce a permission card on
+    /// the stream the user is watching (18 §6).
+    pub(crate) fn running(&self, turn_id: TurnId) -> Option<Arc<ActiveTurn>> {
+        self.active
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(&turn_id)
+            .cloned()
+    }
+
+    /// This machine, for a prompt assembled outside `create_session`.
+    pub(crate) fn prompt_context(&self) -> PromptContext {
+        self.context.clone()
+    }
+
     pub fn active_turn_for(&self, chat_id: ChatId) -> Option<TurnId> {
         self.active
             .lock()

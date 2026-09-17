@@ -20,6 +20,7 @@ pub mod projects;
 pub mod runner;
 pub mod runtime_tools;
 pub mod skills;
+pub mod subagents;
 pub mod system_prompt;
 pub mod title;
 pub mod tools;
@@ -34,6 +35,7 @@ pub use memory::{Memories, MemoryEdit};
 pub use projects::Projects;
 pub use runtime_tools::{RuntimeTools, catalog::ConnectorAccess};
 pub use skills::Skills;
+pub use subagents::{SubAgentReport, SubAgents};
 pub use system_prompt::{
     CORE_VERSION, PromptContext, SystemPromptBuilder, chat_instructions_note, connector_inventory,
     memory_note,

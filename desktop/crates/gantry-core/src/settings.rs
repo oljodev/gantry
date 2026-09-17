@@ -81,6 +81,32 @@ impl Mode {
     }
 
     pub const ALL: [Mode; 4] = [Mode::Manual, Mode::AutoEdit, Mode::Plan, Mode::Auto];
+
+    /// How much a mode lets a call happen without being asked about, least first (04 §3).
+    ///
+    /// Plan is the narrowest: it hides the tools it would deny. Manual runs anything the user
+    /// says yes to, one call at a time. Auto-edit applies writes inside the folders by itself,
+    /// and Auto applies everything the guard allows.
+    #[must_use]
+    pub fn freedom(self) -> u8 {
+        match self {
+            Mode::Plan => 0,
+            Mode::Manual => 1,
+            Mode::AutoEdit => 2,
+            Mode::Auto => 3,
+        }
+    }
+
+    /// The narrower of two modes. Used where one thing inherits another's permission and must
+    /// never end up with more of it — a sub agent and the chat that started it (18 §6).
+    #[must_use]
+    pub fn narrower(self, other: Self) -> Self {
+        if self.freedom() <= other.freedom() {
+            self
+        } else {
+            other
+        }
+    }
 }
 
 /// How much the model should think before answering.
@@ -286,17 +312,20 @@ pub struct Settings {
     pub guardrails: GuardrailSettings,
     pub guard: GuardSettings,
     pub memory: MemorySettings,
+    /// What a model may hand to another model (18 §9).
+    pub subagents: SubAgentSettings,
     pub advanced: AdvancedSettings,
 }
 
 impl Settings {
     /// The keys of the `settings` table, one per section.
-    pub const SECTIONS: [&'static str; 6] = [
+    pub const SECTIONS: [&'static str; 7] = [
         "appearance",
         "chat",
         "guardrails",
         "guard",
         "memory",
+        "subagents",
         "advanced",
     ];
 
@@ -328,6 +357,7 @@ pub struct SettingsPatch {
     pub guardrails: Option<GuardrailSettings>,
     pub guard: Option<GuardSettings>,
     pub memory: Option<MemorySettings>,
+    pub subagents: Option<SubAgentSettings>,
     pub advanced: Option<AdvancedSettings>,
 }
 
@@ -365,6 +395,12 @@ impl SettingsPatch {
             settings.memory = s;
             changed.push("memory");
         }
+        if let Some(s) = self.subagents
+            && s != settings.subagents
+        {
+            settings.subagents = s;
+            changed.push("subagents");
+        }
         if let Some(s) = self.advanced
             && s != settings.advanced
         {
@@ -373,6 +409,63 @@ impl SettingsPatch {
         }
         changed
     }
+}
+
+/// What a model may hand to another model (18 §9).
+///
+/// The two limits are settings rather than constants because the right numbers depend on the
+/// model and the money: three at once is generous for a chat and mean for a migration, and
+/// nobody here can know which one this user is doing.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(default)]
+pub struct SubAgentSettings {
+    /// Who answers when a sub agent's call needs permission (18 §6).
+    pub permission: SubAgentPermission,
+    /// How many may run at the same time inside one turn.
+    pub max_concurrent: u32,
+    /// How many one turn may start altogether, however they overlap.
+    pub max_per_turn: u32,
+    /// The models the parent may choose between, each with the user's own note on when it is
+    /// for (18 §5). Empty means every sub agent runs the parent's model.
+    pub model_rules: Vec<ModelRule>,
+    /// Whether an incognito chat may start sub agents at all. Off: their transcripts are rows,
+    /// and rows are the thing incognito promises not to leave (15 A21).
+    pub in_incognito: bool,
+    /// How long a sub agent's transcript is kept, in days. Zero is forever.
+    pub keep_days: u32,
+}
+
+impl Default for SubAgentSettings {
+    fn default() -> Self {
+        Self {
+            permission: SubAgentPermission::Ask,
+            max_concurrent: 3,
+            max_per_turn: 10,
+            model_rules: Vec::new(),
+            in_incognito: false,
+            keep_days: 0,
+        }
+    }
+}
+
+/// Who answers a sub agent's permission card.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "snake_case")]
+pub enum SubAgentPermission {
+    /// The card appears in the user's own chat, naming the agent that asked. The default:
+    /// taking the user out of decisions about their machine is not something to do by default.
+    Ask,
+    /// The sub agent runs in Auto with the judge, whatever the parent chat's mode is, and the
+    /// user is never stopped. Its decisions are in Guard & guardrails like any other.
+    Guard,
+}
+
+/// One row of the model menu the parent chooses from (18 §5).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+pub struct ModelRule {
+    pub model: ModelRef,
+    /// The user's own words: "research and long documents", "anything short".
+    pub when: String,
 }
 
 #[cfg(test)]
@@ -397,6 +490,7 @@ mod tests {
             chat: Some(ChatSettings::default()),
             guardrails: None,
             memory: None,
+            subagents: None,
             guard: Some(GuardSettings {
                 judge_model: Some(ModelRef {
                     provider: ProviderId("anthropic".into()),

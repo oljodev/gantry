@@ -5,6 +5,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod agent;
 mod app_info;
 pub mod artifact;
 pub mod attachment;
@@ -27,6 +28,7 @@ pub mod skill;
 pub mod time;
 pub mod tool;
 
+pub use agent::{AgentModel, AgentType, INHERIT, OpenField};
 pub use app_info::AppInfo;
 pub use artifact::{
     ArtifactContent, ArtifactDto, ArtifactVersionDto, RenderError, RenderReport, RenderStatus,

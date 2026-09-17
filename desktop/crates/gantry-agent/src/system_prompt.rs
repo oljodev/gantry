@@ -39,6 +39,7 @@ pub struct SystemPromptBuilder {
     global_instructions: String,
     project_instructions: String,
     chat_instructions: String,
+    agent_instructions: String,
     skills: String,
 }
 
@@ -53,6 +54,7 @@ impl SystemPromptBuilder {
             global_instructions: String::new(),
             project_instructions: String::new(),
             chat_instructions: String::new(),
+            agent_instructions: String::new(),
             skills: String::new(),
         }
     }
@@ -109,6 +111,15 @@ impl SystemPromptBuilder {
         self
     }
 
+    /// What a sub agent was started to be (18 §3). It sits below the user's own instruction
+    /// layers rather than replacing them: the user's global instructions are how they have
+    /// configured the app, and a sub agent that ignores them is one they cannot configure.
+    #[must_use]
+    pub fn agent_instructions(mut self, text: &str) -> Self {
+        self.agent_instructions = text.trim().to_owned();
+        self
+    }
+
     /// Skills pinned to the project or the chat (layer 7), already rendered by
     /// `memory::selector::pinned_block`. A pinned skill is in the frozen prompt and is never
     /// matched per message (12 §A4 rule 4), which only holds if it is really in here.
@@ -154,6 +165,12 @@ impl SystemPromptBuilder {
             blocks.push(format!(
                 "<instructions scope=\"chat\">\n{}\n</instructions>",
                 self.chat_instructions
+            ));
+        }
+        if !self.agent_instructions.is_empty() {
+            blocks.push(format!(
+                "<instructions scope=\"agent\">\n{}\n</instructions>",
+                self.agent_instructions
             ));
         }
         if !self.skills.is_empty() {

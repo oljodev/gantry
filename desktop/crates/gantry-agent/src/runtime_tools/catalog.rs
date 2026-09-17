@@ -172,7 +172,12 @@ impl ConnectorAccess {
             .filter_map(|i| i.catalog_id.as_deref())
             .collect();
         let entries = if query.is_empty() {
-            self.catalog.all().to_vec()
+            self.catalog
+                .all()
+                .iter()
+                .filter(|m| !m.catalog.hidden)
+                .cloned()
+                .collect()
         } else {
             self.catalog.search(&query, limit)
         };

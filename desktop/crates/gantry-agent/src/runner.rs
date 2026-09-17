@@ -67,6 +67,26 @@ pub struct RunContext {
     pub connectors: Arc<ConnectorRegistry>,
     pub interactions: Arc<Interactions>,
     pub notifier: Option<Arc<dyn ChatNotifier>>,
+    /// The turn that started this one, when this is a sub agent's turn (18 A1). It is what a
+    /// permission card is raised against, so the card appears in the conversation the user is
+    /// actually looking at rather than in a transcript they would have to go and find.
+    pub parent: Option<Arc<ActiveTurn>>,
+}
+
+impl RunContext {
+    /// A sub-agent type that may not change anything (18 §3).
+    fn read_only(&self) -> bool {
+        self.input.sub_agent.as_ref().is_some_and(|s| s.read_only)
+    }
+
+    /// Where a card goes: the chat, the turn and the running turn that owns the stream it is
+    /// announced on. A sub agent's is its parent's; everybody else's is their own.
+    fn card_home(&self) -> (gantry_core::ChatId, gantry_core::TurnId, &Arc<ActiveTurn>) {
+        match (&self.input.sub_agent, &self.parent) {
+            (Some(origin), Some(parent)) => (origin.parent_chat, origin.parent_turn, parent),
+            _ => (self.input.chat_id, self.input.turn_id, &self.active),
+        }
+    }
 }
 
 enum End {
@@ -892,10 +912,19 @@ async fn run_calls(
         Interaction,
         tokio::sync::oneshot::Receiver<InteractionResolution>,
     )> = Vec::new();
-    let why = last_sentence(&assistant.text());
+    // Where a card goes and whose standing answers apply to it: a sub agent's are the parent
+    // chat's, because that is the conversation the user is in and the one a grant should
+    // outlive (18 §6).
+    let (card_chat, card_turn, home) = ctx.card_home();
+    let home = home.clone();
+    let why = match (&ctx.input.sub_agent, last_sentence(&assistant.text())) {
+        (Some(origin), Some(said)) => Some(format!("The {} sub agent: {said}", origin.agent)),
+        (Some(origin), None) => Some(format!("Asked for by the {} sub agent.", origin.agent)),
+        (None, said) => said,
+    };
     // The chat's standing grants, read once for this batch (04 §8). A grant made in answer to
     // one card applies from the next batch, which is where the model asks again anyway.
-    let grants = ctx.chats.grants(ctx.input.chat_id).unwrap_or_else(|err| {
+    let grants = ctx.chats.grants(card_chat).unwrap_or_else(|err| {
         log::warn!("could not read the chat's grants: {err}");
         Vec::new()
     });
@@ -1086,8 +1115,8 @@ async fn run_calls(
             })
             .await;
         let interaction = Interaction::pending(
-            ctx.input.chat_id,
-            ctx.input.turn_id,
+            card_chat,
+            card_turn,
             InteractionPayload::Permission {
                 request: Box::new(PermissionRequest {
                     call_id: call.id.clone(),
@@ -1121,10 +1150,10 @@ async fn run_calls(
             c.status = ToolCallStatus::AwaitingDecision
         });
         {
-            let mut s = ctx.active.state.lock().unwrap_or_else(|e| e.into_inner());
+            let mut s = home.state.lock().unwrap_or_else(|e| e.into_inner());
             s.pending.push(interaction.clone());
         }
-        batcher.push(AgentEventKind::DecisionRequested {
+        home.batcher.push(AgentEventKind::DecisionRequested {
             interaction: Box::new(interaction.clone()),
         });
         waiting.push((i, entry, interaction, rx));
@@ -1145,7 +1174,7 @@ async fn run_calls(
             }
         };
         {
-            let mut s = ctx.active.state.lock().unwrap_or_else(|e| e.into_inner());
+            let mut s = home.state.lock().unwrap_or_else(|e| e.into_inner());
             s.pending.retain(|p| p.id != interaction.id);
         }
         match &resolution {
@@ -1177,7 +1206,7 @@ async fn run_calls(
                 let source = match decision {
                     PermissionDecision::AllowChat { scope } => {
                         let grant = scope.grant(
-                            ctx.input.chat_id,
+                            card_chat,
                             entry.connector_id(),
                             entry.connector_name(),
                             &entry.def.name,
@@ -1193,7 +1222,7 @@ async fn run_calls(
                     }
                     _ => DecisionSource::UserOnce,
                 };
-                batcher.push(AgentEventKind::DecisionResolved {
+                home.batcher.push(AgentEventKind::DecisionResolved {
                     interaction_id: interaction.id,
                     resolution,
                     source,
@@ -1202,8 +1231,8 @@ async fn run_calls(
             }
             InteractionResolution::Cancelled => {
                 cancelled = true;
-                ctx.interactions.cancel_turn(ctx.input.turn_id);
-                batcher.push(AgentEventKind::DecisionResolved {
+                ctx.interactions.cancel_turn(card_turn);
+                home.batcher.push(AgentEventKind::DecisionResolved {
                     interaction_id: interaction.id,
                     resolution: InteractionResolution::Cancelled,
                     source: DecisionSource::UserOnce,
@@ -1226,7 +1255,7 @@ async fn run_calls(
                     InteractionResolution::Permission { message, .. } => message.clone(),
                     _ => None,
                 };
-                batcher.push(AgentEventKind::DecisionResolved {
+                home.batcher.push(AgentEventKind::DecisionResolved {
                     interaction_id: interaction.id,
                     resolution: InteractionResolution::Permission {
                         decision: PermissionDecision::Deny,
@@ -1557,7 +1586,14 @@ async fn refresh_tools(ctx: &RunContext, attached: &mut Vec<String>) -> Option<M
         .cloned()
         .collect();
     *attached = now.clone();
-    let set = ToolSet::assemble(&ctx.connectors, ctx.input.mode, &now, !ctx.input.incognito).await;
+    let set = ToolSet::assemble(
+        &ctx.connectors,
+        ctx.input.mode,
+        &now,
+        !ctx.input.incognito,
+        ctx.read_only(),
+    )
+    .await;
     *ctx.tools.write().unwrap_or_else(|e| e.into_inner()) = set;
     Some(Message {
         id: MessageId::new(),
@@ -1721,11 +1757,9 @@ fn cap_result(content: Vec<ResultPart>, max: usize) -> (Vec<ResultPart>, Option<
 }
 
 fn notify_pending(ctx: &RunContext) {
+    let (chat, _, _) = ctx.card_home();
     if let Some(n) = &ctx.notifier {
-        n.interactions_changed(
-            ctx.input.chat_id,
-            ctx.interactions.pending_count(ctx.input.chat_id),
-        );
+        n.interactions_changed(chat, ctx.interactions.pending_count(chat));
     }
 }
 

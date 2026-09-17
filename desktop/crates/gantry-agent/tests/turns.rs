@@ -315,6 +315,8 @@ struct Harness {
     provider: Arc<Scripted>,
     fake: Arc<Fake>,
     notes: Arc<Notes>,
+    registry: Arc<ConnectorRegistry>,
+    settings: Arc<RwLock<Settings>>,
 }
 
 impl std::ops::Deref for Harness {
@@ -442,6 +444,7 @@ fn manager_windowed(
     registry.register(fake.clone());
     let (dir, chats) = book();
     let settings = Arc::new(RwLock::new(settings));
+    let kept = settings.clone();
     let m = TurnManager::new(
         chats,
         Arc::new(Source(provider.clone())),
@@ -468,7 +471,43 @@ fn manager_windowed(
         provider,
         fake,
         notes,
+        registry,
+        settings: kept,
     }
+}
+
+/// The sub-agent connector, registered and attached to one chat, the way startup and the Code
+/// surface do it (18 §1). Its instance row is what `NewChat`'s namespace list and the composer's
+/// checkbox both go through, so the test writes one.
+fn with_sub_agents(h: &Harness, chat: ChatId) {
+    use gantry_store::repos::connectors::{NewInstance, attach, insert};
+    let id = gantry_core::InstanceId::new();
+    h.chats()
+        .store()
+        .write_blocking(move |c| {
+            insert(
+                c,
+                &NewInstance {
+                    id,
+                    catalog_id: Some("subagents".to_owned()),
+                    namespace: "subagents".to_owned(),
+                    display_name: "Sub agents".to_owned(),
+                    config: gantry_core::ConnectorConfig::Native,
+                    auth: gantry_core::AuthType::None,
+                    auth_state: gantry_core::AuthState::Authorized,
+                },
+            )?;
+            attach(c, chat, id, "test")
+        })
+        .unwrap();
+    h.registry
+        .register(Arc::new(gantry_agent::subagents::SubAgents::new(
+            "subagents".to_owned(),
+            id,
+            Arc::new(RwLock::new(Arc::downgrade(&h.m))),
+            h.chats().store().clone(),
+            h.settings.clone(),
+        )));
 }
 
 fn manager(events: Script, delay: Duration) -> Harness {
@@ -2377,4 +2416,182 @@ async fn a_choice_the_card_never_offered_is_ignored() {
     wait_for(|| sink.completed().is_some()).await;
     let calls = m.fake.calls.lock().unwrap().clone();
     assert_eq!(calls[0].args["target"], "draft");
+}
+
+/// One sub agent, end to end (18 A1, A2, A6): the parent calls, waits, and gets one report; the
+/// work happens in a chat of its own that no list shows.
+#[tokio::test]
+async fn a_sub_agent_does_the_work_and_hands_back_one_report() {
+    let m = manager_with(
+        vec![
+            tool_round(
+                "call_1",
+                "subagents__run",
+                serde_json::json!({ "agent": "researcher", "task": "what is a gantry crane" }),
+            ),
+            // The sub agent's own turn, on the same scripted provider.
+            vec![text("A gantry crane rides on legs over a span."), end()],
+            vec![text("It rides on legs over a span."), end()],
+        ],
+        Duration::ZERO,
+        Settings::default(),
+    );
+    let chat = m.chat();
+    with_sub_agents(&m, chat.id);
+    let sink = Arc::new(Collect::default());
+    m.start(
+        chat.id,
+        "ask a researcher what a gantry crane is".into(),
+        Vec::new(),
+        Vec::new(),
+        sink.clone(),
+    )
+    .unwrap();
+    wait_for(|| sink.completed().is_some()).await;
+    assert_eq!(sink.completed(), Some(TurnStatus::Completed));
+
+    // What came back to the parent is the sub agent's last message and nothing else.
+    let detail = m.chats().get(chat.id).unwrap().unwrap();
+    let call = &detail.turns[0].tool_calls[0];
+    assert_eq!(call.status, ToolCallStatus::Completed);
+    let preview = call.result_preview.clone().unwrap_or_default();
+    assert!(preview.contains("rides on legs"), "{preview}");
+
+    // And the sub agent's own steps are not in the parent's transcript: the user reads what
+    // their model said, not the forty pages somebody had to read to answer it (18 A6).
+    let parent_text = detail.turns[0].assistant_text();
+    assert!(
+        !parent_text.contains("A gantry crane rides"),
+        "{parent_text}"
+    );
+
+    // The transcript exists, belongs to the parent's turn, and is in no list (18 A1).
+    let store = m.chats().store().clone();
+    let hidden: Vec<(String, Option<String>)> = store
+        .read(|c| {
+            let mut stmt = c.prepare(
+                "SELECT agent_type, parent_turn_id FROM chats WHERE parent_turn_id IS NOT NULL",
+            )?;
+            let rows = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get(1)?)))?;
+            let mut out = Vec::new();
+            for row in rows {
+                out.push(row?);
+            }
+            Ok(out)
+        })
+        .unwrap();
+    assert_eq!(hidden.len(), 1, "one sub agent ran");
+    assert_eq!(hidden[0].0, "researcher");
+    assert_eq!(
+        hidden[0].1.as_deref(),
+        Some(detail.turns[0].id.to_string().as_str())
+    );
+    let listed = m.chats().list(gantry_core::Surface::Chat).unwrap();
+    assert_eq!(listed.len(), 1, "the sidebar shows the conversation only");
+}
+
+/// Stopping the parent stops what it started (18 §9). Without this a cancelled turn leaves a
+/// model running somewhere, spending money on an answer nobody will read.
+#[tokio::test]
+async fn stopping_the_parent_stops_the_sub_agent() {
+    let mut deltas: Script = vec![];
+    for i in 0..50 {
+        deltas.push(text(&format!("w{i} ")));
+    }
+    deltas.push(end());
+    let m = manager_with(
+        vec![
+            tool_round(
+                "call_1",
+                "subagents__run",
+                serde_json::json!({ "agent": "researcher", "task": "read everything" }),
+            ),
+            deltas,
+        ],
+        Duration::from_millis(20),
+        Settings::default(),
+    );
+    let chat = m.chat();
+    with_sub_agents(&m, chat.id);
+    let sink = Arc::new(Collect::default());
+    let turn = m
+        .start(
+            chat.id,
+            "delegate it".into(),
+            Vec::new(),
+            Vec::new(),
+            sink.clone(),
+        )
+        .unwrap();
+
+    // Wait until the sub agent is actually running, so the test is about cancelling it rather
+    // than about cancelling before it started.
+    let store = m.chats().store().clone();
+    let running = || {
+        store
+            .read(|c| {
+                Ok(c.query_row(
+                    "SELECT count(*) FROM chats WHERE parent_turn_id IS NOT NULL",
+                    [],
+                    |r| r.get::<_, i64>(0),
+                )?)
+            })
+            .unwrap()
+            > 0
+    };
+    wait_for(running).await;
+    assert!(m.cancel(turn), "the parent turn was running");
+    wait_for(|| sink.completed().is_some()).await;
+    assert_eq!(sink.completed(), Some(TurnStatus::Cancelled));
+
+    // Cancellation travels, it does not teleport: the sub agent's own runner has to unwind and
+    // write its partial message before its turn is final.
+    let statuses = || {
+        store
+            .read(|c| {
+                let mut stmt = c.prepare(
+                    "SELECT t.status FROM turns t JOIN chats ch ON ch.id = t.chat_id
+                     WHERE ch.parent_turn_id IS NOT NULL",
+                )?;
+                let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
+                let mut out = Vec::new();
+                for row in rows {
+                    out.push(row?);
+                }
+                Ok(out)
+            })
+            .unwrap()
+    };
+    wait_for(|| statuses() == vec!["cancelled".to_owned()]).await;
+    assert_eq!(
+        statuses(),
+        vec!["cancelled".to_owned()],
+        "the tree was cancelled"
+    );
+}
+
+/// A sub-agent type that may not change anything is shown no tool that could (18 §3).
+///
+/// A filter rather than a refusal, for the reason Plan mode hides the tools it would deny: a
+/// tool that is not in the list cannot be reached for, and the model does not spend a round
+/// finding that out.
+#[tokio::test]
+async fn a_read_only_sub_agent_is_not_shown_the_tools_that_write() {
+    let m = manager(vec![end()], Duration::ZERO);
+    let attached = vec!["fake".to_owned()];
+    let full = gantry_agent::ToolSet::assemble(&m.registry, Mode::Auto, &attached, true, false)
+        .await
+        .specs();
+    let read_only = gantry_agent::ToolSet::assemble(&m.registry, Mode::Auto, &attached, true, true)
+        .await
+        .specs();
+    let names =
+        |set: &[gantry_providers::ToolSpec]| set.iter().map(|s| s.name.clone()).collect::<Vec<_>>();
+    assert!(names(&full).contains(&"fake__write".to_owned()));
+    assert!(
+        !names(&read_only).contains(&"fake__write".to_owned()),
+        "{:?}",
+        names(&read_only)
+    );
+    assert!(names(&read_only).contains(&"fake__echo".to_owned()));
 }

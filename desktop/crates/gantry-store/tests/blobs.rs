@@ -52,6 +52,8 @@ impl World {
             last_message_at: 1,
             archived_at: None,
             incognito: false,
+            parent_turn_id: None,
+            agent_type: None,
         };
         self.store
             .write_blocking(move |c| chats::insert(c, &record))

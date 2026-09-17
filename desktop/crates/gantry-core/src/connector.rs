@@ -295,4 +295,8 @@ pub struct CatalogEntryDto {
     /// first run and not removable, because the control that uses it is drawn whether or not it
     /// is there.
     pub install_by_default: bool,
+    /// Not shown in Discover, in Your connectors, or to the model's own connector search: it is
+    /// part of the app and has its own page (03 §11, 18 §1). Still an ordinary instance
+    /// underneath, which is what the composer's checkbox attaches.
+    pub hidden: bool,
 }

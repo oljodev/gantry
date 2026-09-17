@@ -192,6 +192,9 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn Error>> {
     // The login shell answers once, at startup: a GUI app otherwise runs commands with a
     // nearly empty PATH on macOS (`docs/connectors/shell.md` D2).
     let shell_env = Arc::new(gantry_connector_shell::ShellEnv::capture());
+    // Filled in below, once there is a turn manager to point at (18 §1).
+    let turn_handle: Arc<std::sync::RwLock<std::sync::Weak<TurnManager>>> =
+        Arc::new(std::sync::RwLock::new(std::sync::Weak::new()));
     let connectors = Arc::new(ConnectorService::new(
         store.clone(),
         secrets.clone(),
@@ -203,6 +206,7 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn Error>> {
             providers: providers.clone(),
             store: store.clone(),
             settings: settings.clone(),
+            turns: turn_handle.clone(),
         },
     ));
 
@@ -220,6 +224,11 @@ pub fn init(app: &mut App) -> Result<(), Box<dyn Error>> {
         tauri::async_runtime::handle().inner().clone(),
     );
     turns.set_notifier(Arc::new(Notifier(app.handle().clone())));
+    // The sub-agent connector can start turns from now on. Before this point it answers that
+    // sub agents are not available, which is true and is what a startup failure would leave.
+    if let Ok(mut handle) = turn_handle.write() {
+        *handle = Arc::downgrade(&turns);
+    }
 
     // Skills and memory (12). The skill library is handed to the turn manager, which rescans
     // the folder before each turn; memory needs no such hand-off, because the selector reads

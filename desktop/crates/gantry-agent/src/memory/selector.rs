@@ -126,6 +126,9 @@ pub struct Selection<'a> {
     pub pinned: &'a [String],
     /// Off means no memory is injected at all (Settings → Memory).
     pub memory_on: bool,
+    /// Off means no skill is injected either, which is how a sub agent whose type says so runs
+    /// on its own instructions and nothing else (18 §3).
+    pub skills_on: bool,
 }
 
 /// Builds the `<gantry_turn_context>` block for one message (10 §5).
@@ -135,10 +138,14 @@ pub fn build(message: &str, selection: &Selection<'_>) -> TurnContext {
     let mut blocks: Vec<String> = Vec::new();
 
     // --- Skills (12 §A4) ---------------------------------------------------------------
-    let all = repos::skills::enabled(selection.conn).unwrap_or_else(|err| {
-        log::warn!("could not read the skills index: {err}");
+    let all = if selection.skills_on {
+        repos::skills::enabled(selection.conn).unwrap_or_else(|err| {
+            log::warn!("could not read the skills index: {err}");
+            Vec::new()
+        })
+    } else {
         Vec::new()
-    });
+    };
     let mut chosen: Vec<(SkillDto, &'static str)> = Vec::new();
     // An explicit `/name` wins over everything, including the six-turn rule: the user asked.
     for name in selection.invoked {

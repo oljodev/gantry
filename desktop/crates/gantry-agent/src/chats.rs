@@ -21,7 +21,7 @@ use gantry_store::{
 };
 
 /// What the turn needs to know before it can choose its context block (12 §A4 rule 5, §B4).
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TurnContextOptions {
     /// Skills the user named with `/name` in the composer; they are injected whatever they
     /// score and whatever the last six turns carried.
@@ -34,6 +34,40 @@ pub struct TurnContextOptions {
     /// delete files the new turn is about to claim — and so a retry that cannot start has not
     /// already eaten the turn it was going to replace.
     pub replacing: Option<TurnId>,
+    /// Set when this turn is a sub agent's rather than a person's (18 A1). It travels into
+    /// [`TurnInput`] and from there decides where a permission card goes and whose grants
+    /// answer it.
+    pub sub_agent: Option<SubAgentOrigin>,
+    /// Whether skills may be injected. A type that says no gets none: a playbook about how the
+    /// user works is not something a sub agent was asked to follow (12, 18 §3).
+    pub skills_on: bool,
+}
+
+impl Default for TurnContextOptions {
+    fn default() -> Self {
+        Self {
+            invoked: Vec::new(),
+            memory_on: false,
+            replacing: None,
+            sub_agent: None,
+            skills_on: true,
+        }
+    }
+}
+
+/// Where a sub agent's turn came from (18 A1, §6).
+///
+/// The parent ids are what makes a permission card appear in the conversation the user is
+/// actually looking at, and what makes "allow for this chat" mean their chat rather than a
+/// transcript that will be finished in a minute.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SubAgentOrigin {
+    pub parent_chat: ChatId,
+    pub parent_turn: TurnId,
+    /// The type it was started from, for the card's line and the tree.
+    pub agent: String,
+    /// A type that may not change anything is shown no tool that could (18 §3).
+    pub read_only: bool,
 }
 
 /// What a runner needs to build a request: the frozen prompt and the transcript so far,
@@ -66,6 +100,8 @@ pub struct TurnInput {
     /// An incognito session (15 A21): no memory reaches it and the memory tools are not
     /// offered, so it can neither read what the user has been remembered to like nor add to it.
     pub incognito: bool,
+    /// Set when a model, not a person, is having this conversation (18 A1).
+    pub sub_agent: Option<SubAgentOrigin>,
 }
 
 /// What creating a session needs (16 C3, C5).
@@ -93,6 +129,9 @@ pub struct NewChat {
     /// Standing permissions the project hands to every chat it opens (04 §8), recorded with
     /// `GrantSource::ProjectDefault` so the Permissions page can say where they came from.
     pub grants: Vec<ProjectGrant>,
+    /// The turn that started this as a sub agent, and the type it was started from (18 A1).
+    /// `None` for every conversation a person is having.
+    pub parent: Option<(TurnId, String)>,
 }
 
 /// Chat settings the composer and the sidebar can change; `None` leaves a field alone.
@@ -189,6 +228,7 @@ impl ChatBook {
             incognito,
             project,
             grants,
+            parent,
         } = new;
         let now = now_ms();
         let chat = ChatRecord {
@@ -211,6 +251,8 @@ impl ChatBook {
             last_message_at: now,
             archived_at: None,
             incognito,
+            parent_turn_id: parent.as_ref().map(|(t, _)| *t),
+            agent_type: parent.as_ref().map(|(_, a)| a.clone()),
         };
         let mut summary = summary(&chat, None);
         summary.roots.clone_from(&roots);
@@ -419,6 +461,7 @@ impl ChatBook {
                         transcript: &before,
                         invoked: &context.invoked,
                         pinned: &pinned,
+                        skills_on: context.skills_on,
                         // Incognito reads nothing from memory; skills still apply, because a
                         // playbook is how the user works, not something learned about them.
                         memory_on: context.memory_on && !chat.incognito,
@@ -471,6 +514,7 @@ impl ChatBook {
                 }
                 let transcript = transcript(&messages::list_for_chat(conn, chat_id)?);
                 Ok(TurnInput {
+                    sub_agent: context.sub_agent.clone(),
                     injected,
                     incognito: chat.incognito,
                     turn_id: turn.id,
@@ -1225,6 +1269,7 @@ mod tests {
                 incognito: false,
                 project: None,
                 grants: Vec::new(),
+                parent: None,
             })
             .unwrap();
         (dir, book, c.id)

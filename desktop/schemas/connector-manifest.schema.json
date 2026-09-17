@@ -211,6 +211,9 @@
         },
         "install_by_default": {
           "type": "boolean"
+        },
+        "hidden": {
+          "type": "boolean"
         }
       }
     }
@@ -232,7 +235,8 @@
             },
             "crate": {
               "type": "string",
-              "pattern": "^gantry-connector-[a-z0-9-]+$"
+              "pattern": "^gantry-[a-z0-9-]+$",
+              "description": "The crate the code lives in. Usually gantry-connector-<id>; sub agents are in gantry-agent, because running one is running a turn."
             },
             "singleton": {
               "type": "boolean",

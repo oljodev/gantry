@@ -43,11 +43,16 @@ impl ToolSet {
     /// tools (15 A21). Dropping them rather than refusing the call is the same choice the
     /// memory settings make: a tool that is not in the list cannot be reached for, and the
     /// model does not spend a round finding that out.
+    /// `read_only` drops every tool above [`RiskTier::Read`], which is what a sub-agent type
+    /// that may not change anything means (18 §3). It is a filter rather than a refusal for the
+    /// reason Plan mode hides its denied tools: a tool that is not in the list cannot be
+    /// reached for, and the model does not spend a round finding out.
     pub async fn assemble(
         registry: &ConnectorRegistry,
         mode: Mode,
         attached: &[String],
         memory: bool,
+        read_only: bool,
     ) -> Self {
         let mut set = ToolSet::default();
         for connector in registry.list() {
@@ -67,6 +72,9 @@ impl ToolSet {
             };
             for def in defs {
                 if mode == Mode::Plan && def.plan_mode == PlanModePolicy::Deny {
+                    continue;
+                }
+                if read_only && def.tier != gantry_core::RiskTier::Read {
                     continue;
                 }
                 if !memory

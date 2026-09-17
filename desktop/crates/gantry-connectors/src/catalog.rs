@@ -73,11 +73,15 @@ impl Catalog {
     }
 
     /// Keyword search over id, name, description and keywords, best first (03 §9).
+    ///
+    /// Hidden entries are not in it. They cannot be installed or removed, so offering one to a
+    /// model looking for a connector is offering something it cannot act on (03 §11).
     #[must_use]
     pub fn search(&self, query: &str, limit: usize) -> Vec<Arc<Manifest>> {
         let mut scored: Vec<(u32, &Arc<Manifest>)> = self
             .entries
             .iter()
+            .filter(|m| !m.catalog.hidden)
             .map(|m| (m.score(query), m))
             .filter(|(score, _)| *score > 0)
             .collect();

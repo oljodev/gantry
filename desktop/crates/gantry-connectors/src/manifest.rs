@@ -291,6 +291,11 @@ pub struct CatalogMeta {
     /// second.
     #[serde(default)]
     pub install_by_default: bool,
+    /// Kept out of Discover, out of Your connectors and out of what the model can search for
+    /// (03 §11): a capability that is part of the app, with a page of its own and no card worth
+    /// reading. Sub agents (18 §1) are the first.
+    #[serde(default)]
+    pub hidden: bool,
 }
 
 /// `${user_config.KEY}` replaced by what the user gave, everywhere it appears.
@@ -516,6 +521,7 @@ impl Manifest {
                 .map(str::to_owned),
             auth_needs_client_id: self.auth.needs_client_id(),
             install_by_default: self.catalog.install_by_default,
+            hidden: self.catalog.hidden,
         }
     }
 

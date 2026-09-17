@@ -38,7 +38,7 @@ What it keeps is the checkbox and the tool plumbing.
 | A1 | **A sub agent is a chat row with a `parent_turn_id`**, hidden from the sidebar. | It buys the runner, the event stream, persistence, usage accounting and a readable transcript for one column. An in-memory run would be less code today and no transparency ever, and 05 is a document about transparency. |
 | A2 | **The parent waits.** `run` blocks until the sub agent reports. | A turn that ends while its children run has to be woken up again later by something, and that "something" is a new machine — a resumable turn — for a gain the first version cannot measure. Several sub agents in one round still run at once, because the runner already executes a parallel-safe batch concurrently. |
 | A3 | **Two kinds of type, and the library holds both.** A type may fix its instructions, or leave them to the parent — and it may do that field by field. | Olav's answer to question 1: a research agent wants strict rules written once; a coding agent is better told what to do by the model that knows what it wants done. Both are the same record with different fields open. |
-| A4 | **One built-in type ships: `researcher`.** Web-focused, read-only, with the web tools and instructions written for them. | One good example teaches the shape. A library of five built-ins nobody asked for is five things to maintain and a longer tool description on every turn. |
+| A4 | **Two built-in types ship**, one of each kind: `researcher`, which fixes everything about itself, and `agent`, which fixes nothing but its description. | One of each is what teaches the shape A3 describes; a library of five nobody asked for is five things to maintain and a longer tool description on every turn. The plan said one, and building it showed that one cannot demonstrate a distinction between two kinds. |
 | A5 | **Permission requests from a sub agent carry the parent's chat and turn id**, so the card appears in the user's own chat, labelled with the agent that asked. A setting switches this to **the guard answers instead**. | `Interaction` already carries both ids, so the routing is nearly free. Olav will run with the guard; the default is to ask, because silently removing the user from decisions about their own machine is not a default. |
 | A6 | **The parent's chat shows almost nothing while a sub agent runs**: the parent may say it delegated, and one quiet line says what is being waited for. | Olav's answer to question 11. A sub agent's steps in the parent transcript is a log file pasted into a conversation. |
 | A7 | **The agent tree is a modal**, opened from that line: the parent and its sub agents as a tree, each node openable to its own read-only transcript. | One place to look, reachable without leaving the chat, and it does not compete with the right pane, which belongs to artifacts and files. |
@@ -73,8 +73,10 @@ on the tool; naming one that the chosen type fixes is refused with a message say
 fixed it, rather than silently ignored — an argument that is quietly dropped is how the media
 connector taught a model to keep sending one (03 §5).
 
-`researcher` ships with everything fixed: the web connector, read-only, no file roots, its own
-instructions about reading pages before answering and quoting what it read.
+`researcher` ships with everything fixed: the web connector, read-only, Auto with the guard, and
+its own instructions about reading pages before answering and quoting what it read. `agent` ships
+with `instructions`, `connectors`, `write` and `model` all open and no opinion of its own beyond
+"you are a sub agent; report, do not ask" — it is the one a coding task is given.
 
 ## 4. The tool
 
@@ -186,12 +188,32 @@ what a user deleting a conversation means.
 
 Three phases, each one a thing Olav can run.
 
-**Phase A — it runs.** Migration 0016, the `subagents` native connector and its one tool, the
-built-in `researcher` plus an open type, sub-agent chats and their prompts, permission routing
-(both settings, defaults only), limits, cancellation, cost roll-up, `catalog.hidden`, attached by
-default on Code and a checkbox in Chat. The only UI is the waiting line. Offline tests on the
-mock provider: a turn that spawns two and reads both reports, a cancelled parent that takes its
-children with it, a sub agent refused a second level, the two limits.
+**Phase A — it runs. Built 2026-09-17.** Migration 0016, the `subagents` connector and its one
+tool, the two shipped types, sub-agent chats and their prompts, permission routing, the limits,
+cancellation, `catalog.hidden`, attached by default on Code and a checkbox in Chat. Five things
+came out of building it that the plan above did not say:
+
+- **The connector lives in `gantry-agent`, not in a crate of its own.** Running a sub agent *is*
+  running a turn, and everything a turn needs — the providers, the settings, the guard, the
+  interaction registry, the notifier — is already assembled in the turn manager. A separate
+  crate would have had to be handed all of it a second time. Its manifest names `gantry-agent`
+  as its crate, which is why the schema's crate pattern is now `^gantry-[a-z0-9-]+$`.
+- **The turn manager and the connector point at each other**, so the handle is an
+  `Arc<RwLock<Weak<TurnManager>>>` filled in by `startup.rs` after the manager exists. Before
+  that moment the tool answers that sub agents are not available, which is true.
+- **Cancelling had to survive the future being dropped.** `runner::execute` cancels a call by
+  dropping its future, so the `select!` inside `run_sub_agent` is never polled again and the
+  code that started the sub agent gets no chance to stop it. A `StopOnDrop` guard does it on
+  every path — cancelled, dropped, panicked. Without it a stopped turn left a model running,
+  spending money on an answer nobody would read.
+- **Read-only is a filter on the tool set**, not a refusal at the call: `ToolSet::assemble` takes
+  a `read_only` flag and drops every tool above `RiskTier::Read`, the way Plan mode hides the
+  tools it would deny.
+- **The limits went where they could be counted.** Per-turn totals refuse (the model can act on
+  a refusal); concurrency waits on a semaphore (the model has already decided the work, and the
+  limit is about the machine).
+
+The UI is the ordinary tool-call row — `agent=researcher task=…` — until phase C.
 
 **Phase B — you can shape it.** Customize → **Sub agents**: the library list and its editor, with
 per-field *fixed / the parent decides*; the model rules table; the switches — ask me or the guard,

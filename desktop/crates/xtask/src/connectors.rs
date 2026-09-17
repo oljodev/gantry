@@ -23,6 +23,8 @@ struct Entry {
     id: String,
     category: String,
     sort_weight: f64,
+    /// Part of the app rather than the catalogue (03 §11): no card, no page, no website row.
+    hidden: bool,
 }
 
 pub fn validate(root: &Path) -> anyhow::Result<()> {
@@ -86,6 +88,7 @@ pub fn validate(root: &Path) -> anyhow::Result<()> {
             id: manifest.id.clone(),
             category: manifest.category.clone(),
             sort_weight: manifest.catalog.sort_weight,
+            hidden: manifest.catalog.hidden,
         });
     }
 
@@ -147,7 +150,11 @@ fn site_parity(root: &Path, entries: &[Entry]) -> anyhow::Result<Vec<String>> {
         return Ok(Vec::new());
     };
     let (available, listed) = site_slugs(&source);
-    let folders: BTreeSet<&str> = entries.iter().map(|e| e.id.as_str()).collect();
+    let folders: BTreeSet<&str> = entries
+        .iter()
+        .filter(|e| !e.hidden)
+        .map(|e| e.id.as_str())
+        .collect();
     let mut problems = Vec::new();
     for slug in &available {
         if !folders.contains(slug.as_str()) {
