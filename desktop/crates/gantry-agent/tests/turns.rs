@@ -640,7 +640,11 @@ async fn cancel_keeps_the_partial_text() {
     assert_eq!(detail.turns[0].status, TurnStatus::Cancelled);
     assert_eq!(detail.turns[0].stop_reason, Some(StopReason::Cancelled));
     let kept = detail.turns[0].assistant_text();
-    assert!(kept.starts_with("w0 ") && !kept.contains("w49"));
+    // Two assertions rather than one `&&`, and both print what they saw: this one fails under a
+    // loaded machine about one run in three, and a conjunction that says only "assertion failed"
+    // cannot tell "the partial text was lost" from "the stream finished before the cancel".
+    assert!(kept.starts_with("w0 "), "the partial text was kept: {kept:?}");
+    assert!(!kept.contains("w49"), "and it is partial: {kept:?}");
     assert!(!m.cancel(turn), "a finished turn cannot be cancelled again");
 }
 

@@ -415,13 +415,41 @@ the reply through `ToolOutcome::media` (§4), which is what puts it at the point
 consequence is worth stating: **the model cannot look at what it made**, and the prompt addendum
 says so, because a model that thinks it can check its own work will claim to have done it.
 
-**Which model.** `model` is `provider/model` and may be left out; left out, it is the user's own
-default for that kind (their connector settings, below) and otherwise the cheapest of the kind
-among providers with a key, and the result names it. A model with no published
-price is never the automatic choice — an unknown price is the one that cannot be defended
-afterwards. Whatever the user chose for that model in the dialog (`ChatSettings.model_options`,
-11 §1) is used here too, with anything the call names on top, and an option the model does not
-offer is refused **before** the request rather than after the charge.
+**Which model.** One function decides it — `models::pick` — because the alternative is a
+permission card naming a different model from the one that then runs. `model` is
+`provider/model` and may be left out; left out, it is the user's own default for that kind (their
+connector settings, below) and otherwise the **newest** of that kind among providers with a key,
+and the result names it. Whatever the user chose for that model in the dialog
+(`ChatSettings.model_options`, 11 §1) is used here too, with anything the call names on top, and
+an option the model does not offer is refused **before** the request rather than after the charge.
+
+A name matches the whole key, the provider's own id, or the last part of that id — `muse-image`
+finds `openrouter/meta/muse-image`. That is not a nicety: the first live run of this connector
+asked for `muse-image`, was told there was no such model, and concluded it had invented the name.
+It had not; the catalogue's ids carry a vendor prefix and a model writing a model's name does not.
+
+**Newest first, not cheapest first** (corrected 2026-09-17, by reading the live catalogue). The
+order was price, on the assumption that media models are priced the way text models are. They are
+not: of the 101 media models on the machine this was written on, **87 publish no price at all**,
+and the ones that do publish a *rate per million output tokens* rather than a price per picture —
+`google/gemini-2.5-flash-image` publishes `0.00003`, which is Google's own $30/M, about four cents
+for the 1290 tokens one picture comes to. So "cheapest" meant "the one model that happened to
+publish a number", which is why every picture in the first live run came from the same mini model
+and why every row of the menu read `$0.0000 a unit`. Release date is published for all of them, is
+what a person actually reaches for, and is now both the order and the automatic choice; the price
+is still shown where it exists, labelled as the rate it is. `Pricing::image_output_usd` was
+renamed `image_output_per_mtok` in the same pass, because the old name was the misreading itself
+and the model dialog had been printing `$0.00003 / image` from it.
+
+**Nothing older than a year, for the model** (`models::MAX_AGE_DAYS`, Olav's rule). A chat model
+reaching for an image model is reaching into its training data, where a name it remembers is as
+likely to be two generations behind as current. So a model over a year old cannot be named by a
+call, is left out of `list_models`, and is never the automatic choice — and the refusal says its
+age rather than "no such model", so the model stops instead of trying another half-remembered
+name. The **user's** menus show everything, marked with its age, and a model they set as their
+default is used without complaint: the rule is about who is choosing. On the catalogue it was
+written against it hides exactly one model of 101, which is the point — it is a guard against a
+habit, not a filter that does the choosing.
 
 **Guessing is what `list_models` is for.** A chat model asked for a picture reaches for a model
 id it remembers, and an id remembered from training is exactly the kind of thing that has been
@@ -432,14 +460,20 @@ list of 02 §2. Every refusal about a model *name* ends by naming it, and the ro
 `model` would have got is marked `default_without_a_model`, so the list answers "which one" as
 well as "which ones".
 
-**Its settings** (§11 step 2, live options): a default model per kind and a ceiling on what one
-generation may cost. The defaults are the answer to "it should work without me naming a model" —
-a call that leaves `model` out gets the model *this user* chose for that kind, and falls through
-to the cheapest only when they chose none, or when what they chose is not available today, which
-the result says in a sentence rather than swapping models silently. The ceiling is the other half
-of the same worry: this tool spends real money and the amount is decided by whatever the chat
-model typed. A generation over it is refused before anything is sent — and so is one whose model
-publishes no price, for the same reason an unpriced model is never the automatic choice.
+**Its settings** (§11 step 2, live options): a default model per kind, and when those defaults
+apply. The defaults are the answer to "it should work without me naming a model" — a call that
+leaves `model` out gets the model *this user* chose for that kind, and falls through to the newest
+only when they chose none, or when what they chose is not available today, which the result says
+in a sentence rather than swapping models silently. The rule beside them answers the other half —
+whether the chat model may name one at all: **only when it names none** (the default; the card
+shows which it picked), **that and always in Auto** (where no card asks anything, so the model's
+choice would otherwise go unseen), or **always** (the chat model never chooses, and is told its
+`model` argument was ignored rather than left to try it again).
+
+A spending ceiling lived here for a day and was removed by the same measurement that reordered the
+list: with 87 of 101 models publishing no price, a dollar ceiling refuses nearly every generation
+while looking like a safety feature. What replaced it is the rule above — the useful control over
+what this tool spends turns out to be *which model*, not *how much*.
 
 Gating: `write_external`, so Manual and Auto-edit ask and the card names the model, unguarded
 Auto does not, and the guard judges it in guarded Auto. It is not in `default_connectors`: a

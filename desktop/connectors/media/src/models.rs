@@ -15,6 +15,16 @@ use gantry_store::Store;
 /// one fact (02 §4b).
 pub type Kind = MediaRoute;
 
+/// How old a media model may be and still be something a **chat model** can pick: a year.
+///
+/// Olav's rule, and it is about who chooses rather than about the model: a chat model reaching
+/// for an image model is reaching into its training data, where a name it remembers is as likely
+/// to be two generations behind as current. The user's own menus show everything, marked with
+/// its age, because choosing an older model on purpose is a different act from a model naming
+/// one out of memory. On this machine the rule hides exactly one of 101 media models — it is a
+/// guard against a bad habit, not a filter that does the choosing.
+pub const MAX_AGE_DAYS: i64 = 365;
+
 /// How many models an error message names before it stops. A model that asked for something
 /// impossible needs a few real ids to pick from, not the whole catalog.
 pub const NAMED_IN_AN_ERROR: usize = 12;
@@ -34,26 +44,94 @@ impl Candidate {
         format!("{}/{}", self.provider, self.model)
     }
 
-    /// One comparable number per model, for picking a default: what one unit of output costs.
-    /// `None` where the provider published nothing, and a model with no price is never the
-    /// automatic choice — an unknown price is the one that cannot be defended afterwards.
+    /// What this model charges, in the unit its own provider publishes, or `None` where nobody
+    /// published one.
+    ///
+    /// Measured against the live OpenRouter list on 2026-09-17, and it is worth writing down:
+    /// **most media models publish no price at all** — 87 of the 101 on this machine — and the
+    /// ones that do publish a *rate per token*, not a price per picture. So a price is
+    /// something to show where it exists, not something to sort by, rank on, or promise a
+    /// ceiling against; the first version of this connector did all three and the result was a
+    /// menu of `$0.0000 a unit` with the only priced model at the top of it.
     #[must_use]
-    pub fn unit_cost(&self) -> Option<f64> {
+    pub fn price(&self) -> Option<String> {
         let p = self.info.pricing.as_ref()?;
+        let rate = |v: f64| (v > 0.0).then(|| format!("${v:.2}"));
         match self.kind {
-            Kind::Image => p
-                .image_output_usd
-                .or(p.request_usd)
-                .or(Some(p.output_per_mtok).filter(|v| *v > 0.0)),
-            Kind::Speech => Some(p.output_per_mtok).filter(|v| *v > 0.0),
-            Kind::Video => p
-                .video_per_second_usd
-                .values()
-                .copied()
-                .filter(|v| *v > 0.0)
-                .min_by(|a, b| a.total_cmp(b)),
+            Kind::Image => rate(p.image_output_per_mtok?).map(|r| format!("{r} / M drawn")),
+            Kind::Speech => rate(p.output_per_mtok).map(|r| format!("{r} / M spoken")),
+            Kind::Video => {
+                let low = p
+                    .video_per_second_usd
+                    .values()
+                    .copied()
+                    .filter(|v| *v > 0.0)
+                    .min_by(f64::total_cmp)?;
+                Some(format!("${low:.2} a second"))
+            }
         }
     }
+
+    /// When the provider says the model was released, in milliseconds.
+    #[must_use]
+    pub fn released_at(&self) -> Option<i64> {
+        self.info.created_at.map(|seconds| seconds * 1_000)
+    }
+
+    /// `Sep 2026`, for a menu somebody is choosing from. The single most useful thing to know
+    /// about a media model, now that price turns out to be mostly unpublished.
+    #[must_use]
+    pub fn released(&self) -> Option<String> {
+        let seconds = self.info.created_at?;
+        let days = seconds.div_euclid(86_400);
+        let (year, month, _) = civil_from_days(days);
+        const MONTHS: [&str; 12] = [
+            "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+        ];
+        Some(format!(
+            "{} {year}",
+            MONTHS[usize::try_from(month).unwrap_or(1).clamp(1, 12) - 1]
+        ))
+    }
+
+    /// Whether this is one a chat model may pick (`MAX_AGE_DAYS`).
+    ///
+    /// A model whose provider published no date counts as recent: an unknown date is not proof
+    /// of age, and refusing on one would hide models for a missing field rather than for being
+    /// old. Every media model on this machine has a date, so this decides nothing today.
+    #[must_use]
+    pub fn recent(&self, now_ms: i64) -> bool {
+        match self.released_at() {
+            Some(released) => now_ms - released <= MAX_AGE_DAYS * 86_400_000,
+            None => true,
+        }
+    }
+
+    /// "18 months old", for saying why something is not on offer.
+    #[must_use]
+    pub fn age(&self, now_ms: i64) -> Option<String> {
+        let released = self.released_at()?;
+        let months = (now_ms - released) / (30 * 86_400_000);
+        Some(match months {
+            ..=1 => "less than a month old".to_owned(),
+            m => format!("{m} months old"),
+        })
+    }
+}
+
+/// Days since the epoch to year, month, day. Howard Hinnant's `civil_from_days`, which is four
+/// lines and exact, rather than a date crate for one label in one menu.
+fn civil_from_days(days: i64) -> (i64, i64, i64) {
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    (if m <= 2 { y + 1 } else { y }, m, d)
 }
 
 /// "image", "speech" or "video", as the tool's arguments spell it.
@@ -119,28 +197,47 @@ pub fn list(providers: &Arc<ProviderRegistry>, store: &Arc<Store>) -> Vec<Candid
     out
 }
 
-/// Cheapest first, unpriced last, then by id.
+/// Newest first, undated last, then by id.
 ///
-/// The order *is* the default: `choose` takes the first candidate of the kind it was asked for.
-/// Sorting by id last matters as much as the price does — without it the automatic choice would
-/// depend on the order rows came out of SQLite, which is not a thing anybody could reproduce
-/// from a bill.
+/// The order *is* the automatic choice: a call with no model takes the first candidate of the
+/// kind it asked for. It used to be cheapest-first, which the live catalogue disproved — 87 of
+/// 101 media models publish no price at all, so "cheapest" meant "the one model that happened to
+/// publish a number", which is how every picture in the first live run came from the same mini
+/// model. Release date is published for all of them and is what a person actually reaches for.
+/// Sorting by id last matters as much: without it the automatic choice would depend on the order
+/// rows came out of SQLite, which is not a thing anybody could reproduce from a bill.
 pub fn rank(models: &mut [Candidate]) {
-    models.sort_by(|a, b| match (a.unit_cost(), b.unit_cost()) {
-        (Some(x), Some(y)) => x.total_cmp(&y).then_with(|| a.model.cmp(&b.model)),
+    models.sort_by(|a, b| match (a.released_at(), b.released_at()) {
+        (Some(x), Some(y)) => y.cmp(&x).then_with(|| a.model.cmp(&b.model)),
         (Some(_), None) => std::cmp::Ordering::Less,
         (None, Some(_)) => std::cmp::Ordering::Greater,
         (None, None) => a.model.cmp(&b.model),
     });
 }
 
-/// The model to use: the one the call named, else the user's own default for that kind, else
-/// the cheapest of it.
+/// Whether a name means this model: the whole key, the id the provider uses, or the last part of
+/// that id.
 ///
-/// `preferred` is the user's settings answer (`settings.rs`) and is only consulted when the call
-/// named nothing — a model the chat model asked for by name is not quietly replaced by a
-/// setting. A preference that is no longer available falls through to the cheapest rather than
-/// failing: the user chose a model, not a promise that a provider would keep it.
+/// The last part is what the first live run turned on. A chat model asked for `muse-image`; the
+/// catalogue holds `openrouter/meta/muse-image`; the call was refused with "there is no media
+/// model called `muse-image`" and the model — correctly — concluded it had invented a name.
+/// It had not. A provider's ids carry a vendor prefix and a model writing the name of a model
+/// does not.
+#[must_use]
+pub fn named_by(candidate: &Candidate, name: &str) -> bool {
+    candidate.key() == name
+        || candidate.model == name
+        || candidate.model.rsplit('/').next() == Some(name)
+}
+
+/// The model to use out of the ones given: the one the call named, else the user's own default
+/// for that kind, else the newest of it.
+///
+/// What is *in* `available` is the caller's decision and it matters: `pick` passes only the
+/// models a chat model may use (`MAX_AGE_DAYS`), while the settings form passes everything.
+/// `preferred` is the user's settings answer and is consulted when the call named nothing; a
+/// preference that is no longer there falls through to the newest rather than failing, because
+/// the user chose a model, not a promise that a provider would keep it.
 pub fn choose(
     available: &[Candidate],
     named: Option<&str>,
@@ -148,11 +245,14 @@ pub fn choose(
     preferred: Option<&str>,
 ) -> Result<Candidate, String> {
     if let Some(named) = named {
-        // `provider/model` first, then a bare model id when it is unambiguous: a model that
-        // writes `flux-1.1-pro` means the one model called that, and refusing it on a
+        // The whole key first, then the id and its last part when that is unambiguous: a model
+        // that writes `flux-1.1-pro` means the one model called that, and refusing it on a
         // technicality helps nobody.
         let exact: Vec<&Candidate> = available.iter().filter(|c| c.key() == named).collect();
-        let bare: Vec<&Candidate> = available.iter().filter(|c| c.model == named).collect();
+        let bare: Vec<&Candidate> = available
+            .iter()
+            .filter(|c| c.key() != named && named_by(c, named))
+            .collect();
         let found = match (exact.as_slice(), bare.as_slice()) {
             ([one], _) | ([], [one]) => *one,
             ([], []) => {
@@ -192,7 +292,7 @@ pub fn choose(
     if let Some(preferred) = preferred
         && let Some(found) = available
             .iter()
-            .find(|c| c.kind == wanted && (c.key() == preferred || c.model == preferred))
+            .find(|c| c.kind == wanted && named_by(c, preferred))
     {
         return Ok(found.clone());
     }
@@ -202,7 +302,7 @@ pub fn choose(
         .cloned()
         .ok_or_else(|| {
             format!(
-                "No model that makes {} is available. {}",
+                "No model that makes {} is available here. {}",
                 describe_kind(wanted),
                 offer(available, None)
             )
@@ -286,9 +386,19 @@ pub fn row(candidate: &Candidate, is_default: bool) -> serde_json::Value {
     row.insert("id".into(), candidate.key().into());
     row.insert("kind".into(), kind_name(candidate.kind).into());
     row.insert(
-        "unit_cost_usd".into(),
-        match candidate.unit_cost() {
-            Some(cost) => serde_json::json!(cost),
+        "released".into(),
+        match candidate.released() {
+            Some(month) => month.into(),
+            None => serde_json::Value::Null,
+        },
+    );
+    // A labelled string rather than a number, because the number alone would be read as the
+    // price of one picture and it is a rate per million tokens of one. Null where the provider
+    // published nothing, which is most of them.
+    row.insert(
+        "price".into(),
+        match candidate.price() {
+            Some(price) => price.into(),
             None => serde_json::Value::Null,
         },
     );
@@ -332,10 +442,21 @@ pub fn matches(candidate: &Candidate, search: &str) -> bool {
 #[must_use]
 pub fn listing(
     available: &[Candidate],
+    now_ms: i64,
     kind: Option<Kind>,
     search: &str,
     limit: usize,
 ) -> (String, serde_json::Value) {
+    // Only what a chat model may pick (`MAX_AGE_DAYS`). The older ones are counted rather than
+    // hidden in silence: a list that simply lacked them would have the model conclude a model it
+    // remembers was never here.
+    let older = available.len() - available.iter().filter(|c| c.recent(now_ms)).count();
+    let available: Vec<Candidate> = available
+        .iter()
+        .filter(|c| c.recent(now_ms))
+        .cloned()
+        .collect();
+    let available = available.as_slice();
     // What a call with no `model` would pick, marked in the list, so the model can see that
     // leaving it out is a real answer rather than a gap it has to fill.
     let defaults: Vec<String> = [Kind::Image, Kind::Speech, Kind::Video]
@@ -361,24 +482,27 @@ pub fn listing(
             available.len()
         )
     } else if matching.len() == shown.len() {
-        format!("{} models, cheapest first.", shown.len())
+        format!("{} models, newest first.", shown.len())
     } else {
         format!(
-            "{} of {} models, cheapest first. Narrow it with `kind` or `search`, or raise \
+            "{} of {} models, newest first. Narrow it with `kind` or `search`, or raise \
              `limit`.",
             shown.len(),
             matching.len()
         )
     };
+    if older > 0 {
+        summary.push_str(&format!(
+            " {older} more are over a year old and are not yours to pick; the user can still \
+             choose one in this connector's settings."
+        ));
+    }
     for candidate in &shown {
         summary.push_str(&format!(
             "\n{} \u{2014} {}, {}",
             candidate.key(),
             kind_name(candidate.kind),
-            match candidate.unit_cost() {
-                Some(cost) => format!("${cost:.4} a unit"),
-                None => "no published price".to_owned(),
-            }
+            detail(candidate)
         ));
     }
     let structured = serde_json::json!({
@@ -386,91 +510,180 @@ pub fn listing(
         "shown": shown.len(),
         "matching": matching.len(),
         "available": available.len(),
+        "hidden_as_too_old": older,
     });
     (summary, structured)
 }
 
-/// The model as a permission card offers it (04 §7): the one this call would use, and the ones
-/// it could be changed to.
+/// What to say about a model beside its name, in a menu or a list: when it came out, and what
+/// it charges where anybody published that.
+#[must_use]
+pub fn detail(candidate: &Candidate) -> String {
+    match (candidate.released(), candidate.price()) {
+        (Some(released), Some(price)) => format!("{released} \u{b7} {price}"),
+        (Some(released), None) => format!("{released} \u{b7} price not published"),
+        (None, Some(price)) => price,
+        (None, None) => "price not published".to_owned(),
+    }
+}
+
+/// The model this call will actually use, and anything the user should be told about why.
 ///
-/// Pure, so the interesting part — what the card shows when the call named a model that is not
-/// here — is a test rather than a thing to try live at a dollar a go. A model the call named is
-/// never silently swapped: what stands in is shown, with the reason, before anything is pressed.
+/// One place decides it, because two would drift and the two are the permission card and the
+/// call it is a card *for*: a card that named a different model from the one that then ran would
+/// be worse than no card. Everything that makes the decision is here — the user's default, the
+/// rule that says when the default beats a model the call named, and the year-old cutoff a chat
+/// model may not reach past.
+pub fn pick(
+    all: &[Candidate],
+    now_ms: i64,
+    prefs: &crate::settings::Preferences,
+    mode: gantry_core::Mode,
+    named: Option<&str>,
+    wanted: Option<Kind>,
+) -> Result<Picked, String> {
+    // What a chat model may reach for. The user's own default is looked up in the whole list
+    // below, which is the point of the distinction.
+    let offered: Vec<Candidate> = all.iter().filter(|c| c.recent(now_ms)).cloned().collect();
+    let preferred = prefs.default_for(wanted);
+    let preferred_candidate = preferred.and_then(|p| all.iter().find(|c| named_by(c, p)));
+
+    // The user's own model, where their rule says it beats what the call asked for. The model is
+    // told, because a tool that quietly ignored an argument would have it try the argument again.
+    if let Some(candidate) = preferred_candidate
+        && named.is_some()
+        && prefs.rule.overrides(mode)
+    {
+        let note = format!(
+            "The user's settings say to use {} for {} whatever a call asks for, so `model` was \
+             ignored.",
+            candidate.key(),
+            describe_kind(candidate.kind)
+        );
+        return Ok(Picked {
+            candidate: candidate.clone(),
+            note: Some(note),
+        });
+    }
+
+    if let Some(named) = named {
+        // Refused for being old, rather than reported missing: a model that is told "there is no
+        // such model" tries another name it remembers, where one told the real reason stops.
+        if let Some(stale) = all.iter().find(|c| named_by(c, named) && !c.recent(now_ms)) {
+            return Err(format!(
+                "{} is {}, and Gantry only lets you pick media models released in the last \
+                 year. {} The user can set an older one as their default in this connector's \
+                 settings.",
+                stale.key(),
+                stale.age(now_ms).unwrap_or_else(|| "too old".to_owned()),
+                offer(&offered, wanted.or(Some(stale.kind)))
+            ));
+        }
+        let candidate = choose(&offered, Some(named), wanted, None)?;
+        return Ok(Picked {
+            candidate,
+            note: None,
+        });
+    }
+
+    // The user's default is looked up in the *whole* list, not in what a chat model may pick:
+    // choosing an older model on purpose is the one way an older model is used at all.
+    if let Some(candidate) = preferred_candidate.filter(|c| wanted.is_none_or(|k| c.kind == k)) {
+        return Ok(Picked {
+            candidate: candidate.clone(),
+            note: None,
+        });
+    }
+    let candidate = choose(&offered, None, wanted, None)?;
+    // A default that is no longer there is worth a sentence rather than a silent swap: the user
+    // chose that model once, and a bill from a different one should not be the first they hear
+    // of it.
+    let note = preferred
+        .map(|p| format!("The user's default for this kind, {p}, is not available today."));
+    Ok(Picked { candidate, note })
+}
+
+/// What [`pick`] decided, and what to say about it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Picked {
+    pub candidate: Candidate,
+    pub note: Option<String>,
+}
+
+/// The model as a permission card offers it (04 §7): the one this call would use, and the ones
 #[must_use]
 pub fn model_choice(
     all: &[Candidate],
+    now_ms: i64,
     prefs: &crate::settings::Preferences,
+    mode: gantry_core::Mode,
     named: Option<&str>,
     wanted: Option<Kind>,
 ) -> ArgChoice {
-    let preferred = named.is_none().then(|| prefs.default_for(wanted)).flatten();
-    // The menu offers only what the call would be allowed to spend, so the card and the ceiling
-    // cannot contradict each other in front of the user.
-    let affordable: Vec<Candidate> = all
-        .iter()
-        .filter(|c| prefs.affordable(c).is_ok())
-        .cloned()
-        .collect();
-
-    let mut note = None;
-    // A model that was refused still says what kind of thing this call was about, which is how
-    // the menu stays about pictures when the picture model named was too dear.
-    let mut refused_kind = None;
-    let asked = match choose(all, named, wanted, preferred) {
-        Ok(candidate) => match prefs.affordable(&candidate) {
-            Ok(()) => Some(candidate),
-            Err(_) => {
-                note = Some(format!(
-                    "{} is over the ceiling you set for this connector.",
-                    candidate.key()
-                ));
-                refused_kind = Some(candidate.kind);
-                None
-            }
-        },
+    let note;
+    let picked = match pick(all, now_ms, prefs, mode, named, wanted) {
+        Ok(picked) => {
+            note = picked.note;
+            Some(picked.candidate)
+        }
         Err(_) => {
-            note = named.map(|named| format!("There is no `{named}` on this machine."));
-            // A name that matches nothing here may still match something that is only over the
-            // ceiling, which says the kind as well as any argument would.
-            refused_kind = named.and_then(|named| {
-                all.iter()
-                    .find(|c| c.key() == named || c.model == named)
-                    .map(|c| c.kind)
+            // The card is not the place for the tool's error text, which is written for a model
+            // reading a failure. What the user needs is one line saying why the name on the call
+            // is not the name on the card.
+            note = named.map(|named| match all.iter().find(|c| named_by(c, named)) {
+                Some(stale) => format!(
+                    "`{named}` is {}, so it is not one the chat model may pick.",
+                    stale
+                        .age(now_ms)
+                        .unwrap_or_else(|| "over a year old".to_owned())
+                ),
+                None => format!("There is no `{named}` on this machine."),
             });
             None
         }
     };
-    let kind = wanted.or(asked.as_ref().map(|c| c.kind)).or(refused_kind);
-    let chosen = asked.or_else(|| choose(&affordable, None, kind, preferred).ok());
-    if note.is_none()
-        && let (Some(preferred), Some(chosen)) = (preferred, chosen.as_ref())
-        && preferred != chosen.key()
-    {
-        note = Some(format!(
-            "Your default for this kind, {preferred}, is not available."
-        ));
-    }
-
-    // With no kind and no usable model, the menu is every model there is: picking one is what
-    // says which kind this call was about.
-    let options: Vec<ChoiceOption> = affordable
+    // A model that was refused still says what kind of thing this call was about, which is how
+    // the menu stays about pictures when the picture model named was an old one.
+    let kind = wanted.or(picked.as_ref().map(|c| c.kind)).or_else(|| {
+        named.and_then(|named| all.iter().find(|c| named_by(c, named)).map(|c| c.kind))
+    });
+    // The menu is what a chat model may pick, plus whatever this call landed on — which can be
+    // an older model, when that is the user's own default. With no kind and nothing usable it is
+    // every model there is: picking one is what says which kind this call was about.
+    let mut options: Vec<ChoiceOption> = all
         .iter()
+        .filter(|c| c.recent(now_ms) || picked.as_ref().is_some_and(|p| p.key() == c.key()))
         .filter(|c| kind.is_none_or(|k| c.kind == k))
         .map(|c| ChoiceOption {
             value: c.key(),
             label: c.key(),
-            detail: Some(match (c.unit_cost(), kind) {
-                (Some(cost), Some(_)) => format!("${cost:.4} a unit"),
-                (Some(cost), None) => format!("{}, ${cost:.4} a unit", kind_name(c.kind)),
-                (None, Some(_)) => "no published price".to_owned(),
-                (None, None) => format!("{}, no published price", kind_name(c.kind)),
+            detail: Some(match kind {
+                Some(_) => detail(c),
+                None => format!("{} \u{b7} {}", kind_name(c.kind), detail(c)),
             }),
         })
         .collect();
+    let fallback = picked.clone().or_else(|| {
+        choose(all, None, kind, None)
+            .ok()
+            .filter(|_| kind.is_some())
+    });
+    if let Some(chosen) = &fallback
+        && !options.iter().any(|o| o.value == chosen.key())
+    {
+        options.insert(
+            0,
+            ChoiceOption {
+                value: chosen.key(),
+                label: chosen.key(),
+                detail: Some(detail(chosen)),
+            },
+        );
+    }
     ArgChoice {
         key: "model".to_owned(),
         label: "Model".to_owned(),
-        value: chosen.map(|c| c.key()),
+        value: fallback.map(|c| c.key()),
         options,
         note,
     }

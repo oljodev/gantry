@@ -165,7 +165,7 @@ fn apply_entries(entries: &[Entry], kind: ProviderKind, provider_id: &str, m: &m
                 // The override file speaks in token prices; whatever the provider said about
                 // per-image and per-call prices survives it.
                 image_input_usd: current.as_ref().and_then(|p| p.image_input_usd),
-                image_output_usd: current.as_ref().and_then(|p| p.image_output_usd),
+                image_output_per_mtok: current.as_ref().and_then(|p| p.image_output_per_mtok),
                 request_usd: current.as_ref().and_then(|p| p.request_usd),
                 audio_input_per_mtok: current.as_ref().and_then(|p| p.audio_input_per_mtok),
                 audio_output_per_mtok: current.as_ref().and_then(|p| p.audio_output_per_mtok),

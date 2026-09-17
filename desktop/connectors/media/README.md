@@ -40,18 +40,52 @@ request that failed, not a second charge for something asked for once.
 Open the connector in **Customize → Connectors** and it has a form of its own:
 
 - **A default model per kind** — picture, spoken audio, clip. The menu is the models your own
-  provider keys reach, cheapest first, with each one's price. This is what a call gets when it
-  does not name a model, which is what it should normally do. "Cheapest available" is the
-  starting answer and stays honest as prices change.
-- **Most one generation may cost** — a ceiling in dollars. Anything over it is refused before
-  the request goes out, and so is a model whose provider publishes no price: a price nobody
-  published cannot be shown to be under a ceiling. Leave it empty for no ceiling.
+  provider keys reach, newest first, with each one's release month and its published rate where
+  there is one. This is what a call gets when it does not name a model, which is what it should
+  normally do.
+- **When those defaults apply.** A chat model may name a model of its own; this is how much
+  notice to take of it. *Only when it names none* (the default — it may pick, and the permission
+  card shows you which), *that and always in Auto* (where no card asks you anything, so its
+  choice would otherwise go unseen), or *always* (it never chooses; it is told its `model`
+  argument was ignored, rather than left to try it again).
 
 The options are built when the form is opened, from the same catalogue `generate` chooses from,
 so the form cannot offer a model the tool would then refuse. The answers are read on every call,
 so changing one takes effect on the next generation rather than on the next restart. If a default
-you chose stops being available — a key removed, a model retired — the cheapest answers instead
-and the result says so, rather than quietly billing you for a different model.
+you chose stops being available — a key removed, a model retired — the newest answers instead and
+the result says so, rather than quietly billing you for a different model.
+
+There was a spending ceiling here for a day. It was removed once the live catalogue was actually
+read: 87 of the 101 media models on this machine publish no price at all, so a dollar ceiling
+refuses nearly every generation while looking like a safety feature. The useful control over what
+this spends turns out to be *which model*, not *how much*.
+
+## Nothing older than a year — for the model, not for you
+
+A chat model asked for a picture reaches for an image model it remembers, and what it remembers
+is training data: as likely to be two generations behind as current. So a model released more
+than a year ago is not one a **call** may name. It is left out of `list_models`, it is never the
+automatic choice, and naming one is refused with its age — "20 months old" rather than "no such
+model", so the model stops instead of reaching for another name it half-remembers.
+
+Your own menus are not filtered. The settings form lists every model, marks the older ones with
+their age, and a model you set as your default is used without argument. The rule is about who is
+choosing.
+
+It is worth knowing how little it hides: on this catalogue, one model out of 101. It is a guard
+against a habit, not the thing that makes the list short.
+
+## Prices, where there are any
+
+Most media models do not publish one — 87 of 101 here. The ones that do publish a **rate per
+million output tokens**, not the price of a picture: `google/gemini-2.5-flash-image` publishes
+`$30 / M drawn`, which is about four cents for the 1290 tokens one picture comes to, and nothing
+in the catalogue says how many tokens any given picture will be.
+
+So the menus show the rate where it exists, labelled as a rate, and say "price not published"
+where it does not — and the **order is newest first**, not cheapest first. Ordering by price was
+the first version, and it meant "the one model that happened to publish a number came first",
+which is how every picture in the first live run came from the same mini model.
 
 ## Where the picture goes
 
@@ -86,10 +120,12 @@ have got is marked `default_without_a_model`.
 
 ## Choosing the model
 
-`model` is `provider/model` and may be left out. Left out, the connector takes the **cheapest**
-model of the requested kind among providers with a key, and the result names it — a model with no
-published price is never the automatic choice, because an unknown price is the one that cannot be
-defended afterwards. A bare model id is accepted when only one provider has it.
+`model` is `provider/model` and may be left out. Left out, the connector takes your default for
+that kind, and otherwise the **newest** model of it among providers with a key; the result names
+which. A name may be the whole key, the provider's own id, or just the last part of it —
+`muse-image` finds `openrouter/meta/muse-image` — which matters more than it sounds: the first
+live run asked for `muse-image`, was told there was no such model, and concluded it had invented
+the name. It had not.
 
 Whatever you chose for that model in the model dialog — the voice, the aspect ratio, the length —
 is used here too (`ChatSettings.model_options`, 11 §1), with anything the call names on top. An

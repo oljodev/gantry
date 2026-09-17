@@ -1884,8 +1884,26 @@ export type Pricing = {
 	cache_read_per_mtok: number | null,
 	/**  Dollars for one image sent to the model. */
 	image_input_usd?: number | null,
-	/**  Dollars for one image the model produces, where it reports one. */
-	image_output_usd?: number | null,
+	/**
+	 *  Dollars per **million output tokens of the picture itself**, where the provider prices it
+	 *  separately from text output.
+	 * 
+	 *  Per token, not per image, and the name says so because the old one did not: OpenRouter
+	 *  publishes `image_output` per token like every other rate on the row, and reading it as a
+	 *  per-image price made every image model in the app look free (`$0.0000 / image`). Checked
+	 *  against the live list on 2026-09-17: `google/gemini-2.5-flash-image` publishes
+	 *  `0.00003`, which is Google's own $30 per million image-output tokens — about $0.039 for
+	 *  the 1290 tokens one picture costs — and `openai/gpt-image-1-mini` publishes `0.000008`,
+	 *  which is OpenAI's $8 per million. How many tokens a picture comes to is the model's
+	 *  business and no field reports it, so this is a rate, not the price of one image.
+	 * 
+	 *  No serde alias for the old name, deliberately: a cached row written before the rename
+	 *  holds a number in the wrong unit, and reading it would keep a wrong price alive for up to
+	 *  a day. Dropping it costs one refresh of a list that refreshes itself every 24 hours —
+	 *  and an alias would also split the generated TypeScript into a deserialize shape and a
+	 *  serialize shape, which is a lot of noise for a field nobody should have been reading.
+	 */
+	image_output_per_mtok?: number | null,
 	/**  Dollars per call, for models priced by the request rather than by the token. */
 	request_usd?: number | null,
 	/**

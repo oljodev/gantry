@@ -29,16 +29,18 @@ use futures_util::StreamExt;
 use gantry_connectors::{
     Connector, ConnectorDescriptor, ConnectorError, ToolCallRequest, ToolEventSink, ToolOutcome,
 };
-use gantry_core::{ContentPart, InstanceId, MediaOptions, RiskTier, Settings, ToolDef};
+use gantry_core::{ContentPart, InstanceId, MediaOptions, Mode, RiskTier, Settings, ToolDef};
 use gantry_providers::{ChatRequest, ProviderRegistry};
 use gantry_store::Store;
 use tokio_util::sync::CancellationToken;
 
 pub use models::{
-    Candidate, Kind, check, choose, describe_kind, kind_name, list, listing, matches, model_choice,
-    parse_kind, rank, row,
+    Candidate, Kind, MAX_AGE_DAYS, Picked, check, choose, describe_kind, detail, kind_name, list,
+    listing, matches, model_choice, named_by, parse_kind, pick, rank, row,
 };
-pub use settings::{AUTOMATIC, MAX_COST_USD, Preferences, fields as settings_form, key_for};
+pub use settings::{
+    AUTOMATIC, DEFAULT_MODEL_RULE, Preferences, Rule, fields as settings_form, key_for,
+};
 
 /// The settings form for an installed instance (03 §11 step 2), with the model menus filled in
 /// from the models this machine can reach right now. `desktop/app/src/native.rs` asks for it
@@ -48,7 +50,7 @@ pub fn settings_fields(
     providers: &Arc<ProviderRegistry>,
     store: &Arc<Store>,
 ) -> Vec<gantry_core::UserConfigField> {
-    settings_form(&models::list(providers, store))
+    settings_form(&models::list(providers, store), gantry_core::now_ms())
 }
 
 /// The connector manifest, embedded at build time (03 §3).
@@ -99,7 +101,7 @@ impl Media {
         }
     }
 
-    fn generate_args(&self, args: &serde_json::Value) -> Result<Request, String> {
+    fn generate_args(&self, args: &serde_json::Value, mode: Mode) -> Result<Request, String> {
         let prompt = args
             .get("prompt")
             .and_then(serde_json::Value::as_str)
@@ -127,17 +129,16 @@ impl Media {
             .filter(|m| !m.is_empty());
 
         let available = models::list(&self.providers, &self.store);
-        let prefs = self.preferences();
-        let preferred = named.is_none().then(|| prefs.default_for(wanted)).flatten();
-        let chosen = models::choose(&available, named, wanted, preferred)
-            .map_err(|e| self.with_the_list(e))?;
-        prefs.affordable(&chosen)?;
-        // A default that is no longer there is worth a sentence rather than a silent swap: the
-        // user chose that model once, and a bill from a different one should not be the first
-        // they hear of it.
-        let note = preferred
-            .filter(|p| *p != chosen.key())
-            .map(|p| format!("The user's default for this kind, {p}, is not available today."));
+        let models::Picked { candidate, note } = models::pick(
+            &available,
+            gantry_core::now_ms(),
+            &self.preferences(),
+            mode,
+            named,
+            wanted,
+        )
+        .map_err(|e| self.with_the_list(e))?;
+        let chosen = candidate;
 
         // What the user picked for this model in the dialog, then whatever the call names on
         // top of it. Nothing is invented: a field nobody chose is a field the request omits,
@@ -226,7 +227,8 @@ impl Media {
                  the model list refreshed in Settings \u{2192} Providers.",
             );
         }
-        let (summary, structured) = models::listing(&available, wanted, &search, limit);
+        let (summary, structured) =
+            models::listing(&available, gantry_core::now_ms(), wanted, &search, limit);
         ToolOutcome::Complete {
             content: vec![
                 gantry_core::ResultPart::Text { text: summary },
@@ -251,7 +253,7 @@ impl Media {
             chosen,
             options,
             note,
-        } = match self.generate_args(args) {
+        } = match self.generate_args(args, req.scope.mode) {
             Ok(parsed) => parsed,
             Err(message) => return ToolOutcome::error(message),
         };
@@ -472,7 +474,9 @@ impl Connector for Media {
 
         vec![models::model_choice(
             &models::list(&self.providers, &self.store),
+            gantry_core::now_ms(),
             &self.preferences(),
+            req.scope.mode,
             named,
             wanted,
         )]
@@ -539,7 +543,9 @@ pub fn definitions() -> Vec<ToolDef> {
                                     read the id from `list_models`: omitted, the call uses the user's \
                                     own default for this kind, and the result says which model that \
                                     was. A name you remember from elsewhere is the one way this call \
-                                    fails for free."
+                                    fails for free. Models released more than a year ago are not \
+                                    yours to pick; the user can still choose one in this \
+                                    connector's settings."
                 },
                 "aspect_ratio": { "type": "string", "description": "`16:9`, `1:1` — only what the model lists." },
                 "resolution": { "type": "string", "description": "A video model's own spelling, e.g. `1080p`." },
@@ -559,12 +565,13 @@ pub fn definitions() -> Vec<ToolDef> {
     let list_models = ToolDef::new(
         "list_models",
         "List the media models this machine can actually use: every image, speech and video \
-         model on a provider the user has a key for, cheapest first, with what each costs and \
-         the options each one offers. Call this instead of guessing a model id — ids you \
-         remember from elsewhere are usually not the ones installed here — and call it when the \
-         user asks what is available. It reads a local list: no network, no charge, no account \
-         touched. The model marked `default_without_a_model` is what `generate` uses when it is \
-         not given one.",
+         model on a provider the user has a key for, newest first, with when each was released, \
+         what it charges where its provider published that, and the options it offers. Call this \
+         instead of guessing a model id — ids you remember from elsewhere are usually not the \
+         ones installed here — and call it when the user asks what is available. It reads a \
+         local list: no network, no charge, no account touched. The model marked \
+         `default_without_a_model` is what `generate` uses when it is not given one. Models over \
+         a year old are left out, because they are not yours to pick.",
         serde_json::json!({
             "type": "object",
             "properties": {

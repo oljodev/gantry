@@ -232,10 +232,12 @@ describe('labels', () => {
         input_per_mtok: 0.3,
         output_per_mtok: 2.5,
         cache_read_per_mtok: null,
-        image_output_usd: 0.03,
+        image_output_per_mtok: 30.0,
       },
     });
-    expect(priceLabel(image)).toBe('$0.030 / image');
+    // Per million tokens of the picture, which is how the provider prices it: $30/M is
+    // Gemini's published image-output rate, and about four cents for one picture.
+    expect(priceLabel(image)).toBe('$30.00 / M drawn');
     const talker = model({
       id: 'o/gpt-audio',
       capabilities: caps({ output: ['text', 'audio'] }),

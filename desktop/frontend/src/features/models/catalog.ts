@@ -209,8 +209,8 @@ export function isFree(m: CatalogModel): boolean {
     const rates = rateList(p.video_per_second_usd);
     return rates.length > 0 && rates.every((r) => r === 0);
   }
-  if (m.kind === 'image' && typeof p.image_output_usd === 'number') {
-    return p.image_output_usd === 0;
+  if (m.kind === 'image' && typeof p.image_output_per_mtok === 'number') {
+    return p.image_output_per_mtok === 0;
   }
   if (m.kind === 'audio' && typeof p.audio_output_per_mtok === 'number') {
     return p.audio_output_per_mtok === 0;
@@ -350,7 +350,12 @@ export function priceLabel(m: CatalogModel): string {
     const high = rates[rates.length - 1] as number;
     return low === high ? `${usdCents(low)} / s` : `${usdCents(low)}–${usdCents(high)} / s`;
   }
-  if (m.kind === 'image' && p.image_output_usd) return `${usd(p.image_output_usd)} / image`;
+  // Per million output tokens, not per picture: the provider prices the picture's own tokens
+  // and never says how many a picture comes to. It used to read `$0.0000 / image`, which is
+  // what a $30-per-million rate looks like when it is printed as the price of one image.
+  if (m.kind === 'image' && p.image_output_per_mtok) {
+    return `${usd(p.image_output_per_mtok)} / M drawn`;
+  }
   if (m.kind === 'audio' && p.audio_output_per_mtok) {
     return `${usd(p.audio_output_per_mtok)} / M spoken`;
   }

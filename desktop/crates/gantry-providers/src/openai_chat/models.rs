@@ -161,7 +161,7 @@ pub fn merge_media_details(list: &mut [ModelInfo], json: &serde_json::Value) {
                     output_per_mtok: 0.0,
                     cache_read_per_mtok: None,
                     image_input_usd: None,
-                    image_output_usd: None,
+                    image_output_per_mtok: None,
                     request_usd: None,
                     audio_input_per_mtok: None,
                     audio_output_per_mtok: None,
@@ -277,7 +277,7 @@ fn from_xai(m: XaiModel) -> ModelInfo {
             output_per_mtok: output,
             cache_read_per_mtok: per_mtok(m.cached_prompt_text_token_price),
             image_input_usd: None,
-            image_output_usd: None,
+            image_output_per_mtok: None,
             request_usd: None,
             audio_input_per_mtok: None,
             audio_output_per_mtok: None,
@@ -343,7 +343,7 @@ fn from_openrouter(m: OrModel) -> ModelInfo {
             output_per_mtok: per_mtok(&p.completion)?,
             cache_read_per_mtok: per_mtok(&p.input_cache_read),
             image_input_usd: per_unit(&p.image),
-            image_output_usd: per_unit(&p.image_output),
+            image_output_per_mtok: per_mtok(&p.image_output),
             request_usd: per_unit(&p.request),
             audio_input_per_mtok: per_mtok(&p.audio),
             audio_output_per_mtok: per_mtok(&p.audio_output),
@@ -526,7 +526,7 @@ mod tests {
                 "prompt": "0.0000003",
                 "completion": "0.0000025",
                 "image": "0.0001238",
-                "image_output": "0.03",
+                "image_output": "0.00003",
                 "request": "0"
             },
             "supported_parameters": ["max_tokens"]
@@ -538,7 +538,12 @@ mod tests {
         assert!(m.capabilities.vision);
         let p = m.pricing.as_ref().unwrap();
         assert_eq!(p.image_input_usd, Some(0.0001238));
-        assert_eq!(p.image_output_usd, Some(0.03));
+        // Per token, like every other rate on the row: this is the number Google's own list
+        // publishes for `gemini-2.5-flash-image`, which is $30 per million image-output tokens
+        // (about four cents for the 1290 tokens a picture comes to). Captured from the live
+        // list on 2026-09-17, because the invented `0.03` this fixture used to carry is what
+        // let "dollars for one image" stand for a year.
+        assert_eq!(p.image_output_per_mtok, Some(30.0));
         // A zero price is "not priced this way", not "free".
         assert_eq!(p.request_usd, None);
     }
