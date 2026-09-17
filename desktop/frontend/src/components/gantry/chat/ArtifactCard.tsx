@@ -9,6 +9,7 @@ import {
 } from '@phosphor-icons/react';
 
 import { Button } from '@/components/ui/button';
+import { loadRuntime } from '@/features/artifacts/bridge';
 import { typeInfo } from '@/features/artifacts/registry';
 
 /**
@@ -27,11 +28,20 @@ export function ArtifactCard({
   version: number;
   onOpen?: () => void;
 }) {
-  const label = typeInfo(type)?.label ?? type;
+  const info = typeInfo(type);
+  const label = info?.label ?? type;
+  // The sandbox runtime is seven megabytes and is fetched once per session. Starting it when
+  // the pointer arrives buys most of the wait back before the click (docs/dev/performance.md);
+  // `html` artifacts are their own document and need none of it.
+  const warm = () => {
+    if (info?.execution === 'sandbox' && type !== 'html') void loadRuntime();
+  };
   return (
     <div
       role={onOpen ? 'button' : undefined}
       tabIndex={onOpen ? 0 : undefined}
+      onPointerEnter={warm}
+      onFocus={warm}
       onClick={onOpen}
       onKeyDown={(e) => {
         if (onOpen && (e.key === 'Enter' || e.key === ' ')) {

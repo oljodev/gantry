@@ -54,6 +54,10 @@ export function Markdown({ children, className }: { children: string; className?
 }
 
 const MarkdownBlock = memo(function MarkdownBlock({ text }: { text: string }) {
+  return <ParsedBlock text={useSettled(text)} />;
+});
+
+const ParsedBlock = memo(function ParsedBlock({ text }: { text: string }) {
   const math = useMath(text);
   return (
     <BlockSource.Provider value={text}>
@@ -68,6 +72,32 @@ const MarkdownBlock = memo(function MarkdownBlock({ text }: { text: string }) {
     </BlockSource.Provider>
   );
 });
+
+/**
+ * The block being written into, parsed at most sixteen times a second
+ * (docs/dev/performance.md).
+ *
+ * Parsing one block of markdown costs between 3 ms and 18 ms as it grows, and a streaming
+ * answer was paying that on every frame — sixty times a second for the same paragraph, with a
+ * few more characters on the end. This is the back-pressure: the newest text still arrives
+ * whole, a fraction of a second later, and a stream that pauses shows its last words after one
+ * interval at most.
+ *
+ * The first change is never delayed, so the first word of an answer appears when it arrives.
+ */
+function useSettled(text: string): string {
+  const [shown, setShown] = useState({ text, at: 0 });
+  useEffect(() => {
+    if (text === shown.text) return;
+    const wait = Math.max(0, PARSE_EVERY_MS - (performance.now() - shown.at));
+    const timer = setTimeout(() => setShown({ text, at: performance.now() }), wait);
+    return () => clearTimeout(timer);
+  }, [text, shown]);
+  return shown.text;
+}
+
+/** Sixteen parses a second. Tokens arrive slower than that, so nothing is lost by waiting. */
+const PARSE_EVERY_MS = 60;
 
 /**
  * KaTeX for a block that has a formula in it, and nothing at all for one that has not

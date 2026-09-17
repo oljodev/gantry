@@ -77,7 +77,7 @@ Channel.onmessage(batch) ──► per-chat queue ──► requestAnimationFram
 ```
 
 - The drain applies every queued event in one `set()` on the run store, so React commits once per frame regardless of how many deltas arrived. When the window is hidden (`document.hidden`), a 100 ms timer replaces rAF so state stays current without painting.
-- Text deltas append to the last text block's string; the markdown renderer re-parses only the last block (block splitting with stable keys; earlier blocks are memoized by content hash).
+- Text deltas append to the last text block's string; the markdown renderer re-parses only the last block (block splitting with stable keys; earlier blocks are memoized by content hash). *Measured 2026-09-17*: that one parse costs 3 ms at 200 characters and 18 ms at 6000, so the last block is parsed **at most every 60 ms** rather than on every frame — the newest text arrives whole, a fraction of a second later, and a stream that pauses shows its last words after one interval at most (docs/dev/performance.md).
 - Tool-argument deltas are concatenated per call; for tools flagged `stream_args`, `partial-json` extracts `path` and the content field (`content`, `new_string`, `patch`) on each frame and the row shows the growing text with highlighting deferred until the call completes.
 - Output chunks go into a per-call ring buffer (400 lines) in the store; the full log is fetched from the blob on demand by the detail drawer.
 - Back-pressure: if a chat's queue exceeds 2000 events (the UI cannot keep up, e.g. a command spewing output), consecutive text/output deltas in the queue are merged before the next drain. Nothing is dropped; the persisted log is the truth anyway.
@@ -113,10 +113,14 @@ Raw bytes (ANSI included) are what gets streamed and stored. The transcript sent
 |--------|-------|
 | Backend flush interval | ≤ 16 ms |
 | React commits during streaming | 1 per frame for the active chat |
-| Markdown re-parse per frame | last block only |
+| Markdown re-parse | last block only, at most every 60 ms |
+| Turns re-rendered per frame | the running one; finished turns are built once and memoized |
+| Turns laid out | those on screen (`content-visibility`), measured 48 ms → 9 ms for sixty |
 | Live output window per command | 400 lines; full log on demand |
 | Tool result in transcript | ≤ 50 KB (head + tail), full in blob |
 | Reattach cost | one snapshot message |
 | SQLite on the streaming path | none (writer actor, batched) |
 
-The first performance test on WebKitGTK (Linux) is part of M11 in the roadmap; the batching thresholds above are the knobs.
+The budget is measured in the running app rather than in a benchmark: Settings → Advanced →
+Speed, and one `startup:` line per run in the log (docs/dev/performance.md, 2026-09-17). The
+batching thresholds above are the knobs.

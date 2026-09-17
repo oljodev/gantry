@@ -102,6 +102,16 @@ turn is different. Three things follow from that, and all three were missing:
    instead of 48**, two hundred in **32 instead of 95**, and a jump to the bottom still lands at
    the bottom.
 
+**And the block being written into is parsed at most sixteen times a second.** One markdown
+block costs 3 ms to render at 200 characters and 18 ms at 6000, and a streaming answer was
+paying that on every frame for the same paragraph with a few more characters on the end. This is
+the back-pressure the transcript was missing: the newest text still arrives whole, a fraction of
+a second later, and the first change is never delayed, so the first word appears when it does.
+
+**An artifact's first frame is timed too**, from the mount to the sandbox saying `ready`, and so
+is the seven-megabyte runtime document behind it — fetched once per session, and now started
+when the pointer reaches an artifact card rather than when it is clicked.
+
 The catalogue of providers and models is memoised for the same reason: the chat view holds a
 whole transcript against its identity, so an array rebuilt on each render would have turned the
 first of those caches off without a word.

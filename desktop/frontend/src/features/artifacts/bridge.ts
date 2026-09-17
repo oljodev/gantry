@@ -10,6 +10,7 @@ import {
 } from '@gantry/artifact-runtime/src/html/loop-guard.js';
 
 import type { RenderError } from '@/bindings';
+import { timedAsync } from '@/lib/perf';
 
 export const SANDBOX_FLAGS = 'allow-scripts';
 
@@ -62,10 +63,17 @@ export function acceptMessage(
 
 let runtimePromise: Promise<string> | null = null;
 
-/** The inlined runtime document, loaded once per app session (13 §6). */
+/**
+ * The inlined runtime document, loaded once per app session (13 §6).
+ *
+ * Seven megabytes of it — React, the compiler and everything an artifact may import, in one
+ * document — so the first artifact of a session waits for a fetch and a parse that every one
+ * after it skips. Timed, because that wait is the first artifact's open (docs/dev/performance.md).
+ */
 export function loadRuntime(): Promise<string> {
-  runtimePromise ??= import('@gantry/artifact-runtime/dist/runtime.html?raw').then(
-    (m) => m.default,
+  runtimePromise ??= timedAsync(
+    'artifact: runtime loaded',
+    import('@gantry/artifact-runtime/dist/runtime.html?raw').then((m) => m.default),
   );
   return runtimePromise;
 }

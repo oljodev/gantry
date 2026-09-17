@@ -10,6 +10,7 @@ import {
   SANDBOX_FLAGS,
   type Theme,
 } from '@/features/artifacts/bridge';
+import { record } from '@/lib/perf';
 import { useUiStore } from '@/lib/stores/uiStore';
 
 export interface SandboxReport {
@@ -87,9 +88,13 @@ export function SandboxHost({
 
   // A new document per content: the content itself for html, the runtime for react and mermaid.
   const htmlDoc = useMemo(() => (type === 'html' ? htmlDocument(content) : null), [type, content]);
+  // When this document started loading, so the wait for its first frame can be named
+  // (docs/dev/performance.md). A new nonce is a new mount: a new artifact, or a new version.
+  const startedAt = useRef(0);
   useEffect(() => {
     reported.current = false;
     errors.current = [];
+    startedAt.current = performance.now();
   }, [nonce]);
   useEffect(() => {
     if (type === 'html') return;
@@ -124,6 +129,7 @@ export function SandboxHost({
         case 'ready':
           if (!reported.current) {
             reported.current = true;
+            record(`artifact: ${type}`, performance.now() - startedAt.current);
             onReport?.({ status: errors.current.length ? 'error' : 'ok', errors: errors.current });
           }
           break;
