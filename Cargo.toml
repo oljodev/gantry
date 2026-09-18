@@ -15,7 +15,7 @@ version = "0.1.0"
 edition = "2024"
 license = "FSL-1.1-ALv2"
 repository = "https://github.com/oljodev/gantry"
-homepage = "https://oljo.dev"
+homepage = "https://gantry.oljo.dev"
 rust-version = "1.93"
 publish = false
 

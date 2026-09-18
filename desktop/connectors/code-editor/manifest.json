@@ -9,10 +9,10 @@
   "keywords": ["edit", "refactor", "patch", "diff", "code"],
   "publisher": {
     "name": "Gantry",
-    "url": "https://oljo.dev"
+    "url": "https://gantry.oljo.dev"
   },
   "first_party": true,
-  "homepage": "https://oljo.dev/connectors/code-editor/",
+  "homepage": "https://gantry.oljo.dev/connectors/code-editor/",
   "license": "FSL-1.1-ALv2",
   "runtime": {
     "kind": "native",

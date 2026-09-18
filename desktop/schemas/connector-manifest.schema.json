@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://oljo.dev/schemas/connector-manifest.schema.json",
+  "$id": "https://gantry.oljo.dev/schemas/connector-manifest.schema.json",
   "title": "Gantry connector manifest",
   "description": "connectors/<id>/manifest.json. Field reference: docs/plan/03-connector-system.md \u00a73.",
   "type": "object",

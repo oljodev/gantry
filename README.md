@@ -13,7 +13,7 @@ Bring your own API keys. Nothing leaves your computer except the requests you ch
 [![Linux · Windows](https://img.shields.io/badge/Linux%20%C2%B7%20Windows-desktop-52525b?style=flat-square)](#install)
 [![Built with Tauri, Rust and React](https://img.shields.io/badge/Tauri%202%20%C2%B7%20Rust%20%C2%B7%20React%2019-52525b?style=flat-square)](#how-its-built)
 
-[oljo.dev](https://oljo.dev) · [Connectors](https://oljo.dev/connectors/) · [Architecture plan](docs/plan/README.md) · [Build it](docs/dev/setup.md)
+[oljo.dev](https://gantry.oljo.dev) · [Connectors](https://gantry.oljo.dev/connectors/) · [Architecture plan](docs/plan/README.md) · [Build it](docs/dev/setup.md)
 
 </div>
 
@@ -143,7 +143,7 @@ More in [SECURITY.md](SECURITY.md).
 
 > **v0.1.0 has not shipped yet.** When it does, installers appear on the
 > [releases page](https://github.com/oljodev/gantry/releases) and behind the download buttons on
-> [oljo.dev](https://oljo.dev/download/).
+> [oljo.dev](https://gantry.oljo.dev/download/).
 
 | Platform | Ships as | State |
 |----------|----------|-------|
@@ -201,7 +201,7 @@ desktop/
   connectors/   one folder per connector: manifest, icon, README; native ones are Cargo crates
   frontend/     the React app (Vite, Tailwind 4, Base UI, TanStack Router/Query, Zustand)
   assets/       prompts, guardrails, model overrides, branding
-web/            the two static sites: oljo.dev and id.oljo.dev
+web/            the two static sites: gantry.oljo.dev and id.oljo.dev
 docs/plan/      the architecture plan this was built against
 ```
 

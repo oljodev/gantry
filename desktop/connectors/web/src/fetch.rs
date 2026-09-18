@@ -35,7 +35,7 @@ pub const DEADLINE: Duration = Duration::from_secs(30);
 pub const USER_AGENT: &str = concat!(
     "GantryBot/",
     env!("CARGO_PKG_VERSION"),
-    " (+https://oljo.dev/connectors/web/)"
+    " (+https://gantry.oljo.dev/connectors/web/)"
 );
 
 pub struct Fetched {

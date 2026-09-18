@@ -1,7 +1,7 @@
 {
   "client_id": "https://id.oljo.dev/client-metadata.json",
   "client_name": "Gantry",
-  "client_uri": "https://oljo.dev",
+  "client_uri": "https://gantry.oljo.dev",
   "redirect_uris": [
     "http://127.0.0.1:17321/callback",
     "http://localhost:17321/callback",

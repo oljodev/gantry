@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://oljo.dev/schemas/skill-frontmatter.schema.json",
+  "$id": "https://gantry.oljo.dev/schemas/skill-frontmatter.schema.json",
   "title": "Gantry skill frontmatter",
   "description": "The YAML frontmatter of skills/<name>/SKILL.md: Agent Skills fields plus Gantry's under metadata (docs/plan/12-skills-and-memory.md §A2).",
   "type": "object",

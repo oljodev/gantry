@@ -25,7 +25,7 @@
     "scopes": ["repo", "read:org", "read:user", "gist", "workflow"],
     "user_supplied_fields": ["client_id"],
     "instructions": "GitHub registers no application on its own, and it will not take one without a secret — so Gantry signs in with a code instead. Create an app (the button fills the form in), tick **Enable Device Flow** in its settings, and paste its Client ID here. This happens once.",
-    "setup_url": "https://github.com/settings/applications/new?oauth_application%5Bname%5D=Gantry&oauth_application%5Burl%5D=https%3A%2F%2Foljo.dev&oauth_application%5Bcallback_url%5D=http%3A%2F%2F127.0.0.1%3A17321%2Fcallback"
+    "setup_url": "https://github.com/settings/applications/new?oauth_application%5Bname%5D=Gantry&oauth_application%5Burl%5D=https%3A%2F%2Fgantry.oljo.dev&oauth_application%5Bcallback_url%5D=http%3A%2F%2F127.0.0.1%3A17321%2Fcallback"
   },
   "auth_alternate": {
     "type": "headers",

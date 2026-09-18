@@ -561,7 +561,7 @@ const RICH_MARKDOWN = `Rendered markdown, all of it in one answer.
 
 - [x] A task list
 - [ ] with a second item
-- ~~struck through~~ and a [link](https://oljo.dev)
+- ~~struck through~~ and a [link](https://gantry.oljo.dev)
 
 Inline maths, $e^{i\\pi} + 1 = 0$, and a display block:
 

@@ -80,7 +80,7 @@ impl CompatProfile {
             label: "OpenRouter".into(),
             base_url: "https://openrouter.ai/api/v1".into(),
             extra_headers: vec![
-                ("HTTP-Referer".into(), "https://oljo.dev".into()),
+                ("HTTP-Referer".into(), "https://gantry.oljo.dev".into()),
                 ("X-Title".into(), "Gantry".into()),
             ],
             system_role: "system",

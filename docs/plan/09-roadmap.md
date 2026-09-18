@@ -761,7 +761,7 @@ Done when: v0.1.0 builds from `release.yml`, installs cleanly on all three OSes,
 
 ## Parallel track — marketing site (2 days, any time after M0)
 
-Done in session 4: the Astro site is in `web/site/` (14) with home, product tour, connectors and a page per connector, pricing, download, about, blog, changelog, docs and the trust pages. Both Cloudflare Pages projects are live and both domains resolve (checked 2026-09-12: `oljo.dev` and `id.oljo.dev/client-metadata.json` both answer 200), which is what M9's CIMD registrations needed. Remaining: the stable-named asset upload step in `release.yml`, so the download buttons resolve to something. Nothing in the app depends on it until M9 needs `web/client-metadata/` live for CIMD registrations, which is the one date to respect.
+Done in session 4: the Astro site is in `web/site/` (14) with home, product tour, connectors and a page per connector, pricing, download, about, blog, changelog, docs and the trust pages. Both Cloudflare Pages projects are live and both domains resolve (checked 2026-09-12, when the site was still at the apex: `oljo.dev` and `id.oljo.dev/client-metadata.json` both answer 200), which is what M9's CIMD registrations needed. **The site moved to `gantry.oljo.dev` on 2026-09-18** (14 §1); the custom domain and the apex redirect are Cloudflare settings, not repository ones, and the metadata host did not move. Remaining: the stable-named asset upload step in `release.yml`, so the download buttons resolve to something. Nothing in the app depends on it until M9 needs `web/client-metadata/` live for CIMD registrations, which is the one date to respect.
 
 ## Post-MVP backlog (in likely order)
 

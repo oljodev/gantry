@@ -193,7 +193,7 @@ gantry/
 │           └── conformance/{cases.json, harness.js, probe.ts}   # one hostile artifact per rule of 13 §5; scripts/sandbox-conformance.py runs them in WebKitGTK
 │
 ├── web/                                  # the public sites, one Cloudflare Pages project each (14 §1)
-│   ├── site/                             # oljo.dev: Astro 7, standalone package with its own lockfile, Node 22; Pages root directory `web/site`
+│   ├── site/                             # gantry.oljo.dev: Astro 7, standalone package with its own lockfile, Node 22; Pages root directory `web/site`
 │   │   ├── .node-version  package.json  pnpm-lock.yaml  astro.config.mjs  tsconfig.json  README.md
 │   │   ├── public/{_headers, _redirects, robots.txt, favicon.svg, connectors/}   # cleared connector logo overrides go in connectors/
 │   │   ├── scripts/sync-fonts.mjs        # vendors the Geist woff2 subsets into src/assets/fonts/

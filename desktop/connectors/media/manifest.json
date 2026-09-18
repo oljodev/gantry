@@ -10,10 +10,10 @@
   "keywords": ["image", "picture", "draw", "speech", "voice", "audio", "video", "clip", "generate"],
   "publisher": {
     "name": "Gantry",
-    "url": "https://oljo.dev"
+    "url": "https://gantry.oljo.dev"
   },
   "first_party": true,
-  "homepage": "https://oljo.dev/connectors/media/",
+  "homepage": "https://gantry.oljo.dev/connectors/media/",
   "license": "FSL-1.1-ALv2",
   "runtime": {
     "kind": "native",

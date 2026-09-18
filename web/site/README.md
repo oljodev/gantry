@@ -1,6 +1,6 @@
 # Gantry website
 
-The public site at https://oljo.dev: an Astro 7 static site with Tailwind 4, one React island (the hero's product
+The public site at https://gantry.oljo.dev: an Astro 7 static site with Tailwind 4, one React island (the hero's product
 mock), Starlight for the docs, self-hosted Geist, and no third-party scripts at runtime. Dark only.
 
 The design system, the sitemap, the motion approach and the verification checklist are recorded in

@@ -260,7 +260,7 @@ pub async fn register(
 ) -> Result<RegisteredClient, AuthError> {
     let body = serde_json::json!({
         "client_name": "Gantry",
-        "client_uri": "https://oljo.dev",
+        "client_uri": "https://gantry.oljo.dev",
         "redirect_uris": redirect_uris,
         "grant_types": ["authorization_code", "refresh_token"],
         "response_types": ["code"],

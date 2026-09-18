@@ -8,7 +8,7 @@ const LATIN = /** @type {[string, ...string[]]} */ (['U+0000-00FF', 'U+0131', 'U
 
 // https://astro.build/config
 export default defineConfig({
-  site: 'https://oljo.dev',
+  site: 'https://gantry.oljo.dev',
   output: 'static',
   trailingSlash: 'always',
   compressHTML: true,

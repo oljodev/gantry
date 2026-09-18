@@ -26,7 +26,7 @@ What this means for the way you work:
 - `desktop/` is the product: `app/` (the Tauri crate `gantry-app`), `frontend/` (the React
   package `@gantry/frontend`), `crates/` (the engine crates and `xtask`), `connectors/`, `skills/`,
   `assets/` (prompts, model overrides, guardrails, branding) and `schemas/`.
-- `web/` holds the two Cloudflare Pages sites: `site/` (oljo.dev, its own package and lockfile)
+- `web/` holds the two Cloudflare Pages sites: `site/` (gantry.oljo.dev, its own package and lockfile)
   and `client-metadata/` (id.oljo.dev).
 - `docs/plan/` is the plan; the root keeps only the Cargo and pnpm workspace files, the licence
   documents and this file. `docs/plan/07-repository-structure.md` has the full tree.

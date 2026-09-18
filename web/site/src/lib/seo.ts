@@ -1,5 +1,5 @@
 export const SITE_NAME = 'Gantry';
-export const SITE_URL = 'https://oljo.dev';
+export const SITE_URL = 'https://gantry.oljo.dev';
 export const REPO = 'oljodev/gantry';
 export const REPO_URL = `https://github.com/${REPO}`;
 export const DEFAULT_DESCRIPTION = 'Gantry is a desktop AI workspace: a chat client, a coding agent and connectors to the tools you use, running on your machine with your own API keys. macOS, Windows and Linux.';
