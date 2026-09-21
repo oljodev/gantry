@@ -324,7 +324,8 @@ export function ModelDialog({
               {isPending && <Empty>Loading the model list…</Empty>}
               {!isPending && models.length === 0 && (
                 <Empty>
-                  No models yet. Add a provider key in Settings → Providers, then refresh its list.
+                  No models yet. Add a provider key or a custom endpoint in Settings → Providers,
+                  then refresh its list.
                 </Empty>
               )}
               {!isPending && models.length > 0 && shown.length === 0 && (

@@ -91,7 +91,7 @@ export function Providers() {
   };
 
   const onRefresh = async () => {
-    for (const p of rows.filter((r) => r.key.present && r.available)) {
+    for (const p of rows.filter((r) => (r.key.present || r.custom) && r.available)) {
       try {
         const models = await refreshModels.mutateAsync(p.id);
         toast.add({ title: `${p.label}: ${models.length} models`, type: 'success' });
@@ -178,7 +178,8 @@ export function Providers() {
           </Button>
         </div>
         <p className="mt-1 text-meta text-fg-2">
-          From the providers with a key. Context window and prices per million tokens where known.
+          From the providers with a key, and from custom endpoints. Context window and prices per
+          million tokens where known.
         </p>
         <ModelTable catalog={catalog.providers} />
       </section>
@@ -256,7 +257,11 @@ function errorTitle(err: ErrorDto | null): string {
 function ModelTable({ catalog }: { catalog: ReturnType<typeof useModelCatalog>['providers'] }) {
   const rows = catalog.flatMap((p) => p.models.map((m) => ({ p, m })));
   if (rows.length === 0) {
-    return <p className="mt-3 text-meta text-fg-3">No models yet. Add a key, then refresh.</p>;
+    return (
+      <p className="mt-3 text-meta text-fg-3">
+        No models yet. Add a key or a custom endpoint, then refresh.
+      </p>
+    );
   }
   return (
     <div className="mt-3 max-h-96 overflow-y-auto">

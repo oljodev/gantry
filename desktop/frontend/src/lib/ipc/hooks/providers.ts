@@ -70,7 +70,7 @@ export function useModelCatalog(): { providers: CatalogProvider[]; isPending: bo
     queries: rows.map((p) => ({
       queryKey: keys.models(p.id),
       queryFn: () => unwrap(commands.listModels(p.id, false)),
-      enabled: isTauri() && p.key.present && p.available,
+      enabled: isTauri() && (p.key.present || p.custom) && p.available,
       staleTime: 60 * 60 * 1000,
     })),
     combine,
