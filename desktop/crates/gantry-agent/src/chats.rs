@@ -1318,7 +1318,7 @@ mod tests {
             .create(NewChat {
                 surface: Surface::Chat,
                 roots: Vec::new(),
-                model: ModelRef::default_model(),
+                model: ModelRef::new(gantry_core::ProviderId::openrouter(), "test/model"),
                 mode: Mode::AutoEdit,
                 guard: true,
                 effort: ReasoningEffort::Off,

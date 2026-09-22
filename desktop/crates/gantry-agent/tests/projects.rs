@@ -9,7 +9,7 @@ use gantry_agent::{
     turn_manager::{ChatNotifier, ProviderSource},
 };
 use gantry_core::{
-    ChatId, MemoryKind, MemoryScopeKind, MemorySource, Mode, NewProject, ProjectDefaults,
+    ChatId, MemoryKind, MemoryScopeKind, MemorySource, Mode, ModelRef, NewProject, ProjectDefaults,
     ProjectGrant, ProjectId, ProjectPatch, ProviderId, RiskTier, Settings, SkillInput,
     SkillVersionSource, Surface,
 };
@@ -40,11 +40,15 @@ fn world() -> World {
     let store = Arc::new(Store::open(dir.path().join("t.db")).unwrap());
     let blobs = Arc::new(BlobStore::open(dir.path().join("blobs")).unwrap());
     let chats = Arc::new(ChatBook::new(store.clone(), blobs.clone()));
+    // Gantry ships with no default model (11 §1); these chats are created with `None`,
+    // so the harness picks what the user would have.
+    let mut settings = Settings::default();
+    settings.chat.default_model = Some(ModelRef::new(ProviderId::openrouter(), "test/model"));
     let m = TurnManager::new(
         chats,
         Arc::new(NoProviders),
         Arc::new(gantry_connectors::ConnectorRegistry::new()),
-        Arc::new(RwLock::new(Settings::default())),
+        Arc::new(RwLock::new(settings)),
         PromptContext::default(),
         tokio::runtime::Handle::current(),
     );
@@ -82,7 +86,10 @@ impl World {
                         chat_id: chat,
                         seq: 1,
                         status: gantry_core::TurnStatus::Completed,
-                        model: gantry_core::ModelRef::default_model(),
+                        model: gantry_core::ModelRef::new(
+                            gantry_core::ProviderId::openrouter(),
+                            "test/model",
+                        ),
                         started_at: gantry_core::now_ms(),
                         ended_at: Some(gantry_core::now_ms()),
                         usage: None,

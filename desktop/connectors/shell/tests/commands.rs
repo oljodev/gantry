@@ -13,8 +13,8 @@ use gantry_connectors::{
     ChatScope, Connector, OutputStream, ToolCallRequest, ToolEventSink, ToolOutcome,
 };
 use gantry_core::{
-    CallId, ChatId, InstanceId, Mode, ModelRef, ReasoningEffort, ResultPart, Surface, TurnId,
-    now_ms,
+    CallId, ChatId, InstanceId, Mode, ModelRef, ProviderId, ReasoningEffort, ResultPart, Surface,
+    TurnId, now_ms,
 };
 use gantry_store::{BlobStore, Store};
 use gantry_workspace::Workspace;
@@ -61,7 +61,7 @@ fn fixture() -> Fixture {
         pinned: false,
         mode: Mode::AutoEdit,
         guard: true,
-        model: ModelRef::default_model(),
+        model: ModelRef::new(ProviderId::openrouter(), "test/model"),
         effort: ReasoningEffort::Medium,
         web_search: false,
         instructions: String::new(),

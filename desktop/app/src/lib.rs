@@ -50,6 +50,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::chats::list_chats,
             commands::code::session_changes,
             commands::code::session_file_diff,
+            commands::code::call_file_diff,
             commands::code::revert_file,
             commands::code::revert_session,
             commands::chats::add_chat_root,

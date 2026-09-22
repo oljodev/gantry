@@ -1,10 +1,15 @@
-//! The title generator (docs/plan/01 §3 step 7): after a chat's first exchange, the cheapest
-//! fast model of the same provider names it. The judge (M8) uses the same table.
+//! The title generator (docs/plan/01 §3 step 7): after a chat's first exchange, a small model
+//! names it. The guard (M8) and the compactor (02 §6) ask the same model.
+//!
+//! Which model that is, is one setting — Settings → Guard's **Utility model**. Unset, it is the
+//! cheapest fast model of the chat's own provider, from `judge_defaults.toml`, so no second key
+//! is needed. Set, it is that model for all three, because a user who does not want a given
+//! model called on their behalf means all of the calls, not the guard's alone.
 
 use std::sync::Arc;
 
 use futures_util::StreamExt;
-use gantry_core::{Message, ProviderKind, ReasoningEffort};
+use gantry_core::{Message, ModelRef, ProviderId, ProviderKind, ReasoningEffort};
 use gantry_providers::{ChatRequest, Provider, ProviderError, StreamEvent};
 
 const JUDGE_DEFAULTS: &str = include_str!("../../../assets/models/judge_defaults.toml");
@@ -18,8 +23,8 @@ struct JudgeFile {
     judge: std::collections::BTreeMap<String, String>,
 }
 
-/// The judge model for a provider: by provider id first, then by client kind, else the
-/// chat's own model.
+/// The shipped judge model for a provider: by provider id first, then by client kind, else the
+/// chat's own model. [`resolve_judge`] is what callers want — this is the default it falls to.
 #[must_use]
 pub fn judge_model(provider_id: &str, kind: ProviderKind, fallback: &str) -> String {
     let file: JudgeFile = toml::from_str(JUDGE_DEFAULTS).unwrap_or_default();
@@ -34,6 +39,29 @@ pub fn judge_model(provider_id: &str, kind: ProviderKind, fallback: &str) -> Str
         .or_else(|| file.judge.get(kind_key))
         .cloned()
         .unwrap_or_else(|| fallback.to_owned())
+}
+
+/// The provider and model every utility call uses: naming a chat, compacting a transcript and
+/// the guard's decisions.
+///
+/// `chosen` is the user's override (`settings.guard.judge_model`). It carries its own provider,
+/// because a model id means nothing without the provider that serves it, and that provider has
+/// to be one Gantry has a client for — an override naming a provider with no key resolves to
+/// `None` rather than silently falling back to a model the user has said no to.
+#[must_use]
+pub fn resolve_judge(
+    chosen: Option<&ModelRef>,
+    lookup: &dyn Fn(&ProviderId) -> Option<Arc<dyn Provider>>,
+    chat_provider: Option<&Arc<dyn Provider>>,
+    chat_model: &ModelRef,
+) -> Option<(Arc<dyn Provider>, String)> {
+    match chosen {
+        Some(chosen) => lookup(&chosen.provider).map(|p| (p, chosen.model.clone())),
+        None => chat_provider.map(|p| {
+            let m = judge_model(chat_model.provider.as_str(), p.kind(), &chat_model.model);
+            (p.clone(), m)
+        }),
+    }
 }
 
 const SYSTEM: &str = "You name conversations. Reply with a title of at most six words for the \

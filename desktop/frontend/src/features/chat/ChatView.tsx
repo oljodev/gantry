@@ -877,6 +877,7 @@ function detailTab(item: ActivityItem, onRevert?: (path: string) => void): PaneT
         temporary: true,
         content: (
           <DiffView
+            callId={item.id}
             file={{
               path: item.path,
               language: item.path.split('.').pop() ?? 'text',

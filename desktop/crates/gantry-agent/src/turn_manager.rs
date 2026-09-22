@@ -401,7 +401,12 @@ impl TurnManager {
         let (default_mode, default_guard) = settings.defaults_for(surface);
         let mode = defaults.mode.unwrap_or(default_mode);
         let guard = defaults.guard.unwrap_or(default_guard);
-        let model = model.unwrap_or_else(|| settings.default_model());
+        // No model is substituted for one nobody chose. Until the user picks, there is no
+        // default to fall back to, and a chat created against a guessed model would spend on a
+        // provider they never asked for.
+        let model = model.or_else(|| settings.default_model()).ok_or_else(|| {
+            GantryError::invalid("no model is selected: pick one before starting a chat")
+        })?;
         // Incognito takes no memory in and leaves none behind (15 A21). Custom instructions, and
         // a project's instructions and knowledge, stay: they are how the user has configured the
         // app and what they are working on, not something it learned about them, and a private
@@ -921,23 +926,20 @@ impl TurnManager {
         let mode = input.mode;
         let incognito = input.incognito;
         let attached = input.connectors.clone();
-        // The guard asks the cheapest fast model of the chat's own provider, which is the same
-        // table the title generator reads (04 §6). Resolved once, before the turn starts, so a
-        // decision mid-turn costs nothing but the request.
         let overrides = self.overrides.clone();
-        // The guard asks the cheapest fast model of the chat's own provider (04 §6), so no
-        // second key is needed; a user who wants a different one names it in Settings, provider
-        // and all, because a model id means nothing without the provider that serves it.
-        let judge = match &settings.guard.judge_model {
-            Some(chosen) => self
-                .providers
-                .provider(&chosen.provider)
-                .map(|p| (p, chosen.model.clone())),
-            None => provider.as_ref().map(|p| {
-                let m = title::judge_model(model.provider.as_str(), p.kind(), &model.model);
-                (p.clone(), m)
-            }),
-        };
+        // One utility model for the whole turn (04 §6): the guard's decisions, the compaction
+        // the turn may need and the title that follows it all ask the same one. Unset, it is
+        // the cheapest fast model of the chat's own provider, so no second key is needed; set,
+        // it is the user's, provider and all, because a model id means nothing without the
+        // provider that serves it. Resolved once, before the turn starts, so a decision mid-turn
+        // costs nothing but the request.
+        let providers = self.providers.clone();
+        let judge = title::resolve_judge(
+            settings.guard.judge_model.as_ref(),
+            &|id| providers.provider(id),
+            provider.as_ref(),
+            &model,
+        );
         self.runtime.spawn(async move {
             let tools =
                 ToolSet::assemble(&connectors, mode, &attached, !incognito, read_only).await;
@@ -949,7 +951,7 @@ impl TurnManager {
                 max_result_bytes: (settings.advanced.max_result_kb.max(1) as usize) * 1024,
                 media,
                 guardrails,
-                judge,
+                judge: judge.clone(),
                 overrides,
                 active: active.clone(),
                 chats: chats.clone(),
@@ -973,9 +975,9 @@ impl TurnManager {
                 let _ = done.send(());
                 return;
             }
-            if first_turn && let Some(provider) = provider {
+            if first_turn && let Some((judge_provider, judge_model)) = judge {
                 manager
-                    .name_chat(chat_id, turn_id, provider, &model, &user_text)
+                    .name_chat(chat_id, turn_id, judge_provider, judge_model, &user_text)
                     .await;
             }
         });
@@ -988,7 +990,7 @@ impl TurnManager {
         chat_id: ChatId,
         turn_id: TurnId,
         provider: Arc<dyn Provider>,
-        model: &ModelRef,
+        model: String,
         user_text: &str,
     ) {
         let assistant_text = match self.chats.get(chat_id) {
@@ -1003,8 +1005,7 @@ impl TurnManager {
         let Some(assistant_text) = assistant_text.filter(|t| !t.trim().is_empty()) else {
             return;
         };
-        let judge = title::judge_model(model.provider.as_str(), provider.kind(), &model.model);
-        match title::generate_title(provider, judge, user_text, &assistant_text).await {
+        match title::generate_title(provider, model, user_text, &assistant_text).await {
             Ok(t) if !t.is_empty() => match self.chats.set_auto_title(chat_id, t) {
                 Ok(true) => self.notify(chat_id),
                 Ok(false) => {}

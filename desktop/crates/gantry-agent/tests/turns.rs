@@ -18,9 +18,9 @@ use gantry_connectors::{
 };
 use gantry_core::{
     AgentEventBatch, AgentEventKind, CallId, ChatId, ContentPart, DecisionSource,
-    InteractionResolution, InteractionStatus, Mode, PermissionDecision, ProviderErrorKind,
-    ProviderId, ProviderKind, RiskTier, Role, Settings, StopReason, ToolCallStatus, ToolDef,
-    TurnStatus, Usage,
+    InteractionResolution, InteractionStatus, Mode, ModelRef, PermissionDecision,
+    ProviderErrorKind, ProviderId, ProviderKind, RiskTier, Role, Settings, StopReason,
+    ToolCallStatus, ToolDef, TurnStatus, Usage,
 };
 use gantry_providers::{
     ChatRequest, ChatStream, KeyInfo, ModelInfo, Provider, ProviderError, StreamEvent,
@@ -443,6 +443,13 @@ fn manager_windowed(
     let registry = Arc::new(ConnectorRegistry::new());
     registry.register(fake.clone());
     let (dir, chats) = book();
+    // Gantry ships with no default model — the composer asks the user to pick one (11 §1) — so
+    // every harness picks for them, or `create_chat(None)` would rightly refuse.
+    let mut settings = settings;
+    settings.chat.default_model = settings
+        .chat
+        .default_model
+        .or_else(|| Some(ModelRef::new(ProviderId::openrouter(), "test/model")));
     let settings = Arc::new(RwLock::new(settings));
     let kept = settings.clone();
     let m = TurnManager::new(
@@ -662,6 +669,38 @@ async fn a_text_turn_completes_and_is_recorded() {
     assert!(m.list_active().is_empty());
 }
 
+/// 04 §6: one setting decides which model is called on the user's behalf, and it covers the
+/// title generator too — a model nobody chose must not appear in their provider's log just
+/// because a chat needed naming.
+#[tokio::test]
+async fn the_utility_model_setting_names_the_chat() {
+    let mut settings = Settings::default();
+    settings.guard.judge_model = Some(ModelRef::new(
+        ProviderId::new("anthropic"),
+        "claude-haiku-4-5",
+    ));
+    let m = manager_with(
+        vec![vec![text("Hello"), end()]],
+        Duration::ZERO,
+        settings,
+    );
+    let chat = m.chat();
+    let sink = Arc::new(Collect::default());
+    m.start(
+        chat.id,
+        "Hi there".into(),
+        Vec::new(),
+        Vec::new(),
+        sink.clone(),
+    )
+    .unwrap();
+    wait_for(|| sink.completed().is_some()).await;
+    wait_for(|| m.requests().len() == 2).await;
+    let title_req = m.requests()[1].clone();
+    assert!(title_req.system.starts_with("You name conversations"));
+    assert_eq!(title_req.model, "claude-haiku-4-5");
+}
+
 #[tokio::test]
 async fn cancel_keeps_the_partial_text() {
     let events: Script = (0..50)
@@ -778,11 +817,14 @@ async fn without_a_provider_the_turn_fails_cleanly() {
         }
     }
     let (_dir, chats) = book();
+    // A model is picked; it is the *provider* that is missing, which is what this tests.
+    let mut settings = Settings::default();
+    settings.chat.default_model = Some(ModelRef::new(ProviderId::openrouter(), "test/model"));
     let m = TurnManager::new(
         chats,
         Arc::new(NoSource),
         Arc::new(ConnectorRegistry::new()),
-        Arc::new(RwLock::new(Settings::default())),
+        Arc::new(RwLock::new(settings)),
         PromptContext::default(),
         tokio::runtime::Handle::current(),
     );

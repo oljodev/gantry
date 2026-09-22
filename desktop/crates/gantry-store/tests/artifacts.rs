@@ -1,6 +1,6 @@
 //! Migration 0004: artifacts and their versions.
 
-use gantry_core::{ChatId, Mode, ModelRef, ReasoningEffort, VersionSource};
+use gantry_core::{ChatId, Mode, ModelRef, ProviderId, ReasoningEffort, VersionSource};
 use gantry_store::{
     Store,
     repos::{
@@ -31,7 +31,7 @@ fn chat(store: &Store) -> ChatId {
                     pinned: false,
                     mode: Mode::AutoEdit,
                     guard: true,
-                    model: ModelRef::default_model(),
+                    model: ModelRef::new(ProviderId::openrouter(), "test/model"),
                     effort: ReasoningEffort::Off,
                     web_search: false,
                     instructions: String::new(),

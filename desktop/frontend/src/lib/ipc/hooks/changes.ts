@@ -1,8 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import type { ChatId } from '@/bindings';
+import type { Hunk } from '@/fixtures/types';
 import { commands, isTauri, unwrap } from '@/lib/ipc/client';
 import { keys } from '@/lib/ipc/keys';
+import { hunksOf } from '@/lib/view/fileTools';
 
 /**
  * What a code session has done to its folder (16 §5). The journal is the source, so this is
@@ -23,6 +25,35 @@ export function useFileDiff(chatId: ChatId | null, path: string | null) {
     queryFn: () => unwrap(commands.sessionFileDiff(chatId ?? '', path ?? '')),
     enabled: isTauri() && chatId !== null && path !== null,
   });
+}
+
+/**
+ * The diff one tool call made (16 §5), for a row whose result carried no hunks.
+ *
+ * `filesystem__write_file` is the case that matters: a whole-file write's diff is the file
+ * again, so it stays out of the result the model reads and is read back from the journal here.
+ * A finished call's diff never changes — a revert is a new journal row, not a rewrite of this
+ * one — so it is fetched once and kept.
+ */
+export function useCallDiff(callId: string | null, enabled = true) {
+  return useQuery({
+    queryKey: keys.callDiff(callId ?? ''),
+    queryFn: () => unwrap(commands.callFileDiff(callId ?? '')),
+    enabled: isTauri() && enabled && callId !== null,
+    staleTime: Infinity,
+  });
+}
+
+/**
+ * An edit's hunks: the ones its own result carried, and the journal's when it carried none.
+ *
+ * Both are the same diff, computed once in Rust. Which one arrives depends only on the tool:
+ * the editor's calls carry theirs, a whole-file write cannot afford to, and neither fact is
+ * something a row should have to know about.
+ */
+export function useEditHunks(callId: string, carried: Hunk[]): Hunk[] {
+  const fetched = useCallDiff(callId, carried.length === 0);
+  return carried.length > 0 ? carried : hunksOf(fetched.data?.hunks);
 }
 
 export function useRevert(chatId: ChatId) {

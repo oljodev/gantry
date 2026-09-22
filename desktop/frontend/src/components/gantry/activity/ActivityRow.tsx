@@ -25,6 +25,7 @@ import { connectorName } from '@/fixtures/connectors';
 import type { ActivityItem, GuardMark } from '@/fixtures/types';
 import { openExternal } from '@/lib/clipboard';
 import { commands, isTauri, unwrap } from '@/lib/ipc/client';
+import { useEditHunks } from '@/lib/ipc/hooks/changes';
 import { cn } from '@/lib/utils';
 
 export interface ActivityRowProps {
@@ -156,9 +157,7 @@ export function ActivityRow({
             </span>
           }
           onOpen={open}
-          below={
-            bare ? undefined : <HunkPreview hunks={item.hunks} path={item.path} onShowAll={open} />
-          }
+          below={bare ? undefined : <EditHunks item={item} onShowAll={open} />}
         />
       );
     case 'command':
@@ -417,16 +416,33 @@ function ExpandableRow({
   );
 }
 
+/**
+ * An edit's diff in the feed. The hunks come from the call's result where it carried them and
+ * from the journal where it did not, which is why this is a component and not a prop: the row
+ * cannot know which tool made the edit, and should not have to.
+ */
+function EditHunks({
+  item,
+  full,
+  onShowAll,
+}: {
+  item: Extract<ActivityItem, { kind: 'edit' }>;
+  full?: boolean;
+  onShowAll?: () => void;
+}) {
+  const hunks = useEditHunks(item.id, item.hunks);
+  // Nothing to draw: a binary file, or an edit still being written. The row keeps its counts.
+  if (hunks.length === 0) return null;
+  return <HunkPreview hunks={hunks} path={item.path} full={full} onShowAll={onShowAll} />;
+}
+
 /** What opening a row shows, or nothing when the row has nothing more to say. */
 function inlineDetail(item: ActivityItem, onOpen?: (item: ActivityItem) => void): ReactNode {
   switch (item.kind) {
     case 'edit':
-      if (item.hunks.length === 0) return undefined;
       // No path header: the row above it already names the file, and repeating it costs a line
       // of the diff the user opened the row to read.
-      return (
-        <HunkPreview hunks={item.hunks} full onShowAll={onOpen ? () => onOpen(item) : undefined} />
-      );
+      return <EditHunks item={item} full onShowAll={onOpen ? () => onOpen(item) : undefined} />;
     case 'command':
       return (
         <>

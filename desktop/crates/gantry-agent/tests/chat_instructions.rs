@@ -7,7 +7,9 @@ use gantry_agent::{
     ChatBook, ChatPatch, Projects, PromptContext, TurnManager,
     turn_manager::{ChatNotifier, ProviderSource},
 };
-use gantry_core::{ChatId, NewProject, ProjectId, ProjectPatch, ProviderId, Settings, Surface};
+use gantry_core::{
+    ChatId, ModelRef, NewProject, ProjectId, ProjectPatch, ProviderId, Settings, Surface,
+};
 use gantry_store::{BlobStore, Store, repos};
 
 struct NoProviders;
@@ -39,6 +41,9 @@ fn world() -> World {
     let chats = Arc::new(ChatBook::new(store.clone(), blobs.clone()));
     let mut settings = Settings::default();
     settings.chat.custom_instructions = "Never use emoji.".into();
+    // Gantry ships with no default model (11 §1); these chats are created with `None`, so the
+    // harness picks what the user would have.
+    settings.chat.default_model = Some(ModelRef::new(ProviderId::openrouter(), "test/model"));
     let m = TurnManager::new(
         chats,
         Arc::new(NoProviders),
@@ -90,7 +95,10 @@ impl World {
                         chat_id: chat,
                         seq: 1,
                         status: gantry_core::TurnStatus::Completed,
-                        model: gantry_core::ModelRef::default_model(),
+                        model: gantry_core::ModelRef::new(
+                            gantry_core::ProviderId::openrouter(),
+                            "test/model",
+                        ),
                         started_at: gantry_core::now_ms(),
                         ended_at: Some(gantry_core::now_ms()),
                         usage: None,

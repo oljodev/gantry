@@ -1,8 +1,8 @@
 //! Round trips through the chat tables of migration 0002, search and crash recovery.
 
 use gantry_core::{
-    ChatId, ContentPart, Feedback, Message, Mode, ModelRef, ReasoningEffort, Role, StopReason,
-    TurnId, TurnStatus, Usage, now_ms,
+    ChatId, ContentPart, Feedback, Message, Mode, ModelRef, ProviderId, ReasoningEffort, Role,
+    StopReason, TurnId, TurnStatus, Usage, now_ms,
 };
 use gantry_store::{
     Store,
@@ -26,7 +26,7 @@ fn chat(title: &str) -> chats::ChatRecord {
         pinned: false,
         mode: Mode::AutoEdit,
         guard: true,
-        model: ModelRef::default_model(),
+        model: ModelRef::new(ProviderId::openrouter(), "test/model"),
         effort: ReasoningEffort::Medium,
         web_search: false,
         instructions: String::new(),
@@ -48,7 +48,7 @@ fn turn(chat_id: ChatId, seq: u32) -> turns::TurnRecord {
         chat_id,
         seq,
         status: TurnStatus::Running,
-        model: ModelRef::default_model(),
+        model: ModelRef::new(ProviderId::openrouter(), "test/model"),
         started_at: now_ms(),
         ended_at: None,
         usage: None,
@@ -124,7 +124,10 @@ fn a_chat_with_a_turn_round_trips() {
     let got = store.read(|conn| chats::get(conn, c.id)).unwrap().unwrap();
     assert_eq!(got.title, "WAL mode in SQLite");
     assert_eq!(got.mode, Mode::AutoEdit);
-    assert_eq!(got.model, ModelRef::default_model());
+    assert_eq!(
+        got.model,
+        ModelRef::new(ProviderId::openrouter(), "test/model")
+    );
 
     let ts = store.read(|conn| turns::list_for_chat(conn, c.id)).unwrap();
     assert_eq!(ts.len(), 1);

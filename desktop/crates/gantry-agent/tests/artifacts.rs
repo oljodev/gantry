@@ -11,8 +11,8 @@ use gantry_connectors::{
     ChatScope, Connector, NoopToolEvents, ToolCallRequest, ToolEventSink, ToolOutcome,
 };
 use gantry_core::{
-    AgentEventKind, CallId, ChatId, Mode, ModelRef, ReasoningEffort, RenderReport, RenderStatus,
-    Surface, TurnId, VersionSource,
+    AgentEventKind, CallId, ChatId, Mode, ModelRef, ProviderId, ReasoningEffort, RenderReport,
+    RenderStatus, Surface, TurnId, VersionSource,
 };
 use gantry_store::{BlobStore, Store};
 use tokio_util::sync::CancellationToken;
@@ -31,7 +31,7 @@ fn chat(book: &ChatBook) -> ChatId {
     book.create(NewChat {
         surface: Surface::Chat,
         roots: Vec::new(),
-        model: ModelRef::default_model(),
+        model: ModelRef::new(ProviderId::openrouter(), "test/model"),
         mode: Mode::AutoEdit,
         guard: true,
         effort: ReasoningEffort::Off,

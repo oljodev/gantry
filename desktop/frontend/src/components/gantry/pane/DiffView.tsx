@@ -7,6 +7,8 @@ import { Button } from '@/components/ui/button';
 import { Segmented } from '@/components/ui/radio-group';
 import type { DiffFile, HunkLine } from '@/fixtures/types';
 import { languageForPath, pairChanges, useDiffTokens, type LineTokens } from '@/lib/diff';
+import { useCallDiff } from '@/lib/ipc/hooks/changes';
+import { hunksOf } from '@/lib/view/fileTools';
 import { cn } from '@/lib/utils';
 
 /**
@@ -17,8 +19,31 @@ import { cn } from '@/lib/utils';
  * Both views colour their lines through shiki and lift the part of a replaced line that
  * actually changed; `lib/diff` has both, and the row's inline preview uses the same pair.
  */
-export function DiffView({ file, onRevert }: { file: DiffFile; onRevert?: () => void }) {
+export function DiffView({
+  file: given,
+  callId,
+  onRevert,
+}: {
+  file: DiffFile;
+  /**
+   * The tool call this diff belongs to, when it has one. A call whose result carried no hunks
+   * — a whole-file write, whose diff is the file and so stays out of what the model reads —
+   * has them read back from the journal instead of showing an empty pane.
+   */
+  callId?: string;
+  onRevert?: () => void;
+}) {
   const [view, setView] = useState<'unified' | 'split'>('unified');
+  const fetched = useCallDiff(callId ?? null, given.hunks.length === 0);
+  const file: DiffFile =
+    given.hunks.length > 0
+      ? given
+      : {
+          ...given,
+          hunks: hunksOf(fetched.data?.hunks),
+          added: fetched.data?.added ?? given.added,
+          removed: fetched.data?.removed ?? given.removed,
+        };
   return (
     <div className="flex h-full flex-col">
       <div className="flex h-(--row) shrink-0 items-center gap-3 border-b border-line-subtle px-3">
@@ -42,7 +67,14 @@ export function DiffView({ file, onRevert }: { file: DiffFile; onRevert?: () => 
         )}
       </div>
       <div className="min-h-0 flex-1 overflow-auto p-3">
-        {view === 'unified' ? (
+        {file.hunks.length === 0 ? (
+          // Either the diff has not arrived yet, or there is none to draw: a file whose
+          // versions are not text is still a change, and still revertible, with no lines to
+          // show for it (16 §5).
+          <p className="text-ui text-fg-3">
+            {fetched.isPending ? 'Loading the diff…' : 'There are no lines to show for this file.'}
+          </p>
+        ) : view === 'unified' ? (
           <HunkPreview hunks={file.hunks} path={file.path} full />
         ) : (
           <SplitDiff file={file} />

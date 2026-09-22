@@ -388,18 +388,21 @@ async fn compact_if_needed(ctx: &RunContext, transcript: &[Message], last: Optio
         return;
     };
     let artifacts = context::artifacts_in(messages);
-    let model = crate::title::judge_model(
-        ctx.input.model.provider.as_str(),
-        provider.kind(),
-        &ctx.input.model.model,
-    );
+    // The turn's utility model summarizes, the same one the guard and the title generator use
+    // (04 §6). Without one — no provider, or an override naming a provider with no key — the
+    // chat's own model does it, because a transcript that cannot be compacted is a chat that
+    // stops working.
+    let (summarizer, model) = match ctx.judge.clone() {
+        Some(pair) => pair,
+        None => (provider.clone(), ctx.input.model.model.clone()),
+    };
     log::info!(
         "compacting chat {}: ~{estimate} tokens, summarizing {} of {} messages",
         ctx.input.chat_id,
         messages.len(),
         transcript.len()
     );
-    match context::summarize(provider, model, messages, &artifacts).await {
+    match context::summarize(summarizer, model, messages, &artifacts).await {
         Ok(summary) => {
             let marker = context::marker(summary, up_to, messages.len(), artifacts);
             ctx.chats

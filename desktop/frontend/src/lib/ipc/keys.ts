@@ -46,4 +46,6 @@ export const keys = {
   /** What a code session changed; the file diffs hang under the same prefix (16 §5). */
   changes: (chatId: string) => ['changes', chatId] as const,
   fileDiff: (chatId: string, path: string) => ['changes', chatId, path] as const,
+  /** One tool call's own diff, read from the journal when its result carried none. */
+  callDiff: (callId: string) => ['call_diff', callId] as const,
 };

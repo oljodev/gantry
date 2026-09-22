@@ -41,7 +41,7 @@ impl World {
             pinned: false,
             mode: gantry_core::Mode::Manual,
             guard: true,
-            model: gantry_core::ModelRef::default_model(),
+            model: gantry_core::ModelRef::new(gantry_core::ProviderId::openrouter(), "test/model"),
             effort: gantry_core::ReasoningEffort::Off,
             web_search: false,
             instructions: String::new(),

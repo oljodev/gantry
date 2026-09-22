@@ -105,6 +105,48 @@ impl Workspace {
         })
     }
 
+    /// The diff one tool call made, read back from the journal.
+    ///
+    /// The row is written for every edit whatever tool made it, and it already holds the hunks
+    /// the diff was computed from — so this is the one answer that is the same for
+    /// `code-editor__replace`, which returns its hunks in its result, and for
+    /// `filesystem__write_file`, which does not and should not: a whole-file write's diff *is*
+    /// the file, and sending it back to the model would duplicate the content it just wrote in
+    /// every later request, and overflow the result cap on a large file (05 §8).
+    ///
+    /// `None` when the call changed nothing — it read, or searched, or failed. The chat comes
+    /// back with the diff because the row holds it, which saves every caller from passing a
+    /// chat id it would only be using to name the same one the call already belongs to.
+    pub fn call_change(
+        &self,
+        tool_call_id: &str,
+    ) -> Result<Option<(ChatId, FileDiff)>, WorkspaceError> {
+        let edits = self.journal.for_call(tool_call_id)?;
+        let Some(first) = edits.first() else {
+            return Ok(None);
+        };
+        // One call is one row today. A tool that ever writes two takes the rows for the file it
+        // named and leaves the rest, rather than drawing one file's lines under another's name.
+        let mut diff = Diff::default();
+        for edit in edits.iter().filter(|e| e.path == first.path) {
+            let stats: Stats = serde_json::from_str(&edit.stats_json).unwrap_or_default();
+            diff.added += stats.added;
+            diff.removed += stats.removed;
+            diff.hunks
+                .extend(serde_json::from_str::<Vec<_>>(&edit.hunks_json).unwrap_or_default());
+        }
+        let binary = diff.hunks.is_empty() && (diff.added > 0 || diff.removed > 0);
+        Ok(Some((
+            first.chat_id,
+            FileDiff {
+                path: first.path.clone(),
+                op: first.op,
+                diff,
+                binary,
+            },
+        )))
+    }
+
     /// Puts one file back to what it was before this session touched it.
     ///
     /// The restore is journalled like any other change, so it is itself in the history and the
@@ -268,6 +310,16 @@ impl Workspace {
         let bytes = self.journal.content(hash)?;
         Ok(TextFile::decode(path, &bytes).ok().map(|file| file.text))
     }
+}
+
+/// The `stats_json` of a journal row. Counts a journal written by an older build may not have
+/// are zero, which is what the row itself says when the diff was never computed.
+#[derive(Debug, Default, serde::Deserialize)]
+struct Stats {
+    #[serde(default)]
+    added: usize,
+    #[serde(default)]
+    removed: usize,
 }
 
 /// Whether the file is anywhere other than where the session found it. Comparing the two ends

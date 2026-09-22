@@ -9,7 +9,7 @@ use gantry_agent::{
     memory::{Memories, selector},
 };
 use gantry_core::{
-    ContentPart, MemoryKind, MemoryScopeKind, MemorySource, Message, Mode, ModelRef,
+    ContentPart, MemoryKind, MemoryScopeKind, MemorySource, Message, Mode, ModelRef, ProviderId,
     ReasoningEffort, SkillInput, SkillVersionSource, Surface,
 };
 use gantry_store::{BlobStore, Store};
@@ -43,7 +43,7 @@ impl World {
             .create(NewChat {
                 surface: Surface::Chat,
                 roots: Vec::new(),
-                model: ModelRef::default_model(),
+                model: ModelRef::new(ProviderId::openrouter(), "test/model"),
                 mode: Mode::AutoEdit,
                 guard: true,
                 effort: ReasoningEffort::Off,

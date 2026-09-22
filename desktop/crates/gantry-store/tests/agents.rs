@@ -82,7 +82,9 @@ fn a_type_survives_the_round_trip_and_a_built_in_cannot_be_deleted() {
 /// else ever is.
 #[test]
 fn only_sub_agent_transcripts_are_swept_by_age() {
-    use gantry_core::{ChatId, Mode, ModelRef, ReasoningEffort, Surface, TurnId, TurnStatus};
+    use gantry_core::{
+        ChatId, Mode, ModelRef, ProviderId, ReasoningEffort, Surface, TurnId, TurnStatus,
+    };
     use gantry_store::repos::{chats, turns};
 
     let (_dir, store) = store();
@@ -96,7 +98,7 @@ fn only_sub_agent_transcripts_are_swept_by_age() {
         pinned: false,
         mode: Mode::AutoEdit,
         guard: true,
-        model: ModelRef::default_model(),
+        model: ModelRef::new(ProviderId::openrouter(), "test/model"),
         effort: ReasoningEffort::Off,
         web_search: false,
         instructions: String::new(),

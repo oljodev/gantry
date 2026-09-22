@@ -263,7 +263,7 @@ mod tests {
             pinned: false,
             mode: Mode::AutoEdit,
             guard: true,
-            model: ModelRef::default_model(),
+            model: ModelRef::new(gantry_core::ProviderId::openrouter(), "test/model"),
             effort: gantry_core::ReasoningEffort::Off,
             web_search: false,
             instructions: String::new(),

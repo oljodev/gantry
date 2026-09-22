@@ -114,8 +114,12 @@ pub fn session_file_diff(
         .workspace
         .file_change(chat_id, &path)
         .map_err(refuse)?;
-    Ok(FileDiffDto {
-        display: relative(&change.path, roots.as_ref()),
+    Ok(diff_dto(change, roots.as_ref()))
+}
+
+fn diff_dto(change: gantry_workspace::FileDiff, roots: Option<&Roots>) -> FileDiffDto {
+    FileDiffDto {
+        display: relative(&change.path, roots),
         path: change.path,
         op: change.op,
         added: count(change.diff.added),
@@ -133,7 +137,27 @@ pub fn session_file_diff(
                 text: h.text,
             })
             .collect(),
-    })
+    }
+}
+
+/// The diff one tool call made, for the row that call drew and the tab it opens.
+///
+/// The activity row draws the hunks its own result carried, which is instant and needs nothing
+/// from here. `filesystem__write_file` carries none — a whole-file write's diff is the file
+/// again, and putting it in the result would send the content back to the model in every later
+/// request and blow the result cap on a large file — so the row and the pane ask the journal,
+/// which has held the hunks all along. `None` when the call changed no file.
+#[tauri::command]
+#[specta::specta]
+pub fn call_file_diff(
+    state: State<'_, AppState>,
+    call_id: String,
+) -> Result<Option<FileDiffDto>, ErrorDto> {
+    let Some((chat_id, change)) = state.workspace.call_change(&call_id).map_err(refuse)? else {
+        return Ok(None);
+    };
+    let roots = state.workspace.roots(chat_id).ok();
+    Ok(Some(diff_dto(change, roots.as_ref())))
 }
 
 /// Puts one file back to what it was before this session touched it.

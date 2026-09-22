@@ -114,7 +114,7 @@ mod tests {
             project_id: None,
             created_at: 0,
             last_message_at: 0,
-            model: ModelRef::default_model(),
+            model: ModelRef::new(gantry_core::ProviderId::openrouter(), "test/model"),
             mode: Mode::Plan,
             guard: true,
             web_search: false,
@@ -124,7 +124,7 @@ mod tests {
             turns: vec![TurnDto {
                 id: TurnId::new(),
                 status: TurnStatus::Completed,
-                model: ModelRef::default_model(),
+                model: ModelRef::new(gantry_core::ProviderId::openrouter(), "test/model"),
                 user: Message::user_text("Q?"),
                 messages: vec![{
                     let mut m = Message::user_text("A.");

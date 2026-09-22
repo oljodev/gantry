@@ -3,8 +3,8 @@
 use gantry_core::{
     AgentEvent, AgentEventKind, CallId, ChatId, ContentPart, DecisionSource, Interaction,
     InteractionPayload, InteractionResolution, InteractionStatus, Message, MessageId, Mode,
-    ModelRef, PermissionDecision, PermissionRequest, ReasoningEffort, ResultPart, RiskTier, Role,
-    ToolCallStatus, ToolDisplay, ToolDisplayKind, TurnId, TurnStatus, now_ms,
+    ModelRef, PermissionDecision, PermissionRequest, ProviderId, ReasoningEffort, ResultPart,
+    RiskTier, Role, ToolCallStatus, ToolDisplay, ToolDisplayKind, TurnId, TurnStatus, now_ms,
 };
 use gantry_store::{
     Store,
@@ -28,7 +28,7 @@ fn seed(conn: &rusqlite::Connection) -> (ChatId, TurnId) {
         pinned: false,
         mode: Mode::Manual,
         guard: true,
-        model: ModelRef::default_model(),
+        model: ModelRef::new(ProviderId::openrouter(), "test/model"),
         effort: ReasoningEffort::Off,
         web_search: false,
         instructions: String::new(),
@@ -48,7 +48,7 @@ fn seed(conn: &rusqlite::Connection) -> (ChatId, TurnId) {
         chat_id: chat.id,
         seq: 1,
         status: TurnStatus::Running,
-        model: ModelRef::default_model(),
+        model: ModelRef::new(ProviderId::openrouter(), "test/model"),
         started_at: now,
         ended_at: None,
         usage: None,

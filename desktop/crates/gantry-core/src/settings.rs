@@ -48,12 +48,11 @@ pub struct ModelRef {
 }
 
 impl ModelRef {
-    /// The model Gantry proposes until the user picks another.
     #[must_use]
-    pub fn default_model() -> Self {
+    pub fn new(provider: ProviderId, model: impl Into<String>) -> Self {
         Self {
-            provider: ProviderId::openrouter(),
-            model: "deepseek/deepseek-v4-flash".to_owned(),
+            provider,
+            model: model.into(),
         }
     }
 }
@@ -161,7 +160,8 @@ pub struct ChatSettings {
     /// The same pair for the Code surface, which starts somewhere else (docs/plan/16 §9).
     pub code_default_mode: Mode,
     pub code_default_guard: bool,
-    /// The model for new chats; `None` means [`ModelRef::default_model`].
+    /// The model for new chats. `None` until the user picks one: Gantry proposes no model of
+    /// its own, so the composer asks rather than quietly spending on a model nobody chose.
     pub default_model: Option<ModelRef>,
     pub default_effort: ReasoningEffort,
     /// Settings → General → Custom instructions (docs/plan/10 §2, layer 4). At most 4000 chars.
@@ -338,13 +338,10 @@ impl Settings {
         }
     }
 
-    /// The model new chats start with.
+    /// The model new chats start with, or `None` while the user has picked none.
     #[must_use]
-    pub fn default_model(&self) -> ModelRef {
-        self.chat
-            .default_model
-            .clone()
-            .unwrap_or_else(ModelRef::default_model)
+    pub fn default_model(&self) -> Option<ModelRef> {
+        self.chat.default_model.clone()
     }
 }
 
@@ -476,7 +473,8 @@ mod tests {
     fn defaults_survive_an_empty_document() {
         let s: Settings = serde_json::from_str("{}").unwrap();
         assert_eq!(s, Settings::default());
-        assert_eq!(s.default_model().model, "deepseek/deepseek-v4-flash");
+        // No model until the user picks one: nothing here proposes a provider or spends on it.
+        assert_eq!(s.default_model(), None);
     }
 
     #[test]

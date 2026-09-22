@@ -7,7 +7,9 @@ use gantry_agent::{
     ChatBook, Projects,
     chats::{NewChat, TurnContextOptions},
 };
-use gantry_core::{AttachmentInput, Message, Mode, ModelRef, NewProject, ReasoningEffort, Surface};
+use gantry_core::{
+    AttachmentInput, Message, Mode, ModelRef, NewProject, ProviderId, ReasoningEffort, Surface,
+};
 use gantry_store::{BlobStore, Store};
 
 struct World {
@@ -60,7 +62,7 @@ fn chat(book: &ChatBook) -> gantry_core::ChatId {
     book.create(NewChat {
         surface: Surface::Chat,
         roots: Vec::new(),
-        model: ModelRef::default_model(),
+        model: ModelRef::new(ProviderId::openrouter(), "test/model"),
         mode: Mode::Manual,
         guard: true,
         effort: ReasoningEffort::Off,

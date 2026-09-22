@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use gantry_core::{ChatId, EditOp, Mode, ModelRef, ReasoningEffort, Surface, now_ms};
+use gantry_core::{ChatId, EditOp, Mode, ModelRef, ProviderId, ReasoningEffort, Surface, now_ms};
 use gantry_store::{BlobStore, Store, repos::chats};
 use gantry_workspace::{Change, Workspace};
 
@@ -29,7 +29,7 @@ fn fixture() -> Fixture {
         pinned: false,
         mode: Mode::AutoEdit,
         guard: true,
-        model: ModelRef::default_model(),
+        model: ModelRef::new(ProviderId::openrouter(), "test/model"),
         effort: ReasoningEffort::Medium,
         web_search: false,
         instructions: String::new(),
@@ -196,4 +196,35 @@ async fn a_path_the_session_never_touched_has_nothing_to_put_back() {
     std::fs::write(f.work.path().join("a.txt"), FILE).unwrap();
     let err = f.revert("a.txt").await.unwrap_err();
     assert!(err.contains("nothing to put back"), "{err}");
+}
+
+/// The regression behind an empty diff pane: `filesystem__write_file` returns counts and no
+/// hunks — a whole-file write's diff is the file, which has no business going back to the model
+/// — so the row and the pane read the call's own diff from the journal, which has always had it.
+#[tokio::test]
+async fn a_write_that_returned_no_hunks_still_has_its_diff_in_the_journal() {
+    let f = fixture();
+    f.write("new.txt", FILE).await;
+
+    let (chat, change) = f
+        .workspace
+        .call_change("call-1")
+        .unwrap()
+        .expect("the write is journalled under the call that made it");
+    assert_eq!(
+        chat, f.chat,
+        "the row names its own chat, so no caller has to"
+    );
+    assert_eq!(change.path, f.path("new.txt"));
+    assert_eq!(change.op, EditOp::Create);
+    assert_eq!((change.diff.added, change.diff.removed), (3, 0));
+    assert!(!change.binary);
+    let text: String = change.diff.hunks.iter().map(|h| h.text.clone()).collect();
+    assert!(text.contains("+one"), "{text}");
+    assert!(text.contains("+three"), "{text}");
+
+    assert!(
+        f.workspace.call_change("call-that-read").unwrap().is_none(),
+        "a call that changed nothing has no diff, rather than an empty one"
+    );
 }

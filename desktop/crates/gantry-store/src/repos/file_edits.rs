@@ -66,6 +66,16 @@ pub fn for_path(conn: &Connection, chat_id: ChatId, path: &str) -> Result<Vec<Fi
     Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
 }
 
+/// The edits one tool call made, oldest first. A call writes one row, but `apply_patch` over
+/// two files would write two, and the caller decides what to do with that.
+pub fn for_call(conn: &Connection, tool_call_id: &str) -> Result<Vec<FileEditRecord>> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {COLUMNS} FROM file_edits WHERE tool_call_id = ?1 ORDER BY applied_at, id"
+    ))?;
+    let rows = stmt.query_map(params![tool_call_id], read)?;
+    Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
+}
+
 /// Every edit in one chat, oldest first: the Changes pane, and whole-session Revert.
 pub fn for_chat(conn: &Connection, chat_id: ChatId) -> Result<Vec<FileEditRecord>> {
     let mut stmt = conn.prepare(&format!(

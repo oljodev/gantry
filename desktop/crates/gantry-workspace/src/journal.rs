@@ -96,6 +96,14 @@ impl Journal {
             .map_err(|e| JournalError::Store(e.to_string()))
     }
 
+    /// The edits one tool call made, oldest first.
+    pub fn for_call(&self, tool_call_id: &str) -> Result<Vec<FileEditRecord>, JournalError> {
+        let id = tool_call_id.to_owned();
+        self.store
+            .read(move |conn| file_edits::for_call(conn, &id))
+            .map_err(|e| JournalError::Store(e.to_string()))
+    }
+
     /// This chat's edits to every file, oldest first: the Changes pane.
     pub fn for_chat(&self, chat: ChatId) -> Result<Vec<FileEditRecord>, JournalError> {
         self.store

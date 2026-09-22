@@ -119,6 +119,24 @@ export const commands = {
 	sessionChanges: (chatId: ChatId) => typedError<FileChangeDto[], ErrorDto>(__TAURI_INVOKE("session_changes", { chatId })),
 	/**  One file's diff, from what it was before this session to what it is now. */
 	sessionFileDiff: (chatId: ChatId, path: string) => typedError<FileDiffDto, ErrorDto>(__TAURI_INVOKE("session_file_diff", { chatId, path })),
+	/**
+	 *  The diff one tool call made, for the row that call drew and the tab it opens.
+	 * 
+	 *  The activity row draws the hunks its own result carried, which is instant and needs nothing
+	 *  from here. `filesystem__write_file` carries none — a whole-file write's diff is the file
+	 *  again, and putting it in the result would send the content back to the model in every later
+	 *  request and blow the result cap on a large file — so the row and the pane ask the journal,
+	 *  which has held the hunks all along. `None` when the call changed no file.
+	 */
+	callFileDiff: (callId: string) => typedError<{
+	path: string,
+	display: string,
+	op: EditOp,
+	added: number,
+	removed: number,
+	binary: boolean,
+	hunks: HunkDto[],
+} | null, ErrorDto>(__TAURI_INVOKE("call_file_diff", { callId })),
 	/**  Puts one file back to what it was before this session touched it. */
 	revertFile: (chatId: ChatId, path: string) => typedError<RevertedDto, ErrorDto>(__TAURI_INVOKE("revert_file", { chatId, path })),
 	/**
@@ -939,7 +957,10 @@ export type ChatSettings = {
 	/**  The same pair for the Code surface, which starts somewhere else (docs/plan/16 §9). */
 	code_default_mode?: Mode,
 	code_default_guard?: boolean,
-	/**  The model for new chats; `None` means [`ModelRef::default_model`]. */
+	/**
+	 *  The model for new chats. `None` until the user picks one: Gantry proposes no model of
+	 *  its own, so the composer asks rather than quietly spending on a model nobody chose.
+	 */
 	default_model?: ModelRef | null,
 	default_effort?: ReasoningEffort,
 	/**  Settings → General → Custom instructions (docs/plan/10 §2, layer 4). At most 4000 chars. */

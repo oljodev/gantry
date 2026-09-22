@@ -3,7 +3,7 @@
 
 use gantry_core::{
     ChatId, Mode, ModelRef, ProjectDefaults, ProjectFileDto, ProjectFileId, ProjectGrant,
-    ProjectId, ReasoningEffort, RiskTier, now_ms,
+    ProjectId, ProviderId, ReasoningEffort, RiskTier, now_ms,
 };
 use gantry_store::{
     Store,
@@ -44,7 +44,7 @@ fn chat(project: Option<ProjectId>) -> chats::ChatRecord {
         pinned: false,
         mode: Mode::AutoEdit,
         guard: true,
-        model: ModelRef::default_model(),
+        model: ModelRef::new(ProviderId::openrouter(), "test/model"),
         effort: ReasoningEffort::Medium,
         web_search: false,
         instructions: String::new(),
