@@ -5,7 +5,7 @@ export const productMenu: NavLink[] = [
   { label: 'Product tour', href: '/product/', hint: 'Chat, agent and connectors in one window' },
   { label: 'Connectors', href: '/connectors/', hint: 'Built-in tools and MCP servers' },
   { label: 'Pricing', href: '/pricing/', hint: 'Free. Bring your own keys' },
-  { label: 'Download', href: '/download/', hint: 'macOS, Windows and Linux' },
+  { label: 'Download', href: '/download/', hint: 'Windows and Linux' },
   { label: 'Changelog', href: '/changelog/', hint: 'What shipped, release by release' },
 ];
 

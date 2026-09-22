@@ -1,11 +1,10 @@
 ---
-/** The three OS buttons. Disabled (aria-disabled, "Coming soon") until the releases API reports stable assets;
+/** One button per platform with a build. Disabled (aria-disabled, "Coming soon") until the releases API reports stable assets;
  *  then releases.ts points them at releases/latest/download/<asset>. Without JavaScript they stay disabled. */
 import Icon from '@/components/Icon.astro';
 interface Props { class?: string; size?: 'md' | 'lg' }
 const { class: cls, size = 'md' } = Astro.props;
 const builds = [
-  { os: 'mac', label: 'macOS', icon: 'apple-logo', file: '.dmg' },
   { os: 'win', label: 'Windows', icon: 'windows-logo', file: '.exe' },
   { os: 'linux', label: 'Linux', icon: 'linux-logo', file: '.AppImage' },
 ] as const;

@@ -1,4 +1,5 @@
-/** Marks the visitor's platform: the primary download button says which build it is, download cards highlight it. */
+/** Marks the visitor's platform: the primary download button says which build it is, download cards highlight it.
+ *  Only for a platform with a build: a Mac visitor gets a plain "Download" to the page that says macOS is later. */
 export type Os = 'mac' | 'win' | 'linux';
 const NAMES: Record<Os, string> = { mac: 'macOS', win: 'Windows', linux: 'Linux' };
 
@@ -12,8 +13,11 @@ export function detectOs(): Os | null {
   return null;
 }
 
+/** Platforms a release has a build for; macOS joins once it can be signed. */
+export const BUILT: readonly Os[] = ['win', 'linux'];
+
 const os = detectOs();
-if (os) {
+if (os && BUILT.includes(os)) {
   document.documentElement.dataset.os = os;
   document.querySelectorAll<HTMLElement>('[data-os-name]').forEach((el) => { el.textContent = `for ${NAMES[os]}`; el.hidden = false; });
   document.querySelectorAll<HTMLElement>(`[data-os-card="${os}"]`).forEach((el) => el.setAttribute('data-primary', ''));
