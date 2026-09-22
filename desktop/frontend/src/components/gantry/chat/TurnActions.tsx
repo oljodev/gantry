@@ -2,12 +2,14 @@ import {
   ArrowClockwiseIcon,
   CheckIcon,
   CopyIcon,
+  DotsThreeIcon,
   ThumbsDownIcon,
   ThumbsUpIcon,
 } from '@phosphor-icons/react';
 import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { Turn } from '@/fixtures/types';
 import { useRelativeTime } from '@/lib/relativeTime';
@@ -24,8 +26,8 @@ export interface TurnActionsProps {
 }
 
 /**
- * The row under a finished reply (15 §7): copy, good, bad, retry, then when it ended and the
- * `meta` stats (model, duration, tokens). Icon buttons at `control-sm`, `fg-3` until hover.
+ * The row under a finished reply (15 §7): copy, good, bad, retry, then when it ended, the model,
+ * and `⋯` for the numbers. Icon buttons at `control-sm`, `fg-3` until hover.
  */
 export function TurnActions({ turn, pinned, onCopy, onRate, onRetry }: TurnActionsProps) {
   const [copied, setCopied] = useState(false);
@@ -78,42 +80,76 @@ export function TurnActions({ turn, pinned, onCopy, onRate, onRetry }: TurnActio
       )}
       <span className="ml-2 flex items-center gap-3 whitespace-nowrap">
         {ago && <span>{ago}</span>}
-        {f && (
-          <>
-            <span>{f.model}</span>
-            <span>{(f.durationMs / 1000).toFixed(1)} s</span>
-            <span>
-              {f.tokensIn.toLocaleString()} in · {f.tokensOut.toLocaleString()} out
-              {/* What the provider served from its prompt cache: the answer to "is the
-                  frozen prefix still the frozen prefix" (02 §3), where a person can see it. */}
-              {f.cached !== undefined && ` · ${f.cached.toLocaleString()} cached`}
-              {/* What the sub agents under this turn spent (18 §7): a turn that cost eight
-                  times what its own transcript explains is the first thing to want explained. */}
-              {f.subTokens !== undefined && ` · ${f.subTokens.toLocaleString()} in sub agents`}
-            </span>
-            {f.tokensPerSecond !== undefined && (
-              <span title="Output tokens per second, from each step's first token to its last. The wait before the first token is left out: that is queueing, not speed.">
-                {speedLabel(f.tokensPerSecond)}
-              </span>
-            )}
-            {f.costUsd !== undefined && (
-              // The bill where the provider sends one, and the list price otherwise — marked, so
-              // an estimate never passes for an invoice.
-              <span
-                title={
-                  f.costEstimated
-                    ? `About $${f.costUsd}, worked out from the model's list prices: this provider does not say what it billed.`
-                    : `$${f.costUsd}, as the provider billed it.`
-                }
-              >
-                {f.costEstimated ? '~' : ''}
-                {costLabel(f.costUsd)}
-              </span>
-            )}
-          </>
-        )}
+        {f && <span>{f.model}</span>}
       </span>
+      {f && <Details footer={f} />}
     </div>
+  );
+}
+
+type Footer = NonNullable<Turn['footer']>;
+
+/**
+ * The numbers behind a reply — time, tokens, speed, price — behind `⋯` rather than across the
+ * row (15 §7). All of them are worth having and none of them is worth reading on every reply:
+ * laid out in the row they were six figures under every answer, which is a dashboard where a
+ * conversation should be. The time and the model stay in the row; the rest is one click away.
+ */
+function Details({ footer: f }: { footer: Footer }) {
+  const rows: [string, string, string?][] = [
+    ['Time', `${(f.durationMs / 1000).toFixed(1)} s`],
+    ['Input', `${f.tokensIn.toLocaleString()} tokens`],
+    ['Output', `${f.tokensOut.toLocaleString()} tokens`],
+  ];
+  // What the provider served from its prompt cache: the answer to "is the frozen prefix still
+  // the frozen prefix" (02 §3). Absent when it served none, which is the answer too.
+  if (f.cached !== undefined) rows.push(['Cached', `${f.cached.toLocaleString()} tokens`]);
+  // What the sub agents under this turn spent (18 §7): a turn that cost eight times what its own
+  // transcript explains is the first thing to want explained.
+  if (f.subTokens !== undefined)
+    rows.push(['Sub agents', `${f.subTokens.toLocaleString()} tokens`]);
+  if (f.tokensPerSecond !== undefined)
+    rows.push([
+      'Speed',
+      speedLabel(f.tokensPerSecond),
+      'From each step’s first token to its last; the wait before the first token is queueing, not speed.',
+    ]);
+  if (f.costUsd !== undefined)
+    rows.push([
+      'Cost',
+      `${f.costEstimated ? '~' : ''}${costLabel(f.costUsd)}`,
+      // The bill where the provider sends one, the list price otherwise — and said, so an
+      // estimate never passes for an invoice.
+      f.costEstimated
+        ? 'Estimated from the model’s list prices; this provider does not say what it billed.'
+        : 'As the provider billed it.',
+    ]);
+  return (
+    <Popover>
+      <PopoverTrigger
+        render={
+          <Button variant="ghost" size="icon-sm" aria-label="Reply details" title="Reply details" />
+        }
+      >
+        <DotsThreeIcon />
+      </PopoverTrigger>
+      <PopoverContent side="top" className="w-64 gap-0 p-2">
+        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-meta tnum">
+          {rows.map(([label, value, hint]) => (
+            // The hint sits on the cells: the wrapper is `display: contents`, which has no box
+            // to hover.
+            <div key={label} className="contents">
+              <dt className="text-fg-3" title={hint}>
+                {label}
+              </dt>
+              <dd className="text-right text-fg" title={hint}>
+                {value}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      </PopoverContent>
+    </Popover>
   );
 }
 
