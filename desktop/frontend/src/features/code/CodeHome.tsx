@@ -51,9 +51,7 @@ export function CodeHome() {
             <ModelPicker
               variant="secondary"
               value={model}
-              onChange={(m) =>
-                updateSettings.mutate({ chat: { ...defaults, default_model: m } })
-              }
+              onChange={(m) => updateSettings.mutate({ chat: { ...defaults, default_model: m } })}
             />
             <Button onClick={() => void start(model)} disabled={busy || model === null}>
               <FolderOpenIcon />

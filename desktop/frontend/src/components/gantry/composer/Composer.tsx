@@ -219,8 +219,7 @@ export function Composer({
     setAppliedNonce(prefill.nonce);
     setText(prefill.text);
   }
-  const canSend =
-    (text.trim().length > 0 || attachments.length > 0) && !running && model !== null;
+  const canSend = (text.trim().length > 0 || attachments.length > 0) && !running && model !== null;
 
   const add = (more: PendingAttachment[]) => {
     if (more.length === 0) return;
