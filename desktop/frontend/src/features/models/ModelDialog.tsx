@@ -79,7 +79,8 @@ export function ModelDialog({
 }: {
   open: boolean;
   onClose: () => void;
-  value: ModelRef;
+  /** `null` where nothing has been picked yet — a new chat, or the guard's default. */
+  value: ModelRef | null;
   onChange: (model: ModelRef) => void;
 }) {
   const { providers, isPending } = useModelCatalog();
@@ -112,8 +113,9 @@ export function ModelDialog({
     list.includes(item) ? list.filter((x) => x !== item) : [...list, item];
 
   const options = chat.model_options ?? {};
-  const selected = models.find((m) => m.key === modelKey(value));
-  const chosenOptions: MediaOptions | undefined = options[modelKey(value)];
+  const currentKey = value ? modelKey(value) : null;
+  const selected = models.find((m) => m.key === currentKey);
+  const chosenOptions: MediaOptions | undefined = currentKey ? options[currentKey] : undefined;
 
   const choose = (m: CatalogModel) => {
     onChange(m.ref);
@@ -124,7 +126,8 @@ export function ModelDialog({
   };
 
   const setOption = (patch: Partial<MediaOptions>) => {
-    const key = modelKey(value);
+    if (!currentKey) return;
+    const key = currentKey;
     update.mutate({
       chat: {
         ...chat,
@@ -163,7 +166,7 @@ export function ModelDialog({
     <ModelRow
       key={m.key}
       model={m}
-      selected={m.ref.provider === value.provider && m.ref.model === value.model}
+      selected={m.key === currentKey}
       favourite={favourites.some((f) => modelKey(f) === m.key)}
       showProvider={providers.filter((p) => p.hasKey).length > 1}
       onChoose={() => choose(m)}

@@ -17,8 +17,9 @@ import { isTauri } from '@/lib/ipc/client';
 import { useChatMutations } from '@/lib/ipc/hooks/chats';
 import { useConnectorMutations, useConnectors } from '@/lib/ipc/hooks/connectors';
 import { useProject } from '@/lib/ipc/hooks/projects';
+import { chatDefaults } from '@/lib/settingsDefaults';
 import { useUiStore } from '@/lib/stores/uiStore';
-import { useSettings } from '@/lib/ipc/hooks/settings';
+import { useSettings, useUpdateSettings } from '@/lib/ipc/hooks/settings';
 import { useRunStore } from '@/lib/stores/runStore';
 
 const PROMPTS: { icon: React.ReactNode; title: string; text: string; prompt: string }[] = [
@@ -42,8 +43,6 @@ const PROMPTS: { icon: React.ReactNode; title: string; text: string; prompt: str
   },
 ];
 
-const DEFAULT_MODEL: ModelRef = { provider: 'openrouter', model: 'deepseek/deepseek-v4-flash' };
-
 /**
  * The empty chat (15 A20, §8): the hero line, three prompt cards, the composer, a hint. Sending
  * creates the chat with the composer's choices, starts the turn and opens it.
@@ -52,6 +51,7 @@ export function Welcome({ projectId }: { projectId?: string } = {}) {
   const navigate = useNavigate();
   const project = useProject(projectId ?? null);
   const settings = useSettings();
+  const updateSettings = useUpdateSettings();
   const { create, update, addRoot } = useChatMutations();
   const installedConnectors = useConnectors();
   const { attach: attachConnector } = useConnectorMutations();
@@ -96,15 +96,26 @@ export function Welcome({ projectId }: { projectId?: string } = {}) {
     [installedConnectors.data, connectors],
   );
 
-  const chatDefaults = settings.data?.chat;
-  const effectiveMode = mode ?? chatDefaults?.default_mode ?? 'auto_edit';
-  const effectiveGuard = guard ?? chatDefaults?.default_guard ?? true;
-  const effectiveModel = model ?? chatDefaults?.default_model ?? DEFAULT_MODEL;
-  const effectiveEffort = effort ?? chatDefaults?.default_effort ?? 'medium';
+  const defaults = chatDefaults(settings.data);
+  const effectiveMode = mode ?? defaults.default_mode;
+  const effectiveGuard = guard ?? defaults.default_guard;
+  // No model until somebody picks one. Gantry used to propose one here, which meant the picker
+  // named a model — and a provider — the user had never chosen, on a machine with no key at
+  // all. The composer asks instead, and send stays off until it is answered.
+  const effectiveModel = model ?? defaults.default_model;
+  const effectiveEffort = effort ?? defaults.default_effort;
 
   const onSend = async (text: string, attachments: PendingAttachment[]) => {
     if (!isTauri()) {
       toast.add({ title: 'No backend', description: 'Run the app to chat.', type: 'error' });
+      return;
+    }
+    if (!effectiveModel) {
+      toast.add({
+        title: 'Pick a model first',
+        description: 'Choose one in the composer, and it becomes the default for new chats.',
+        type: 'error',
+      });
       return;
     }
     setBusy(true);
@@ -215,7 +226,13 @@ export function Welcome({ projectId }: { projectId?: string } = {}) {
         onEffortChange={setEffort}
         onModeChange={setMode}
         onGuardChange={setGuard}
-        onModelChange={setModel}
+        onModelChange={(m) => {
+          setModel(m);
+          // The first pick is also the answer to "which model?" for every chat after this one.
+          // Asking once is the point; asking on every new chat would be worse than the default
+          // this replaced.
+          updateSettings.mutate({ chat: { ...defaults, default_model: m } });
+        }}
         onBrowseConnectors={() => openCustomize('connectors')}
         onSend={(text, attachments) => void onSend(text, attachments)}
       />

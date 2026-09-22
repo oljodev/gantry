@@ -1,9 +1,11 @@
 import { CodeIcon, FolderOpenIcon, PlugIcon } from '@phosphor-icons/react';
 
 import { Button } from '@/components/ui/button';
+import { ModelPicker } from '@/components/gantry/composer/ModelPicker';
 import { useNewCodeSession } from '@/features/code/session';
 import { useChats } from '@/lib/ipc/hooks/chats';
-import { useSettings } from '@/lib/ipc/hooks/settings';
+import { useSettings, useUpdateSettings } from '@/lib/ipc/hooks/settings';
+import { chatDefaults } from '@/lib/settingsDefaults';
 import { folderName } from '@/lib/folders';
 import { Link } from '@tanstack/react-router';
 
@@ -18,7 +20,10 @@ import { Link } from '@tanstack/react-router';
  */
 export function CodeHome() {
   const { start, busy } = useNewCodeSession();
-  const model = useSettings().data?.chat?.default_model ?? null;
+  const settings = useSettings();
+  const updateSettings = useUpdateSettings();
+  const defaults = chatDefaults(settings.data);
+  const model = defaults.default_model;
   const recent = (useChats('code').data ?? [])
     .filter((c) => !c.archived)
     .sort((a, b) => b.last_message_at - a.last_message_at)
@@ -38,10 +43,23 @@ export function CodeHome() {
             A code session needs somewhere to work. Choose a folder and Gantry can read it, search
             it and edit files in it — and nowhere else.
           </p>
-          <Button className="mt-5" onClick={() => void start(model)} disabled={busy}>
-            <FolderOpenIcon />
-            {busy ? 'Opening…' : 'Choose a folder'}
-          </Button>
+          {/* A session needs a model as much as it needs a folder, and there is no model
+              Gantry picks on the user's behalf (11 §1). The picker is here rather than in an
+              error toast, because the folder button is the only thing on this screen and
+              telling somebody to go and choose a model somewhere else is not an answer. */}
+          <div className="mt-5 flex items-center gap-2">
+            <ModelPicker
+              variant="secondary"
+              value={model}
+              onChange={(m) =>
+                updateSettings.mutate({ chat: { ...defaults, default_model: m } })
+              }
+            />
+            <Button onClick={() => void start(model)} disabled={busy || model === null}>
+              <FolderOpenIcon />
+              {busy ? 'Opening…' : 'Choose a folder'}
+            </Button>
+          </div>
           <p className="mt-4 flex items-center gap-1.5 text-meta text-fg-3">
             <PlugIcon className="size-3.5" />
             Opening a session turns on the Filesystem, Code editor and Shell connectors for it.

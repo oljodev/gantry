@@ -23,7 +23,9 @@ export function ModelPicker({
   label: name = 'Model',
   children,
 }: {
-  value: ModelRef;
+  /** `null` until the user has picked one. Gantry proposes no model of its own: the button
+   * then reads "Select model" rather than naming something nobody chose. */
+  value: ModelRef | null;
   onChange: (m: ModelRef) => void;
   /** `secondary` for a form row, where the control has to look like a control. */
   variant?: 'ghost' | 'secondary';
@@ -47,7 +49,7 @@ export function ModelPicker({
       >
         {children ?? (
           <>
-            <span className="max-w-56 truncate">{label}</span>
+            <span className={cn('max-w-56 truncate', value === null && 'text-fg-2')}>{label}</span>
             <CaretDownIcon className="size-3 opacity-70" />
           </>
         )}

@@ -38,7 +38,7 @@ const KEYWORDS: Record<Section, string> = {
   general: 'mode guard instructions artifacts suggestions defaults',
   appearance: 'theme dark light density font colours',
   providers: 'api key openrouter anthropic openai gemini xai model models pricing endpoint',
-  guard: 'judge guardrails blocked decisions sensitive paths',
+  guard: 'judge guardrails blocked decisions sensitive paths utility model title naming compaction',
   data: 'directory export backup database privacy telemetry vacuum',
   advanced: 'tokens reply length tool rounds developer prompt logs secret store',
   about: 'version licence update platform',

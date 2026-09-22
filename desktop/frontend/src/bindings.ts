@@ -1421,9 +1421,15 @@ export type GuardDecision = {
  */
 export type GuardSettings = {
 	/**
-	 *  The model the guard asks. `None` means the cheapest fast model of the chat's own
-	 *  provider, from `assets/models/judge_defaults.toml` — which is what you want almost
-	 *  always, and is why this is an override rather than a choice the user has to make.
+	 *  The model Gantry calls on the user's behalf: the guard's decisions, the title a chat is
+	 *  given after its first exchange, and the summary that compacts a long transcript. `None`
+	 *  means the cheapest fast model of the chat's own provider, from
+	 *  `assets/models/judge_defaults.toml` — which is what you want almost always, and is why
+	 *  this is an override rather than a choice the user has to make.
+	 * 
+	 *  One setting for all three on purpose. Somebody who does not want a given model called
+	 *  for them means every call, not the guard's alone, and a title quietly costing a request
+	 *  on a model they never picked is exactly the surprise this answers.
 	 */
 	judge_model?: ModelRef | null,
 };

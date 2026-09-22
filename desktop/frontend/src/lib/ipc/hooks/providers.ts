@@ -88,7 +88,9 @@ export function modelCapabilities(
 }
 
 /** The display name of a model, or its id when the catalog does not know it. */
-export function modelLabel(catalog: CatalogProvider[], ref: ModelRef): string {
+/** What a model is called. `null` is a chat with no model picked yet, which is every new one. */
+export function modelLabel(catalog: CatalogProvider[], ref: ModelRef | null): string {
+  if (!ref) return 'Select model';
   const p = catalog.find((c) => c.id === ref.provider);
   return p?.models.find((m) => m.id === ref.model)?.display_name ?? ref.model;
 }

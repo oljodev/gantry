@@ -669,6 +669,23 @@ async fn a_text_turn_completes_and_is_recorded() {
     assert!(m.list_active().is_empty());
 }
 
+/// 11 §1: Gantry proposes no model of its own. A chat created before anybody has picked one is
+/// refused rather than quietly opened against a model — and a provider — the user never chose.
+#[tokio::test]
+async fn a_chat_needs_a_model_somebody_picked() {
+    let h = manager_with(Vec::new(), Duration::ZERO, Settings::default());
+    h.settings.write().unwrap().chat.default_model = None;
+    let refused = h.m.create_chat(None);
+    assert!(
+        matches!(&refused, Err(e) if e.to_string().contains("no model is selected")),
+        "expected a refusal, got {refused:?}"
+    );
+    // Naming one at the call site is enough; it does not have to be the setting.
+    let named = ModelRef::new(ProviderId::openrouter(), "test/model");
+    let chat = h.m.create_chat(Some(named.clone())).unwrap();
+    assert_eq!(h.m.chats().get(chat.id).unwrap().unwrap().model, named);
+}
+
 /// 04 §6: one setting decides which model is called on the user's behalf, and it covers the
 /// title generator too — a model nobody chose must not appear in their provider's log just
 /// because a chat needed naming.
@@ -679,11 +696,7 @@ async fn the_utility_model_setting_names_the_chat() {
         ProviderId::new("anthropic"),
         "claude-haiku-4-5",
     ));
-    let m = manager_with(
-        vec![vec![text("Hello"), end()]],
-        Duration::ZERO,
-        settings,
-    );
+    let m = manager_with(vec![vec![text("Hello"), end()]], Duration::ZERO, settings);
     let chat = m.chat();
     let sink = Arc::new(Collect::default());
     m.start(

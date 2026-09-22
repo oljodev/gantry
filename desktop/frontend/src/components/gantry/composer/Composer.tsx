@@ -83,7 +83,10 @@ const EFFORT_LABEL: Record<ReasoningEffort, string> = {
 export interface ComposerProps {
   mode: Mode;
   guard: boolean;
-  model: ModelRef;
+  /** `null` until a model has been picked. Send stays disabled until it is: there is nothing
+   * sensible to send a message to, and no model Gantry is entitled to pick on the user's
+   * behalf. */
+  model: ModelRef | null;
   /** The folders this chat may reach; the file tools work in these and nowhere else. */
   roots: string[];
   /** The project this chat is filed in, when it is in one (09 M11): its chip says so, because
@@ -216,7 +219,8 @@ export function Composer({
     setAppliedNonce(prefill.nonce);
     setText(prefill.text);
   }
-  const canSend = (text.trim().length > 0 || attachments.length > 0) && !running;
+  const canSend =
+    (text.trim().length > 0 || attachments.length > 0) && !running && model !== null;
 
   const add = (more: PendingAttachment[]) => {
     if (more.length === 0) return;
@@ -619,7 +623,13 @@ export function Composer({
                   <ArrowUpIcon weight="bold" />
                 </TooltipTrigger>
                 <TooltipContent>
-                  Send <Kbd>↵</Kbd>
+                  {model === null ? (
+                    'Pick a model first'
+                  ) : (
+                    <>
+                      Send <Kbd>↵</Kbd>
+                    </>
+                  )}
                 </TooltipContent>
               </Tooltip>
             )}

@@ -22,9 +22,14 @@ import {
 import { cn } from '@/lib/utils';
 
 /**
- * Which model the guard asks (04 §6). Empty means the cheapest fast model of whichever provider
- * the chat is already using, from `judge_defaults.toml` — right for almost everybody, which is
- * why this is an override to reach for rather than a choice to make.
+ * Which model Gantry calls on the user's behalf (04 §6): the guard's decisions, the title a
+ * chat is given after its first exchange, and the summary that compacts a long transcript.
+ *
+ * Empty means the cheapest fast model of whichever provider the chat is already using, from
+ * `judge_defaults.toml` — right for almost everybody, which is why this is an override to reach
+ * for rather than a choice to make. It is one row for all three because the question people
+ * actually ask is "what is this model doing in my log?", and that question is not about the
+ * guard in particular.
  */
 export function JudgeModelRow() {
   const settings = useSettings();
@@ -33,8 +38,8 @@ export function JudgeModelRow() {
   const chosen = settings.data?.guard?.judge_model ?? null;
   return (
     <SettingsRow
-      label="Guard model"
-      hint="The model that decides in Auto mode. By default, the cheapest fast model of the provider the chat is already using, so no second key is needed."
+      label="Utility model"
+      hint="The model Gantry calls on your behalf: guard decisions in Auto mode, the title a chat is given, and the summary that compacts a long one. By default, the cheapest fast model of the provider the chat is already using, so no second key is needed."
     >
       <div className="flex items-center gap-2">
         <Button variant="secondary" size="sm" onClick={() => setPicking(true)}>
@@ -52,7 +57,7 @@ export function JudgeModelRow() {
         <ModelDialog
           open={picking}
           onClose={() => setPicking(false)}
-          value={chosen ?? { provider: 'openrouter', model: '' }}
+          value={chosen}
           onChange={(model) => {
             update.mutate({ guard: { judge_model: model } });
             setPicking(false);

@@ -1,7 +1,11 @@
 # Judge model per provider: the cheapest fast model of the provider the chat uses
-# (docs/plan/04 §6, D10). Also names chats (the title generator, M2). Keys are provider ids
-# (`openrouter`, `anthropic`, …) or, as a fallback, client kinds (`openai_chat`, …); a provider
-# with neither (a custom endpoint) uses the chat's own model.
+# (docs/plan/04 §6, D10). The same model names chats (the title generator, M2) and writes the
+# summary that compacts a long transcript (02 §6), so every call Gantry makes on the user's
+# behalf goes to one model they can see and change — Settings → Guard → Utility model overrides
+# the whole table.
+#
+# Keys are provider ids (`openrouter`, `anthropic`, …) or, as a fallback, client kinds
+# (`openai_chat`, …); a provider with neither (a custom endpoint) uses the chat's own model.
 
 [judge]
 openrouter = "deepseek/deepseek-v4-flash"

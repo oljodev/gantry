@@ -92,7 +92,9 @@ Rules run before the judge and are free:
 
 ### Model
 
-The judge uses the cheapest fast model of the provider the chat already uses, so no extra key is needed. Defaults ship in `desktop/assets/models/judge_defaults.toml` and are overridable in Settings and per project:
+The judge uses the cheapest fast model of the provider the chat already uses, so no extra key is needed. Defaults ship in `desktop/assets/models/judge_defaults.toml` and are overridable in Settings and per project.
+
+The same model does every call Gantry makes on the user's behalf: the judge's decisions, the title a chat is given after its first exchange (01 §3 step 7) and the summary that compacts a long transcript (02 §6). One setting covers all three — Settings → Guard's **Utility model** — because the question a user asks when an unfamiliar model shows up in their provider's log is "what is this doing here?", and that question is not about the guard in particular. Overriding it names a provider as well as a model: an override whose provider has no key resolves to nothing rather than falling back to the model the user has just said no to.
 
 | Chat provider | Default judge model (as of September 2026) |
 |---------------|--------------------------------------------|

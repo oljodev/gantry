@@ -331,7 +331,7 @@ checks the content type and says so either way.
 
 **Context budget.** Estimate tokens (last known usage + chars/4 for new content). Tool results are capped at ingestion (default 50 KB, head and tail kept, the full output lives in a blob and is viewable in the UI); capping at ingestion is not a history edit. When the estimate passes 75% of the context window:
 
-- Anthropic: server-side context editing (`clear_tool_uses_20250919`) first; server-side compaction when available; client-side "simple compaction" as the last resort (a summary produced by the judge model replaces the whole history, then the transcript continues append-only from a compaction marker message). Never keep-tail compaction.
+- Anthropic: server-side context editing (`clear_tool_uses_20250919`) first; server-side compaction when available; client-side "simple compaction" as the last resort (a summary produced by the utility model of 04 §6 — the one the guard and the title generator use — replaces the whole history, then the transcript continues append-only from a compaction marker message). Never keep-tail compaction.
 - Others: keep-tail compaction (summarize older turns, keep the last N turns verbatim). The compaction marker is a `System` message so the UI can show "Earlier conversation summarized".
 
 ### As built (2026-09-11)
