@@ -378,7 +378,7 @@ fn login_shell() -> (PathBuf, Vec<String>) {
                 return (PathBuf::from(candidate), Vec::new());
             }
         }
-        return (PathBuf::from("cmd.exe"), Vec::new());
+        (PathBuf::from("cmd.exe"), Vec::new())
     }
     #[cfg(not(windows))]
     {
