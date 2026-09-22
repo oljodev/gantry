@@ -452,34 +452,36 @@ export function Composer({
                     )}
                   </DropdownMenuSubTrigger>
                   <DropdownMenuSubContent className="w-72">
-                    <DropdownMenuLabel>Pinned to this chat</DropdownMenuLabel>
-                    {(skills ?? []).length === 0 ? (
-                      <DropdownMenuItem disabled>No skills are switched on</DropdownMenuItem>
-                    ) : (
-                      // Pinned first, so what is on this chat is never below a fold.
-                      [...(skills ?? [])]
-                        .sort(
-                          (a, b) =>
-                            Number(pinnedSkills?.includes(b.name) ?? false) -
-                            Number(pinnedSkills?.includes(a.name) ?? false),
-                        )
-                        .slice(0, 12)
-                        .map((skill) => (
-                          <DropdownMenuCheckboxItem
-                            key={skill.name}
-                            checked={pinnedSkills?.includes(skill.name) ?? false}
-                            onCheckedChange={(on) => onPinSkill(skill.name, on)}
-                            className="h-auto items-start py-1.5"
-                          >
-                            <span className="flex min-w-0 flex-col">
-                              <span>{skill.name}</span>
-                              <span className="truncate text-meta text-fg-3">
-                                {skill.description}
+                    <DropdownMenuGroup>
+                      <DropdownMenuLabel>Pinned to this chat</DropdownMenuLabel>
+                      {(skills ?? []).length === 0 ? (
+                        <DropdownMenuItem disabled>No skills are switched on</DropdownMenuItem>
+                      ) : (
+                        // Pinned first, so what is on this chat is never below a fold.
+                        [...(skills ?? [])]
+                          .sort(
+                            (a, b) =>
+                              Number(pinnedSkills?.includes(b.name) ?? false) -
+                              Number(pinnedSkills?.includes(a.name) ?? false),
+                          )
+                          .slice(0, 12)
+                          .map((skill) => (
+                            <DropdownMenuCheckboxItem
+                              key={skill.name}
+                              checked={pinnedSkills?.includes(skill.name) ?? false}
+                              onCheckedChange={(on) => onPinSkill(skill.name, on)}
+                              className="h-auto items-start py-1.5"
+                            >
+                              <span className="flex min-w-0 flex-col">
+                                <span>{skill.name}</span>
+                                <span className="truncate text-meta text-fg-3">
+                                  {skill.description}
+                                </span>
                               </span>
-                            </span>
-                          </DropdownMenuCheckboxItem>
-                        ))
-                    )}
+                            </DropdownMenuCheckboxItem>
+                          ))
+                      )}
+                    </DropdownMenuGroup>
                     {onBrowseSkills && (
                       <>
                         <DropdownMenuSeparator />
