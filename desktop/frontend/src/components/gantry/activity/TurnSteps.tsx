@@ -15,7 +15,8 @@ export type StepBlock = Extract<Block, { kind: 'thinking' | 'activity' }>;
 /**
  * A turn's work between two pieces of text, folded behind one line (15 A7): "Created an
  * artifact, ran 2 commands" once done, the current step ("Creating Dashboard…") while it runs.
- * Collapsed by default; click or → expands to the thinking blocks and activity rows in order.
+ * Collapsed by default — in both surfaces — and click or → expands to the thinking blocks and
+ * activity rows in order.
  * A fold with reasoning alone is the thinking line itself.
  *
  * `running` is the turn's own state, not the rows': a stopped turn never spins, even if a call
@@ -34,9 +35,13 @@ export function TurnSteps({
   running?: boolean;
   defaultOpen?: boolean;
   /**
-   * The code surface (16 §6). A chat folds its tool work away because the answer is the point;
-   * a code session's work *is* the answer, so the steps start open and each one can be opened
-   * further to the diff or the output it produced.
+   * The code surface (16 §6): each row can be opened in place to the diff or the output it
+   * produced, rather than only into the pane.
+   *
+   * It no longer opens the fold itself. A session's work being the point does not mean every
+   * fold of it should be open before anybody asks: what that produced was a screen of rows
+   * scrolling past under a line that already said "Edited a file, used Filesystem", and a
+   * reader who wanted the summary had to close each one by hand (2026-09-22).
    */
   detailed?: boolean;
   onOpen?: (item: ActivityItem) => void;
@@ -45,7 +50,7 @@ export function TurnSteps({
   /** **Revert** on an edit row, by path (16 §5). */
   onRevert?: (path: string) => void;
 }) {
-  const [open, setOpen] = useState(defaultOpen || detailed);
+  const [open, setOpen] = useState(defaultOpen);
   const items = steps.flatMap((s) => (s.kind === 'activity' ? s.items : []));
   // Context, notices and the sub-agent line are always visible; only reasoning and tool work
   // folds. A sub agent's row is the one line the parent's chat says about a conversation the

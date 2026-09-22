@@ -19,6 +19,44 @@ import { useCallback, useEffect, useState } from 'react';
 /** How close to the bottom still counts as being at the bottom, in pixels. */
 const SLACK = 24;
 
+/**
+ * How far a scroll has to move before its direction is believed, in pixels.
+ *
+ * Reflow moves the scroller by a pixel or two on its own — a streaming line wrapping, an image
+ * settling, the live turn being swapped for the stored one — and reading that as "the reader
+ * scrolled up" would stop following for no reason anybody could see.
+ */
+const SLOP = 8;
+
+/** Where following stands, and whether a jump of our own is still travelling. */
+export interface FollowState {
+  following: boolean;
+  jumping: boolean;
+}
+
+/**
+ * What one scroll event means for following: the rule, on its own, so it can be read and
+ * tested without a scroller.
+ *
+ * Direction decides, not position. A notch of the wheel near the bottom leaves the reader
+ * still within `SLACK` of it, so a rule written on position alone put following straight back
+ * on and the next token pulled them down again — which is what made nudging the feed a little
+ * impossible (2026-09-22). Coming back down to the bottom starts it again, as it always did.
+ */
+export function afterScroll(
+  was: FollowState,
+  scroll: { moved: number; bottom: boolean },
+): FollowState {
+  // A jump we asked for travels through positions that are not the bottom; it is over when it
+  // arrives, and until then it says nothing about what the reader wants.
+  if (was.jumping) {
+    return scroll.bottom ? { following: true, jumping: false } : was;
+  }
+  if (scroll.moved < -SLOP) return { following: false, jumping: false };
+  if (scroll.moved > 0 && scroll.bottom) return { following: true, jumping: false };
+  return was;
+}
+
 /** Whether a scroller is at (or within a hair of) its bottom. */
 export function atBottom(el: {
   scrollHeight: number;
@@ -38,13 +76,19 @@ export function useFollowBottom<T extends HTMLElement>() {
   useEffect(() => {
     if (!node) return;
 
+    // Where the scroller was at the last event, so a scroll can be read as a direction rather
+    // than only as a position. Position alone was not enough: a notch of the wheel near the
+    // bottom leaves the reader *still* within `SLACK` of it, so the scroll that followed the
+    // gesture put following straight back on, and the next token of the answer pulled them
+    // down again. Nudging the feed a little was impossible (2026-09-22).
+    let lastTop = node.scrollTop;
     const onScroll = () => {
-      const bottom = atBottom(node);
-      if (jumping) {
-        if (!bottom) return;
-        setJumping(false);
-      }
-      setFollowing(bottom);
+      const top = node.scrollTop;
+      const moved = top - lastTop;
+      lastTop = top;
+      const next = afterScroll({ following, jumping }, { moved, bottom: atBottom(node) });
+      setFollowing(next.following);
+      setJumping(next.jumping);
     };
     // A wheel or a drag upwards is the reader saying "let me look": releasing on the gesture
     // rather than on the position it ends at means one notch is enough, and it also cancels a
@@ -77,7 +121,7 @@ export function useFollowBottom<T extends HTMLElement>() {
       node.removeEventListener('touchstart', onTouchStart);
       node.removeEventListener('touchmove', onTouchMove);
     };
-  }, [node, jumping]);
+  }, [node, jumping, following]);
 
   /** Keep the bottom in view after the content grew; a no-op once the reader has left it. */
   const stick = useCallback(() => {
@@ -99,5 +143,7 @@ export function useFollowBottom<T extends HTMLElement>() {
 
   // `attach`, not `ref`: a property called `ref` reads to the compiler's lint as a ref object,
   // and every use of this hook's result would be flagged as touching a ref during render.
-  return { attach: setNode, following, stick, follow };
+  // `node` comes back too, because the view measures it: how much room is left under the
+  // newest turn is a question about the scroller's height.
+  return { attach: setNode, node, following, stick, follow };
 }

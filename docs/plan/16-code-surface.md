@@ -135,10 +135,13 @@ of the work is showing, and that difference is the surface (**revised 2026-09-08
 first code session was watched: this document said the column was *identical*, with the activity
 folded behind a summary line as it is in a chat).
 
-- **The steps start open.** In a chat the tool work is scaffolding and the answer is the point,
-  so folding it away is right. In a code session the work *is* the answer — a paragraph saying
-  "I updated the shell" is worth less than the four edits it names — and a summary line the user
-  opens every single time is a click charged for nothing.
+- ~~**The steps start open.**~~ **Reverted 2026-09-22, in use.** The reasoning was that in a code
+  session the work *is* the answer, so a summary line the user opens every time is a click
+  charged for nothing. What it produced was the opposite complaint: every fold of a long session
+  open at once, rows scrolling past under a line that already said "Edited a file, used
+  Filesystem", and the work of *closing* them charged instead. The fold is collapsed in both
+  surfaces now and opens on a click, which is the one line a reader can act on either way. What
+  the code surface keeps is everything below.
 - **Every step opens further, in place.** An edit opens to its whole diff with line numbers, a
   command to its whole output, a connector call to its arguments and its result. The pane still
   offers the same thing, and the row keeps an "Open in pane" for a diff worth sitting with, but

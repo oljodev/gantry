@@ -184,7 +184,13 @@ export function ChatView({
     [artifactList.data],
   );
   const label = useCallback((ref: ModelRef) => modelLabel(providers, ref), [providers]);
-  const { attach: feedRef, following, stick, follow } = useFollowBottom<HTMLDivElement>();
+  const {
+    attach: feedRef,
+    node: feed,
+    following,
+    stick,
+    follow,
+  } = useFollowBottom<HTMLDivElement>();
 
   // A turn that was already running when this view mounted (reload, chat switch) is reattached.
   const activeTurn = chat.data?.active_turn ?? null;
@@ -378,7 +384,38 @@ export function ChatView({
     ) ?? 0;
   const liveCalls = live ? live.callOrder.length + live.pending.length : 0;
   const turnCount = chat.data?.turns.length ?? 0;
-  useEffect(() => stick(), [liveLength, liveCalls, turnCount, stick]);
+
+  /**
+   * The room under the newest turn (15 A7), measured rather than guessed.
+   *
+   * Sending a message used to leave it one line above the composer, with the answer growing
+   * into that line and the text the user had just written already gone off the top. A feed
+   * that ends exactly at its last pixel cannot do anything else: there is nowhere to scroll
+   * to. So the newest turn gets the rest of the window under it — the scroller's height less
+   * its own — and no more: the space shrinks as the answer fills it and is gone once the turn
+   * is taller than the window, which is when an ordinary bottom-follow is what anybody wants.
+   */
+  const lastTurn = useRef<HTMLDivElement>(null);
+  const [room, setRoom] = useState(0);
+  useEffect(() => {
+    const el = lastTurn.current;
+    if (!feed || !el) {
+      setRoom(0);
+      return;
+    }
+    // `ROOM_ABOVE` leaves the end of the previous turn peeking in under the title strip, so
+    // the jump reads as a scroll rather than as the conversation having been replaced.
+    const ROOM_ABOVE = 72;
+    const measure = () => setRoom(Math.max(0, feed.clientHeight - el.offsetHeight - ROOM_ABOVE));
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    observer.observe(feed);
+    return () => observer.disconnect();
+    // `turnCount` rather than the rendered list: the element under the ref changes when the
+    // chat gains a turn, and an observer on the old one would measure a node nothing shows.
+  }, [feed, turnCount]);
+  useEffect(() => stick(), [liveLength, liveCalls, turnCount, room, stick]);
 
   if (chat.isPending) return <div className="h-full pt-(--title-strip)" />;
   if (chat.isError || !chat.data) {
@@ -667,56 +704,67 @@ export function ChatView({
         >
           <div className="mx-auto w-full max-w-(--measure) min-w-0 px-6 pt-2 pb-6">
             {turns.map((turn, i) => (
-              <TurnView
-                key={turn.id}
-                turn={turn}
-                detailed={surface === 'code'}
-                onAddKey={() => openSettings('providers')}
-                isLast={i === turns.length - 1}
-                onOpenItem={(item) => openItem(item, turn.id)}
-                onAllowAnyway={(callId) => {
-                  void allowBlocked(chatId, callId).catch((err: unknown) => {
-                    toast.add({
-                      title: 'Could not allow that call',
-                      description: describe(err),
-                      type: 'error',
+              <div key={turn.id} ref={i === turns.length - 1 ? lastTurn : undefined}>
+                <TurnView
+                  turn={turn}
+                  detailed={surface === 'code'}
+                  onAddKey={() => openSettings('providers')}
+                  isLast={i === turns.length - 1}
+                  onOpenItem={(item) => openItem(item, turn.id)}
+                  onAllowAnyway={(callId) => {
+                    void allowBlocked(chatId, callId).catch((err: unknown) => {
+                      toast.add({
+                        title: 'Could not allow that call',
+                        description: describe(err),
+                        type: 'error',
+                      });
                     });
-                  });
-                }}
-                onRevert={revertPath}
-                onDecide={decide}
-                onAccess={answerAccess}
-                onElicit={answerElicit}
-                onOffer={answerOffer}
-                onSkill={(id, answer) => {
-                  const block = turn.blocks.find((b) => b.kind === 'skillProposal' && b.id === id);
-                  if (block?.kind === 'skillProposal') answerSkill(id, answer, block.proposal);
-                }}
-                onMemory={(id, answer) => {
-                  const block = turn.blocks.find((b) => b.kind === 'memoryProposal' && b.id === id);
-                  if (block?.kind === 'memoryProposal') answerMemory(id, answer, block.proposal);
-                }}
-                installing={installingOffer ?? undefined}
-                onCopy={async (text) => {
-                  try {
-                    await copyText(text);
-                  } catch (err) {
-                    toast.add({ title: 'Could not copy', description: String(err), type: 'error' });
-                    throw err;
-                  }
-                }}
-                onRate={(feedback) => {
-                  rate.mutate({ chatId, turnId: turn.id, feedback });
-                  if (feedback) toast.add({ title: 'Thanks for the feedback', type: 'success' });
-                }}
-                onRetry={() => {
-                  clear(chatId);
-                  void retry(chatId, turn.id);
-                }}
-              />
+                  }}
+                  onRevert={revertPath}
+                  onDecide={decide}
+                  onAccess={answerAccess}
+                  onElicit={answerElicit}
+                  onOffer={answerOffer}
+                  onSkill={(id, answer) => {
+                    const block = turn.blocks.find(
+                      (b) => b.kind === 'skillProposal' && b.id === id,
+                    );
+                    if (block?.kind === 'skillProposal') answerSkill(id, answer, block.proposal);
+                  }}
+                  onMemory={(id, answer) => {
+                    const block = turn.blocks.find(
+                      (b) => b.kind === 'memoryProposal' && b.id === id,
+                    );
+                    if (block?.kind === 'memoryProposal') answerMemory(id, answer, block.proposal);
+                  }}
+                  installing={installingOffer ?? undefined}
+                  onCopy={async (text) => {
+                    try {
+                      await copyText(text);
+                    } catch (err) {
+                      toast.add({
+                        title: 'Could not copy',
+                        description: String(err),
+                        type: 'error',
+                      });
+                      throw err;
+                    }
+                  }}
+                  onRate={(feedback) => {
+                    rate.mutate({ chatId, turnId: turn.id, feedback });
+                    if (feedback) toast.add({ title: 'Thanks for the feedback', type: 'success' });
+                  }}
+                  onRetry={() => {
+                    clear(chatId);
+                    void retry(chatId, turn.id);
+                  }}
+                />
+              </div>
             ))}
             {/* Plan mode's way out (04 §4): the plan is written, the constraint is lifted with
                 one click and the mode change reaches the model as a note. */}
+            {/* The space the newest turn has to grow into; zero once it fills the window. */}
+            {room > 0 && <div style={{ height: room }} aria-hidden />}
             {detail.mode === 'plan' && !running && turns.length > 0 && (
               <div className="flex justify-start pb-2">
                 <Button variant="secondary" onClick={() => patch({ mode: 'auto_edit' })}>
