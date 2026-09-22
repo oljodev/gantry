@@ -13,6 +13,12 @@
 //! the build script *succeeds*, so that the Rust crate above it can be checked. So this hands
 //! `cc` a pair of stand-ins that create the files they are asked for and exit 0.
 //!
+//! The app's own build script is the third case. Tauri compiles the Windows resource file — the
+//! icon and the version block — through `embed-resource`, which wants `llvm-rc`. A GitHub runner
+//! has none on its path, and a Debian `llvm-rc` can be installed and still not start, so the
+//! check depended on something neither machine reliably has for a file nothing reads. It gets
+//! the same kind of stand-in.
+//!
 //! What that proves and does not prove is worth being exact about, because the temptation is to
 //! read a green check as a working build:
 //!
@@ -66,6 +72,32 @@ done
 exit 0
 "#;
 
+/// Stands in for `llvm-rc`. `embed-resource` recognises a resource compiler by the first line of
+/// its `/?` help, then calls it as `rc /fo <out> /C 65001 [/no-preprocess] -- <file.rc>`.
+const RC: &str = r#"#!/bin/sh
+# Stands in for llvm-rc while cross-checking for Windows (xtask/src/windows.rs). Same bargain as
+# `cl` beside it: nothing links, so the .lib it is asked for only has to exist.
+for a in "$@"; do
+  if [ "$a" = "/?" ]; then
+    echo "OVERVIEW: LLVM Resource Converter (a stand-in; accepts /no-preprocess)"
+    exit 0
+  fi
+done
+out=""
+take_next=""
+for a in "$@"; do
+  if [ -n "$take_next" ]; then out="$a"; take_next=""; continue; fi
+  case "$a" in
+    /fo|/FO|-fo) take_next=1 ;;
+  esac
+done
+if [ -n "$out" ]; then
+  mkdir -p "$(dirname "$out")" 2>/dev/null
+  : > "$out"
+fi
+exit 0
+"#;
+
 /// `cargo xtask check-windows [--clippy]`.
 pub fn check(root: &Path, clippy: bool) -> anyhow::Result<()> {
     if cfg!(windows) {
@@ -79,6 +111,7 @@ pub fn check(root: &Path, clippy: bool) -> anyhow::Result<()> {
     fs::create_dir_all(&shims).context("creating the stand-in toolchain directory")?;
     write_shim(&shims.join("cl"), CL)?;
     write_shim(&shims.join("lib"), LIB)?;
+    write_shim(&shims.join("rc"), RC)?;
 
     let mut cargo = Command::new(env!("CARGO"));
     cargo
@@ -93,7 +126,8 @@ pub fn check(root: &Path, clippy: bool) -> anyhow::Result<()> {
         .env(
             format!("AR_{}", TARGET.replace('-', "_")),
             shims.join("lib"),
-        );
+        )
+        .env(format!("RC_{}", TARGET.replace('-', "_")), shims.join("rc"));
     if clippy {
         cargo.args(["--", "-D", "warnings"]);
     }
