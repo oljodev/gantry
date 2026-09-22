@@ -24,7 +24,7 @@ Apache License 2.0. Every release lists its own conversion date here:
 
 | Version | Released | Becomes Apache 2.0 |
 |---------|----------|--------------------|
-| (none yet) | | |
+| 0.1.0 | 2026-09-22 | 2028-09-22 |
 
 ## What else is in this repository
 
@@ -41,8 +41,7 @@ Apache License 2.0. Every release lists its own conversion date here:
 ## Before the first public release
 
 The licensor is **Olav Jodal**, named in the copyright notice of [`LICENSE`](LICENSE) since
-2026-09-11. The conversion table above gets its first row when v0.1.0 is released, which is the
-only licence item left on the release checklist.
+2026-09-11. v0.1.0, released 2026-09-22, is the first row of the conversion table above.
 
 ## Contributing
 
