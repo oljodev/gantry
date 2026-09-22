@@ -107,6 +107,32 @@ The inline row renders hunks directly (no JS diff library). Diffs over 2000 chan
 
 Raw bytes (ANSI included) are what gets streamed and stored. The transcript sent to the model gets an ANSI-stripped, size-capped version (02 §6). The detail drawer renders ANSI colors with a small converter; the live row shows plain text. Exit code, duration, `killed` and `timed_out` are part of the completed event and the `command_runs` row.
 
+### What one reply may ask for at once (2026-09-22)
+
+`advanced.max_calls_per_reply` (16 by default) bounds one assistant message, beside
+`max_tool_rounds`, which bounds the whole reply. Two rules, applied in `run_calls` before any
+permission is decided, because neither is about permission:
+
+- **An exact duplicate never runs.** The same tool with the same arguments twice in one message
+  is not two pieces of work, and for a writing tool it is two writes to one place in no defined
+  order — which is why the writing tools are not `parallel_safe` in the first place. The first
+  one runs; the rest are refused with a result naming the call whose answer they should read.
+- **Nothing past the limit runs.** What is left is taken in the model's own order until the
+  limit; the rest are refused with a result that says to work in smaller steps.
+
+Dedup comes first, so a model repeating one call spends one of its allowance rather than all of
+it, and the limit stays a statement about breadth — how many different things one reply attempts.
+
+A refused call is `cancelled` with an error result, exactly as the round cap does it, so the
+model reads what happened and can correct, and the row shows that it did not run. The user gets
+one `provider.notice` saying how many were asked for and how many ran.
+
+**Why it exists.** On 2026-09-22 a small model answering "tell me how many guesses it took"
+emitted forty-six `code-editor__replace` calls in one message — each with its own id, each with
+arguments streaming, none of them answered — and the only thing that stopped it was the user
+pressing Stop. Every one of them would have run. A model that asks for forty-six calls at once
+has lost the thread, and the app should be the thing that notices.
+
 ## 8. Performance budget
 
 | Budget | Value |

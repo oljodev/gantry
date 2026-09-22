@@ -490,6 +490,14 @@ export type AdvancedSettings = {
 	/**  How many tool rounds one reply may take before Gantry stops it (01 §3 step 6). */
 	max_tool_rounds?: number,
 	/**
+	 *  How many tool calls one assistant message may ask for at once (05 §7). A model that
+	 *  asks for more has lost the thread — the case this exists for is a small model that
+	 *  emitted forty-six `code-editor__replace` calls in one reply, none of them answered,
+	 *  before anybody could stop it. The calls past the limit are refused with a result that
+	 *  says so, which is a thing the model can read and recover from.
+	 */
+	max_calls_per_reply?: number,
+	/**
 	 *  What one tool result contributes to the transcript, in kilobytes (05 §8, 02 §6). The
 	 *  head and the tail are kept with a marker between them; the whole output stays in the
 	 *  activity row, which reads from the call record rather than from the transcript. Capping

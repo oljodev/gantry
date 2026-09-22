@@ -46,6 +46,8 @@ pub struct RunContext {
     pub provider: Option<Arc<dyn Provider>>,
     pub max_output_tokens: u32,
     pub max_tool_rounds: u32,
+    /// How many tool calls one reply may ask for at once (05 §7).
+    pub max_calls_per_reply: u32,
     /// What one tool result may contribute to the transcript (05 §8).
     pub max_result_bytes: usize,
     /// What the user chose for this chat's model, where it makes something other than text.
@@ -730,6 +732,63 @@ fn thinking_reset_notice(input: &TurnInput) -> Option<String> {
 }
 
 /// Error results for calls that will not run, so the transcript stays replayable (02 §3).
+/// Which calls of one reply do not run, and what the model is told about each.
+///
+/// Two rules, in this order. **An exact duplicate does not run**: the same tool with the same
+/// arguments twice in one message is not two pieces of work, and for a tool that writes it is
+/// two writes to one place with no defined order — which is why the writing tools are not
+/// `parallel_safe` to begin with. **Nothing past the limit runs**: what is left is taken in the
+/// model's own order until the limit, and the rest are refused.
+///
+/// Dedup comes first so that a model repeating one call forty-six times spends one of its
+/// allowance rather than all of it, and so the limit is about breadth — how many different
+/// things one reply attempts — rather than about how badly the model is stuttering.
+fn over_the_line(calls: &[Call], limit: u32) -> Vec<Option<String>> {
+    let limit = limit.max(1) as usize;
+    let mut seen: std::collections::HashMap<(String, String), usize> =
+        std::collections::HashMap::new();
+    let mut admitted = 0_usize;
+    let mut out = Vec::with_capacity(calls.len());
+    for (i, call) in calls.iter().enumerate() {
+        let key = (call.name.clone(), call.args.to_string());
+        if let Some(first) = seen.get(&key) {
+            out.push(Some(format!(
+                "This is an exact duplicate of call {} in the same reply — same tool, same \
+                 arguments — so it did not run. Read that call's result instead, and ask for \
+                 each piece of work once.",
+                first + 1
+            )));
+            continue;
+        }
+        seen.insert(key, i);
+        if admitted >= limit {
+            out.push(Some(format!(
+                "Gantry runs at most {limit} tool calls per reply and this one asked for more, \
+                 so this call did not run (the limit is in Settings → Advanced). Work in \
+                 smaller steps: ask for what you need now, read the results, then continue."
+            )));
+            continue;
+        }
+        admitted += 1;
+        out.push(None);
+    }
+    out
+}
+
+/// What the user is told when a reply was cut down, or `None` when it was not.
+fn storm_notice(calls: &[Call], skipped: &[Option<String>], limit: u32) -> Option<String> {
+    let stopped = skipped.iter().filter(|s| s.is_some()).count();
+    if stopped == 0 {
+        return None;
+    }
+    let ran = calls.len() - stopped;
+    Some(format!(
+        "This reply asked for {} tool calls at once. {ran} ran; the rest were duplicates or past \
+         the limit of {limit} and were refused (Settings → Advanced).",
+        calls.len()
+    ))
+}
+
 fn synthetic_results(calls: &[Call], text: &str) -> Vec<ContentPart> {
     calls
         .iter()
@@ -932,7 +991,31 @@ async fn run_calls(
         Vec::new()
     });
 
+    // What one reply may ask for at once (05 §7). Both of these are about a model that has
+    // lost the thread rather than about permission: a refused call is a result the model reads
+    // and can recover from, so it is told plainly which of its calls did not run and why.
+    let skipped = over_the_line(&calls, ctx.max_calls_per_reply);
+    if let Some(notice) = storm_notice(&calls, &skipped, ctx.max_calls_per_reply) {
+        batcher.push(AgentEventKind::ProviderNotice {
+            kind: "tool_call_cap".into(),
+            detail: notice,
+        });
+    }
+
     for (i, call) in calls.iter().enumerate() {
+        if let Some(reason) = &skipped[i] {
+            results[i] = Some(complete_call(
+                ctx,
+                &call.id,
+                ToolCallStatus::Cancelled,
+                true,
+                0,
+                vec![ResultPart::Text {
+                    text: reason.clone(),
+                }],
+            ));
+            continue;
+        }
         let Some(entry) = ctx
             .tools
             .read()

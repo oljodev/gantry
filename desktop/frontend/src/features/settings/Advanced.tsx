@@ -63,6 +63,19 @@ export function Advanced() {
           />
         </SettingsRow>
         <SettingsRow
+          label="Tool calls per reply"
+          hint="How many tools one reply may call at once. Exact duplicates never run twice, whatever this says."
+        >
+          <NumberInput
+            aria-label="Tool calls per reply"
+            value={advanced.max_calls_per_reply}
+            min={1}
+            max={200}
+            step={1}
+            onCommit={(v) => patch({ max_calls_per_reply: v })}
+          />
+        </SettingsRow>
+        <SettingsRow
           label="Tool result size"
           hint="How much of one tool result the model is given, in kilobytes. Both ends are kept; the whole output stays in the activity row."
         >

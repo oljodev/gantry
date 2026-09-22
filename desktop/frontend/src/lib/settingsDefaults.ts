@@ -37,6 +37,7 @@ export function advancedDefaults(s: Settings | undefined): Required<AdvancedSett
     max_output_tokens: a.max_output_tokens ?? 8192,
     developer_mode: a.developer_mode ?? false,
     max_tool_rounds: a.max_tool_rounds ?? 50,
+    max_calls_per_reply: a.max_calls_per_reply ?? 16,
     max_result_kb: a.max_result_kb ?? 50,
   };
 }

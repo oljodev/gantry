@@ -1231,6 +1231,117 @@ async fn the_round_cap_stops_a_looping_model() {
     ));
 }
 
+/// One assistant message asking for the same call over and over: a small model on 2026-09-22
+/// emitted forty-six `code-editor__replace` calls in one reply, none of them answered, and the
+/// only thing that stopped it was the user. The first one runs; the rest are refused with a
+/// result the model can read, and the row says it did not run.
+#[tokio::test]
+async fn a_reply_that_repeats_one_call_runs_it_once() {
+    let mut round: Script = Vec::new();
+    for i in 0..5 {
+        round.push(Ok(StreamEvent::ToolCallStart {
+            index: i,
+            id: CallId(format!("dup_{i}")),
+            name: "fake__echo".into(),
+        }));
+        round.push(Ok(StreamEvent::ToolCallEnd {
+            index: i,
+            args: serde_json::json!({ "text": "same" }),
+        }));
+    }
+    round.push(Ok(StreamEvent::MessageEnd {
+        stop_reason: StopReason::ToolUse,
+    }));
+    let m = manager_with(
+        vec![round, vec![text("Done."), end()]],
+        Duration::ZERO,
+        Settings::default(),
+    );
+    let chat = m.chat();
+    let sink = Arc::new(Collect::default());
+    m.start(chat.id, "go".into(), Vec::new(), Vec::new(), sink.clone())
+        .unwrap();
+    wait_for(|| sink.completed().is_some()).await;
+
+    assert_eq!(
+        m.fake.calls.lock().unwrap().len(),
+        1,
+        "the tool ran once, not five times"
+    );
+    let detail = m.chats().get(chat.id).unwrap().unwrap();
+    let calls = &detail.turns[0].tool_calls;
+    assert_eq!(calls[0].status, ToolCallStatus::Completed);
+    for call in &calls[1..] {
+        assert_eq!(call.status, ToolCallStatus::Cancelled);
+        assert!(
+            call.result_preview
+                .as_deref()
+                .unwrap_or_default()
+                .contains("exact duplicate"),
+            "the model is told why: {:?}",
+            call.result_preview
+        );
+    }
+    // Every call still has a result, or the next request would be malformed.
+    let second = m.requests()[1].clone();
+    assert_eq!(second.messages.last().unwrap().parts.len(), 5);
+    assert!(sink.kinds().iter().any(
+        |k| matches!(k, AgentEventKind::ProviderNotice { kind, .. } if kind == "tool_call_cap")
+    ));
+}
+
+/// The breadth limit, which catches a storm of calls that are not identical.
+#[tokio::test]
+async fn a_reply_may_not_ask_for_more_calls_than_the_limit() {
+    let mut settings = Settings::default();
+    settings.advanced.max_calls_per_reply = 2;
+    let mut round: Script = Vec::new();
+    for i in 0..4 {
+        round.push(Ok(StreamEvent::ToolCallStart {
+            index: i,
+            id: CallId(format!("c{i}")),
+            name: "fake__echo".into(),
+        }));
+        round.push(Ok(StreamEvent::ToolCallEnd {
+            index: i,
+            args: serde_json::json!({ "text": format!("{i}") }),
+        }));
+    }
+    round.push(Ok(StreamEvent::MessageEnd {
+        stop_reason: StopReason::ToolUse,
+    }));
+    let m = manager_with(
+        vec![round, vec![text("Done."), end()]],
+        Duration::ZERO,
+        settings,
+    );
+    let chat = m.chat();
+    let sink = Arc::new(Collect::default());
+    m.start(chat.id, "go".into(), Vec::new(), Vec::new(), sink.clone())
+        .unwrap();
+    wait_for(|| sink.completed().is_some()).await;
+
+    assert_eq!(
+        m.fake.calls.lock().unwrap().len(),
+        2,
+        "the first two ran, in the model's own order"
+    );
+    let detail = m.chats().get(chat.id).unwrap().unwrap();
+    let calls = &detail.turns[0].tool_calls;
+    assert_eq!(calls[0].status, ToolCallStatus::Completed);
+    assert_eq!(calls[1].status, ToolCallStatus::Completed);
+    assert_eq!(calls[2].status, ToolCallStatus::Cancelled);
+    assert!(
+        calls[3]
+            .result_preview
+            .as_deref()
+            .unwrap_or_default()
+            .contains("at most 2 tool calls per reply"),
+        "{:?}",
+        calls[3].result_preview
+    );
+}
+
 #[tokio::test]
 async fn plan_mode_offers_only_tools_it_would_allow() {
     let m = manager(vec![text("plan"), end()], Duration::ZERO);

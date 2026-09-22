@@ -948,6 +948,7 @@ impl TurnManager {
                 provider: provider.clone(),
                 max_output_tokens: settings.advanced.max_output_tokens,
                 max_tool_rounds: settings.advanced.max_tool_rounds,
+                max_calls_per_reply: settings.advanced.max_calls_per_reply.max(1),
                 max_result_bytes: (settings.advanced.max_result_kb.max(1) as usize) * 1024,
                 media,
                 guardrails,

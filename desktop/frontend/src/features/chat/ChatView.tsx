@@ -656,7 +656,10 @@ export function ChatView({
     <div className="relative flex h-full min-w-0">
       {/* Nothing is written by hand out of an incognito window either (15 A21). */}
       {!detail.incognito && <RememberSelection chatId={chatId} scroller="[data-transcript]" />}
-      <div className="flex min-w-0 flex-1 flex-col">
+      {/* `relative` so that **New** below centres on this column and therefore on the composer.
+          Without it the nearest positioned ancestor is the row that also holds the right pane,
+          and the button drifts to the middle of the window as soon as the pane is open. */}
+      <div className="relative flex min-w-0 flex-1 flex-col">
         <div
           ref={feedRef}
           data-transcript

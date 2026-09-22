@@ -228,6 +228,12 @@ pub struct AdvancedSettings {
     pub developer_mode: bool,
     /// How many tool rounds one reply may take before Gantry stops it (01 §3 step 6).
     pub max_tool_rounds: u32,
+    /// How many tool calls one assistant message may ask for at once (05 §7). A model that
+    /// asks for more has lost the thread — the case this exists for is a small model that
+    /// emitted forty-six `code-editor__replace` calls in one reply, none of them answered,
+    /// before anybody could stop it. The calls past the limit are refused with a result that
+    /// says so, which is a thing the model can read and recover from.
+    pub max_calls_per_reply: u32,
     /// What one tool result contributes to the transcript, in kilobytes (05 §8, 02 §6). The
     /// head and the tail are kept with a marker between them; the whole output stays in the
     /// activity row, which reads from the call record rather than from the transcript. Capping
@@ -241,6 +247,9 @@ impl Default for AdvancedSettings {
             max_output_tokens: 8192,
             developer_mode: false,
             max_tool_rounds: 50,
+            // Enough for any batch of parallel reads a model has a reason to ask for, and far
+            // below the dozens a runaway one produces.
+            max_calls_per_reply: 16,
             max_result_kb: 50,
         }
     }
