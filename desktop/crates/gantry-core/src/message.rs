@@ -296,8 +296,21 @@ pub struct Usage {
     pub cache_write: u64,
     #[specta(type = specta_typescript::Number)]
     pub reasoning: u64,
-    /// What the provider says the request cost, in US dollars, when it says so (OpenRouter does).
+    /// What the request cost in US dollars: billed, when the provider says so (OpenRouter does),
+    /// and otherwise estimated from the model's list prices, which `cost_is_estimate` says.
     pub cost_usd: Option<f64>,
+    /// Whether `cost_usd` is Gantry's arithmetic rather than the provider's bill. Estimated from
+    /// the catalog's per-token prices; checked against OpenRouter's billed cost on six turns on
+    /// 2026-09-22 and equal to the last digit on every one.
+    #[serde(default)]
+    pub cost_is_estimate: bool,
+    /// How long the model spent producing this output: from its first streamed token to the end
+    /// of the message. Measured by the runner, not reported by the provider, and the denominator
+    /// of the footer's tokens per second — the wait before the first token is queueing and
+    /// prompt processing, which is a different number and not a speed.
+    #[serde(default)]
+    #[specta(type = specta_typescript::Number)]
+    pub generation_ms: u64,
 }
 
 impl Usage {
@@ -310,10 +323,14 @@ impl Usage {
             cache_read: self.cache_read + other.cache_read,
             cache_write: self.cache_write + other.cache_write,
             reasoning: self.reasoning + other.reasoning,
+            // A sum is only a price when every part of it was: a round with no price makes the
+            // total unknown, where it used to make the total quietly smaller than the bill.
             cost_usd: match (self.cost_usd, other.cost_usd) {
                 (Some(a), Some(b)) => Some(a + b),
-                (a, b) => a.or(b),
+                _ => None,
             },
+            cost_is_estimate: self.cost_is_estimate || other.cost_is_estimate,
+            generation_ms: self.generation_ms + other.generation_ms,
         }
     }
 }

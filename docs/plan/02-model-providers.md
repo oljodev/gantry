@@ -430,3 +430,14 @@ Retry: up to 3 attempts with jittered backoff on `RateLimited`, `Overloaded`, `N
   prefix moved in between, and that is now a failure. The same number reaches the user: the turn
   footer says "… · 17,900 cached" when the provider served any, and says nothing when it served
   none, which is the answer as much as a number is.
+- **What a turn cost, and how fast it wrote** (2026-09-22). `Usage.cost_usd` is the bill where
+  the provider sends one — OpenRouter's `usage.cost` — and otherwise `Pricing::estimate` from the
+  cached catalog, with `cost_is_estimate` set. The estimate has one provider difference to get
+  right: Anthropic reports cached tokens *beside* `input`, every other API *inside* it; and
+  Anthropic's cache writes are priced at 1.25 × input, a rate no catalog carries. Checked against
+  six billed OpenRouter turns, the estimate equals the bill to the last digit, and a test pins
+  one of them. Text tokens only: a media model's estimate is low, beside a label that says it is
+  an estimate. `Usage.plus` no longer keeps a partial sum: a round with no price makes the turn's
+  price unknown rather than quietly smaller. `Usage.generation_ms` is the runner's measurement
+  from a round's first output event to its end, summed over rounds, and the footer's speed is
+  output tokens over it.

@@ -305,6 +305,38 @@ pub struct Pricing {
     pub video_per_second_usd: std::collections::BTreeMap<String, f64>,
 }
 
+impl Pricing {
+    /// What one request cost at these list prices, for a provider that does not say.
+    ///
+    /// The providers disagree about one thing that matters here: whether `input` already
+    /// includes the tokens served from the prompt cache. Anthropic reports them beside it;
+    /// every other API Gantry speaks reports them inside it. Getting that backwards would
+    /// charge a long cached conversation twice over. Anthropic also bills writing to the cache,
+    /// at 1.25 times the input price for the default five-minute cache, which no catalog
+    /// reports as a rate of its own.
+    ///
+    /// Text tokens only. Pictures, sound and video have prices of their own that no usage
+    /// report counts in units they are priced by, so a media model's estimate is low — which is
+    /// the direction to be wrong in, beside a label that says it is an estimate.
+    #[must_use]
+    pub fn estimate(&self, usage: &Usage, kind: ProviderKind) -> f64 {
+        let (uncached, cache_write) = match kind {
+            ProviderKind::Anthropic => (usage.input, usage.cache_write),
+            _ => (usage.input.saturating_sub(usage.cache_read), 0),
+        };
+        #[allow(clippy::cast_precision_loss)]
+        let per_million = |tokens: u64, rate: f64| tokens as f64 * rate / 1_000_000.0;
+        per_million(uncached, self.input_per_mtok)
+            + per_million(
+                usage.cache_read,
+                self.cache_read_per_mtok.unwrap_or(self.input_per_mtok),
+            )
+            + per_million(cache_write, self.input_per_mtok * 1.25)
+            + per_million(usage.output, self.output_per_mtok)
+            + self.request_usd.unwrap_or(0.0)
+    }
+}
+
 /// One row of a provider's model list, as the UI and the catalog cache see it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
 pub struct ModelInfo {
@@ -346,4 +378,53 @@ pub trait Provider: Send + Sync {
     /// Verifies the key with the cheapest call the provider offers.
     async fn check_key(&self) -> Result<KeyInfo, ProviderError>;
     async fn stream(&self, req: ChatRequest) -> Result<ChatStream, ProviderError>;
+}
+
+#[cfg(test)]
+mod pricing_tests {
+    use super::*;
+
+    fn pricing(input: f64, output: f64, cache_read: Option<f64>) -> Pricing {
+        Pricing {
+            input_per_mtok: input,
+            output_per_mtok: output,
+            cache_read_per_mtok: cache_read,
+            image_input_usd: None,
+            image_output_per_mtok: None,
+            request_usd: None,
+            audio_input_per_mtok: None,
+            audio_output_per_mtok: None,
+            video_per_second_usd: std::collections::BTreeMap::new(),
+        }
+    }
+
+    /// A real turn: `xiaomi/mimo-v2.6-flash` on OpenRouter, 2026-09-22, which billed
+    /// $0.0021456008 for it. The estimate has to land on the bill, or it is not worth showing.
+    #[test]
+    fn the_estimate_matches_what_openrouter_billed() {
+        let usage = Usage {
+            input: 159_743,
+            output: 3_024,
+            cache_read: 153_536,
+            ..Usage::default()
+        };
+        let cost = pricing(0.14, 0.28, Some(0.0028)).estimate(&usage, ProviderKind::OpenAiChat);
+        assert!((cost - 0.002_145_600_8).abs() < 1e-9, "{cost}");
+    }
+
+    /// Anthropic reports cached tokens beside `input`, not inside it; subtracting them again
+    /// would price a long cached conversation at nothing.
+    #[test]
+    fn anthropic_cache_reads_are_not_subtracted_from_input() {
+        let usage = Usage {
+            input: 1_000,
+            output: 0,
+            cache_read: 1_000_000,
+            cache_write: 1_000_000,
+            ..Usage::default()
+        };
+        let cost = pricing(3.0, 15.0, Some(0.3)).estimate(&usage, ProviderKind::Anthropic);
+        // 1k fresh at $3, 1M read at $0.30, 1M written at 1.25 × $3.
+        assert!((cost - (0.003 + 0.3 + 3.75)).abs() < 1e-9, "{cost}");
+    }
 }

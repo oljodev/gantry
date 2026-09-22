@@ -313,6 +313,12 @@ export interface Turn {
      * numbers rather than one number that is not the whole bill.
      */
     subTokens?: number;
+    /** What the reply cost in dollars: billed where the provider says, otherwise estimated. */
+    costUsd?: number;
+    /** The cost is Gantry's arithmetic from list prices rather than the provider's bill. */
+    costEstimated?: boolean;
+    /** Output tokens per second while the model was producing them; absent when untimed. */
+    tokensPerSecond?: number;
   };
   status: 'done' | 'running' | 'waiting' | 'failed' | 'cancelled' | 'interrupted';
   /** When the turn ended, for "2 min ago"; absent while running. */

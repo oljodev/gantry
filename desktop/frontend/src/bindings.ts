@@ -2859,8 +2859,24 @@ export type Usage = {
 	cache_read: number,
 	cache_write: number,
 	reasoning: number,
-	/**  What the provider says the request cost, in US dollars, when it says so (OpenRouter does). */
+	/**
+	 *  What the request cost in US dollars: billed, when the provider says so (OpenRouter does),
+	 *  and otherwise estimated from the model's list prices, which `cost_is_estimate` says.
+	 */
 	cost_usd: number | null,
+	/**
+	 *  Whether `cost_usd` is Gantry's arithmetic rather than the provider's bill. Estimated from
+	 *  the catalog's per-token prices; checked against OpenRouter's billed cost on six turns on
+	 *  2026-09-22 and equal to the last digit on every one.
+	 */
+	cost_is_estimate?: boolean,
+	/**
+	 *  How long the model spent producing this output: from its first streamed token to the end
+	 *  of the message. Measured by the runner, not reported by the provider, and the denominator
+	 *  of the footer's tokens per second — the wait before the first token is queueing and
+	 *  prompt processing, which is a different number and not a speed.
+	 */
+	generation_ms?: number,
 };
 
 /**

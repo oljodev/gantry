@@ -346,7 +346,7 @@ fn usage(u: &Value) -> Usage {
         cache_read: n(&["input_tokens_details", "cached_tokens"]),
         cache_write: 0,
         reasoning: n(&["output_tokens_details", "reasoning_tokens"]),
-        cost_usd: None,
+        ..Usage::default()
     }
 }
 

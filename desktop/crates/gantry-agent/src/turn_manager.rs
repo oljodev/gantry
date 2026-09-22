@@ -911,6 +911,19 @@ impl TurnManager {
         let first_turn = input.first_turn;
         let user_text = input.messages.last().map(Message::text).unwrap_or_default();
         let model = input.model.clone();
+        // The list prices, read once from the cached catalog: what a round costs where the
+        // provider does not say. Never a network call — a turn does not wait on a price.
+        let pricing = provider.as_ref().and_then(|p| {
+            gantry_providers::catalog::cached(
+                self.chats.store(),
+                &model.provider.to_string(),
+                p.kind(),
+            )
+            .ok()?
+            .into_iter()
+            .find(|m| m.id == model.model)?
+            .pricing
+        });
         // Per model, not per chat (11 §1): a voice belongs to the voice model you picked.
         let media = settings
             .chat
@@ -949,6 +962,7 @@ impl TurnManager {
                 max_output_tokens: settings.advanced.max_output_tokens,
                 max_tool_rounds: settings.advanced.max_tool_rounds,
                 max_calls_per_reply: settings.advanced.max_calls_per_reply.max(1),
+                pricing,
                 max_result_bytes: (settings.advanced.max_result_kb.max(1) as usize) * 1024,
                 media,
                 guardrails,

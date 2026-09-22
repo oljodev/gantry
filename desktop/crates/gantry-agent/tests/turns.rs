@@ -1231,6 +1231,83 @@ async fn the_round_cap_stops_a_looping_model() {
     ));
 }
 
+/// The footer's two new numbers (15 §7): a round the provider does not bill is priced from the
+/// catalog's list prices and says so, and the time the model spent producing is measured from
+/// its first token — not from the request, whose wait is queueing, not speed.
+#[tokio::test]
+async fn a_round_is_timed_and_priced_from_the_catalog_when_nobody_bills_it() {
+    let m = manager(
+        vec![
+            Ok(StreamEvent::MessageStart {
+                provider_message_id: None,
+            }),
+            text("one "),
+            text("two "),
+            text("three"),
+            Ok(StreamEvent::Usage(Usage {
+                input: 1_000_000,
+                output: 1_000_000,
+                ..Default::default()
+            })),
+            end(),
+        ],
+        Duration::from_millis(30),
+    );
+    // $2 in, $10 out per million, for the harness's own model.
+    m.chats()
+        .store()
+        .write_blocking(|conn| {
+            gantry_store::repos::providers::ensure(
+                conn,
+                "openrouter",
+                "openai_chat",
+                "OpenRouter",
+                None,
+            )?;
+            gantry_store::repos::models::replace_for(
+                conn,
+                "openrouter",
+                &[gantry_store::repos::models::ModelRecord {
+                    provider_id: "openrouter".into(),
+                    model_id: "test/model".into(),
+                    display_name: "Test".into(),
+                    capabilities_json: "{}".into(),
+                    context_window: None,
+                    max_output: None,
+                    pricing_json: Some(
+                        r#"{"input_per_mtok":2.0,"output_per_mtok":10.0,"cache_read_per_mtok":null}"#
+                            .into(),
+                    ),
+                    created_at: None,
+                    fetched_at: gantry_core::now_ms(),
+                }],
+            )
+        })
+        .unwrap();
+    let chat = m.chat();
+    let sink = Arc::new(Collect::default());
+    let turn = m
+        .start(chat.id, "go".into(), Vec::new(), Vec::new(), sink.clone())
+        .unwrap();
+    wait_for(|| sink.completed().is_some()).await;
+
+    let detail = m.chats().get(chat.id).unwrap().unwrap();
+    let t = detail.turns.iter().find(|t| t.id == turn).unwrap();
+    let usage = t.usage.unwrap();
+    assert_eq!(
+        usage.cost_usd,
+        Some(12.0),
+        "a million in at $2 and a million out at $10"
+    );
+    assert!(usage.cost_is_estimate, "and it says it is an estimate");
+    // Three text events thirty milliseconds apart: the clock starts at the first of them.
+    assert!(
+        usage.generation_ms >= 50,
+        "the time spent producing was measured: {} ms",
+        usage.generation_ms
+    );
+}
+
 /// One assistant message asking for the same call over and over: a small model on 2026-09-22
 /// emitted forty-six `code-editor__replace` calls in one reply, none of them answered, and the
 /// only thing that stopped it was the user. The first one runs; the rest are refused with a

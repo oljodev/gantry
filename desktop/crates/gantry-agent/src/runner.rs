@@ -48,6 +48,9 @@ pub struct RunContext {
     pub max_tool_rounds: u32,
     /// How many tool calls one reply may ask for at once (05 §7).
     pub max_calls_per_reply: u32,
+    /// The model's list prices, for pricing a round the provider does not bill in its response
+    /// (every provider but OpenRouter). `None` when the catalog has none for this model.
+    pub pricing: Option<gantry_providers::Pricing>,
     /// What one tool result may contribute to the transcript (05 §8).
     pub max_result_bytes: usize,
     /// What the user chose for this chat's model, where it makes something other than text.
@@ -475,6 +478,10 @@ async fn stream_round(ctx: &RunContext, transcript: &[Message]) -> Round {
     };
     let mut raw_args: BTreeMap<u32, String> = BTreeMap::new();
     let mut end: Option<End> = None;
+    // When the model started producing, for the footer's tokens per second. The first thing
+    // it produces, whatever kind — reasoning, text or a tool call's arguments all count as
+    // output tokens, so all of them count as time spent making them.
+    let mut first_output: Option<std::time::Instant> = None;
     while end.is_none() {
         let next = tokio::select! {
             _ = cancel.cancelled() => { end = Some(End::Cancelled); break; }
@@ -487,18 +494,48 @@ async fn stream_round(ctx: &RunContext, transcript: &[Message]) -> Round {
                 )));
             }
             Some(Err(err)) => end = Some(End::Failed(err)),
-            Some(Ok(ev)) => apply(
-                ctx,
-                ev,
-                &mut round,
-                &mut raw_args,
-                provider.kind(),
-                &mut end,
-            ),
+            Some(Ok(ev)) => {
+                if first_output.is_none() && is_output(&ev) {
+                    first_output = Some(std::time::Instant::now());
+                }
+                apply(
+                    ctx,
+                    ev,
+                    &mut round,
+                    &mut raw_args,
+                    provider.kind(),
+                    &mut end,
+                );
+            }
         }
     }
     round.end = end.unwrap_or(End::Cancelled);
+    if let Some(usage) = round.usage.as_mut() {
+        usage.generation_ms = first_output
+            .map(|at| u64::try_from(at.elapsed().as_millis()).unwrap_or(u64::MAX))
+            .unwrap_or(0);
+        // The bill where the provider sends one, and otherwise the list price: exact for
+        // OpenRouter, an estimate everywhere else, and the footer says which.
+        if usage.cost_usd.is_none()
+            && let Some(pricing) = &ctx.pricing
+        {
+            usage.cost_usd = Some(pricing.estimate(usage, provider.kind()));
+            usage.cost_is_estimate = true;
+        }
+    }
     round
+}
+
+/// Whether an event is the model producing something, rather than the stream's own
+/// bookkeeping around it.
+fn is_output(ev: &StreamEvent) -> bool {
+    !matches!(
+        ev,
+        StreamEvent::MessageStart { .. }
+            | StreamEvent::MessageEnd { .. }
+            | StreamEvent::Usage(_)
+            | StreamEvent::Notice { .. }
+    )
 }
 
 fn apply(

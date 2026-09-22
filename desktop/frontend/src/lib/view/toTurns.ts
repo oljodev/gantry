@@ -20,6 +20,7 @@ import type {
 } from '@/fixtures/types';
 import { isArtifactTool } from '@/features/artifacts/registry';
 import { fileItem } from '@/lib/view/fileTools';
+import { tokensPerSecond } from '@/lib/view/usage';
 import type { LiveMessage, LiveTurn } from '@/lib/stores/runStore';
 
 type Label = (ref: { provider: string; model: string }) => string;
@@ -126,6 +127,9 @@ function finishedTurn(t: TurnDto, modelLabel: Label, titles: ArtifactIndex): Tur
           tokensOut: t.usage.output,
           cached: t.usage.cache_read || undefined,
           subTokens: subTokens(blocks),
+          costUsd: t.usage.cost_usd ?? undefined,
+          costEstimated: t.usage.cost_is_estimate || undefined,
+          tokensPerSecond: tokensPerSecond(t.usage.output, t.usage.generation_ms ?? 0),
         }
       : undefined,
     status: statusOf(t.status),
@@ -172,6 +176,9 @@ function liveTurn(t: TurnDto, live: LiveTurn, modelLabel: Label, titles: Artifac
             tokensOut: live.usage.output,
             cached: live.usage.cache_read || undefined,
             subTokens: subTokens(blocks),
+            costUsd: live.usage.cost_usd ?? undefined,
+            costEstimated: live.usage.cost_is_estimate || undefined,
+            tokensPerSecond: tokensPerSecond(live.usage.output, live.usage.generation_ms ?? 0),
           }
         : undefined,
     status:

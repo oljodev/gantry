@@ -323,7 +323,7 @@ fn usage(u: &Value) -> Usage {
         cache_read: n("total_cached_tokens"),
         cache_write: 0,
         reasoning: n("total_thought_tokens"),
-        cost_usd: None,
+        ..Usage::default()
     }
 }
 

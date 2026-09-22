@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { Turn } from '@/fixtures/types';
 import { useRelativeTime } from '@/lib/relativeTime';
+import { costLabel, speedLabel } from '@/lib/view/usage';
 import { cn } from '@/lib/utils';
 
 export interface TurnActionsProps {
@@ -90,6 +91,25 @@ export function TurnActions({ turn, pinned, onCopy, onRate, onRetry }: TurnActio
                   times what its own transcript explains is the first thing to want explained. */}
               {f.subTokens !== undefined && ` · ${f.subTokens.toLocaleString()} in sub agents`}
             </span>
+            {f.tokensPerSecond !== undefined && (
+              <span title="Output tokens per second, from each step's first token to its last. The wait before the first token is left out: that is queueing, not speed.">
+                {speedLabel(f.tokensPerSecond)}
+              </span>
+            )}
+            {f.costUsd !== undefined && (
+              // The bill where the provider sends one, and the list price otherwise — marked, so
+              // an estimate never passes for an invoice.
+              <span
+                title={
+                  f.costEstimated
+                    ? `About $${f.costUsd}, worked out from the model's list prices: this provider does not say what it billed.`
+                    : `$${f.costUsd}, as the provider billed it.`
+                }
+              >
+                {f.costEstimated ? '~' : ''}
+                {costLabel(f.costUsd)}
+              </span>
+            )}
           </>
         )}
       </span>

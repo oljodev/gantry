@@ -334,6 +334,9 @@ impl ChunkParser {
                     .and_then(|d| d.reasoning_tokens)
                     .unwrap_or(0),
                 cost_usd: u.cost,
+                // Timing is the runner's to measure and an estimate is only made where there
+                // is no bill; this is the bill.
+                ..Usage::default()
             });
         }
         Ok(out)
