@@ -51,6 +51,10 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::code::session_changes,
             commands::code::session_file_diff,
             commands::code::call_file_diff,
+            commands::terminal::open_terminal,
+            commands::terminal::write_terminal,
+            commands::terminal::resize_terminal,
+            commands::terminal::close_terminal,
             commands::code::revert_file,
             commands::code::revert_session,
             commands::chats::add_chat_root,
@@ -152,6 +156,8 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             events::MemoryChanged,
             events::ProjectsChanged,
             events::AgentTypesChanged,
+            events::TerminalOutput,
+            events::TerminalExited,
         ])
 }
 
@@ -201,8 +207,16 @@ pub fn run() {
             builder.mount_events(app);
             startup::init(app)
         })
-        .run(tauri::generate_context!())
-        .expect("error while running Gantry");
+        .build(tauri::generate_context!())
+        .expect("error while running Gantry")
+        .run(|app, event| {
+            // A pty outlives the window that was drawing it, and a shell with nothing attached
+            // to it is a leak: the terminals go when the app does.
+            if matches!(event, tauri::RunEvent::Exit) {
+                use tauri::Manager;
+                app.state::<AppState>().terminals.close_all();
+            }
+        });
 }
 
 #[cfg(test)]

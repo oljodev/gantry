@@ -137,6 +137,26 @@ export const commands = {
 	binary: boolean,
 	hunks: HunkDto[],
 } | null, ErrorDto>(__TAURI_INVOKE("call_file_diff", { callId })),
+	/**
+	 *  Opens the terminal for a tab, or reattaches to the one already running under that id.
+	 * 
+	 *  The chat is where it starts: a code session's folder, and the user's home folder when there
+	 *  is none — a terminal with nowhere to be is still a terminal, and refusing to open one in a
+	 *  chat that has no folder attached would be a puzzle rather than a safeguard.
+	 */
+	openTerminal: (id: string, chatId: string | null, cols: number, rows: number) => typedError<TerminalDto, ErrorDto>(__TAURI_INVOKE("open_terminal", { id, chatId, cols, rows })),
+	/**
+	 *  Keystrokes, already encoded by the terminal emulator in the window: `\r` for Enter, `\x03`
+	 *  for Ctrl+C, an escape sequence for an arrow key.
+	 */
+	writeTerminal: (id: string, data: string) => typedError<null, ErrorDto>(__TAURI_INVOKE("write_terminal", { id, data })),
+	/**  The tab changed size, in characters. */
+	resizeTerminal: (id: string, cols: number, rows: number) => typedError<null, ErrorDto>(__TAURI_INVOKE("resize_terminal", { id, cols, rows })),
+	/**
+	 *  The user closed the tab, which kills the shell. Closing a terminal that is already gone is
+	 *  not an error: the tab closes either way.
+	 */
+	closeTerminal: (id: string) => __TAURI_INVOKE<void>("close_terminal", { id }),
 	/**  Puts one file back to what it was before this session touched it. */
 	revertFile: (chatId: ChatId, path: string) => typedError<RevertedDto, ErrorDto>(__TAURI_INVOKE("revert_file", { chatId, path })),
 	/**
@@ -428,6 +448,8 @@ export const events = {
 	providersChanged: makeEvent<ProvidersChanged>("providers-changed"),
 	settingsChanged: makeEvent<SettingsChanged>("settings-changed"),
 	skillsChanged: makeEvent<SkillsChanged>("skills-changed"),
+	terminalExited: makeEvent<TerminalExited>("terminal-exited"),
+	terminalOutput: makeEvent<TerminalOutput>("terminal-output"),
 };
 
 /* Types */
@@ -2593,6 +2615,36 @@ export type Surface =
 export type SystemPromptView = {
 	snapshot: string,
 	notes: string[],
+};
+
+/**  What a terminal is, for the tab that draws it. */
+export type TerminalDto = {
+	id: string,
+	/**  The shell that is running, named as a person would: `zsh`, `bash`, `powershell`. */
+	shell: string,
+	/**  Where it started. Empty when it started in the user's home folder. */
+	cwd: string,
+	/**
+	 *  What the terminal has already printed, for a tab being drawn again after it was closed,
+	 *  the chat was switched, or the window was reloaded. Empty for a terminal just opened.
+	 */
+	scrollback: string,
+};
+
+/**  A terminal's shell exited. The tab says so and stays open until the user closes it. */
+export type TerminalExited = {
+	id: string,
+	code: number | null,
+};
+
+/**
+ *  Bytes a terminal printed (16 §5). Unlike every other event here this one carries data
+ *  rather than an id: a terminal is a stream, and a "something changed, go and fetch it"
+ *  round trip per keystroke is not a terminal.
+ */
+export type TerminalOutput = {
+	id: string,
+	data: string,
 };
 
 export type Theme = "system" | "light" | "dark";

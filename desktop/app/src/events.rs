@@ -57,3 +57,19 @@ pub struct AgentTypesChanged;
 /// A memory was written, edited, deleted or restored (12 §B).
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type, tauri_specta::Event)]
 pub struct MemoryChanged;
+
+/// Bytes a terminal printed (16 §5). Unlike every other event here this one carries data
+/// rather than an id: a terminal is a stream, and a "something changed, go and fetch it"
+/// round trip per keystroke is not a terminal.
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type, tauri_specta::Event)]
+pub struct TerminalOutput {
+    pub id: String,
+    pub data: String,
+}
+
+/// A terminal's shell exited. The tab says so and stays open until the user closes it.
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type, tauri_specta::Event)]
+pub struct TerminalExited {
+    pub id: String,
+    pub code: Option<i32>,
+}

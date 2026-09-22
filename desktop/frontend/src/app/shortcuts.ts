@@ -35,6 +35,12 @@ export function installShortcuts(router: AnyRouter) {
           window.dispatchEvent(new CustomEvent('gantry:toggle-pane'));
         }
         break;
+      // The terminal, where every editor and every terminal puts it (16 §5). It opens in the
+      // session the user is looking at; on a page with no session, nothing is listening.
+      case '`':
+        e.preventDefault();
+        window.dispatchEvent(new CustomEvent('gantry:open-terminal'));
+        break;
     }
   };
   window.addEventListener('keydown', onKey);

@@ -124,6 +124,11 @@ gantry/
 │   │   ├── gantry-workspace/
 │   │   │   └── src/{lib.rs, scope.rs, text.rs, document.rs, edit.rs, walk.rs, session.rs, guard.rs, journal.rs; later runner.rs, classify.rs}
 │   │   │                                 # scope.rs: the capability open on cap-std; session.rs: what this chat has read
+│   │   ├── gantry-terminal/
+│   │   │   ├── src/lib.rs                # the user's own pty terminals (15 A24, 16 §5): one per tab,
+│   │   │   │                             # a reader thread each, bounded scrollback. Not a connector,
+│   │   │   │                             # and not reachable by a model
+│   │   │   └── tests/pty.rs              # a real shell: what is typed reaches it, what it prints comes back
 │   │   ├── gantry-agent/
 │   │   │   ├── build.rs                  # validates and embeds ../../skills/*/SKILL.md (M12)
 │   │   │   ├── tests/{turns.rs, prompts.rs, fixtures/prompts/<mode>.txt}   # the loop on a scripted provider; one pinned prompt per mode

@@ -356,6 +356,7 @@ fn init_phases(app: &mut App, phases: &mut crate::perf::Phases) -> Result<(), Bo
         memories,
         projects,
         workspace,
+        terminals: Arc::new(gantry_terminal::Terminals::new()),
         invalid_keys: Mutex::new(Default::default()),
     });
 

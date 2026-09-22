@@ -1,4 +1,4 @@
-import { useNavigate } from '@tanstack/react-router';
+import { useNavigate, useRouterState } from '@tanstack/react-router';
 import {
   ChatCircleIcon,
   ChatTextIcon,
@@ -9,6 +9,7 @@ import {
   PlusIcon,
   SidebarSimpleIcon,
   SunIcon,
+  TerminalIcon,
 } from '@phosphor-icons/react';
 import { useState } from 'react';
 
@@ -51,6 +52,11 @@ export function CommandPalette({
   const projects = useProjects().data ?? [];
   const catalog = useCatalog().data ?? [];
   const toggleSidebar = useUiStore((s) => s.toggleSidebar);
+  // The terminal belongs to a session's right pane, so it is offered where there is one to
+  // open it in rather than as an entry that would do nothing from settings.
+  const inSession = useRouterState({
+    select: (r) => /^\/(chat|code)\/[^/]+/.test(r.location.pathname),
+  });
   const setTheme = useUiStore((s) => s.setTheme);
 
   const run = (fn: () => void) => () => {
@@ -91,6 +97,17 @@ export function CommandPalette({
       kbd: shortcutLabel('mod+shift+K'),
       run: () => switchSurface('chat'),
     },
+    ...(inSession
+      ? [
+          {
+            key: 'open terminal',
+            label: 'Open terminal',
+            icon: <TerminalIcon />,
+            kbd: shortcutLabel('mod+`'),
+            run: () => window.dispatchEvent(new CustomEvent('gantry:open-terminal')),
+          },
+        ]
+      : []),
     {
       key: 'toggle sidebar',
       label: 'Toggle sidebar',

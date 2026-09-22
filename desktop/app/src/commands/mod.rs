@@ -10,4 +10,5 @@ pub mod projects;
 pub mod providers;
 pub mod settings;
 pub mod skills;
+pub mod terminal;
 pub mod turns;

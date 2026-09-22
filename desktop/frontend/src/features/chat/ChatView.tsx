@@ -5,7 +5,7 @@ import {
   PlayIcon,
   TerminalIcon,
 } from '@phosphor-icons/react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import type {
   CatalogEntryDto,
@@ -67,6 +67,14 @@ import { chatDefaults } from '@/lib/settingsDefaults';
 import { useRunStore } from '@/lib/stores/runStore';
 import { useUiStore } from '@/lib/stores/uiStore';
 import { toTurns } from '@/lib/view/toTurns';
+
+/**
+ * A terminal emulator is a third of a megabyte, and most sessions never open one — so it
+ * arrives when the tab does rather than in every chat's bundle.
+ */
+const TerminalView = lazy(() =>
+  import('@/components/gantry/pane/TerminalView').then((m) => ({ default: m.TerminalView })),
+);
 import { ChangesPane } from '@/components/gantry/pane/ChangesPane';
 import { useRevert, useSessionChanges } from '@/lib/ipc/hooks/changes';
 
@@ -152,6 +160,10 @@ export function ChatView({
     openArtifactId ? `artifact-${openArtifactId}` : '',
   );
   const [paneOpen, setPaneOpen] = useState(() => openArtifactId !== undefined);
+  // One terminal per session, opened by the user and never by a turn (16 §5). The pty lives in
+  // the backend under this id, so it survives the tab being switched away from and the window
+  // being reloaded; closing the tab is what ends it.
+  const [terminalOpen, setTerminalOpen] = useState(false);
   const artifactList = useArtifacts(chatId);
   const skills = useSkills();
   // Which skills are pinned to this chat (12 §A6). Pinning is a prompt layer, so the command
@@ -237,6 +249,12 @@ export function ChatView({
   );
   const closeTab = useCallback(
     (id: string) => {
+      if (id === TERMINAL_TAB) {
+        setTerminalOpen(false);
+        setActiveTab((a) => (a === id ? '' : a));
+        void commands.closeTerminal(terminalId(chatId));
+        return;
+      }
       if (id.startsWith('artifact-')) {
         closeArtifact(chatId, id.slice('artifact-'.length));
         setActiveTab((a) => (a === id ? '' : a));
@@ -280,6 +298,17 @@ export function ChatView({
     setPaneOpen(true);
   }, [code, changeCount]);
 
+  const openTerminal = useCallback(() => {
+    setTerminalOpen(true);
+    setActiveTab(TERMINAL_TAB);
+    setPaneOpen(true);
+  }, []);
+  // Ctrl/Cmd+` from anywhere, and the palette's "Open terminal", both land here.
+  useEffect(() => {
+    window.addEventListener('gantry:open-terminal', openTerminal);
+    return () => window.removeEventListener('gantry:open-terminal', openTerminal);
+  }, [openTerminal]);
+
   // Ctrl/Cmd+Shift+A toggles the pane (13 §4).
   useEffect(() => {
     const toggle = () => setPaneOpen((o) => !o);
@@ -310,6 +339,21 @@ export function ChatView({
         },
       ]
     : [];
+  const terminalTabs: PaneTab[] = terminalOpen
+    ? [
+        {
+          id: TERMINAL_TAB,
+          title: 'Terminal',
+          icon: <TerminalIcon />,
+          temporary: false,
+          content: (
+            <Suspense fallback={null}>
+              <TerminalView id={terminalId(chatId)} chatId={chatId} />
+            </Suspense>
+          ),
+        },
+      ]
+    : [];
   const artifactTabs: PaneTab[] = (openArtifacts ?? []).map((id) => ({
     id: `artifact-${id}`,
     title: artifacts[id]?.title ?? 'Artifact',
@@ -323,7 +367,7 @@ export function ChatView({
       />
     ),
   }));
-  const tabs = [...changesTabs, ...artifactTabs, ...detailTabs];
+  const tabs = [...changesTabs, ...terminalTabs, ...artifactTabs, ...detailTabs];
 
   // Follow mode: while the user sits at the bottom, streaming keeps the newest text in view.
   const liveLength =
@@ -845,6 +889,19 @@ export function ChatView({
           onClose={() => setPaneOpen(false)}
           onCloseTab={closeTab}
           allClosable
+          actions={
+            terminalOpen ? undefined : (
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Open terminal"
+                title="Open terminal"
+                onClick={openTerminal}
+              >
+                <TerminalIcon />
+              </Button>
+            )
+          }
         />
       )}
     </div>
@@ -859,6 +916,12 @@ export function ChatView({
  */
 function grantDecision(option?: { grant?: GrantScope }): PermissionDecision {
   return option?.grant ? { kind: 'allow_chat', scope: option.grant } : { kind: 'allow_once' };
+}
+
+/** The pane tab, and the pty behind it: one terminal per session, named after it. */
+const TERMINAL_TAB = 'terminal';
+function terminalId(chatId: string): string {
+  return `${TERMINAL_TAB}-${chatId}`;
 }
 
 function describe(err: unknown): string {

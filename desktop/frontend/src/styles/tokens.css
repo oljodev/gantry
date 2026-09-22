@@ -61,6 +61,31 @@
      and a second hue on top of it reads as a third state. */
   --diff-word-bg: rgb(0 0 0 / 0.09);
 
+  /* Terminal (15 A24, 16 §5): the sixteen colours a program in the terminal tab can ask for.
+     They live here like every other colour, and nowhere else. Chosen against `--bg-inset`,
+     which is what the terminal is drawn on, and kept in step with the semantic colours above
+     where the meaning is the same — a red error is the same red either way. */
+  --term-fg: #18181b;
+  --term-bg: #ffffff;
+  --term-cursor: #ea640b;
+  --term-selection: rgb(234 100 11 / 0.25);
+  --term-black: #18181b;
+  --term-red: #cf222e;
+  --term-green: #15752f;
+  --term-yellow: #8a5c00;
+  --term-blue: #0969da;
+  --term-magenta: #8250df;
+  --term-cyan: #1b7c83;
+  --term-white: #6b6b73;
+  --term-bright-black: #8b8b92;
+  --term-bright-red: #e5484d;
+  --term-bright-green: #1a7f37;
+  --term-bright-yellow: #9a6700;
+  --term-bright-blue: #218bff;
+  --term-bright-magenta: #a475f9;
+  --term-bright-cyan: #3192aa;
+  --term-bright-white: #18181b;
+
   /* Elevation (15 §6): level 2 and 3 only */
   --shadow-float: 0 8px 24px rgb(0 0 0 / 0.1);
   --highlight-top: transparent;
@@ -103,6 +128,27 @@
     --diff-del-bg: rgb(248 81 73 / 0.15);
     --diff-word-bg: rgb(255 255 255 / 0.14);
     --shadow-float: 0 8px 24px rgb(0 0 0 / 0.35);
+    /* Terminal (15 A24, 16 §5) */
+    --term-fg: #ededef;
+    --term-bg: #0d0d0f;
+    --term-cursor: #ff7a1f;
+    --term-selection: rgb(255 122 31 / 0.3);
+    --term-black: #4b4b52;
+    --term-red: #f85149;
+    --term-green: #3fb950;
+    --term-yellow: #d29922;
+    --term-blue: #58a6ff;
+    --term-magenta: #bc8cff;
+    --term-cyan: #39c5cf;
+    --term-white: #b1b1b8;
+    --term-bright-black: #6e7681;
+    --term-bright-red: #ff7b72;
+    --term-bright-green: #56d364;
+    --term-bright-yellow: #e3b341;
+    --term-bright-blue: #79c0ff;
+    --term-bright-magenta: #d2a8ff;
+    --term-bright-cyan: #56d4dd;
+    --term-bright-white: #f0f6fc;
     --highlight-top: rgb(255 255 255 / 0.04);
   }
 }
@@ -144,6 +190,27 @@
   --diff-del-bg: rgb(248 81 73 / 0.15);
   --diff-word-bg: rgb(255 255 255 / 0.14);
   --shadow-float: 0 8px 24px rgb(0 0 0 / 0.35);
+  /* Terminal (15 A24, 16 §5) */
+  --term-fg: #ededef;
+  --term-bg: #0d0d0f;
+  --term-cursor: #ff7a1f;
+  --term-selection: rgb(255 122 31 / 0.3);
+  --term-black: #4b4b52;
+  --term-red: #f85149;
+  --term-green: #3fb950;
+  --term-yellow: #d29922;
+  --term-blue: #58a6ff;
+  --term-magenta: #bc8cff;
+  --term-cyan: #39c5cf;
+  --term-white: #b1b1b8;
+  --term-bright-black: #6e7681;
+  --term-bright-red: #ff7b72;
+  --term-bright-green: #56d364;
+  --term-bright-yellow: #e3b341;
+  --term-bright-blue: #79c0ff;
+  --term-bright-magenta: #d2a8ff;
+  --term-bright-cyan: #56d4dd;
+  --term-bright-white: #f0f6fc;
   --highlight-top: rgb(255 255 255 / 0.04);
 }
 

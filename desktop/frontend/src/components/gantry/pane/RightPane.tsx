@@ -38,6 +38,7 @@ export function RightPane({
   onClose,
   onCloseTab,
   allClosable,
+  actions,
 }: {
   tabs: PaneTab[];
   activeId: string;
@@ -46,6 +47,9 @@ export function RightPane({
   onCloseTab: (id: string) => void;
   /** Every tab shows a close button, not only the temporary ones (artifact tabs, 13 §4). */
   allClosable?: boolean;
+  /** Buttons at the right of the tab strip, before Close: things that open a tab rather than
+      things that act on the tab that is open. */
+  actions?: ReactNode;
 }) {
   const stored = useUiStore((s) => s.paneWidth);
   const setWidth = useUiStore((s) => s.setPaneWidth);
@@ -152,7 +156,8 @@ export function RightPane({
               )}
             </div>
           ))}
-          <div className="ml-auto flex items-center pb-1">
+          <div className="ml-auto flex items-center gap-0.5 pb-1">
+            {actions}
             <Button variant="ghost" size="icon-sm" aria-label="Close pane" onClick={onClose}>
               <XIcon />
             </Button>

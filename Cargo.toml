@@ -27,6 +27,7 @@ gantry-secrets = { path = "desktop/crates/gantry-secrets" }
 gantry-providers = { path = "desktop/crates/gantry-providers" }
 gantry-connectors = { path = "desktop/crates/gantry-connectors" }
 gantry-workspace = { path = "desktop/crates/gantry-workspace" }
+gantry-terminal = { path = "desktop/crates/gantry-terminal" }
 gantry-documents = { path = "desktop/crates/gantry-documents" }
 gantry-agent = { path = "desktop/crates/gantry-agent" }
 gantry-connector-filesystem = { path = "desktop/connectors/filesystem" }
@@ -54,6 +55,8 @@ zeroize = "1"
 chacha20poly1305 = "0.11"
 getrandom = "0.3"
 base64 = "0.22"
+# The terminal tab's pty (16 §5): one crate, one process per terminal, ConPTY on Windows.
+portable-pty = "0.9"
 reqwest = { version = "0.13", features = ["json", "stream", "form"] }
 rmcp = { version = "3.2", default-features = false, features = ["client", "transport-child-process", "transport-streamable-http-client-reqwest"] }
 url = "2.5"

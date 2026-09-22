@@ -41,6 +41,9 @@ pub struct AppState {
     pub projects: Arc<Projects>,
     /// Roots, file IO and the edit journal: what the Changes pane reads and reverts through.
     pub workspace: Arc<gantry_workspace::Workspace>,
+    /// The user's own terminals (16 §5). Not a tool, and not reachable by a model: a pty per
+    /// open tab, running the user's login shell.
+    pub terminals: Arc<gantry_terminal::Terminals>,
     /// Providers whose last key test failed with an auth error; cleared when the key changes.
     pub invalid_keys: Mutex<HashSet<String>>,
 }

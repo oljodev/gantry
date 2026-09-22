@@ -251,6 +251,11 @@ interacting with it will not work: an interactive rebase, a password prompt, a s
 that asks questions, a pager. The failure is fast and clear rather than a hang, and the message
 says the command appears to want input.
 
+None of this changed when the app grew a terminal of its own (15 A24, 16 §5). That is a
+different mechanism for a different job: the user's login shell on a pty, opened by the user,
+with a keyboard attached and no model anywhere near it. The connector's input stays closed,
+because a tool call that a person has to answer is not a tool call.
+
 **No background processes.** A development server, a file watcher, a long build: all of these hit
 the ten-minute ceiling and are killed. This is the most obvious gap and the one most worth
 closing next. Doing it properly means starting a process detached from the turn, giving it an

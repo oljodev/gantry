@@ -29,6 +29,7 @@ gantry-providers.workspace = true
 gantry-secrets.workspace = true
 gantry-store.workspace = true
 gantry-workspace.workspace = true
+gantry-terminal.workspace = true
 tokio.workspace = true
 reqwest.workspace = true
 secrecy.workspace = true

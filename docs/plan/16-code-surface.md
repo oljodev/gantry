@@ -192,6 +192,28 @@ Detail tabs are unchanged: diff, command, tool call, guard, opened temporarily a
 
 Artifacts still open here when a code session produces one; they are simply not the default.
 
+**Terminal** (15 A24, built 2026-09-22). A tab with the user's own login shell in it, on a real
+pty, started in the session's folder. It is opened deliberately — `Ctrl/Cmd+\``, the palette's
+**Open terminal**, or the terminal button at the right of the tab strip — and never by the app
+or by a turn, because a terminal that appears by itself is a window that has decided what you
+are doing next.
+
+It is not the shell connector and shares no code with it. The connector runs one command line
+for the model with standard input closed, its output captured and a deadline on it
+(`docs/connectors/shell.md` D3, §9); that is what makes a tool call a thing the feed can show
+and the journal can keep, and it is exactly why `vim`, `top`, an interactive rebase and a
+password prompt cannot run in it. This is the other half: a keyboard attached to a shell, for
+the command a person wants to run themselves. Nothing a model can call reaches into one — there
+is no tool for opening a terminal, typing in one, or reading one.
+
+The pty lives in the backend (`gantry-terminal`) keyed by the tab's id, and outlives the tab's
+React component: switching tabs, switching chats and reloading the window all unmount it while
+the shell goes on running, so opening is *attach, and redraw the scrollback* rather than
+*start*. Closing the tab is what kills the shell, and closing the app kills all of them.
+
+One terminal per session, for now. A second would need tabs inside a tab or a list beside one,
+and neither is worth building before somebody wants two.
+
 **Deliberately absent: a file tree.** The agent finds files; a tree is an editor feature, and
 building one invites the expectation that Gantry is an editor. If a user wants to browse the
 repository they have one open already.
@@ -361,6 +383,7 @@ Nothing else changes. `messages`, `turns`, `events`, `tool_calls`, `file_edits`,
 
 | Document | Change |
 |----------|--------|
+| `15-app-design.md` | A24, the Terminal tab, and the terminal half of the colour table in §3 |
 | `01-architecture-overview.md` §5 | The sidebar section describes one list; there are now two, and a surface toggle above them. The module map gains a `features/code` folder for the surface-specific shell |
 | `01-architecture-overview.md` §8 | Tension T12 is about connectors never being auto-installed. It needs a sibling row, or an amendment, covering the code surface's built-in tools: the promise is about the catalog, not about app-owned capability |
 | `03-connector-system.md` §11 | "Nothing is installed by default" gains its one named exception: opening the Code surface installs `filesystem`, `code-editor` and `shell` together, discloses it in the empty state, and leaves all three removable |
