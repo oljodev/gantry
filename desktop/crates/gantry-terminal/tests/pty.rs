@@ -29,11 +29,16 @@ impl TerminalSink for Collector {
 }
 
 impl Collector {
-    fn wait_for(&self, needle: &str) -> String {
+    /// Waits until `needle` has arrived `times` times, or the deadline passes.
+    ///
+    /// The count is the whole point. A shell echoes what was typed the instant it is typed and
+    /// answers it a moment later, so waiting for one occurrence returns on the echo and a test
+    /// that asserts on the answer reads the buffer before it is there.
+    fn wait_for(&self, needle: &str, times: usize) -> String {
         let deadline = Instant::now() + Duration::from_secs(10);
         loop {
             let text = self.text.lock().unwrap_or_else(|e| e.into_inner()).clone();
-            if text.contains(needle) || Instant::now() > deadline {
+            if text.matches(needle).count() >= times || Instant::now() > deadline {
                 return text;
             }
             std::thread::sleep(Duration::from_millis(20));
@@ -62,7 +67,7 @@ fn a_command_typed_into_a_terminal_answers() {
 
     // `\r` is Enter: the front end sends keystrokes, not lines.
     terminals.write("t1", "echo gantry-terminal-ok\r").unwrap();
-    let text = sink.wait_for("gantry-terminal-ok");
+    let text = sink.wait_for("gantry-terminal-ok", 2);
     assert!(
         text.matches("gantry-terminal-ok").count() >= 2,
         "the shell echoes what was typed and then answers it: {text:?}"
