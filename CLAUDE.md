@@ -45,7 +45,9 @@ update the document in the same commit.
   scripts forward to `desktop/frontend`, and `pnpm format` covers the whole repository.
 - Rust: `cargo test --workspace`, `cargo clippy --workspace --all-targets -- -D warnings`,
   `cargo fmt --all`, and `cargo deny check` when dependencies change (licences, advisories,
-  sources; it is the one check that used to exist only in CI).
+  sources; it is the one check that used to exist only in CI). When dependencies change, also
+  `cargo xtask licenses` and commit `THIRD_PARTY_LICENSES.md` — the release workflow refuses a
+  stale one. It needs `cargo install cargo-about --locked --features cli --version 0.9.2` once.
 - The app: `pnpm tauri dev` (the Tauri CLI finds `desktop/app/tauri.conf.json` by itself). After
   changing a command: `cargo xtask gen-bindings` and commit `desktop/frontend/src/bindings.ts` (the
   `gen_bindings` test fails on drift).

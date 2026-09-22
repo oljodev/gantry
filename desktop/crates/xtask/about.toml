@@ -1,0 +1,34 @@
+# cargo-about, for `cargo xtask licenses` (THIRD_PARTY_LICENSES.md).
+#
+# `accepted` mirrors the `allow` list in deny.toml: cargo-deny decides what may be depended on,
+# this only writes down what was. A licence accepted there and missing here fails the generator
+# rather than being left out of the notices.
+accepted = [
+  "MIT",
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "ISC",
+  "Zlib",
+  "0BSD",
+  "BSL-1.0",
+  "CC0-1.0",
+  "MPL-2.0",
+  "Unicode-3.0",
+  "Unicode-DFS-2016",
+  "OpenSSL",
+  "CDLA-Permissive-2.0",
+]
+
+# The two targets v0.1.0 ships (09 M13: macOS is not one of them).
+targets = ["x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc"]
+
+# What is in the binary. Build scripts and dev-dependencies run on the build machine and are not
+# distributed; Gantry's own crates are `publish = false` and are covered by LICENSE.
+ignore-build-dependencies = true
+ignore-dev-dependencies = true
+private = { ignore = true }
+
+# The generator runs `--frozen`: the licence files in the crates themselves and nothing fetched,
+# so the same Cargo.lock always produces the same file.

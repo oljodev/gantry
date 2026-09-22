@@ -35,6 +35,10 @@
     "active": true,
     "targets": "all",
     "category": "DeveloperTool",
+    "resources": {
+      "../../LICENSE": "LICENSE",
+      "../../THIRD_PARTY_LICENSES.md": "THIRD_PARTY_LICENSES.md"
+    },
     "shortDescription": "The AI workspace that stays on your machine.",
     "longDescription": "A desktop AI workspace: chat with any model on your own keys, let an agent work in your folders and services under permissions you set, everything stored on your machine.",
     "icon": [

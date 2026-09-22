@@ -8,6 +8,7 @@
 //! - `validate-skills`   the rules of a bundled skill that `build.rs` does not stop the
 //!   build for (12 §A2)
 //! - `check-windows`   type-check the Windows build from Linux; `--clippy` for the lint pass
+//! - `licenses`        write `THIRD_PARTY_LICENSES.md`; `--check` fails if it is out of date
 //! - `icons`             arrives with M13
 
 #![forbid(unsafe_code)]
@@ -21,6 +22,7 @@ use std::{
 use anyhow::{Context, bail};
 
 mod connectors;
+mod licenses;
 mod probe;
 mod skills;
 mod windows;
@@ -46,13 +48,17 @@ fn main() -> ExitCode {
             &workspace_root(),
             env::args().skip(2).any(|f| f == "--clippy"),
         ),
+        "licenses" => licenses::run(
+            &workspace_root(),
+            env::args().skip(2).any(|f| f == "--check"),
+        ),
         "icons" => {
             eprintln!("xtask {task}: not implemented yet (see docs/plan/09-roadmap.md)");
             Ok(())
         }
         _ => {
             eprintln!(
-                "usage: cargo xtask <gen-bindings | check-bindings | validate-connectors | probe-connectors [--offline] [--spawn] | validate-skills | check-windows [--clippy] | icons>"
+                "usage: cargo xtask <gen-bindings | check-bindings | validate-connectors | probe-connectors [--offline] [--spawn] | validate-skills | check-windows [--clippy] | licenses [--check] | icons>"
             );
             return ExitCode::from(2);
         }
