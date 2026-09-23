@@ -75,6 +75,10 @@ export function summarize(items: ActivityItem[]): string {
         note(`use:${name}`);
         break;
       }
+      case 'todos':
+        // Once, however many times it was ticked: the count of updates is not the news.
+        if (item.status === 'done') note('checklist');
+        break;
       case 'artifact':
         (item.action === 'updated' ? updated : created).add(item.artifactId ?? item.id);
         note(item.action === 'updated' ? 'updated' : 'created');
@@ -93,6 +97,7 @@ export function summarize(items: ActivityItem[]): string {
       );
     else if (key === 'edit') fragments.push(`edited ${count(edits.size, 'file')}`);
     else if (key === 'command') fragments.push(`ran ${count(commands, 'command')}`);
+    else if (key === 'checklist') fragments.push('updated the checklist');
     else if (key === 'created') fragments.push(`created ${count(created.size, 'artifact')}`);
     else if (key === 'updated') fragments.push(`updated ${count(updated.size, 'artifact')}`);
     else if (key === 'guard')

@@ -3,6 +3,7 @@ import { type CSSProperties, memo, useEffect, useState } from 'react';
 
 import { type StepBlock, TurnSteps } from '@/components/gantry/activity/TurnSteps';
 import { ArtifactCard } from '@/components/gantry/chat/ArtifactCard';
+import { Checklist } from '@/components/gantry/chat/Checklist';
 import { ImageLightbox } from '@/components/gantry/ImageLightbox';
 import {
   type AccessAnswer,
@@ -188,6 +189,12 @@ function TurnViewInner({
                   onAllowAnyway={onAllowAnyway}
                   onRevert={onRevert}
                 />
+              );
+            case 'todos':
+              return (
+                <div key={i} className="my-3">
+                  <Checklist todos={block.todos} running={turn.status === 'running'} />
+                </div>
               );
             case 'artifact':
               return (
@@ -421,6 +428,9 @@ function guessHeight(turn: Turn): number {
         break;
       case 'artifact':
         px += 96;
+        break;
+      case 'todos':
+        px += 48 + 26 * block.todos.length;
         break;
       case 'image':
         px += 320;

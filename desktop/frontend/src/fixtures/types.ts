@@ -48,6 +48,12 @@ export interface Hunk {
   lines: HunkLine[];
 }
 
+/** One item of the checklist a model keeps with `gantry__update_todos` (03 §9b). */
+export interface Todo {
+  content: string;
+  status: 'pending' | 'in_progress' | 'completed';
+}
+
 export type ActivityItem =
   | { kind: 'read'; id: string; path: string; range?: string; guard?: GuardMark }
   | { kind: 'search'; id: string; query: string; glob: string; matches: number; guard?: GuardMark }
@@ -89,6 +95,12 @@ export type ActivityItem =
        * was cut (05 §8). */
       hasWholeOutput?: boolean;
     }
+  /**
+   * One update of the model's checklist (03 §9b). The row is small on purpose: the list itself
+   * is lifted out of the steps as the turn's `todos` block, where it can be read without
+   * opening anything.
+   */
+  | { kind: 'todos'; id: string; todos: Todo[]; status: 'running' | 'done' | 'failed' }
   | {
       kind: 'connector';
       id: string;
@@ -277,6 +289,8 @@ export type Block =
       version: number;
       action: 'created' | 'updated';
     }
+  /** The newest checklist of the turn, where the model first wrote it (03 §9b). */
+  | { kind: 'todos'; todos: Todo[] }
   | { kind: 'permission'; permission: Permission }
   | { kind: 'access'; ask: AccessAsk }
   | { kind: 'offer'; offer: ConnectorOffer }

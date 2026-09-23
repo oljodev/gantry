@@ -3,13 +3,15 @@
 //! loop has one call path, but they are not catalog entries: no install, no auth, no process.
 //!
 //! `gantry__clock` (M3), the artifact tools (M5), the connector tools (M10: search, access
-//! requests, suggestions) and, with M12, the skill and memory tools (12 §A7, §B7).
+//! requests, suggestions), with M12 the skill and memory tools (12 §A7, §B7), and
+//! `gantry__update_todos`, the checklist a model keeps for a task of several steps (03 §9b).
 
 pub mod artifacts;
 pub mod catalog;
 pub mod clock;
 pub mod memory;
 pub mod skills;
+pub mod todos;
 
 use std::sync::Arc;
 
@@ -91,7 +93,7 @@ impl Connector for RuntimeTools {
     }
 
     async fn tools(&self) -> Result<Vec<ToolDef>, ConnectorError> {
-        let mut defs = vec![clock::definition()];
+        let mut defs = vec![clock::definition(), todos::definition()];
         if self.artifacts.is_some() {
             defs.extend(artifacts::definitions());
         }
@@ -115,6 +117,7 @@ impl Connector for RuntimeTools {
     ) -> Result<ToolOutcome, ConnectorError> {
         match req.tool.as_str() {
             clock::NAME => Ok(clock::call(&req.args)),
+            todos::NAME => Ok(todos::call(&req.args)),
             t if artifacts::NAMES.contains(&t) => match &self.artifacts {
                 Some(service) => Ok(artifacts::call(service, &req, &sink).await),
                 None => Err(ConnectorError::UnknownTool(t.to_owned())),

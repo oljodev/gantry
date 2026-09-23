@@ -233,6 +233,7 @@ async fn the_runtime_tools_create_read_and_edit_with_events() {
         names,
         [
             "clock",
+            "update_todos",
             "create_artifact",
             "update_artifact",
             "edit_artifact",

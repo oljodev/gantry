@@ -629,6 +629,7 @@ async fn a_text_turn_completes_and_is_recorded() {
             "fake__stream",
             "fake__paint",
             "gantry__clock",
+            "gantry__update_todos",
             "gantry__search_connectors",
             "gantry__request_access",
             "gantry__suggest_connector",
@@ -1448,6 +1449,7 @@ async fn plan_mode_offers_only_tools_it_would_allow() {
             "fake__stream",
             "fake__paint",
             "gantry__clock",
+            "gantry__update_todos",
             "gantry__search_connectors",
             "gantry__request_access",
             "gantry__suggest_connector",
@@ -1667,6 +1669,7 @@ async fn a_chat_sees_only_the_connectors_it_attached() {
         names,
         [
             "gantry__clock",
+            "gantry__update_todos",
             "gantry__search_connectors",
             "gantry__request_access",
             "gantry__suggest_connector",

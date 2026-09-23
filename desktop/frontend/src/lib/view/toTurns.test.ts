@@ -419,3 +419,76 @@ describe('the sub agents a reply started (18 §7)', () => {
     expect(only!.footer?.subTokens).toBeUndefined();
   });
 });
+
+describe('the checklist a model keeps (03 §9b)', () => {
+  const todos = (id: string, list: [string, string][], extra: Partial<ToolCallDto> = {}) =>
+    call({
+      id,
+      connector: 'gantry',
+      connector_name: 'Gantry',
+      tool: 'update_todos',
+      model_tool_name: 'gantry__update_todos',
+      args: { todos: list.map(([content, status]) => ({ content, status })) },
+      tier: 'app',
+      ...extra,
+    });
+  const read = (id: string) => call({ id });
+  const blocksOf = (calls: ToolCallDto[]) =>
+    toTurns(chat(calls), undefined, (r) => r.model)[0]!.blocks;
+
+  it('lifts the newest list out of the steps, where the first one was written', () => {
+    const blocks = blocksOf([
+      read('r1'),
+      todos('t1', [
+        ['Read the test', 'in_progress'],
+        ['Fix it', 'pending'],
+      ]),
+      read('r2'),
+      todos('t2', [
+        ['Read the test', 'completed'],
+        ['Fix it', 'in_progress'],
+      ]),
+    ]);
+    expect(blocks.map((b) => b.kind)).toEqual(['activity', 'todos', 'activity']);
+    const card = blocks[1]!;
+    if (card.kind !== 'todos') throw new Error('no checklist');
+    expect(card.todos.map((t) => t.status)).toEqual(['completed', 'in_progress']);
+    // The steps split around it: what came before the plan, then the work.
+    const before = blocks[0]!;
+    const after = blocks[2]!;
+    if (before.kind !== 'activity' || after.kind !== 'activity') throw new Error('no steps');
+    expect(before.items.map((i) => i.id)).toEqual(['r1', 't1']);
+    expect(after.items.map((i) => i.id)).toEqual(['r2', 't2']);
+  });
+
+  it('leaves out a list the tool refused, and draws no card for a cleared one', () => {
+    const refused = blocksOf([
+      todos(
+        't1',
+        [
+          ['One', 'in_progress'],
+          ['Two', 'in_progress'],
+        ],
+        { status: 'failed', is_error: true },
+      ),
+    ]);
+    expect(refused.some((b) => b.kind === 'todos')).toBe(false);
+    const cleared = blocksOf([todos('t1', [['One', 'completed']]), todos('t2', [])]);
+    expect(cleared.some((b) => b.kind === 'todos')).toBe(false);
+  });
+
+  it('keeps each update as a row that says how far it got', () => {
+    const items = rows([
+      todos('t1', [
+        ['One', 'completed'],
+        ['Two', 'pending'],
+        ['x', 'done'],
+      ]),
+    ]);
+    const row = items[0]!;
+    if (row.kind !== 'todos') throw new Error('not a checklist row');
+    // An item whose status is not one of the three is dropped rather than drawn as something.
+    expect(row.todos).toHaveLength(2);
+    expect(row.status).toBe('done');
+  });
+});

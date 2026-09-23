@@ -620,6 +620,15 @@ As built (M10, 2026-09-08):
 - **Surfacing.** A `ConnectorSuggestionCard` in the chat: icon, name, the model's reason, the entry's own line, badges for what it needs (runtime, auth), buttons **Install** and **Not now**. Install runs the normal install flow (§11) inline — one click, with the install dialog as the fallback for a server that needs a credential — then attaches the instance to the chat, appends a `ToolSetChange` and lets the waiting turn continue with the new tools. If the user navigated away, the sidebar shows the pending badge.
 - **Limits.** At most two suggestions per turn; a declined suggestion is not offered again in the same chat; every suggestion is an event.
 
+## 9b. The checklist (a runtime tool)
+
+Added 2026-09-23, after v0.1.0, as the first of the coding-agent parity items: the thing that keeps a long agentic turn from forgetting half of what it was asked, and lets the user watch it work through a task instead of reading the steps afterwards. Claude Code's `TodoWrite` and Codex's `update_plan` are the same idea.
+
+- **Tool** (`app` tier, 04 §2; `runtime_tools/todos.rs`). `gantry__update_todos { todos: [{ content, status: pending | in_progress | completed }] }` replaces the whole list on every call. It refuses what a person could not follow — an empty item, one longer than a line (200 characters), more than 40, or more than one in progress — with a sentence the model can act on, and otherwise answers `Checklist updated: 2 of 5 done; now: Fix the parser.` rather than echoing the list back. An empty list clears it. `app` tier means it never asks and Plan mode keeps it, which is where a list of steps is most at home. Available in every chat, like `gantry__clock`; the description is what keeps it off single-step answers.
+- **No store.** The list is the arguments of the latest call. The transcript already keeps those, replays them to the model and hands them to the interface, so a table beside them would be a second copy with its own ways of disagreeing. The one cost: once compaction (02 §6) summarises the calls away, the model knows its plan only as well as the summary does.
+- **In the feed.** Each call is a small row among the steps ("Updated the checklist · 2 of 5 done"). The turn's newest list is lifted out of the folded steps as a card, placed right after the first update that went through — so the steps read as what the model looked at, the plan, then the work — and it ticks itself off as the turn goes. One card per turn; a refused list and a cleared one draw none. The item in progress is the one place the card uses orange, and only while the turn runs (15 §3). `Checklist` in `components/gantry/chat/`, and in the gallery.
+- The interface calls it a **checklist**, not a plan: Plan is a permission mode (04 §3), and one word for two things on one screen is one too many.
+
 ## 10. Browsing and settings UI
 
 - **Browse** (`/connectors`): featured row, categories, search; each card shows icon, name, one-liner, installed/attached state, and badges for auth and runtime requirements.

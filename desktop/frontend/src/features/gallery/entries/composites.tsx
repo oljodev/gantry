@@ -2,6 +2,7 @@ import { ActivityRow } from '@/components/gantry/activity/ActivityRow';
 import { HunkPreview } from '@/components/gantry/activity/HunkPreview';
 import { TurnSteps } from '@/components/gantry/activity/TurnSteps';
 import { ArtifactCard } from '@/components/gantry/chat/ArtifactCard';
+import { Checklist } from '@/components/gantry/chat/Checklist';
 import {
   AccessRequestCard,
   ConnectorSuggestionCard,
@@ -179,6 +180,25 @@ function Activity() {
             onOpen={() => undefined}
           />
           <ArtifactCard title="Sales dashboard" type="react" version={1} onOpen={() => undefined} />
+        </div>
+      </State>
+      <State label="Checklist">
+        <div className="flex w-full max-w-(--measure) flex-col gap-2">
+          <Checklist
+            running
+            todos={[
+              { content: 'Read the failing test', status: 'completed' },
+              { content: 'Fix the date parser', status: 'in_progress' },
+              { content: 'Run the whole suite', status: 'pending' },
+            ]}
+          />
+          <Checklist
+            running={false}
+            todos={[
+              { content: 'Add the migration', status: 'completed' },
+              { content: 'Backfill the column', status: 'in_progress' },
+            ]}
+          />
         </div>
       </State>
     </>

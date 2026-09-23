@@ -7,6 +7,7 @@ import {
   FileTextIcon,
   GlobeIcon,
   InfoIcon,
+  ListChecksIcon,
   MagnifyingGlassIcon,
   PencilSimpleIcon,
   ShieldCheckIcon,
@@ -321,6 +322,19 @@ export function ActivityRow({
           onOpen={item.artifactId ? open : undefined}
         />
       );
+    case 'todos': {
+      const done = item.todos.filter((t) => t.status === 'completed').length;
+      return (
+        <Row
+          icon={<ListChecksIcon />}
+          title="Updated the checklist"
+          summary={item.todos.length === 0 ? 'cleared' : `${done} of ${item.todos.length} done`}
+          status={
+            item.status === 'running' ? <Spinner /> : item.status === 'failed' ? <Failed /> : null
+          }
+        />
+      );
+    }
     case 'subagents': {
       const waiting = item.runs.filter(
         (r) => r.status === 'running' || r.status === 'waiting' || r.status === 'proposed',

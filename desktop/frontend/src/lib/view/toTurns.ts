@@ -16,6 +16,7 @@ import type {
   GuardMark,
   Permission,
   SubAgentRun,
+  Todo,
   Turn,
 } from '@/fixtures/types';
 import { isArtifactTool } from '@/features/artifacts/registry';
@@ -353,6 +354,7 @@ function messagesToBlocks(
     if (!shown.has(c.id) && c.message_id === lastMessage?.id)
       pushItem(callItem(undefined, c, titles, output[c.id]));
   }
+  insertChecklist(blocks);
   blocks.push(...artifactCards(blocks, titles));
   for (const p of pending) {
     if (p.payload.kind === 'permission')
@@ -416,6 +418,7 @@ function callItem(
   const [connector, tool] = call ? [call.connector, call.tool] : splitName(part?.name ?? '');
   const modelName = call?.model_tool_name ?? part?.name ?? '';
   if (isArtifactTool(modelName)) return artifactItem(id, tool, call, part, titles);
+  if (connector === 'gantry' && tool === 'update_todos') return todosItem(id, call, part);
   // A sub agent is not "using a connector": it is a conversation this one started, and the row
   // is a door into it rather than a line about a tool (18 §7).
   if (connector === 'subagents')
@@ -448,6 +451,64 @@ function callItem(
     isError: call?.is_error,
     durationMs: call?.duration_ms ?? undefined,
   };
+}
+
+/** One update of the checklist, as a row among the steps (03 §9b). */
+function todosItem(
+  id: string,
+  call: ToolCallDto | undefined,
+  part: Extract<ContentPart, { kind: 'tool_call' }> | undefined,
+): ActivityItem {
+  const status = rowStatus(call);
+  return {
+    kind: 'todos',
+    id,
+    todos: todosOf(call?.args ?? part?.args),
+    status: status === 'done' ? 'done' : status === 'running' ? 'running' : 'failed',
+  };
+}
+
+/** The list out of a call's arguments, keeping only items that have the shape the tool checks. */
+function todosOf(args: unknown): Todo[] {
+  const list = (args as { todos?: unknown } | null)?.todos;
+  if (!Array.isArray(list)) return [];
+  return list.flatMap((t: unknown) => {
+    const { content, status } = (t ?? {}) as Record<string, unknown>;
+    if (typeof content !== 'string') return [];
+    if (status !== 'pending' && status !== 'in_progress' && status !== 'completed') return [];
+    return [{ content, status }];
+  });
+}
+
+/**
+ * Lifts the turn's checklist out of the folded steps (03 §9b).
+ *
+ * **Where the model first wrote it, with what it says now.** The card goes right after the first
+ * update that went through, which splits the steps around it — what the model looked at before
+ * it made a plan, the plan, then the work — and it shows the newest list, so it ticks itself off
+ * as the turn goes. One card per turn: the list is replaced on every call, so every earlier
+ * version is simply the same card earlier in time. A refused call is not a list anybody should
+ * follow, and a cleared list is no card at all.
+ */
+function insertChecklist(blocks: Block[]) {
+  let first: { block: number; item: number } | undefined;
+  let latest: Todo[] = [];
+  for (let i = 0; i < blocks.length; i++) {
+    const b = blocks[i]!;
+    if (b.kind !== 'activity') continue;
+    for (let j = 0; j < b.items.length; j++) {
+      const item = b.items[j]!;
+      if (item.kind !== 'todos' || item.status !== 'done') continue;
+      first ??= { block: i, item: j };
+      latest = item.todos;
+    }
+  }
+  if (!first || latest.length === 0) return;
+  const at = blocks[first.block] as Extract<Block, { kind: 'activity' }>;
+  const rest = at.items.splice(first.item + 1);
+  const after: Block[] = [{ kind: 'todos', todos: latest }];
+  if (rest.length > 0) after.push({ kind: 'activity', items: rest });
+  blocks.splice(first.block + 1, 0, ...after);
 }
 
 /** "Created artifact · Title (React)" / "Updated artifact · Title (v3)" rows (13 §10). */

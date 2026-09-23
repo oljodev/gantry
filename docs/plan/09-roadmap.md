@@ -763,6 +763,14 @@ Done when: v0.1.0 builds from `release.yml`, installs cleanly on all three OSes,
 
 Done in session 4: the Astro site is in `web/site/` (14) with home, product tour, connectors and a page per connector, pricing, download, about, blog, changelog, docs and the trust pages. Both Cloudflare Pages projects are live and both domains resolve (checked 2026-09-12, when the site was still at the apex: `oljo.dev` and `id.oljo.dev/client-metadata.json` both answer 200), which is what M9's CIMD registrations needed. **The site moved to `gantry.oljo.dev` on 2026-09-18** (14 §1); the custom domain and the apex redirect are Cloudflare settings, not repository ones, and the metadata host did not move. Remaining: the stable-named asset upload step in `release.yml`, so the download buttons resolve to something. Nothing in the app depends on it until M9 needs `web/client-metadata/` live for CIMD registrations, which is the one date to respect.
 
+## After v0.1.0 — coding-agent parity (2026-09-23)
+
+v0.1.0 was published 2026-09-23. The first work after it closes the distance to Claude Code and Codex on the things that make a long coding turn hold together, one item at a time:
+
+- ~~**A checklist the model keeps**~~ **Done 2026-09-23**: `gantry__update_todos`, 03 §9b.
+- The repository's own `AGENTS.md` / `CLAUDE.md` read as project instructions.
+- Skills from the repository's `.claude/skills/`, which are already the format D15 uses.
+
 ## Post-MVP backlog (in likely order)
 
 1. Provider-native coding tools: Anthropic `text_editor`/`bash` and OpenAI `apply_patch`/`shell` mapped onto the code-editor and shell connectors (T8).

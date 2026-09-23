@@ -174,6 +174,8 @@ function inProgressLabel(item: ActivityItem): string | undefined {
           ? `${item.title}…`
           : `Using ${item.connectorName ?? connectorName(item.connector)}…`;
       return undefined;
+    case 'todos':
+      return item.status === 'running' ? 'Updating the checklist…' : undefined;
     case 'artifact':
       if (item.status !== 'running') return undefined;
       return `${item.action === 'updated' ? 'Updating' : 'Creating'} ${
@@ -191,6 +193,8 @@ function isFailed(item: ActivityItem): boolean {
     case 'connector':
       return item.status === 'failed';
     case 'artifact':
+      return item.status === 'failed';
+    case 'todos':
       return item.status === 'failed';
     default:
       return false;
