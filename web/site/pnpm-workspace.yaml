@@ -1,0 +1,6 @@
+# The site is its own package with its own lockfile (docs/plan/14 §1), but pnpm looks upward for
+# the nearest pnpm-workspace.yaml and found the repository's, two levels up: `pnpm install` here —
+# which is what Cloudflare Pages runs — installed the desktop workspace instead and left the
+# build without astro. This file makes the site its own workspace root.
+packages:
+  - '.'
